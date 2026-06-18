@@ -24,3 +24,17 @@ Repository scaffold for the SyncOS monorepo.
 ## Planning
 
 - Delivery sequencing is tracked in the [sprint plan](docs/workflows/sprint-plan.md).
+
+## Code Start Gate
+
+The first code is backend foundation code, not screens:
+
+- Tenant model
+- Users
+- Roles
+- Permissions
+- Events
+- Audit logs
+- Base database migrations
+
+See the [code start gate](docs/architecture/code-start-gate.md).
