@@ -16,3 +16,7 @@ Repository scaffold for the SyncOS monorepo.
 - `packages/ui` - shared UI components
 - `docs` - architecture, API, migration, and workflow documentation
 - `infra` - Docker and infrastructure scripts
+
+## Platform Rules
+
+- Every write endpoint follows the documented [write endpoint contract](docs/architecture/write-endpoint-contract.md).
