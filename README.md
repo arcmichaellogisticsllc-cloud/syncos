@@ -20,3 +20,7 @@ Repository scaffold for the SyncOS monorepo.
 ## Platform Rules
 
 - Every write endpoint follows the documented [write endpoint contract](docs/architecture/write-endpoint-contract.md).
+
+## Planning
+
+- Delivery sequencing is tracked in the [sprint plan](docs/workflows/sprint-plan.md).
