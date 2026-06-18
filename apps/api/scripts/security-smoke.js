@@ -31,6 +31,7 @@ async function main() {
   const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
   const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
 
+  await expectStatus("public health route is explicit", "GET", "/health", undefined, 200, undefined);
   await expectStatus("unauthenticated request blocked", "POST", "/test-objects", undefined, 401);
   await expectStatus("invalid token blocked", "POST", "/test-objects", "Bearer invalid.token.value", 401);
   await expectStatus("missing permission metadata blocked", "POST", "/security-test/missing-permission", `Bearer ${token}`, 405);
@@ -39,7 +40,18 @@ async function main() {
   await expectStatus("disabled user blocked", "POST", "/test-objects", `Bearer ${token}`, 401);
   await client.query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
 
-  const outsideTenant = await client.query("INSERT INTO tenants (name, slug) VALUES ('Smoke Other Tenant', 'smoke-other-tenant') RETURNING id");
+  const outsideSlug = `smoke-other-tenant-${Date.now()}`;
+  const outsideTenant = await client.query("INSERT INTO tenants (name, slug) VALUES ('Smoke Other Tenant', $1) RETURNING id", [
+    outsideSlug,
+  ]);
+  const outsideObject = await client.query(
+    `
+    INSERT INTO test_objects (tenant_id, name, created_by_user_id)
+    VALUES ($1, 'outside tenant object', $2)
+    RETURNING id
+    `,
+    [outsideTenant.rows[0].id, userId],
+  );
   const outsideToken = createToken({ sub: userId, tenant_id: outsideTenant.rows[0].id, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
   await expectStatus("user outside tenant blocked", "POST", "/test-objects", `Bearer ${outsideToken}`, 401);
 
@@ -55,16 +67,24 @@ async function main() {
   if (after.events !== before.events + 1) {
     throw new Error("write did not create event");
   }
-  if (after.auditLogs !== before.auditLogs + 1) {
+  if (after.event_payloads !== before.event_payloads + 1) {
+    throw new Error("write did not create event payload");
+  }
+  if (after.audit_logs !== before.audit_logs + 1) {
     throw new Error("write did not create audit log");
   }
-  const crossTenantLookup = await client.query(
-    "SELECT 1 FROM test_objects WHERE tenant_id = $1 AND id = $2",
-    [outsideTenant.rows[0].id, created.id],
-  );
-  if (crossTenantLookup.rowCount !== 0) {
-    throw new Error("tenant-scoped lookup allowed cross-tenant object access by ID");
+  if (after.system_actions !== before.system_actions + 1) {
+    throw new Error("write did not create system action");
   }
+  await expectStatus("protected route fetches own tenant object", "GET", `/test-objects/${created.id}`, `Bearer ${token}`, 200, undefined);
+  await expectStatus(
+    "route-param cross-tenant object access blocked",
+    "GET",
+    `/test-objects/${outsideObject.rows[0].id}`,
+    `Bearer ${token}`,
+    404,
+    undefined,
+  );
 
   await client.end();
   console.log("security smoke passed");
@@ -74,7 +94,9 @@ async function counts(client) {
   const result = await client.query(`
     SELECT
       (SELECT count(*)::int FROM events) AS events,
-      (SELECT count(*)::int FROM audit_logs) AS audit_logs
+      (SELECT count(*)::int FROM event_payloads) AS event_payloads,
+      (SELECT count(*)::int FROM audit_logs) AS audit_logs,
+      (SELECT count(*)::int FROM system_actions) AS system_actions
   `);
   return result.rows[0];
 }
@@ -87,7 +109,7 @@ async function expectStatus(name, method, path, authorization, expected, body) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : JSON.stringify({ name }),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status !== expected) {
     const text = await response.text();

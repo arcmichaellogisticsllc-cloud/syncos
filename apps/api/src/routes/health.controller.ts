@@ -1,7 +1,9 @@
 import { Controller, Get, Inject } from "@nestjs/common";
 import type { Pool } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
+import { Public } from "../security/public.decorator";
 
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}

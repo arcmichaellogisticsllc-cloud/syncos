@@ -16,6 +16,7 @@
       "@syncos/database": ["packages/database/src"],
       "@syncos/events": ["packages/events/src"],
       "@syncos/permissions": ["packages/permissions/src"],
+      "@syncos/shared": ["packages/shared/src"],
       "@syncos/shared/*": ["packages/shared/src/*"],
       "@syncos/workflows": ["packages/workflows/src"]
     }

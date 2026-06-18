@@ -4,6 +4,7 @@ import type { Request } from "express";
 import type { Pool } from "pg";
 import type { PermissionKey } from "@syncos/permissions";
 import { DATABASE_POOL } from "../modules/database.module";
+import { IS_PUBLIC_ROUTE } from "./public.decorator";
 import { REQUIRED_PERMISSION } from "./require-permission.decorator";
 
 @Injectable()
@@ -14,6 +15,10 @@ export class PermissionGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_ROUTE, [context.getHandler(), context.getClass()]) === true) {
+      return true;
+    }
+
     const permission = this.reflector.getAllAndOverride<PermissionKey | undefined>(REQUIRED_PERMISSION, [
       context.getHandler(),
       context.getClass(),

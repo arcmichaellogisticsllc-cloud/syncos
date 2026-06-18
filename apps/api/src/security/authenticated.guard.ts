@@ -1,14 +1,23 @@
 import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import type { Pool } from "pg";
 import { verifyAuthToken } from "@syncos/auth";
 import { DATABASE_POOL } from "../modules/database.module";
+import { IS_PUBLIC_ROUTE } from "./public.decorator";
 
 @Injectable()
 export class AuthenticatedGuard implements CanActivate {
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+  constructor(
+    private readonly reflector: Reflector,
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (this.isPublic(context)) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<Request & { auth?: unknown }>();
     const claims = this.getClaims(request);
 
@@ -40,6 +49,10 @@ export class AuthenticatedGuard implements CanActivate {
       email: membership.rows[0].email,
     };
     return true;
+  }
+
+  private isPublic(context: ExecutionContext): boolean {
+    return this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_ROUTE, [context.getHandler(), context.getClass()]) === true;
   }
 
   private getClaims(request: Request) {

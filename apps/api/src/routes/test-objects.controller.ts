@@ -1,11 +1,9 @@
-import { Body, Controller, Inject, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import type { Pool } from "pg";
+import { findTenantRecordById, insertTenantRecord } from "@syncos/database";
 import { executeWriteAction } from "@syncos/shared";
-import { AuthenticatedGuard } from "../security/authenticated.guard";
-import { PermissionGuard } from "../security/permission.guard";
 import { RequirePermission } from "../security/require-permission.decorator";
-import { TenantIsolationGuard } from "../security/tenant-isolation.guard";
 import { DATABASE_POOL } from "../modules/database.module";
 
 type AuthenticatedRequest = Request & {
@@ -16,7 +14,6 @@ type AuthenticatedRequest = Request & {
 };
 
 @Controller("test-objects")
-@UseGuards(AuthenticatedGuard, TenantIsolationGuard, PermissionGuard)
 export class TestObjectsController {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
 
@@ -34,11 +31,16 @@ export class TestObjectsController {
         audit: { requestId: request.header("x-request-id") },
         systemActions: [{ actionType: "test_object.created.demo" }],
         write: async (transaction) => {
-          const objectResult = await transaction.query<{ id: string; name: string }>(
-            "INSERT INTO test_objects (tenant_id, name, created_by_user_id) VALUES ($1, $2, $3) RETURNING id, name",
-            [request.auth.tenantId, body.name ?? "Sprint 0 test object", request.auth.userId],
+          const object = await insertTenantRecord<{ id: string; name: string }>(
+            transaction,
+            "test_objects",
+            request.auth.tenantId,
+            {
+              name: body.name ?? "Sprint 0 test object",
+              created_by_user_id: request.auth.userId,
+            },
+            ["id", "name"],
           );
-          const object = objectResult.rows[0];
           return {
             entityType: "test_object",
             entityId: object.id,
@@ -48,6 +50,21 @@ export class TestObjectsController {
       });
     } catch (error) {
       throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  @Get(":id")
+  @RequirePermission("system.test_object.read")
+  async findOne(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    const client = await this.pool.connect();
+    try {
+      const object = await findTenantRecordById(client, "test_objects", request.auth.tenantId, id);
+      if (!object) {
+        throw new NotFoundException("test object not found");
+      }
+      return object;
     } finally {
       client.release();
     }

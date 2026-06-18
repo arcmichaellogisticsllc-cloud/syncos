@@ -2,8 +2,10 @@
   "name": "@syncos/database",
   "version": "0.1.0",
   "private": true,
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
+    "build": "tsc",
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
     "verify:migrations": "node scripts/verify-migrations.js",

@@ -50,6 +50,7 @@ const permissions = [
   "stop_work.issue",
   "admin.manage_users",
   "admin.manage_roles",
+  "system.test_object.read",
   "system.test_object.write",
 ];
 

@@ -30,6 +30,32 @@ export async function assertTenantRecordExists(
   }
 }
 
+export async function insertTenantRecord<T extends QueryResultRow>(
+  client: PoolClient,
+  tableName: string,
+  tenantId: string,
+  values: Record<string, unknown>,
+  returning: string[] = ["*"],
+): Promise<T> {
+  assertSafeIdentifier(tableName);
+  for (const column of [...Object.keys(values), ...returning.filter((column) => column !== "*")]) {
+    assertSafeIdentifier(column);
+  }
+
+  const columns = ["tenant_id", ...Object.keys(values)];
+  const parameters = [tenantId, ...Object.values(values)];
+  const placeholders = parameters.map((_, index) => `$${index + 1}`);
+  const result = await client.query<T>(
+    `
+    INSERT INTO ${tableName} (${columns.join(", ")})
+    VALUES (${placeholders.join(", ")})
+    RETURNING ${returning.join(", ")}
+    `,
+    parameters,
+  );
+  return result.rows[0];
+}
+
 function assertSafeIdentifier(identifier: string): void {
   if (!/^[a-z_][a-z0-9_]*$/.test(identifier)) {
     throw new Error(`Unsafe SQL identifier: ${identifier}`);

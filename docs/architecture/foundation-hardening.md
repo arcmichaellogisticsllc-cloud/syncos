@@ -37,3 +37,5 @@ Future write endpoints must use the shared write action pattern:
 ## Deferred Tenant-Safe FK Work
 
 The current schema includes `tenant_id` on core tables but does not yet enforce all cross-table relationships as composite `(tenant_id, id)` references. This is acceptable for Sprint 0.5 hardening only because domain write endpoints are not yet implemented. It must be fixed before production use.
+
+See [Tenant-Safe Foreign Key Hardening](tenant-safe-foreign-keys.md).

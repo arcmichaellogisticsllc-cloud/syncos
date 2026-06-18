@@ -1,5 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
+import { IS_PUBLIC_ROUTE } from "./public.decorator";
 
 type TenantScopedRequest = Request & {
   auth: {
@@ -16,7 +18,13 @@ type TenantScopedRequest = Request & {
 
 @Injectable()
 export class TenantIsolationGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
   canActivate(context: ExecutionContext): boolean {
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_ROUTE, [context.getHandler(), context.getClass()]) === true) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<TenantScopedRequest>();
     const bodyTenantId = request.body?.tenantId;
     const queryTenantId = request.query.tenantId;
