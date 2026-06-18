@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@syncos/auth": ["packages/auth/src"],
+      "@syncos/database": ["packages/database/src"],
+      "@syncos/events": ["packages/events/src"],
+      "@syncos/permissions": ["packages/permissions/src"],
+      "@syncos/shared/*": ["packages/shared/src/*"],
+      "@syncos/workflows": ["packages/workflows/src"]
+    }
+  }
+}

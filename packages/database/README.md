@@ -4,20 +4,18 @@ The database package owns schema migrations and database-facing contracts.
 
 ## Migration Order
 
-Start with:
+Run migrations with:
 
-- `migrations/001_base_identity_events_audit.sql`
+```bash
+npm run db:migrate
+```
 
-This migration creates the first code gate tables:
+Seed core Sprint 0 data with:
 
-- tenants
-- users
-- tenant users
-- roles
-- permissions
-- role permissions
-- user roles
-- events
-- audit logs
+```bash
+npm run db:seed
+```
+
+The migration system applies every SQL file in `migrations/` in lexical order and records completed files in `schema_migrations`.
 
 No application screens should be built before these backend foundations exist.
