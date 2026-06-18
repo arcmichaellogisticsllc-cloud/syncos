@@ -9,8 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "bullmq": "^5.8.2",
-    "ioredis": "^5.4.1"
+    "bullmq": "^5.8.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

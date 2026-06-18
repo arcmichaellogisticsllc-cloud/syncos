@@ -7,6 +7,7 @@ Sprint 0 implements the health and protected write route pattern. Domain routes 
 - `GET /health`
 - `GET /health/db`
 - `POST /test-objects`
+- `POST /security-test/missing-permission`
 
 ## Planned Groups
 

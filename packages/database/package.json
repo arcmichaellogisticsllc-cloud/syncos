@@ -6,6 +6,7 @@
   "scripts": {
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
+    "verify:migrations": "node scripts/verify-migrations.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

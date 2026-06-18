@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable, MethodNotAllowedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import type { Pool } from "pg";
@@ -19,7 +19,12 @@ export class PermissionGuard implements CanActivate {
       context.getClass(),
     ]);
     if (!permission) {
-      return true;
+      const request = context.switchToHttp().getRequest<Request>();
+      const method = request.method.toUpperCase();
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+        throw new MethodNotAllowedException("Write routes must declare explicit permission metadata");
+      }
+      throw new ForbiddenException("Protected routes must declare explicit permission metadata");
     }
 
     const request = context.switchToHttp().getRequest<Request & { auth: { tenantId: string; userId: string } }>();
@@ -35,14 +40,35 @@ export class PermissionGuard implements CanActivate {
           AND tu.user_id = $2
           AND tu.status = 'active'
           AND p.key = $3
+          AND (
+            ur.scope_type = 'tenant'
+            OR (ur.scope_type = $4 AND ur.scope_id = $5)
+          )
       ) AS allowed
       `,
-      [request.auth.tenantId, request.auth.userId, permission],
+      [
+        request.auth.tenantId,
+        request.auth.userId,
+        permission,
+        this.getScopeType(request),
+        this.getScopeId(request),
+      ],
     );
 
     if (!result.rows[0]?.allowed) {
       throw new ForbiddenException(`Missing permission: ${permission}`);
     }
     return true;
+  }
+
+  private getScopeType(request: Request): string {
+    const value = request.header("x-scope-type");
+    return value && ["organization", "territory", "project", "customer", "contractor"].includes(value)
+      ? value
+      : "tenant";
+  }
+
+  private getScopeId(request: Request & { auth?: { tenantId: string } }): string {
+    return request.header("x-scope-id") ?? request.auth?.tenantId ?? "";
   }
 }

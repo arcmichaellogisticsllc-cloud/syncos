@@ -107,5 +107,15 @@ Health endpoints:
 Protected route pattern:
 
 - `POST /test-objects`
-- Requires `x-tenant-id`, `x-user-id`, and `system.test_object.write`.
+- Requires a signed Bearer token and `system.test_object.write`.
 - Creates an object change, event payload, audit log, and uses soft-delete-ready records.
+
+Foundation verification:
+
+```bash
+npm run typecheck
+npm run db:verify
+npm run security:smoke
+```
+
+`npm run db:verify` requires an empty PostgreSQL database. `npm run security:smoke` requires the API to be running against a migrated and seeded database.

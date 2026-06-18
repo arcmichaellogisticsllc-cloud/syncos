@@ -11,7 +11,9 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:migrate": "npm run migrate -w @syncos/database",
-    "db:seed": "npm run seed -w @syncos/database"
+    "db:seed": "npm run seed -w @syncos/database",
+    "db:verify": "npm run verify:migrations -w @syncos/database",
+    "security:smoke": "npm run smoke:security -w @syncos/api"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

@@ -5,3 +5,5 @@ export type TenantScopedRecord = {
   updatedAt?: Date;
   deletedAt?: Date | null;
 };
+
+export * from "./tenant-repository";

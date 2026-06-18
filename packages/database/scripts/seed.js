@@ -1,4 +1,5 @@
 const { Client } = require("pg");
+const crypto = require("node:crypto");
 
 const roles = [
   "Executive",
@@ -94,13 +95,15 @@ async function main() {
       );
     }
 
+    const passwordHash = crypto.createHash("sha256").update("local-dev-password").digest("hex");
     const userResult = await client.query(
       `
-      INSERT INTO users (email, display_name)
-      VALUES ('admin@jackson-telcom.local', 'Jackson Telcom Admin')
-      ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
+      INSERT INTO users (email, display_name, password_hash)
+      VALUES ('admin@jackson-telcom.local', 'Jackson Telcom Admin', $1)
+      ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name, password_hash = EXCLUDED.password_hash
       RETURNING id
       `,
+      [passwordHash],
     );
     const userId = userResult.rows[0].id;
     const tenantUserResult = await client.query(
@@ -120,9 +123,9 @@ async function main() {
 
     await client.query(
       `
-      INSERT INTO user_roles (tenant_id, tenant_user_id, role_id)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (tenant_user_id, role_id) DO NOTHING
+      INSERT INTO user_roles (tenant_id, tenant_user_id, role_id, scope_type, scope_id)
+      VALUES ($1, $2, $3, 'tenant', $1)
+      ON CONFLICT (tenant_user_id, role_id, scope_type, scope_id) DO NOTHING
       `,
       [tenantId, tenantUserId, systemAdminRole.rows[0].id],
     );

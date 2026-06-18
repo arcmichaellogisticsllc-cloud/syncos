@@ -14,6 +14,7 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
   display_name TEXT NOT NULL,
+  password_hash TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'invited', 'disabled', 'archived')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -66,8 +67,10 @@ CREATE TABLE user_roles (
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   tenant_user_id UUID NOT NULL REFERENCES tenant_users(id),
   role_id UUID NOT NULL REFERENCES roles(id),
+  scope_type TEXT NOT NULL DEFAULT 'tenant' CHECK (scope_type IN ('tenant', 'organization', 'territory', 'project', 'customer', 'contractor')),
+  scope_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (tenant_user_id, role_id)
+  UNIQUE (tenant_user_id, role_id, scope_type, scope_id)
 );
 
 CREATE INDEX tenant_users_tenant_id_idx ON tenant_users(tenant_id);

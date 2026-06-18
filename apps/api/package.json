@@ -7,6 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "build": "nest build",
+    "smoke:security": "node scripts/security-smoke.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

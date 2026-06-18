@@ -72,3 +72,18 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER audit_logs_prevent_update
 BEFORE UPDATE OR DELETE ON audit_logs
 FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();
+
+CREATE OR REPLACE FUNCTION prevent_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'events are append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER events_prevent_update
+BEFORE UPDATE OR DELETE ON events
+FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
+
+CREATE TRIGGER event_payloads_prevent_update
+BEFORE UPDATE OR DELETE ON event_payloads
+FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
