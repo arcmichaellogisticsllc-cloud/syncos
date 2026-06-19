@@ -102,10 +102,10 @@ export class SearchController {
           title ILIKE $2 OR work_type ILIKE $2 OR location_description ILIKE $2 OR unit_type ILIKE $2 OR status ILIKE $2
         )
         UNION ALL
-        SELECT 'production_record' AS object_type, id, unit_type AS title, status, concat_ws(' ', unit_type, status, correction_reason) AS snippet
+        SELECT 'production_record' AS object_type, id, unit_type AS title, status, concat_ws(' ', unit_type, status, billable_status, stop_work_status, correction_reason, rejection_reason) AS snippet
         FROM production_records
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
-          unit_type ILIKE $2 OR status ILIKE $2 OR correction_reason ILIKE $2
+          unit_type ILIKE $2 OR status ILIKE $2 OR billable_status ILIKE $2 OR stop_work_status ILIKE $2 OR correction_reason ILIKE $2 OR rejection_reason ILIKE $2
         )
         LIMIT 50
         `,

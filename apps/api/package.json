@@ -15,6 +15,7 @@
     "smoke:sprint3": "node scripts/sprint3-smoke.js",
     "smoke:sprint4": "node scripts/sprint4-smoke.js",
     "smoke:sprint5": "node scripts/sprint5-smoke.js",
+    "smoke:sprint6": "node scripts/sprint6-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
