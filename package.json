@@ -13,7 +13,8 @@
     "db:migrate": "npm run migrate -w @syncos/database",
     "db:seed": "npm run seed -w @syncos/database",
     "db:verify": "npm run verify:migrations -w @syncos/database",
-    "security:smoke": "npm run smoke:security -w @syncos/api"
+    "security:smoke": "npm run smoke:security -w @syncos/api",
+    "sprint1:smoke": "npm run smoke:sprint1 -w @syncos/api"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

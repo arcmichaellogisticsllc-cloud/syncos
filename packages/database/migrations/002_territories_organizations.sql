@@ -17,7 +17,11 @@ CREATE TABLE organizations (
   territory_id UUID REFERENCES territories(id),
   name TEXT NOT NULL,
   type TEXT NOT NULL DEFAULT 'unknown',
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'qualified', 'active', 'archived')),
+  actor_roles TEXT[] NOT NULL DEFAULT '{}'::text[],
+  source_name TEXT,
+  source_url TEXT,
+  trust_level INTEGER,
+  status TEXT NOT NULL DEFAULT 'discovered' CHECK (status IN ('discovered', 'researched', 'qualified', 'relationship_opened', 'active', 'strategic', 'dormant', 'archived')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ

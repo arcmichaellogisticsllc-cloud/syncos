@@ -56,6 +56,75 @@ export async function insertTenantRecord<T extends QueryResultRow>(
   return result.rows[0];
 }
 
+export async function listTenantRecords<T extends QueryResultRow>(
+  client: PoolClient,
+  tableName: string,
+  tenantId: string,
+  options: {
+    searchColumns?: string[];
+    search?: string;
+    orderBy?: string;
+    limit?: number;
+  } = {},
+): Promise<T[]> {
+  assertSafeIdentifier(tableName);
+  for (const column of [...(options.searchColumns ?? []), options.orderBy ? options.orderBy : "created_at"]) {
+    assertSafeIdentifier(column);
+  }
+
+  const parameters: unknown[] = [tenantId];
+  const clauses = ["tenant_id = $1", "deleted_at IS NULL"];
+  if (options.search && options.searchColumns?.length) {
+    const searchClauses = options.searchColumns.map((column) => `${column} ILIKE $2`);
+    parameters.push(`%${options.search}%`);
+    clauses.push(`(${searchClauses.join(" OR ")})`);
+  }
+
+  const result = await client.query<T>(
+    `
+    SELECT *
+    FROM ${tableName}
+    WHERE ${clauses.join(" AND ")}
+    ORDER BY ${options.orderBy ?? "created_at"} DESC
+    LIMIT ${options.limit ?? 100}
+    `,
+    parameters,
+  );
+  return result.rows;
+}
+
+export async function updateTenantRecord<T extends QueryResultRow>(
+  client: PoolClient,
+  tableName: string,
+  tenantId: string,
+  id: string,
+  values: Record<string, unknown>,
+  returning: string[] = ["*"],
+): Promise<T | null> {
+  assertSafeIdentifier(tableName);
+  for (const column of [...Object.keys(values), ...returning.filter((column) => column !== "*")]) {
+    assertSafeIdentifier(column);
+  }
+  if (!Object.keys(values).length) {
+    return findTenantRecordById<T>(client, tableName, tenantId, id);
+  }
+
+  const assignments = Object.keys(values).map((column, index) => `${column} = $${index + 3}`);
+  if (!Object.prototype.hasOwnProperty.call(values, "updated_at")) {
+    assignments.push("updated_at = now()");
+  }
+  const result = await client.query<T>(
+    `
+    UPDATE ${tableName}
+    SET ${assignments.join(", ")}
+    WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+    RETURNING ${returning.join(", ")}
+    `,
+    [tenantId, id, ...Object.values(values)],
+  );
+  return result.rows[0] ?? null;
+}
+
 function assertSafeIdentifier(identifier: string): void {
   if (!/^[a-z_][a-z0-9_]*$/.test(identifier)) {
     throw new Error(`Unsafe SQL identifier: ${identifier}`);
