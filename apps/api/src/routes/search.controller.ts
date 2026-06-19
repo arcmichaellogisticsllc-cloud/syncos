@@ -127,6 +127,14 @@ export class SearchController {
         SELECT 'settlement' AS object_type, id, status AS title, status, concat_ws(' ', status, dispute_reason) AS snippet
         FROM settlements
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (status ILIKE $2 OR dispute_reason ILIKE $2)
+        UNION ALL
+        SELECT 'invoice' AS object_type, id, invoice_number AS title, status, concat_ws(' ', invoice_number, status) AS snippet
+        FROM invoices
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (invoice_number ILIKE $2 OR status ILIKE $2)
+        UNION ALL
+        SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
+        FROM payments
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)
         LIMIT 50
         `,
         [request.auth.tenantId, search],

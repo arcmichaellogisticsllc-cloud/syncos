@@ -88,7 +88,12 @@ CREATE TABLE invoices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   organization_id UUID REFERENCES organizations(id),
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'paid', 'voided', 'archived')),
+  settlement_id UUID REFERENCES settlements(id),
+  invoice_number TEXT,
+  invoice_date DATE,
+  due_date DATE,
+  invoice_amount NUMERIC(14,2),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'overdue', 'archived')),
   total_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -99,17 +104,44 @@ CREATE TABLE payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   invoice_id UUID REFERENCES invoices(id),
+  settlement_id UUID REFERENCES settlements(id),
   amount NUMERIC(14,2) NOT NULL,
+  payment_amount NUMERIC(14,2),
   payment_date DATE NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  payment_reference TEXT,
+  status TEXT NOT NULL DEFAULT 'recorded' CHECK (status IN ('recorded', 'reconciled', 'short_paid', 'overpaid', 'archived')),
+  overpay_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  short_pay_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  reconciled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE ar_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   invoice_id UUID NOT NULL REFERENCES invoices(id),
+  customer_organization_id UUID REFERENCES organizations(id),
+  amount_open NUMERIC(14,2) NOT NULL DEFAULT 0,
+  age_days INTEGER NOT NULL DEFAULT 0,
+  aging_bucket TEXT NOT NULL DEFAULT 'current' CHECK (aging_bucket IN ('current', '30', '60', '90', '120_plus')),
   balance NUMERIC(14,2) NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed', 'written_off')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reconciled', 'short_paid', 'overpaid', 'archived')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE TABLE customer_payment_stats (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  customer_organization_id UUID NOT NULL REFERENCES organizations(id),
+  average_days_to_pay NUMERIC(10,2) NOT NULL DEFAULT 0,
+  payment_count INTEGER NOT NULL DEFAULT 0,
+  short_pay_count INTEGER NOT NULL DEFAULT 0,
+  last_payment_at DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, customer_organization_id)
 );
