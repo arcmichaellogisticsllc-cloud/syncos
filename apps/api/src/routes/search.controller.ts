@@ -49,6 +49,18 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           name ILIKE $2 OR title ILIKE $2 OR work_type ILIKE $2 OR evidence_summary ILIKE $2 OR status ILIKE $2
         )
+        UNION ALL
+        SELECT 'opportunity' AS object_type, id, title, status, concat_ws(' ', title, work_type, evidence_summary, scope_summary, status, recommendation) AS snippet
+        FROM opportunities
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          title ILIKE $2 OR work_type ILIKE $2 OR evidence_summary ILIKE $2 OR scope_summary ILIKE $2 OR status ILIKE $2 OR recommendation ILIKE $2
+        )
+        UNION ALL
+        SELECT 'capacity_requirement' AS object_type, id, capacity_type AS title, status, concat_ws(' ', capacity_type, unit, status) AS snippet
+        FROM opportunity_capacity_requirements
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          capacity_type ILIKE $2 OR unit ILIKE $2 OR status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],
