@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
 import { ConstraintsController } from "../routes/constraints.controller";
+import { DashboardsController } from "../routes/dashboards.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
 import { KpisController } from "../routes/kpis.controller";
@@ -41,6 +42,7 @@ import { DatabaseModule } from "./database.module";
     SettlementsController,
     CashController,
     ConstraintsController,
+    DashboardsController,
     WorkflowsController,
     KpisController,
     SearchController,
