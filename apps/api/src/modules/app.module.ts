@@ -5,6 +5,7 @@ import { CashController } from "../routes/cash.controller";
 import { ConstraintsController } from "../routes/constraints.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
+import { KpisController } from "../routes/kpis.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
@@ -41,6 +42,7 @@ import { DatabaseModule } from "./database.module";
     CashController,
     ConstraintsController,
     WorkflowsController,
+    KpisController,
     SearchController,
   ],
   providers: [

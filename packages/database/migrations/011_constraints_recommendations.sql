@@ -35,6 +35,7 @@ CREATE TABLE recommendations (
   rejection_reason TEXT,
   defer_reason TEXT,
   review_date DATE,
+  approved_at TIMESTAMPTZ,
   status TEXT NOT NULL DEFAULT 'generated' CHECK (status IN ('generated', 'pending_review', 'approved', 'rejected', 'deferred', 'converted_to_workflow', 'completed', 'measured', 'archived')),
   confidence_score NUMERIC(5,2),
   confidence NUMERIC(5,2),

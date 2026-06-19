@@ -3,8 +3,18 @@ CREATE TABLE kpi_definitions (
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   key TEXT NOT NULL,
   name TEXT NOT NULL,
+  kpi_name TEXT,
+  kpi_category TEXT CHECK (kpi_category IS NULL OR kpi_category IN ('intelligence', 'opportunity', 'capacity', 'execution', 'cash', 'optimization')),
+  formula_description TEXT,
+  calculation_frequency TEXT,
+  owner_role TEXT,
+  target_value NUMERIC(14,4),
+  alert_threshold NUMERIC(14,4),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
   calculation TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ,
   UNIQUE (tenant_id, key)
 );
 
@@ -14,19 +24,34 @@ CREATE TABLE kpi_snapshots (
   kpi_definition_id UUID NOT NULL REFERENCES kpi_definitions(id),
   value NUMERIC(14,4) NOT NULL,
   snapshot_at TIMESTAMPTZ NOT NULL,
+  snapshot_period_start TIMESTAMPTZ,
+  snapshot_period_end TIMESTAMPTZ,
+  territory_id UUID REFERENCES territories(id),
+  object_type TEXT,
+  object_id UUID,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE kpi_alerts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   kpi_definition_id UUID NOT NULL REFERENCES kpi_definitions(id),
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'acknowledged', 'closed')),
+  severity TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  related_object_type TEXT,
+  related_object_id UUID,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'archived')),
   message TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
+
+CREATE INDEX kpi_definitions_tenant_id_idx ON kpi_definitions(tenant_id);
+CREATE INDEX kpi_snapshots_tenant_id_idx ON kpi_snapshots(tenant_id);
+CREATE INDEX kpi_alerts_tenant_id_idx ON kpi_alerts(tenant_id);
 
 CREATE TABLE learning_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

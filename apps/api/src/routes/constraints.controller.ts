@@ -297,7 +297,7 @@ export class ConstraintsController {
     return this.write(request, "recommendation.approve", "recommendation.approved", "recommendation", async (client) => {
       const before = await this.requireRecord(client, "recommendations", request.auth.tenantId, id, "recommendation not found");
       await this.requireRecommendationApprover(client, request.auth.tenantId, request.auth.userId, String(before.recommendation_type));
-      const after = await updateTenantRecord(client, "recommendations", request.auth.tenantId, id, { status: "approved" });
+      const after = await updateTenantRecord(client, "recommendations", request.auth.tenantId, id, { status: "approved", approved_at: new Date() });
       if (!after) throw new NotFoundException("recommendation not found");
       return { entityType: "recommendation", entityId: id, beforeState: before, afterState: after };
     });

@@ -165,6 +165,12 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           task_name ILIKE $2 OR title ILIKE $2 OR assigned_role ILIKE $2 OR status ILIKE $2
         )
+        UNION ALL
+        SELECT 'kpi' AS object_type, id, coalesce(kpi_name, name) AS title, status, concat_ws(' ', kpi_name, name, kpi_category, owner_role, status) AS snippet
+        FROM kpi_definitions
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          kpi_name ILIKE $2 OR name ILIKE $2 OR kpi_category ILIKE $2 OR owner_role ILIKE $2 OR status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],
