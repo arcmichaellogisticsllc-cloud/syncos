@@ -135,6 +135,18 @@ export class SearchController {
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)
+        UNION ALL
+        SELECT 'constraint' AS object_type, id, title, status, concat_ws(' ', title, constraint_type, severity, status) AS snippet
+        FROM constraints
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          title ILIKE $2 OR constraint_type ILIKE $2 OR severity ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'recommendation' AS object_type, id, title, status, concat_ws(' ', title, recommendation_type, risk_level, expected_impact, status) AS snippet
+        FROM recommendations
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          title ILIKE $2 OR recommendation_type ILIKE $2 OR risk_level ILIKE $2 OR expected_impact ILIKE $2 OR status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],
