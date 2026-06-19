@@ -61,6 +61,36 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           capacity_type ILIKE $2 OR unit ILIKE $2 OR status ILIKE $2
         )
+        UNION ALL
+        SELECT 'capacity_provider' AS object_type, id, name AS title, status, concat_ws(' ', name, provider_type, status) AS snippet
+        FROM capacity_providers
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          name ILIKE $2 OR provider_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'crew' AS object_type, id, name AS title, status, concat_ws(' ', name, crew_type, status) AS snippet
+        FROM crews
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          name ILIKE $2 OR crew_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'worker' AS object_type, id, concat_ws(' ', first_name, last_name) AS title, status, concat_ws(' ', first_name, last_name, status) AS snippet
+        FROM workers
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          first_name ILIKE $2 OR last_name ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'equipment' AS object_type, id, name AS title, status, concat_ws(' ', name, equipment_type, status) AS snippet
+        FROM equipment
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          name ILIKE $2 OR equipment_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'capacity_record' AS object_type, id, capacity_type AS title, compliance_status AS status, concat_ws(' ', capacity_type, unit, compliance_status, insurance_status) AS snippet
+        FROM capacity_records
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          capacity_type ILIKE $2 OR unit ILIKE $2 OR compliance_status ILIKE $2 OR insurance_status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],

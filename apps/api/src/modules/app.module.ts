@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { CapacityController } from "../routes/capacity.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
@@ -29,6 +30,7 @@ import { DatabaseModule } from "./database.module";
     RelationshipMapsController,
     OpportunityCandidatesController,
     OpportunitiesController,
+    CapacityController,
     SearchController,
   ],
   providers: [
