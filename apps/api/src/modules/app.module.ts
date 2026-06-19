@@ -10,6 +10,7 @@ import { ProductionController } from "../routes/production.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
 import { SearchController } from "../routes/search.controller";
 import { SecurityTestController } from "../routes/security-test.controller";
+import { SettlementsController } from "../routes/settlements.controller";
 import { SignalsController } from "../routes/signals.controller";
 import { TestObjectsController } from "../routes/test-objects.controller";
 import { TerritoriesController } from "../routes/territories.controller";
@@ -33,6 +34,7 @@ import { DatabaseModule } from "./database.module";
     OpportunitiesController,
     CapacityController,
     ProductionController,
+    SettlementsController,
     SearchController,
   ],
   providers: [

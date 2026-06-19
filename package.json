@@ -19,7 +19,8 @@
     "sprint3:smoke": "npm run smoke:sprint3 -w @syncos/api",
     "sprint4:smoke": "npm run smoke:sprint4 -w @syncos/api",
     "sprint5:smoke": "npm run smoke:sprint5 -w @syncos/api",
-    "sprint6:smoke": "npm run smoke:sprint6 -w @syncos/api"
+    "sprint6:smoke": "npm run smoke:sprint6 -w @syncos/api",
+    "sprint7:smoke": "npm run smoke:sprint7 -w @syncos/api"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

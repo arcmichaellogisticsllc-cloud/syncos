@@ -107,6 +107,26 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           unit_type ILIKE $2 OR status ILIKE $2 OR billable_status ILIKE $2 OR stop_work_status ILIKE $2 OR correction_reason ILIKE $2 OR rejection_reason ILIKE $2
         )
+        UNION ALL
+        SELECT 'contract' AS object_type, id, name AS title, status, concat_ws(' ', name, contract_number, contract_type, status) AS snippet
+        FROM contracts
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          name ILIKE $2 OR contract_number ILIKE $2 OR contract_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'rate_schedule' AS object_type, id, name AS title, status, concat_ws(' ', name, status) AS snippet
+        FROM rate_schedules
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (name ILIKE $2 OR status ILIKE $2)
+        UNION ALL
+        SELECT 'rate_code' AS object_type, id, code AS title, status, concat_ws(' ', code, description, unit_type, status) AS snippet
+        FROM rate_codes
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          code ILIKE $2 OR description ILIKE $2 OR unit_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'settlement' AS object_type, id, status AS title, status, concat_ws(' ', status, dispute_reason) AS snippet
+        FROM settlements
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (status ILIKE $2 OR dispute_reason ILIKE $2)
         LIMIT 50
         `,
         [request.auth.tenantId, search],
