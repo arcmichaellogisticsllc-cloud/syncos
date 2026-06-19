@@ -1,0 +1,60 @@
+name: SyncOS CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: syncos_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d syncos_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_ci
+      AUTH_JWT_SECRET: ci-validation-secret-12345
+      API_BASE_URL: http://localhost:3100
+      PORT: 3100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build API
+        run: npm run build -w @syncos/api
+      - name: Build Worker
+        run: npm run build -w @syncos/worker
+      - name: Build Web
+        run: npm run build -w @syncos/web
+      - name: Database Verification
+        run: npm run db:verify
+      - name: Regression Tests
+        run: npm test
+      - name: Start API
+        run: |
+          npm run start -w @syncos/api &
+          for i in {1..30}; do
+            curl -fsS http://localhost:3100/health && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Security Smoke
+        run: npm run security:smoke

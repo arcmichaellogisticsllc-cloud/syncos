@@ -9,6 +9,7 @@
     "dev": "npm run build:deps && nest start --watch",
     "start": "node dist/main.js",
     "build": "npm run clean && npm run build:deps && nest build",
+    "validate:env": "node scripts/validate-env.js",
     "smoke:security": "node scripts/security-smoke.js",
     "smoke:sprint1": "node scripts/sprint1-smoke.js",
     "smoke:sprint2": "node scripts/sprint2-smoke.js",
@@ -23,6 +24,7 @@
     "smoke:sprint11": "node scripts/sprint11-smoke.js",
     "smoke:sprint12": "node scripts/sprint12-smoke.js",
     "smoke:sprint13": "node scripts/sprint13-smoke.js",
+    "smoke:sprint14": "node scripts/sprint14-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

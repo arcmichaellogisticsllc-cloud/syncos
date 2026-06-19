@@ -10,6 +10,7 @@
     "dev": "npm run dev -w @syncos/api",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "node --test tests/*.test.js",
     "db:migrate": "npm run migrate -w @syncos/database",
     "db:seed": "npm run seed -w @syncos/database",
     "db:verify": "npm run verify:migrations -w @syncos/database",
@@ -26,7 +27,8 @@
     "sprint10:smoke": "npm run smoke:sprint10 -w @syncos/api",
     "sprint11:smoke": "npm run smoke:sprint11 -w @syncos/api",
     "sprint12:smoke": "npm run smoke:sprint12 -w @syncos/api",
-    "sprint13:smoke": "npm run smoke:sprint13 -w @syncos/api"
+    "sprint13:smoke": "npm run smoke:sprint13 -w @syncos/api",
+    "sprint14:smoke": "npm run smoke:sprint14 -w @syncos/api"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
