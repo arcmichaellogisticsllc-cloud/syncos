@@ -7,6 +7,7 @@ import { DashboardsController } from "../routes/dashboards.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
 import { KpisController } from "../routes/kpis.controller";
+import { LearningController } from "../routes/learning.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
@@ -45,6 +46,7 @@ import { DatabaseModule } from "./database.module";
     DashboardsController,
     WorkflowsController,
     KpisController,
+    LearningController,
     SearchController,
   ],
   providers: [

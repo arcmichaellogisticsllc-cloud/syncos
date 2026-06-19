@@ -171,6 +171,12 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           kpi_name ILIKE $2 OR name ILIKE $2 OR kpi_category ILIKE $2 OR owner_role ILIKE $2 OR status ILIKE $2
         )
+        UNION ALL
+        SELECT 'learning_score' AS object_type, id, score_type AS title, status, concat_ws(' ', score_type, object_type, entity_type, status) AS snippet
+        FROM learning_scores
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          score_type ILIKE $2 OR object_type ILIKE $2 OR entity_type ILIKE $2 OR status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],

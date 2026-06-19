@@ -22,6 +22,7 @@
     "smoke:sprint10": "node scripts/sprint10-smoke.js",
     "smoke:sprint11": "node scripts/sprint11-smoke.js",
     "smoke:sprint12": "node scripts/sprint12-smoke.js",
+    "smoke:sprint13": "node scripts/sprint13-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

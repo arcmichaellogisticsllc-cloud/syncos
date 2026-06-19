@@ -57,30 +57,57 @@ CREATE TABLE learning_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   event_type TEXT NOT NULL,
+  learning_type TEXT CHECK (learning_type IS NULL OR learning_type IN ('signal', 'relationship', 'organization', 'capacity', 'customer', 'recommendation')),
+  source_event_id UUID,
+  source_object_type TEXT,
+  source_object_id UUID,
+  outcome_object_type TEXT,
+  outcome_object_id UUID,
+  positive BOOLEAN,
+  score_delta NUMERIC(8,4),
   entity_type TEXT,
   entity_id UUID,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE learning_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
+  object_type TEXT,
+  object_id UUID,
   entity_type TEXT NOT NULL,
   entity_id UUID NOT NULL,
   score_type TEXT NOT NULL,
+  score_value NUMERIC(8,4),
+  confidence NUMERIC(8,4),
   score NUMERIC(8,4) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ,
+  UNIQUE (tenant_id, score_type, entity_type, entity_id)
 );
 
 CREATE TABLE score_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
+  learning_score_id UUID REFERENCES learning_scores(id),
   entity_type TEXT NOT NULL,
   entity_id UUID NOT NULL,
   score_type TEXT NOT NULL,
   previous_score NUMERIC(8,4),
   new_score NUMERIC(8,4) NOT NULL,
   reason TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  source_event_id UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
+
+CREATE INDEX learning_events_tenant_id_idx ON learning_events(tenant_id);
+CREATE INDEX learning_scores_tenant_id_idx ON learning_scores(tenant_id);
+CREATE INDEX score_history_tenant_id_idx ON score_history(tenant_id);
