@@ -37,6 +37,18 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           title ILIKE $2 OR description ILIKE $2 OR signal_type ILIKE $2 OR signal_category ILIKE $2 OR source_name ILIKE $2
         )
+        UNION ALL
+        SELECT 'relationship_map' AS object_type, id, name AS title, status, concat_ws(' ', name, status, root_entity_type, target_object_type) AS snippet
+        FROM relationship_maps
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          name ILIKE $2 OR status ILIKE $2 OR root_entity_type ILIKE $2 OR target_object_type ILIKE $2
+        )
+        UNION ALL
+        SELECT 'opportunity_candidate' AS object_type, id, coalesce(name, title) AS title, status, concat_ws(' ', name, title, work_type, evidence_summary, status) AS snippet
+        FROM opportunity_candidates
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          name ILIKE $2 OR title ILIKE $2 OR work_type ILIKE $2 OR evidence_summary ILIKE $2 OR status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],

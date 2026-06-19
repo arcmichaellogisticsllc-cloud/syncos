@@ -11,6 +11,7 @@
     "build": "npm run clean && npm run build:deps && nest build",
     "smoke:security": "node scripts/security-smoke.js",
     "smoke:sprint1": "node scripts/sprint1-smoke.js",
+    "smoke:sprint2": "node scripts/sprint2-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
