@@ -6,6 +6,7 @@ import { ContactsController } from "../routes/contacts.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
+import { ProductionController } from "../routes/production.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
 import { SearchController } from "../routes/search.controller";
 import { SecurityTestController } from "../routes/security-test.controller";
@@ -31,6 +32,7 @@ import { DatabaseModule } from "./database.module";
     OpportunityCandidatesController,
     OpportunitiesController,
     CapacityController,
+    ProductionController,
     SearchController,
   ],
   providers: [

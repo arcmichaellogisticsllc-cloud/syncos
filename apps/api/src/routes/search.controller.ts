@@ -91,6 +91,22 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           capacity_type ILIKE $2 OR unit ILIKE $2 OR compliance_status ILIKE $2 OR insurance_status ILIKE $2
         )
+        UNION ALL
+        SELECT 'project' AS object_type, id, name AS title, status, concat_ws(' ', name, status) AS snippet
+        FROM projects
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (name ILIKE $2 OR status ILIKE $2)
+        UNION ALL
+        SELECT 'work_order' AS object_type, id, title, status, concat_ws(' ', title, work_type, location_description, unit_type, status) AS snippet
+        FROM work_orders
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          title ILIKE $2 OR work_type ILIKE $2 OR location_description ILIKE $2 OR unit_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'production_record' AS object_type, id, unit_type AS title, status, concat_ws(' ', unit_type, status, correction_reason) AS snippet
+        FROM production_records
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          unit_type ILIKE $2 OR status ILIKE $2 OR correction_reason ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],
