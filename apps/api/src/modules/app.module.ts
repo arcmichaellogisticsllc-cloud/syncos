@@ -1,5 +1,6 @@
-import { Module } from "@nestjs/common";
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
 import { ConstraintsController } from "../routes/constraints.controller";
@@ -13,6 +14,7 @@ import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { ProductionController } from "../routes/production.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
+import { ReportsController } from "../routes/reports.controller";
 import { SearchController } from "../routes/search.controller";
 import { SecurityTestController } from "../routes/security-test.controller";
 import { SettlementsController } from "../routes/settlements.controller";
@@ -47,6 +49,7 @@ import { DatabaseModule } from "./database.module";
     WorkflowsController,
     KpisController,
     LearningController,
+    ReportsController,
     SearchController,
   ],
   providers: [
@@ -55,4 +58,8 @@ import { DatabaseModule } from "./database.module";
     { provide: APP_GUARD, useClass: PermissionGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationMiddleware).forRoutes({ path: "*", method: RequestMethod.ALL });
+  }
+}

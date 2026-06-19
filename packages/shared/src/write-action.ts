@@ -119,6 +119,14 @@ async function appendEventAuditAndActions(
       { action: input.action, entityType: input.entityType },
     ],
   );
+  structuredLog("Event", "event_created", {
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId,
+    eventId: eventResult.rows[0].id,
+    eventType: input.eventType,
+    aggregateType: input.aggregateType,
+    aggregateId: input.entityId,
+  });
 
   await client.query("INSERT INTO event_payloads (event_id, payload) VALUES ($1, $2)", [
     eventResult.rows[0].id,
@@ -135,6 +143,13 @@ async function appendEventAuditAndActions(
     afterState: input.afterState,
     ...input.audit,
   });
+  structuredLog("Audit", "audit_log_created", {
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+  });
 
   for (const action of input.systemActions ?? []) {
     await client.query(
@@ -145,4 +160,8 @@ async function appendEventAuditAndActions(
       [input.tenantId, eventResult.rows[0].id, action.actionType, action.payload ?? {}],
     );
   }
+}
+
+function structuredLog(category: "Event" | "Audit", message: string, context: Record<string, unknown>) {
+  process.stdout.write(`${JSON.stringify({ timestamp: new Date().toISOString(), category, message, ...context })}\n`);
 }

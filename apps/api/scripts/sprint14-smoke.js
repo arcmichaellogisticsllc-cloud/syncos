@@ -1,4 +1,5 @@
 const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
@@ -36,6 +37,25 @@ async function main() {
   if (!startup.permissionSeed?.ok) throw new Error("startup validation did not confirm permission seed");
   if (!startup.requiredRoles?.ok) throw new Error("startup validation did not confirm required roles");
 
+  const token = await seededAdminToken();
+  await expectStatus("unauthorized compliance report blocked", "GET", "/reports/compliance", undefined, 401);
+  const complianceReport = await expectStatus("compliance report loads", "GET", "/reports/compliance", `Bearer ${token}`, 200);
+  if (!Array.isArray(complianceReport.expiredDocuments) || !Array.isArray(complianceReport.expiringDocuments) || !Array.isArray(complianceReport.missingDocuments)) {
+    throw new Error("compliance report shape is invalid");
+  }
+  const billingReport = await expectStatus("billing completeness report loads", "GET", "/reports/billing-completeness", `Bearer ${token}`, 200);
+  if (!Array.isArray(billingReport.billableProduction) || !Array.isArray(billingReport.missingRateCodes) || !Array.isArray(billingReport.missingSettlementLinks) || !Array.isArray(billingReport.missingInvoiceLinks)) {
+    throw new Error("billing completeness report shape is invalid");
+  }
+  const constraintReport = await expectStatus("constraint report loads", "GET", "/reports/constraints", `Bearer ${token}`, 200);
+  if (!Array.isArray(constraintReport.openConstraints) || !Array.isArray(constraintReport.byType) || !Array.isArray(constraintReport.bySeverity) || !Array.isArray(constraintReport.byOwner)) {
+    throw new Error("constraint report shape is invalid");
+  }
+  const executiveDashboard = await expectStatus("executive dashboard trend loads", "GET", "/dashboard/executive", `Bearer ${token}`, 200);
+  if (executiveDashboard.telecomWorkThroughput?.trend === "not_calculated") {
+    throw new Error("dashboard trend placeholder was not removed");
+  }
+
   const testRun = spawnSync("npm", ["test"], { cwd: root, encoding: "utf8" });
   if (testRun.status !== 0) throw new Error(`regression suite failed: ${testRun.stdout}\n${testRun.stderr}`);
 
@@ -47,6 +67,9 @@ async function main() {
     "RELEASE_READINESS.md",
     "DEPLOYMENT.md",
     "RUNBOOKS.md",
+    "PRODUCTION_READINESS.md",
+    "tenant-safety-hardening-report.md",
+    "scripts/release-validation.sh",
     "docs/architecture/testing.md",
   ]) {
     if (!fs.existsSync(path.join(root, file))) throw new Error(`${file} is required`);
@@ -56,9 +79,12 @@ async function main() {
   for (const command of ["npm ci", "npm run typecheck", "npm run build -w @syncos/api", "npm run build -w @syncos/worker", "npm run build -w @syncos/web", "npm run db:verify", "npm run security:smoke", "npm test"]) {
     if (!ci.includes(command)) throw new Error(`CI configuration missing ${command}`);
   }
+  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  if (!packageJson.scripts["release:validate"]) throw new Error("release validation command is required");
 
   const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
-  if (migrations.length !== 15) throw new Error("Sprint 14 should not add business migrations");
+  if (migrations.length !== 16) throw new Error("RC1.1 should only add the tenant FK hardening migration");
+  if (!migrations.includes("016_tenant_fk_hardening.sql")) throw new Error("tenant FK hardening migration is required");
   for (const forbidden of ["ai_models", "forecasts", "autonomous_recommendations", "payroll_records", "collections_automation"]) {
     if (repositoryContainsCreateTable(forbidden)) throw new Error(`forbidden business artifact introduced: ${forbidden}`);
   }
@@ -101,6 +127,56 @@ async function fetchJson(pathname) {
   const response = await fetch(`${apiBaseUrl}${pathname}`);
   if (!response.ok) throw new Error(`${pathname} returned ${response.status}: ${await response.text()}`);
   return response.json();
+}
+
+async function seededAdminToken() {
+  const connectionString = process.env.DATABASE_URL;
+  const secret = process.env.AUTH_JWT_SECRET;
+  if (!connectionString) throw new Error("DATABASE_URL is required");
+  if (!secret) throw new Error("AUTH_JWT_SECRET is required");
+  const client = new Client({ connectionString });
+  await client.connect();
+  try {
+    const result = await client.query(`
+      SELECT u.id AS user_id, t.id AS tenant_id
+      FROM users u
+      JOIN tenant_users tu ON tu.user_id = u.id
+      JOIN tenants t ON t.id = tu.tenant_id
+      WHERE u.email = 'admin@jackson-telcom.local'
+        AND t.slug = 'jackson-telcom'
+      LIMIT 1
+    `);
+    if (!result.rows[0]) throw new Error("seeded admin user not found");
+    return createToken({ sub: result.rows[0].user_id, tenant_id: result.rows[0].tenant_id, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
+  } finally {
+    await client.end();
+  }
+}
+
+async function expectStatus(name, method, pathname, authorization, expected, body) {
+  const headers = { "content-type": "application/json" };
+  if (authorization) headers.authorization = authorization;
+  const response = await fetch(`${apiBaseUrl}${pathname}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (response.status !== expected) {
+    throw new Error(`${name}: expected ${expected}, got ${response.status}: ${await response.text()}`);
+  }
+  const text = await response.text();
+  return text ? JSON.parse(text) : undefined;
+}
+
+function createToken(claims, secret) {
+  const header = encode({ alg: "HS256", typ: "JWT" });
+  const payload = encode({ ...claims, iat: Math.floor(Date.now() / 1000) });
+  const signature = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
+  return `${header}.${payload}.${signature}`;
+}
+
+function encode(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 function repositoryContainsCreateTable(tableName) {

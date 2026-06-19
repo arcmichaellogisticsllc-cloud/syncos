@@ -34,7 +34,7 @@ async function main() {
   const auditTable = await verifyClient.query("SELECT to_regclass('public.audit_logs') AS name");
   await verifyClient.end();
 
-  assertEqual(migrationCount.rows[0].count, 15, "expected 15 applied migrations");
+  assertEqual(migrationCount.rows[0].count, 16, "expected 16 applied migrations");
   assertEqual(tenantCount.rows[0].count, 1, "expected Jackson Telcom tenant");
   if (roleCount.rows[0].count < 19) {
     throw new Error("expected core roles to be seeded");

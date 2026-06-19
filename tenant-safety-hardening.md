@@ -36,3 +36,7 @@ Before production data import, convert high-risk relationships to composite tena
 ## Sprint 14 Decision
 
 No broad FK conversion was applied in Sprint 14. The change spans every domain and could destabilize mature migrations late in release hardening. Current API and smoke coverage remains the production gate until a focused schema-hardening migration is scheduled.
+
+## RC1.1 Update
+
+RC1.1 adds `016_tenant_fk_hardening.sql` with additive composite `(tenant_id, id)` FK hardening for the highest-risk operational references. Remaining identity-scope and polymorphic references are documented in `tenant-safety-hardening-report.md`.

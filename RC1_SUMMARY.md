@@ -38,16 +38,15 @@ All listed commands passed during RC1 validation.
 
 ## Top Risks
 
-- Composite tenant-safe foreign keys remain deferred.
+- Composite tenant-safe foreign keys are improved for the highest-risk operational references; identity-scope and polymorphic references remain deferred.
 - Real operator usability is not yet validated through timed Jackson Telcom sessions.
-- Dashboard trend/reporting depth is limited.
+- Dashboard trend/reporting depth is improved but still depends on existing KPI snapshots.
 
 ## Top Missing Capabilities
 
 - Field-optimized production entry experience.
 - Packaged telecom intelligence templates for consistent signal intake.
-- Read-only billing package completeness report.
-- Release-only full smoke CI workflow.
+- Release-only full smoke CI workflow remains optional if runtime budget is approved; `npm run release:validate` now provides the full local release gate.
 
 ## Top UX Issues
 
@@ -58,8 +57,7 @@ All listed commands passed during RC1 validation.
 ## Top Reporting Gaps
 
 - Compliance document aging/missing reports.
-- Executive trends beyond current KPI snapshots.
-- Billing package completeness.
+- Executive trends beyond KPI snapshot comparison.
 - Full operational workflow timing metrics.
 
 ## RC1 Metrics
@@ -79,6 +77,10 @@ All listed commands passed during RC1 validation.
 2. RC1 Remediation B: Jackson Telcom operator validation sessions and workflow timing capture.
 3. RC1 Remediation C: Read-only reporting hardening for compliance, billing package completeness, and dashboard trends.
 4. RC1 Remediation D: Release-only full smoke CI workflow if runtime budget is approved.
+
+## RC1.1 Closure
+
+RC1.1 completed Remediation A for the highest-risk operational FKs, completed Remediation C, and added a local release validation command for Remediation D. Operator validation and field usability remain the main controlled-pilot risks.
 
 ## Release Recommendation
 

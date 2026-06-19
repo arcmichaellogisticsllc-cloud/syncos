@@ -3,6 +3,7 @@ import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import type { Pool } from "pg";
 import { verifyAuthToken } from "@syncos/auth";
+import { logStructured } from "../instrumentation/structured-logger";
 import { DATABASE_POOL } from "../modules/database.module";
 import { IS_PUBLIC_ROUTE } from "./public.decorator";
 
@@ -40,6 +41,7 @@ export class AuthenticatedGuard implements CanActivate {
     );
 
     if (!membership.rows[0]) {
+      logStructured("Security", "authenticated_user_not_active_in_tenant", { userId: claims.sub, tenantId: claims.tenant_id });
       throw new UnauthorizedException("Authenticated user is not active in tenant");
     }
 
@@ -65,6 +67,7 @@ export class AuthenticatedGuard implements CanActivate {
       try {
         return verifyAuthToken(authorization.slice("Bearer ".length), secret);
       } catch {
+        logStructured("Security", "invalid_auth_token");
         throw new UnauthorizedException("Invalid auth token");
       }
     }
@@ -77,6 +80,7 @@ export class AuthenticatedGuard implements CanActivate {
       }
     }
 
+    logStructured("Security", "missing_bearer_token");
     throw new UnauthorizedException("Bearer token is required");
   }
 }

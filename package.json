@@ -28,7 +28,8 @@
     "sprint11:smoke": "npm run smoke:sprint11 -w @syncos/api",
     "sprint12:smoke": "npm run smoke:sprint12 -w @syncos/api",
     "sprint13:smoke": "npm run smoke:sprint13 -w @syncos/api",
-    "sprint14:smoke": "npm run smoke:sprint14 -w @syncos/api"
+    "sprint14:smoke": "npm run smoke:sprint14 -w @syncos/api",
+    "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

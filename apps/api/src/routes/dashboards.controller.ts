@@ -187,6 +187,7 @@ export class DashboardsController {
   private async constraintSummary(client: PoolClient, tenantId: string) {
     return {
       openConstraints: await this.scalar(client, "SELECT count(*)::numeric FROM constraints WHERE tenant_id = $1 AND status IN ('detected', 'open', 'assigned', 'in_progress', 'blocked') AND deleted_at IS NULL", tenantId),
+      openConstraintsTrend: await this.latestKpi(client, tenantId, "open_constraints"),
       constraintsByType: await this.groupCounts(client, tenantId, "constraints", "constraint_type", "status IN ('detected', 'open', 'assigned', 'in_progress', 'blocked') AND deleted_at IS NULL"),
       blockedValue: await this.scalar(client, "SELECT count(*)::numeric FROM constraints WHERE tenant_id = $1 AND status = 'blocked' AND deleted_at IS NULL", tenantId),
     };
@@ -220,8 +221,39 @@ export class DashboardsController {
       [tenantId, key],
     );
     const row = result.rows[0];
-    if (!row) return { key, currentValue: 0, trend: "not_calculated", lastCalculationDate: null };
-    return { key, kpiId: row.id, name: row.kpi_name, currentValue: Number(row.value ?? 0), trend: "not_calculated", lastCalculationDate: row.last_calculation_date };
+    if (!row) {
+      return { key, currentValue: 0, trend: "flat", percentageChange: 0, lastCalculationDate: null };
+    }
+
+    const trend = await this.snapshotTrend(client, tenantId, row.id);
+    return {
+      key,
+      kpiId: row.id,
+      name: row.kpi_name,
+      currentValue: Number(row.value ?? 0),
+      trend: trend.trend,
+      percentageChange: trend.percentageChange,
+      lastCalculationDate: row.last_calculation_date,
+    };
+  }
+
+  private async snapshotTrend(client: PoolClient, tenantId: string, kpiDefinitionId: string) {
+    const result = await client.query(
+      `
+      SELECT value
+      FROM kpi_snapshots
+      WHERE tenant_id = $1 AND kpi_definition_id = $2 AND deleted_at IS NULL
+      ORDER BY snapshot_period_end DESC NULLS LAST, created_at DESC
+      LIMIT 2
+      `,
+      [tenantId, kpiDefinitionId],
+    );
+    const current = Number(result.rows[0]?.value ?? 0);
+    const previous = Number(result.rows[1]?.value ?? current);
+    const delta = current - previous;
+    const trend = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+    const percentageChange = previous === 0 ? (delta === 0 ? 0 : 100) : Number(((delta / Math.abs(previous)) * 100).toFixed(2));
+    return { trend, percentageChange };
   }
 
   private async latestCapacityGaps(client: PoolClient, tenantId: string) {
