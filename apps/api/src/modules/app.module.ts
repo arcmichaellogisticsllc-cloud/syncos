@@ -16,6 +16,7 @@ import { SettlementsController } from "../routes/settlements.controller";
 import { SignalsController } from "../routes/signals.controller";
 import { TestObjectsController } from "../routes/test-objects.controller";
 import { TerritoriesController } from "../routes/territories.controller";
+import { WorkflowsController } from "../routes/workflows.controller";
 import { AuthenticatedGuard } from "../security/authenticated.guard";
 import { PermissionGuard } from "../security/permission.guard";
 import { TenantIsolationGuard } from "../security/tenant-isolation.guard";
@@ -39,6 +40,7 @@ import { DatabaseModule } from "./database.module";
     SettlementsController,
     CashController,
     ConstraintsController,
+    WorkflowsController,
     SearchController,
   ],
   providers: [

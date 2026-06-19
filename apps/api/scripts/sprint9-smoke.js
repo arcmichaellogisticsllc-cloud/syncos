@@ -140,12 +140,9 @@ async function main() {
   await expectStatus("recommendation measure requires completed", "POST", `/recommendations/${measureBlocked.id}/measure`, `Bearer ${token}`, 400, {});
   const completeTarget = await createRecommendation(token, constraint.id, "resolve_constraint", `Complete Target ${marker}`);
   const workflowBefore = await countTable(client, "workflow_instances");
-  const convertBefore = await counts(client);
-  const converted = await expectStatus("convert-to-workflow only changes status", "POST", `/recommendations/${completeTarget.id}/convert-to-workflow`, `Bearer ${token}`, 201, {});
-  if (converted.status !== "converted_to_workflow") throw new Error("recommendation not converted");
-  await expectWrite(client, convertBefore, "recommendation.converted_to_workflow", "convert to workflow");
+  await expectStatus("convert-to-workflow requires workflow definition", "POST", `/recommendations/${completeTarget.id}/convert-to-workflow`, `Bearer ${token}`, 400, {});
   const workflowAfter = await countTable(client, "workflow_instances");
-  if (workflowAfter !== workflowBefore) throw new Error("workflow instance was created by Sprint 9 conversion");
+  if (workflowAfter !== workflowBefore) throw new Error("workflow instance was created without workflow definition");
 
   const completeBefore = await counts(client);
   const completed = await expectStatus("recommendation complete", "POST", `/recommendations/${completeTarget.id}/complete`, `Bearer ${token}`, 201, {});

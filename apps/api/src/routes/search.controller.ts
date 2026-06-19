@@ -147,6 +147,24 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           title ILIKE $2 OR recommendation_type ILIKE $2 OR risk_level ILIKE $2 OR expected_impact ILIKE $2 OR status ILIKE $2
         )
+        UNION ALL
+        SELECT 'workflow_definition' AS object_type, id, coalesce(workflow_name, name) AS title, status, concat_ws(' ', workflow_name, name, workflow_category, trigger_event_type, status) AS snippet
+        FROM workflow_definitions
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          workflow_name ILIKE $2 OR name ILIKE $2 OR workflow_category ILIKE $2 OR trigger_event_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'workflow_instance' AS object_type, id, source_object_type AS title, status, concat_ws(' ', source_object_type, entity_type, status) AS snippet
+        FROM workflow_instances
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          source_object_type ILIKE $2 OR entity_type ILIKE $2 OR status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'workflow_task' AS object_type, id, coalesce(task_name, title) AS title, status, concat_ws(' ', task_name, title, assigned_role, status) AS snippet
+        FROM workflow_tasks
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
+          task_name ILIKE $2 OR title ILIKE $2 OR assigned_role ILIKE $2 OR status ILIKE $2
+        )
         LIMIT 50
         `,
         [request.auth.tenantId, search],

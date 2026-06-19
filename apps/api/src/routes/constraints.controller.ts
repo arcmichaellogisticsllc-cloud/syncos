@@ -320,8 +320,49 @@ export class ConstraintsController {
 
   @Post("recommendations/:id/convert-to-workflow")
   @RequirePermission("recommendation.convert_workflow")
-  async convertRecommendation(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return this.recommendationStatus(request, id, "recommendation.convert_workflow", "recommendation.converted_to_workflow", "converted_to_workflow", {});
+  async convertRecommendation(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const workflowDefinitionId = this.requiredId(body.workflow_definition_id, "workflow_definition_id");
+    return this.write(request, "recommendation.convert_workflow", "recommendation.converted_to_workflow", "recommendation", async (client) => {
+      const before = await this.requireRecord(client, "recommendations", request.auth.tenantId, id, "recommendation not found");
+      if (before.status !== "approved") throw new BadRequestException("recommendation must be approved");
+      await this.requireRecommendationApprover(client, request.auth.tenantId, request.auth.userId, String(before.recommendation_type));
+      const definition = await this.requireRecord(client, "workflow_definitions", request.auth.tenantId, workflowDefinitionId, "workflow definition not found");
+      if (definition.status !== "active") throw new BadRequestException("workflow definition must be active");
+      const firstStep = await this.firstWorkflowStep(client, request.auth.tenantId, workflowDefinitionId);
+      const instance = await insertTenantRecord(client, "workflow_instances", request.auth.tenantId, {
+        workflow_definition_id: workflowDefinitionId,
+        entity_type: "recommendation",
+        entity_id: id,
+        source_object_type: "recommendation",
+        source_object_id: id,
+        owner_user_id: request.auth.userId,
+        status: "in_progress",
+        started_at: new Date(),
+        due_at: this.hoursFromNow(Number(definition.sla_hours)),
+      });
+      const task = await insertTenantRecord(client, "workflow_tasks", request.auth.tenantId, {
+        workflow_instance_id: instance.id,
+        step_id: firstStep.id,
+        assigned_role: firstStep.owner_role,
+        title: firstStep.step_name,
+        task_name: firstStep.step_name,
+        due_at: this.hoursFromNow(Number(firstStep.sla_hours)),
+        status: "open",
+      });
+      const after = await updateTenantRecord(client, "recommendations", request.auth.tenantId, id, { status: "converted_to_workflow" });
+      if (!after) throw new NotFoundException("recommendation not found");
+      return {
+        entityType: "recommendation",
+        entityId: id,
+        beforeState: before,
+        afterState: after,
+        additionalEvents: [
+          this.additionalEvent("workflow_instance.create", "workflow_instance", instance.id, "workflow_instance.created", instance),
+          this.additionalEvent("workflow_instance.start", "workflow_instance", instance.id, "workflow_instance.started", instance),
+          this.additionalEvent("workflow_task.create", "workflow_task", task.id, "workflow_task.created", task),
+        ],
+      };
+    });
   }
 
   @Post("recommendations/:id/complete")
@@ -414,6 +455,28 @@ export class ConstraintsController {
       if (!after) throw new NotFoundException("recommendation not found");
       return { entityType: "recommendation", entityId: id, beforeState: before, afterState: after };
     }, reason);
+  }
+
+  private async firstWorkflowStep(client: PoolClient, tenantId: string, workflowDefinitionId: string) {
+    const result = await client.query(
+      "SELECT * FROM workflow_steps WHERE tenant_id = $1 AND workflow_definition_id = $2 AND status <> 'archived' AND deleted_at IS NULL ORDER BY step_order ASC LIMIT 1",
+      [tenantId, workflowDefinitionId],
+    );
+    if (!result.rows[0]) throw new BadRequestException("workflow definition has no steps");
+    return result.rows[0];
+  }
+
+  private additionalEvent(action: string, aggregateType: string, entityId: string, eventType: string, afterState: Record<string, unknown>) {
+    return {
+      action,
+      aggregateType,
+      entityType: aggregateType,
+      entityId,
+      eventType,
+      afterState,
+      systemActions: [{ actionType: `${eventType}.processed`, payload: { action } }],
+      audit: { metadata: {} },
+    };
   }
 
   private async archiveRecord(request: AuthenticatedRequest, table: string, id: string, entityType: string, action: string, eventType: string) {
@@ -621,6 +684,10 @@ export class ConstraintsController {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) throw new BadRequestException(`${field} must be between 0 and 100`);
     return parsed;
+  }
+
+  private hoursFromNow(hours: number) {
+    return new Date(Date.now() + hours * 60 * 60 * 1000);
   }
 
   private objectOrEmpty(value: unknown) {
