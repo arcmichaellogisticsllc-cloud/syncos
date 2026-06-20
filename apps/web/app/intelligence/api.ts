@@ -85,6 +85,23 @@ export const defaultRelationshipPermissions = [
   "workflow_task.read",
 ];
 
+export const defaultOpportunityPermissions = [
+  ...defaultRelationshipPermissions,
+  "opportunity_candidate.read",
+  "opportunity_candidate.create",
+  "opportunity_candidate.update",
+  "opportunity_candidate.monitor",
+  "opportunity_candidate.investigate",
+  "opportunity_candidate.qualify",
+  "opportunity_candidate.reject",
+  "opportunity_candidate.archive",
+  "opportunity_candidate.score",
+  "candidate_signal.read",
+  "candidate_signal.create",
+  "candidate_signal.update",
+  "candidate_signal.archive",
+];
+
 export function readToken() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem(tokenKey) ?? "";

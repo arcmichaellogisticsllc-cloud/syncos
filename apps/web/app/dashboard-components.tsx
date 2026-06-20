@@ -4,6 +4,7 @@ import { formatValue, type DashboardData, valueAt } from "./dashboard-data";
 
 const navItems = [
   ["/intelligence/signals", "Intelligence"],
+  ["/opportunities/candidates", "Opportunity"],
   ["/executive", "Executive"],
   ["/growth", "Growth"],
   ["/operations", "Operations"],
