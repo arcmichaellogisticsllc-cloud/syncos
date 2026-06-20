@@ -1,5 +1,5 @@
-import { PlaceholderPage } from "../intelligence-shell";
+import { OrganizationList } from "./organization-workspace";
 
-export default function OrganizationsPlaceholder() {
-  return <PlaceholderPage title="Organizations" />;
+export default function OrganizationsPage() {
+  return <OrganizationList />;
 }

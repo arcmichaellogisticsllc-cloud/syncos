@@ -28,6 +28,29 @@ export const defaultSignalPermissions = [
   "candidate_signal.read",
 ];
 
+export const defaultOrganizationPermissions = [
+  ...defaultSignalPermissions,
+  "organization.read",
+  "organization.create",
+  "organization.update",
+  "organization.qualify",
+  "organization.archive",
+  "contact.read",
+  "contact.create",
+  "contact.verify",
+  "opportunity.read",
+  "capacity_provider.read",
+  "capacity_provider.create",
+  "project.read",
+  "settlement.read",
+  "invoice.read",
+  "payment.read",
+  "constraint.read",
+  "constraint.create",
+  "recommendation.read",
+  "learning_score.read",
+];
+
 export function readToken() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem(tokenKey) ?? "";

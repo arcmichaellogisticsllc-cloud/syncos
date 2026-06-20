@@ -4,7 +4,7 @@ import { CommandShell } from "../dashboard-components";
 
 const intelligenceNav = [
   ["/intelligence/signals", "Signal Feed", "active"],
-  ["/intelligence/organizations", "Organizations", "coming"],
+  ["/intelligence/organizations", "Organizations", "active"],
   ["/intelligence/contacts", "Contacts", "coming"],
   ["/intelligence/relationship-maps", "Relationship Maps", "coming"],
 ];
@@ -39,7 +39,7 @@ export function PlaceholderPage({ title }: { title: string }) {
     <IntelligenceShell title={title} purpose="This workspace is intentionally deferred to a later product sprint.">
       <section className="panel">
         <h2>Coming next</h2>
-        <p className="muted">This sprint only builds the Signal Feed, Signal Detail, Evidence, and Candidate Readiness experience.</p>
+        <p className="muted">This workspace is intentionally deferred while Signal and Organization workspaces are built first.</p>
       </section>
     </IntelligenceShell>
   );
