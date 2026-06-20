@@ -1,5 +1,5 @@
-import { PlaceholderPage } from "../intelligence-shell";
+import { RelationshipMapDirectory } from "./relationship-map-workspace";
 
-export default function RelationshipMapsPlaceholder() {
-  return <PlaceholderPage title="Relationship Maps" />;
+export default function RelationshipMapsPage() {
+  return <RelationshipMapDirectory />;
 }

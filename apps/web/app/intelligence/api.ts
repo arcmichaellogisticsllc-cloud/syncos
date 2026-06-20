@@ -67,6 +67,21 @@ export const defaultContactPermissions = [
   "recommendation.read",
 ];
 
+export const defaultRelationshipPermissions = [
+  ...defaultContactPermissions,
+  "relationship_map.read",
+  "relationship_map.create",
+  "relationship_map.update",
+  "relationship_map.archive",
+  "relationship_map.status",
+  "relationship_path.read",
+  "relationship_path.create",
+  "relationship_path.update",
+  "relationship_path.rank",
+  "relationship_path.archive",
+  "workflow_task.read",
+];
+
 export function readToken() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem(tokenKey) ?? "";

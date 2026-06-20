@@ -6,7 +6,7 @@ const intelligenceNav = [
   ["/intelligence/signals", "Signal Feed", "active"],
   ["/intelligence/organizations", "Organizations", "active"],
   ["/intelligence/contacts", "Contacts", "active"],
-  ["/intelligence/relationship-maps", "Relationship Maps", "coming"],
+  ["/intelligence/relationship-maps", "Relationship Maps", "active"],
 ];
 
 export function IntelligenceShell({ title, purpose, children }: { title: string; purpose: string; children: ReactNode }) {
