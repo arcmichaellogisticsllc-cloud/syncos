@@ -17,9 +17,10 @@ import {
 } from "../api";
 import { IntelligenceShell } from "../intelligence-shell";
 
-const organizationTypes = ["unknown", "carrier", "contractor", "customer", "vendor", "partner", "agency"];
+const organizationTypes = ["utility", "isp_carrier", "broadband_office", "municipality", "engineering_firm", "prime_contractor", "general_contractor_program_manager", "subcontractor", "vendor", "equipment_provider", "staffing_partner", "customer", "internal_company"];
 const organizationStatuses = ["discovered", "researched", "qualified", "relationship_opened", "active", "strategic", "dormant", "archived"];
-const actorRoles = ["Work Creator", "Work Influencer", "Work Distributor", "Capacity Provider", "Work Validator", "Cash Controller", "Vendor / Enabler", "Regulatory / Public Actor"];
+const actorRoles = ["work_creator", "work_influencer", "work_distributor", "capacity_provider", "work_validator", "cash_controller", "vendor_enabler", "regulatory_public_actor"];
+const archiveReasons = ["duplicate", "inactive", "not_relevant", "bad_data", "merged", "out_of_territory", "no_longer_target", "other"];
 const providerTypes = ["subcontractor", "crew_provider", "equipment_provider", "staffing_partner", "vendor"];
 const workTypes = ["fiber", "coax", "aerial", "underground", "directional_bore", "trenching", "splicing", "drops", "make_ready", "inspection", "restoration", "project_management", "unknown"];
 
@@ -38,6 +39,8 @@ type WorkspaceData = {
   constraints: SyncRecord[];
   recommendations: SyncRecord[];
   learningScores: SyncRecord[];
+  events: SyncRecord[];
+  audit: SyncRecord[];
   unavailable: Record<string, string>;
 };
 
@@ -108,14 +111,14 @@ export function OrganizationList() {
     return {
       total: enriched.length,
       strategic: enriched.filter((organization) => isStrategic(organization)).length,
-      workCreators: enriched.filter((organization) => hasActorRole(organization, "Work Creator")).length,
-      workInfluencers: enriched.filter((organization) => hasActorRole(organization, "Work Influencer")).length,
-      workDistributors: enriched.filter((organization) => hasActorRole(organization, "Work Distributor")).length,
-      capacityProviders: enriched.filter((organization) => hasActorRole(organization, "Capacity Provider") || organization.capacityProviderCount > 0).length,
-      workValidators: enriched.filter((organization) => hasActorRole(organization, "Work Validator")).length,
-      cashControllers: enriched.filter((organization) => hasActorRole(organization, "Cash Controller")).length,
+      workCreators: enriched.filter((organization) => hasActorRole(organization, "work_creator")).length,
+      workInfluencers: enriched.filter((organization) => hasActorRole(organization, "work_influencer")).length,
+      workDistributors: enriched.filter((organization) => hasActorRole(organization, "work_distributor")).length,
+      capacityProviders: enriched.filter((organization) => hasActorRole(organization, "capacity_provider") || organization.capacityProviderCount > 0).length,
+      workValidators: enriched.filter((organization) => hasActorRole(organization, "work_validator")).length,
+      cashControllers: enriched.filter((organization) => hasActorRole(organization, "cash_controller")).length,
       missingContacts: enriched.filter((organization) => organization.contactsCount === 0).length,
-      missingOwner: enriched.length,
+      missingOwner: enriched.filter((organization) => !organization.relationship_owner_user_id).length,
       archived: enriched.filter((organization) => organization.status === "archived").length,
     };
   }, [data]);
@@ -127,12 +130,12 @@ export function OrganizationList() {
       <div className="summary-grid">
         <SummaryCard label="Total Organizations" value={summary.total} onClick={() => setFilters(initialFilters)} />
         <SummaryCard label="Strategic Organizations" value={summary.strategic} onClick={() => setFilters({ ...initialFilters, strategic: "true" })} />
-        <SummaryCard label="Work Creators" value={summary.workCreators} onClick={() => setFilters({ ...initialFilters, actorRole: "Work Creator" })} />
-        <SummaryCard label="Work Influencers" value={summary.workInfluencers} onClick={() => setFilters({ ...initialFilters, actorRole: "Work Influencer" })} />
-        <SummaryCard label="Work Distributors" value={summary.workDistributors} onClick={() => setFilters({ ...initialFilters, actorRole: "Work Distributor" })} />
-        <SummaryCard label="Capacity Providers" value={summary.capacityProviders} onClick={() => setFilters({ ...initialFilters, actorRole: "Capacity Provider" })} />
-        <SummaryCard label="Work Validators" value={summary.workValidators} onClick={() => setFilters({ ...initialFilters, actorRole: "Work Validator" })} />
-        <SummaryCard label="Cash Controllers" value={summary.cashControllers} onClick={() => setFilters({ ...initialFilters, actorRole: "Cash Controller" })} />
+        <SummaryCard label="Work Creators" value={summary.workCreators} onClick={() => setFilters({ ...initialFilters, actorRole: "work_creator" })} />
+        <SummaryCard label="Work Influencers" value={summary.workInfluencers} onClick={() => setFilters({ ...initialFilters, actorRole: "work_influencer" })} />
+        <SummaryCard label="Work Distributors" value={summary.workDistributors} onClick={() => setFilters({ ...initialFilters, actorRole: "work_distributor" })} />
+        <SummaryCard label="Capacity Providers" value={summary.capacityProviders} onClick={() => setFilters({ ...initialFilters, actorRole: "capacity_provider" })} />
+        <SummaryCard label="Work Validators" value={summary.workValidators} onClick={() => setFilters({ ...initialFilters, actorRole: "work_validator" })} />
+        <SummaryCard label="Cash Controllers" value={summary.cashControllers} onClick={() => setFilters({ ...initialFilters, actorRole: "cash_controller" })} />
         <SummaryCard label="Missing Contacts" value={summary.missingContacts} onClick={() => setFilters({ ...initialFilters, hasContacts: "false" })} />
         <SummaryCard label="Missing Owner" value={summary.missingOwner} disabled />
         <SummaryCard label="Archived" value={summary.archived} onClick={() => setFilters({ ...initialFilters, archived: "true" })} />
@@ -151,11 +154,11 @@ export function OrganizationList() {
         <div className="quick-filter-row">
           {[
             ["Strategic", { strategic: "true" }],
-            ["Work Creators", { actorRole: "Work Creator" }],
-            ["Work Influencers", { actorRole: "Work Influencer" }],
-            ["Work Distributors", { actorRole: "Work Distributor" }],
-            ["Capacity Providers", { actorRole: "Capacity Provider" }],
-            ["Cash Controllers", { actorRole: "Cash Controller" }],
+            ["Work Creators", { actorRole: "work_creator" }],
+            ["Work Influencers", { actorRole: "work_influencer" }],
+            ["Work Distributors", { actorRole: "work_distributor" }],
+            ["Capacity Providers", { actorRole: "capacity_provider" }],
+            ["Cash Controllers", { actorRole: "cash_controller" }],
             ["Missing Contacts", { hasContacts: "false" }],
             ["Needs Research", { status: "discovered" }],
             ["Active Opportunities", { hasOpportunities: "true" }],
@@ -210,13 +213,28 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
   const [organization, setOrganization] = useState<SyncRecord | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({
     name: "",
-    type: "unknown",
+    legal_name: "",
+    organization_type: "utility",
     actor_roles: [],
     territory_id: "",
     status: "discovered",
-    source_name: "",
-    source_url: "",
-    trust_level: "",
+    relationship_owner_user_id: "",
+    trust_level: "unverified",
+    strategic_flag: false,
+    website: "",
+    main_phone: "",
+    main_email: "",
+    address_line_1: "",
+    address_line_2: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    country: "US",
+    description: "",
+    influence_score: "",
+    work_relevance_score: "",
+    capacity_relevance_score: "",
+    payment_relevance_score: "",
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -239,13 +257,28 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
         setOrganization(existing);
         setForm({
           name: existing.name ?? "",
-          type: existing.type ?? "unknown",
+          legal_name: existing.legal_name ?? "",
+          organization_type: existing.organization_type ?? existing.type ?? "",
           actor_roles: Array.isArray(existing.actor_roles) ? existing.actor_roles : [],
           territory_id: existing.territory_id ?? "",
           status: existing.status ?? "discovered",
-          source_name: existing.source_name ?? "",
-          source_url: existing.source_url ?? "",
-          trust_level: existing.trust_level ?? "",
+          relationship_owner_user_id: existing.relationship_owner_user_id ?? "",
+          trust_level: existing.trust_level ?? "unverified",
+          strategic_flag: Boolean(existing.strategic_flag),
+          website: existing.website ?? "",
+          main_phone: existing.main_phone ?? "",
+          main_email: existing.main_email ?? "",
+          address_line_1: existing.address_line_1 ?? "",
+          address_line_2: existing.address_line_2 ?? "",
+          city: existing.city ?? "",
+          state: existing.state ?? "",
+          postal_code: existing.postal_code ?? "",
+          country: existing.country ?? "US",
+          description: existing.description ?? "",
+          influence_score: existing.influence_score ?? "",
+          work_relevance_score: existing.work_relevance_score ?? "",
+          capacity_relevance_score: existing.capacity_relevance_score ?? "",
+          payment_relevance_score: existing.payment_relevance_score ?? "",
         });
       }
     } catch (nextError) {
@@ -259,11 +292,14 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
     setError("");
     try {
       if (!String(form.name ?? "").trim()) throw new Error("Organization name is required.");
-      if (!form.type || form.type === "unknown") throw new Error("Organization type is required.");
+      if (!form.organization_type) throw new Error("Organization type is required.");
       if (!form.territory_id) throw new Error("Territory is required.");
       const body = cleanPayload({
         ...form,
-        trust_level: form.trust_level === "" ? undefined : Number(form.trust_level),
+        influence_score: form.influence_score === "" ? undefined : Number(form.influence_score),
+        work_relevance_score: form.work_relevance_score === "" ? undefined : Number(form.work_relevance_score),
+        capacity_relevance_score: form.capacity_relevance_score === "" ? undefined : Number(form.capacity_relevance_score),
+        payment_relevance_score: form.payment_relevance_score === "" ? undefined : Number(form.payment_relevance_score),
       });
       const saved = mode === "create" ? await syncosFetch<SyncRecord>("/organizations", { method: "POST", body }) : await syncosFetch<SyncRecord>(`/organizations/${organizationId}`, { method: "PATCH", body });
       window.location.href = `/intelligence/organizations/${saved.id ?? organizationId}`;
@@ -284,7 +320,7 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
         <div className="section-toolbar">
           <div>
             <h2>{mode === "create" ? "New Telecom Actor" : textValue(organization?.name, "Organization")}</h2>
-            <p className="muted">Backend-supported organization types are currently limited to unknown, carrier, contractor, customer, vendor, partner, and agency. Product-specific type guidance is shown in the profile.</p>
+            <p className="muted">Organization type, actor roles, owner, trust, strategic status, and scores are persisted through the hardened Organization API.</p>
           </div>
           {organizationId ? <Link className="table-link" href={`/intelligence/organizations/${organizationId}`}>Back to profile</Link> : <Link className="table-link" href="/intelligence/organizations">Back to organizations</Link>}
         </div>
@@ -296,9 +332,14 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
             </label>
             <label>
               Organization type
-              <select value={String(form.type ?? "")} onChange={(event) => setForm({ ...form, type: event.target.value })} required>
+              <select value={String(form.organization_type ?? "")} onChange={(event) => setForm({ ...form, organization_type: event.target.value })} required>
+                <option value="">Select type</option>
                 {organizationTypes.map((type) => <option key={type}>{type}</option>)}
               </select>
+            </label>
+            <label>
+              Legal name
+              <input value={String(form.legal_name ?? "")} onChange={(event) => setForm({ ...form, legal_name: event.target.value })} />
             </label>
             <label>
               Territory
@@ -314,18 +355,48 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
               </select>
             </label>
             <label>
-              Source name
-              <input value={String(form.source_name ?? "")} onChange={(event) => setForm({ ...form, source_name: event.target.value })} />
+              Website
+              <input value={String(form.website ?? "")} onChange={(event) => setForm({ ...form, website: event.target.value })} />
             </label>
             <label>
-              Source URL
-              <input value={String(form.source_url ?? "")} onChange={(event) => setForm({ ...form, source_url: event.target.value })} />
+              Main email
+              <input value={String(form.main_email ?? "")} onChange={(event) => setForm({ ...form, main_email: event.target.value })} />
             </label>
             <label>
-              Trust score
-              <input value={String(form.trust_level ?? "")} onChange={(event) => setForm({ ...form, trust_level: event.target.value })} type="number" min="0" max="100" />
+              Main phone
+              <input value={String(form.main_phone ?? "")} onChange={(event) => setForm({ ...form, main_phone: event.target.value })} />
+            </label>
+            <label>
+              Trust level
+              <select value={String(form.trust_level ?? "")} onChange={(event) => setForm({ ...form, trust_level: event.target.value })}>
+                {["unverified", "low", "medium", "high", "verified"].map((level) => <option key={level}>{level}</option>)}
+              </select>
+            </label>
+            <label>
+              Influence score
+              <input value={String(form.influence_score ?? "")} onChange={(event) => setForm({ ...form, influence_score: event.target.value })} type="number" min="0" max="100" />
+            </label>
+            <label>
+              Work relevance score
+              <input value={String(form.work_relevance_score ?? "")} onChange={(event) => setForm({ ...form, work_relevance_score: event.target.value })} type="number" min="0" max="100" />
+            </label>
+            <label>
+              Capacity relevance score
+              <input value={String(form.capacity_relevance_score ?? "")} onChange={(event) => setForm({ ...form, capacity_relevance_score: event.target.value })} type="number" min="0" max="100" />
+            </label>
+            <label>
+              Payment relevance score
+              <input value={String(form.payment_relevance_score ?? "")} onChange={(event) => setForm({ ...form, payment_relevance_score: event.target.value })} type="number" min="0" max="100" />
             </label>
           </div>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={Boolean(form.strategic_flag)} onChange={(event) => setForm({ ...form, strategic_flag: event.target.checked })} />
+            Strategic organization
+          </label>
+          <label>
+            Description
+            <textarea value={String(form.description ?? "")} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+          </label>
           <div>
             <div className="label">Actor roles</div>
             <div className="badge-row">
@@ -334,13 +405,12 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
                 return (
                   <label className="checkbox-row" key={role}>
                     <input type="checkbox" checked={selected} onChange={() => setForm({ ...form, actor_roles: toggleArrayValue(asArray(form.actor_roles), role) })} />
-                    {role}
+                    {formatAction(role)}
                   </label>
                 );
               })}
             </div>
           </div>
-          <UnsupportedFields />
           <div className="form-actions">
             <button className="primary-button" type="submit" disabled={!canSave || saving}>
               {saving ? "Saving..." : "Save Organization"}
@@ -370,13 +440,30 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
     setLoading(true);
     setError("");
     try {
-      const [org, nextData, effective] = await Promise.all([
-        syncosFetch<SyncRecord>(`/organizations/${organizationId}`),
+      const [detail, nextData, effective] = await Promise.all([
+        syncosFetch<SyncRecord>(`/organizations/${organizationId}/detail`),
         loadWorkspaceData(),
         syncosFetch<{ permissions?: string[] }>("/auth/me/permissions").catch(() => null),
       ]);
-      setOrganization(org);
-      setData(nextData);
+      const detailOrganization = (detail.organization ?? detail) as SyncRecord;
+      setOrganization(detailOrganization);
+      const [timeline, audit] = await Promise.all([
+        syncosFetch<SyncRecord[]>(`/organizations/${organizationId}/timeline`).catch(() => recordArray(detail.events)),
+        syncosFetch<SyncRecord[]>(`/organizations/${organizationId}/audit-summary`).catch(() => []),
+      ]);
+      setData({
+        ...nextData,
+        contacts: attachOrganizationId(recordArray(detail.contacts), organizationId, "full_name", "name"),
+        signals: attachOrganizationId(recordArray(detail.signals), organizationId),
+        candidates: attachOrganizationId(recordArray(detail.candidates), organizationId),
+        opportunities: attachOrganizationId(recordArray(detail.opportunities), organizationId),
+        capacityProviders: attachOrganizationId(recordArray((detail.capacity as SyncRecord | undefined)?.providers), organizationId),
+        constraints: attachOrganizationId(recordArray(detail.constraints), organizationId),
+        recommendations: attachOrganizationId(recordArray(detail.recommendations), organizationId),
+        learningScores: attachOrganizationId(recordArray(detail.learning), organizationId, "object_type", "organization"),
+        events: timeline,
+        audit,
+      });
       if (effective?.permissions?.length) session.setPermissions(effective.permissions);
     } catch (nextError) {
       setError((nextError as Error).message || "Organization not found or you do not have access.");
@@ -421,9 +508,9 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
               {isStrategic(dossier) ? <span className="badge">Strategic</span> : null}
             </div>
             <div className="header-facts">
-              <span>Legal name: Not captured yet</span>
+              <span>Legal name: {textValue(dossier.legal_name)}</span>
               <span>Territory: {textValue(dossier.territoryName)}</span>
-              <span>Relationship owner: Not captured yet</span>
+              <span>Relationship owner: {textValue(dossier.relationship_owner_name)}</span>
               <span>Trust: {scoreText(dossier.trust_level)}</span>
               <span>Last updated: {dateValue(dossier.updated_at)}</span>
             </div>
@@ -434,7 +521,7 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
             <button type="button" disabled={!hasPermission(session.permissions, "contact.create")} onClick={() => setModal("contact")}>Add Contact</button>
             <button type="button" disabled={!hasPermission(session.permissions, "signal.create")} onClick={() => setModal("signal")}>Create Signal</button>
             <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.create")} onClick={() => setModal("candidate")}>Create Candidate</button>
-            {hasActorRole(dossier, "Capacity Provider") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Add Capacity Provider</button> : null}
+            {hasActorRole(dossier, "capacity_provider") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Add Capacity Provider</button> : null}
             <button type="button" onClick={() => setModal("research")}>Research Organization</button>
             <button type="button" disabled={!hasPermission(session.permissions, "organization.archive") || dossier.status === "archived"} onClick={() => setModal("archive")}>Archive</button>
           </div>
@@ -555,8 +642,8 @@ function TabPanel({
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={slices.recommendations} columns={["recommendation_type", "related_object_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id", "approval_required"]} empty="No recommendations are tied to this organization." />;
   if (tab === "learning") return <ObjectSlice title="Learning Scores" rows={slices.learningScores} columns={["score_type", "score_value", "confidence", "updated_at"]} empty="No learning scores are connected to this organization yet." />;
   if (tab === "documents") return <UnsupportedState title="Documents" message="Documents workspace coming later." />;
-  if (tab === "events") return <UnsupportedState title="Events" message="Organization-scoped timeline endpoint is not available yet. Direct organization events exist in the event log but are not exposed by a product API." />;
-  if (tab === "audit") return <UnsupportedState title="Audit" message="Organization audit summary endpoint is not available yet. Audit payloads are not exposed to this UI without an approved organization audit API." />;
+  if (tab === "events") return <ObjectSlice title="Events" rows={slices.events} columns={["event_type", "actor_name", "object_type", "summary", "timestamp"]} empty="No organization timeline events are visible yet." />;
+  if (tab === "audit") return <ObjectSlice title="Audit" rows={slices.audit} columns={["actor_name", "action", "object_type", "before_json", "after_json", "reason", "created_at", "correlation_id"]} empty="No authorized organization audit records are visible yet." />;
   return null;
 }
 
@@ -593,13 +680,13 @@ function OrganizationTable({ rows, permissions }: { rows: EnrichedOrganization[]
               <td><BadgeList values={organization.roles} /></td>
               <td>{textValue(organization.territoryName)}</td>
               <td>{textValue(organization.status)}</td>
-              <td>Unassigned</td>
+              <td>{textValue(organization.relationship_owner_name, "Unassigned")}</td>
               <td>{isStrategic(organization) ? "Yes" : "No"}</td>
               <td>{scoreText(organization.trust_level)}</td>
-              <td>{organization.influenceScore}</td>
-              <td>{organization.workRelevanceScore}</td>
-              <td>{organization.capacityRelevanceScore}</td>
-              <td>{organization.paymentRelevanceScore}</td>
+              <td>{scoreText(organization.influenceScore)}</td>
+              <td>{scoreText(organization.workRelevanceScore)}</td>
+              <td>{scoreText(organization.capacityRelevanceScore)}</td>
+              <td>{scoreText(organization.paymentRelevanceScore)}</td>
               <td>{organization.contactsCount}</td>
               <td>{organization.signalsCount}</td>
               <td>{organization.opportunitiesCount}</td>
@@ -644,7 +731,7 @@ function SignalsTab({ rows, canCreate, setModal }: { rows: SyncRecord[]; canCrea
 }
 
 function CapacityTab({ organization, slices, permissions, setModal }: { organization: EnrichedOrganization; slices: OrganizationSlices; permissions: string[]; setModal: (modal: "capacity") => void }) {
-  if (!hasActorRole(organization, "Capacity Provider") && slices.capacityProviders.length === 0) {
+  if (!hasActorRole(organization, "capacity_provider") && slices.capacityProviders.length === 0) {
     return <UnsupportedState title="Capacity" message="This organization is not currently configured as a capacity provider." />;
   }
   return (
@@ -772,10 +859,14 @@ function CapacityModal({ organization, contacts, onClose, onSaved }: { organizat
 }
 
 function ArchiveModal({ organization, onClose, onSaved }: { organization: EnrichedOrganization; onClose: () => void; onSaved: () => void }) {
+  const [archiveReason, setArchiveReason] = useState("inactive");
+  const [archiveNote, setArchiveNote] = useState("");
   return (
     <Modal title="Archive Organization" onClose={onClose}>
-      <p>This uses the existing organization archive API. The current backend does not store an organization archive reason.</p>
-      <button className="primary-button" type="button" onClick={() => void syncosFetch(`/organizations/${organization.id}/archive`, { method: "POST", body: { reason: "manual_archive" } }).then(onSaved)}>
+      <p>This uses the organization archive API and stores the archive reason on the organization record.</p>
+      <label>Archive reason<select value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)}>{archiveReasons.map((reason) => <option key={reason}>{reason}</option>)}</select></label>
+      <label>Archive note<textarea value={archiveNote} onChange={(event) => setArchiveNote(event.target.value)} /></label>
+      <button className="primary-button" type="button" onClick={() => void syncosFetch(`/organizations/${organization.id}/archive`, { method: "POST", body: { archive_reason: archiveReason, archive_note: archiveNote } }).then(onSaved)}>
         Archive Organization
       </button>
     </Modal>
@@ -886,7 +977,7 @@ async function loadWorkspaceData(): Promise<WorkspaceData> {
     optionalList("/recommendations", unavailable, "recommendations"),
     optionalList("/learning-scores", unavailable, "learning"),
   ]);
-  return { organizations, territories, contacts, signals, candidates, opportunities, capacityProviders, projects, settlements, invoices, payments, constraints, recommendations, learningScores, unavailable };
+  return { organizations, territories, contacts, signals, candidates, opportunities, capacityProviders, projects, settlements, invoices, payments, constraints, recommendations, learningScores, events: [], audit: [], unavailable };
 }
 
 async function optionalList(path: string, unavailable: Record<string, string>, key: string) {
@@ -913,6 +1004,8 @@ const emptyData: WorkspaceData = {
   constraints: [],
   recommendations: [],
   learningScores: [],
+  events: [],
+  audit: [],
   unavailable: {},
 };
 
@@ -924,10 +1017,10 @@ type EnrichedOrganization = SyncRecord & {
   signalsCount: number;
   opportunitiesCount: number;
   capacityProviderCount: number;
-  influenceScore: number;
-  workRelevanceScore: number;
-  capacityRelevanceScore: number;
-  paymentRelevanceScore: number;
+  influenceScore: number | null;
+  workRelevanceScore: number | null;
+  capacityRelevanceScore: number | null;
+  paymentRelevanceScore: number | null;
 };
 
 type OrganizationSlices = {
@@ -943,6 +1036,8 @@ type OrganizationSlices = {
   constraints: SyncRecord[];
   recommendations: SyncRecord[];
   learningScores: SyncRecord[];
+  events: SyncRecord[];
+  audit: SyncRecord[];
 };
 
 const emptySlices: OrganizationSlices = {
@@ -958,6 +1053,8 @@ const emptySlices: OrganizationSlices = {
   constraints: [],
   recommendations: [],
   learningScores: [],
+  events: [],
+  audit: [],
 };
 
 function enrichOrganization(organization: SyncRecord, data: WorkspaceData): EnrichedOrganization {
@@ -965,23 +1062,19 @@ function enrichOrganization(organization: SyncRecord, data: WorkspaceData): Enri
   const territory = data.territories.find((row) => row.id === organization.territory_id);
   const slices = organizationSlices({ id }, data);
   const roles = asArray(organization.actor_roles);
-  const influenceScore = clampScore(numberValue(organization.influence_score, scoreFromRoles(roles, ["Work Influencer", "Work Distributor", "Work Creator"])));
-  const workRelevanceScore = clampScore(numberValue(organization.work_relevance_score, scoreFromRoles(roles, ["Work Creator", "Work Distributor", "Work Influencer"]) + Math.min(20, slices.signals.length * 5)));
-  const capacityRelevanceScore = clampScore(numberValue(organization.capacity_relevance_score, scoreFromRoles(roles, ["Capacity Provider"]) + Math.min(25, slices.capacityProviders.length * 15)));
-  const paymentRelevanceScore = clampScore(numberValue(organization.payment_relevance_score, scoreFromRoles(roles, ["Cash Controller"]) + (organization.type === "customer" ? 20 : 0)));
   return {
     ...organization,
     id,
     roles,
     territoryName: territory ? String(territory.name) : "",
-    contactsCount: slices.contacts.length,
-    signalsCount: slices.signals.length,
-    opportunitiesCount: slices.opportunities.length,
-    capacityProviderCount: slices.capacityProviders.length,
-    influenceScore,
-    workRelevanceScore,
-    capacityRelevanceScore,
-    paymentRelevanceScore,
+    contactsCount: Number(organization.contacts_count ?? slices.contacts.length),
+    signalsCount: Number(organization.signals_count ?? slices.signals.length),
+    opportunitiesCount: Number(organization.opportunities_count ?? slices.opportunities.length),
+    capacityProviderCount: Number(organization.capacity_provider_count ?? slices.capacityProviders.length),
+    influenceScore: nullableNumber(organization.influence_score),
+    workRelevanceScore: nullableNumber(organization.work_relevance_score),
+    capacityRelevanceScore: nullableNumber(organization.capacity_relevance_score),
+    paymentRelevanceScore: nullableNumber(organization.payment_relevance_score),
   };
 }
 
@@ -1000,9 +1093,11 @@ function organizationSlices(organization: Pick<EnrichedOrganization, "id">, data
     settlements: data.settlements.filter((row) => row.customer_organization_id === id || row.organization_id === id),
     invoices,
     payments: data.payments.filter((row) => invoices.some((invoice) => invoice.id === row.invoice_id) || row.organization_id === id || row.customer_organization_id === id),
-    constraints: data.constraints.filter((row) => (row.affected_object_type === "organization" && row.affected_object_id === id) || row.related_object_id === id),
-    recommendations: data.recommendations.filter((row) => (row.related_object_type === "organization" && row.related_object_id === id) || row.object_id === id),
-    learningScores: data.learningScores.filter((row) => row.object_type === "organization" && row.object_id === id),
+  constraints: data.constraints.filter((row) => (row.affected_object_type === "organization" && row.affected_object_id === id) || row.related_object_id === id),
+  recommendations: data.recommendations.filter((row) => (row.related_object_type === "organization" && row.related_object_id === id) || row.object_id === id),
+  learningScores: data.learningScores.filter((row) => row.object_type === "organization" && row.object_id === id),
+  events: data.events,
+  audit: data.audit,
   };
 }
 
@@ -1025,14 +1120,14 @@ function sortOrganizations(rows: EnrichedOrganization[], sort: string) {
   return [...rows].sort((a, b) => {
     if (sort === "name_asc") return String(a.name).localeCompare(String(b.name));
     if (sort === "updated_desc") return Date.parse(String(b.updated_at ?? 0)) - Date.parse(String(a.updated_at ?? 0));
-    if (sort === "influence_desc") return b.influenceScore - a.influenceScore;
-    if (sort === "work_desc") return b.workRelevanceScore - a.workRelevanceScore;
-    if (sort === "capacity_desc") return b.capacityRelevanceScore - a.capacityRelevanceScore;
-    if (sort === "payment_desc") return b.paymentRelevanceScore - a.paymentRelevanceScore;
+    if (sort === "influence_desc") return numberValue(b.influenceScore, -1) - numberValue(a.influenceScore, -1);
+    if (sort === "work_desc") return numberValue(b.workRelevanceScore, -1) - numberValue(a.workRelevanceScore, -1);
+    if (sort === "capacity_desc") return numberValue(b.capacityRelevanceScore, -1) - numberValue(a.capacityRelevanceScore, -1);
+    if (sort === "payment_desc") return numberValue(b.paymentRelevanceScore, -1) - numberValue(a.paymentRelevanceScore, -1);
     if (sort === "strategic_first" || sort === "default") {
       const strategic = Number(isStrategic(b)) - Number(isStrategic(a));
       if (strategic !== 0) return strategic;
-      const influence = b.influenceScore - a.influenceScore;
+      const influence = numberValue(b.influenceScore, -1) - numberValue(a.influenceScore, -1);
       if (influence !== 0) return influence;
       return Date.parse(String(b.updated_at ?? 0)) - Date.parse(String(a.updated_at ?? 0));
     }
@@ -1049,15 +1144,22 @@ function profileTabs(organization: EnrichedOrganization, slices: OrganizationSli
     ["candidates", "Candidates"],
     ["opportunities", "Opportunities"],
   ];
-  if (hasActorRole(organization, "Capacity Provider") || slices.capacityProviders.length > 0) tabs.push(["capacity", "Capacity"]);
-  if (slices.projects.length > 0 || hasActorRole(organization, "Work Validator")) tabs.push(["projects", "Projects"]);
-  if (hasActorRole(organization, "Cash Controller") || organization.type === "customer" || ["carrier", "agency"].includes(String(organization.type))) tabs.push(["finance", "Finance"]);
+  if (hasActorRole(organization, "capacity_provider") || slices.capacityProviders.length > 0) tabs.push(["capacity", "Capacity"]);
+  if (slices.projects.length > 0 || hasActorRole(organization, "work_validator")) tabs.push(["projects", "Projects"]);
+  if (hasActorRole(organization, "cash_controller") || organization.type === "customer" || ["utility", "isp_carrier", "municipality", "prime_contractor"].includes(String(organization.type))) tabs.push(["finance", "Finance"]);
   return [...tabs, ["constraints", "Constraints"], ["recommendations", "Recommendations"], ["learning", "Learning"], ["documents", "Documents"], ["events", "Events"], ["audit", "Audit"]].map(([id, label]) => ({ id, label }));
 }
 
 function recommendedNextAction(organization: EnrichedOrganization) {
+  if (typeof organization.recommended_next_action === "string" && organization.recommended_next_action) return organization.recommended_next_action;
   if (organization.status === "archived") return "view_only";
-  return "assign_owner";
+  if (!organization.relationship_owner_user_id) return "assign_owner";
+  if (organization.roles.length === 0) return "assign_actor_role";
+  if (!organization.territory_id) return "assign_territory";
+  if (organization.contactsCount === 0) return "add_contact";
+  if (hasActorRole(organization, "work_creator") && organization.signalsCount === 0) return "add_signal";
+  if (hasActorRole(organization, "capacity_provider") && organization.capacityProviderCount === 0) return "add_capacity_provider";
+  return "review_profile";
 }
 
 function formatAction(action: string) {
@@ -1068,12 +1170,12 @@ function missingIntelligence(organization: EnrichedOrganization, slices: Organiz
   return [
     ["Missing territory", Boolean(organization.territory_id)],
     ["Missing actor role", organization.roles.length > 0],
-    ["Missing owner", false],
+    ["Missing owner", Boolean(organization.relationship_owner_user_id)],
     ["Missing contacts", slices.contacts.length > 0],
     ["Missing verified contact", slices.contacts.some((contact) => contact.status === "verified" || contact.verification_status === "verified")],
-    ["Missing signals for work creator", !hasActorRole(organization, "Work Creator") || slices.signals.length > 0],
-    ["Missing capacity profile for capacity provider", !hasActorRole(organization, "Capacity Provider") || slices.capacityProviders.length > 0],
-    ["Missing finance contact for cash controller", !hasActorRole(organization, "Cash Controller") || slices.contacts.some((contact) => `${contact.title ?? ""} ${contact.department ?? ""}`.toLowerCase().includes("billing"))],
+    ["Missing signals for work creator", !hasActorRole(organization, "work_creator") || slices.signals.length > 0],
+    ["Missing capacity profile for capacity provider", !hasActorRole(organization, "capacity_provider") || slices.capacityProviders.length > 0],
+    ["Missing finance contact for cash controller", !hasActorRole(organization, "cash_controller") || slices.contacts.some((contact) => `${contact.title ?? ""} ${contact.department ?? ""}`.toLowerCase().includes("billing"))],
   ];
 }
 
@@ -1082,12 +1184,12 @@ function completenessChecklist(organization: EnrichedOrganization, slices: Organ
     ["Identity complete", Boolean(organization.name && organization.type && organization.type !== "unknown")],
     ["Actor role assigned", organization.roles.length > 0],
     ["Territory assigned", Boolean(organization.territory_id)],
-    ["Relationship owner assigned", false],
+    ["Relationship owner assigned", Boolean(organization.relationship_owner_user_id)],
     ["At least one contact exists", slices.contacts.length > 0],
     ["At least one verified contact exists", slices.contacts.some((contact) => contact.status === "verified" || contact.verification_status === "verified")],
-    ["Relevant work link exists", slices.signals.length + slices.candidates.length + slices.opportunities.length > 0 || !hasActorRole(organization, "Work Creator")],
-    ["Capacity profile exists", !hasActorRole(organization, "Capacity Provider") || slices.capacityProviders.length > 0],
-    ["Payment stats exist", !(hasActorRole(organization, "Cash Controller") || organization.type === "customer") || slices.payments.length > 0],
+    ["Relevant work link exists", slices.signals.length + slices.candidates.length + slices.opportunities.length > 0 || !hasActorRole(organization, "work_creator")],
+    ["Capacity profile exists", !hasActorRole(organization, "capacity_provider") || slices.capacityProviders.length > 0],
+    ["Payment stats exist", !(hasActorRole(organization, "cash_controller") || organization.type === "customer") || slices.payments.length > 0],
   ];
 }
 
@@ -1108,33 +1210,35 @@ function warningsFor(organization: EnrichedOrganization, slices: OrganizationSli
   if (organization.status === "archived") warnings.push("This organization is archived. Actions are limited.");
   if (!organization.territory_id) warnings.push("Territory is missing.");
   if (slices.constraints.length > 0) warnings.push("Open constraints are tied to this organization.");
-  if (hasActorRole(organization, "Capacity Provider") && slices.capacityProviders.length === 0) warnings.push("Capacity Provider role exists without a capacity provider record.");
+  if (hasActorRole(organization, "capacity_provider") && slices.capacityProviders.length === 0) warnings.push("Capacity Provider role exists without a capacity provider record.");
   return warnings.length ? warnings : ["No critical warnings captured."];
 }
 
 function actorRoleExplanation(organization: EnrichedOrganization) {
-  if (hasActorRole(organization, "Work Creator")) return "This organization may originate telecom work. Emphasize signals, territory, funding or project indicators, opportunities, and access paths.";
-  if (hasActorRole(organization, "Work Influencer")) return "This organization can influence work before construction starts. Emphasize contacts, relationship access, signals, and relationship gaps.";
-  if (hasActorRole(organization, "Work Distributor")) return "This organization may route work to Jackson. Emphasize onboarding path, vendor contacts, opportunities, and capacity needs.";
-  if (hasActorRole(organization, "Capacity Provider")) return "This organization may help cover work. Emphasize provider status, compliance, readiness, crews, workers, equipment, and production history.";
-  if (hasActorRole(organization, "Work Validator")) return "This organization can validate or block production. Emphasize field contacts, QC contacts, approvals, corrections, and project history.";
-  if (hasActorRole(organization, "Cash Controller")) return "This organization can approve and pay correctly. Emphasize contracts, settlements, invoices, AR, payments, and billing contacts.";
+  if (hasActorRole(organization, "work_creator")) return "This organization may originate telecom work. Emphasize signals, territory, funding or project indicators, opportunities, and access paths.";
+  if (hasActorRole(organization, "work_influencer")) return "This organization can influence work before construction starts. Emphasize contacts, relationship access, signals, and relationship gaps.";
+  if (hasActorRole(organization, "work_distributor")) return "This organization may route work to Jackson. Emphasize onboarding path, vendor contacts, opportunities, and capacity needs.";
+  if (hasActorRole(organization, "capacity_provider")) return "This organization may help cover work. Emphasize provider status, compliance, readiness, crews, workers, equipment, and production history.";
+  if (hasActorRole(organization, "work_validator")) return "This organization can validate or block production. Emphasize field contacts, QC contacts, approvals, corrections, and project history.";
+  if (hasActorRole(organization, "cash_controller")) return "This organization can approve and pay correctly. Emphasize contracts, settlements, invoices, AR, payments, and billing contacts.";
   return "Actor role is not captured yet. Assign roles to make this dossier operationally meaningful.";
 }
 
 function typeGuidance(organization: EnrichedOrganization) {
   const type = String(organization.type ?? "");
-  if (type === "carrier") return "Carrier profile: look for expansion markets, construction access, vendor managers, prime partners, drops, splicing, maintenance relevance, and payment process.";
-  if (type === "agency") return "Public agency profile: look for funding programs, award timelines, eligible territories, procurement paths, ROW or permitting, and public activity signals.";
-  if (type === "contractor") return "Contractor profile: determine whether they distribute work, provide capacity, control subcontractor onboarding, or validate field production.";
+  if (type === "utility") return "Utility profile: look for service territory, infrastructure relevance, known projects, engineering or prime partners, procurement path, field contacts, AP contacts, related signals, and opportunities.";
+  if (type === "isp_carrier") return "ISP / Carrier profile: look for expansion markets, construction access, vendor managers, prime partners, drops, splicing, maintenance relevance, and payment process.";
+  if (type === "broadband_office") return "Broadband Office profile: look for funding programs, award timelines, award recipients, eligible territories, compliance requirements, and public activity signals.";
+  if (type === "municipality") return "Municipality profile: look for local work, permitting, ROW control, public broadband initiatives, public works contacts, meeting agenda signals, and procurement path.";
+  if (type === "engineering_firm") return "Engineering Firm profile: look for design territories, customer relationships, project managers, design signals, permitting, survey activity, and contractor influence.";
+  if (type === "prime_contractor" || type === "general_contractor_program_manager") return "Prime / Program Manager profile: determine whether they distribute work, control subcontractor onboarding, require documentation, validate field work, and drive payment behavior.";
+  if (type === "subcontractor") return "Subcontractor profile: determine whether they can cover work, are compliant, available, and reliable.";
   if (type === "vendor") return "Vendor profile: determine whether they remove execution constraints through material, service, equipment, or staffing availability.";
+  if (type === "equipment_provider") return "Equipment Provider profile: determine whether they remove equipment constraints, how fast equipment is accessible, and at what cost.";
+  if (type === "staffing_partner") return "Staffing Partner profile: determine whether they can fill labor gaps with qualified, compliant workers.";
   if (type === "customer") return "Customer profile: focus on contracts, production approval path, settlements, invoices, AR, payments, days to pay, short pays, and disputes.";
-  if (type === "partner") return "Partner profile: clarify whether they influence, distribute, enable, or validate telecom work.";
-  return "Backend organization type is not specific enough for the full product taxonomy yet. Use actor roles and notes to clarify telecom relevance.";
-}
-
-function scoreFromRoles(roles: string[], preferred: string[]) {
-  return preferred.some((role) => roles.includes(role)) ? 70 : roles.length ? 40 : 0;
+  if (type === "internal_company") return "Internal Company profile: focus on internal crews, equipment, active projects, capacity gaps, cash status, constraints, and recommendations.";
+  return "Assign an approved organization type to make this dossier operationally meaningful.";
 }
 
 function hasActorRole(organization: Pick<EnrichedOrganization, "roles">, role: string) {
@@ -1142,19 +1246,33 @@ function hasActorRole(organization: Pick<EnrichedOrganization, "roles">, role: s
 }
 
 function isStrategic(organization: SyncRecord) {
-  return organization.status === "strategic" || Boolean(organization.strategic);
+  return organization.status === "strategic" || Boolean(organization.strategic_flag ?? organization.strategic);
 }
 
 function asArray(value: unknown) {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
+function recordArray(value: unknown): SyncRecord[] {
+  return Array.isArray(value) ? value.filter((item): item is SyncRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
+}
+
+function attachOrganizationId(rows: SyncRecord[], organizationId: string, aliasKey?: string, sourceKey?: string) {
+  return rows.map((row) => ({
+    ...row,
+    organization_id: row.organization_id ?? organizationId,
+    ...(aliasKey && sourceKey && row[aliasKey] === undefined ? { [aliasKey]: row[sourceKey] } : {}),
+  }));
+}
+
 function toggleArrayValue(values: string[], value: string) {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
-function clampScore(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value)));
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function scoreText(value: unknown) {
@@ -1205,13 +1323,13 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ScoreCard({ label, value }: { label: string; value: number }) {
-  return <SummaryMetric label={label} value={String(value)} />;
+function ScoreCard({ label, value }: { label: string; value: number | null }) {
+  return <SummaryMetric label={label} value={scoreText(value)} />;
 }
 
 function BadgeList({ values }: { values: string[] }) {
   if (values.length === 0) return <span>Not captured yet</span>;
-  return <div className="badge-row">{values.map((value) => <span className="badge" key={value}>{value}</span>)}</div>;
+  return <div className="badge-row">{values.map((value) => <span className="badge" key={value}>{formatAction(value)}</span>)}</div>;
 }
 
 function Checklist({ items }: { items: Array<[string, boolean]> }) {

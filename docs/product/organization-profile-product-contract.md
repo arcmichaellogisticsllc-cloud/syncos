@@ -15,8 +15,12 @@ Product Sprint 2 exposes the existing SyncOS organization capability as a teleco
 
 - `GET /organizations`
 - `GET /organizations/:id`
+- `GET /organizations/:id/detail`
+- `GET /organizations/:id/timeline`
+- `GET /organizations/:id/audit-summary`
 - `POST /organizations`
 - `PATCH /organizations/:id`
+- `POST /organizations/:id/assign-owner`
 - `POST /organizations/:id/qualify`
 - `POST /organizations/:id/archive`
 - `GET /territories`
@@ -51,17 +55,18 @@ The list displays:
 - status
 - relationship owner state
 - strategic flag
-- trust score
+- trust level
 - influence score
 - work relevance score
 - capacity relevance score
 - payment relevance score
+- completeness score
 - contacts count
 - signals count
 - opportunities count
 - recommended next action
 
-Relationship owner is shown as `Unassigned` because the current organization schema has no owner field. Counts are derived from tenant-scoped list APIs and client-side organization filtering where backend organization filters are unavailable.
+Relationship owner, actor roles, trust level, scores, completeness, counts, and recommended next action are returned by the enriched backend list read model. The UI should show `Not captured yet` only when the backend returns a null value or a section remains unsupported.
 
 ## Organization Profile Tabs
 
@@ -78,10 +83,10 @@ Relationship owner is shown as `Unassigned` because the current organization sch
 - Recommendations
 - Learning
 - Documents placeholder
-- Events placeholder
-- Audit placeholder
+- Events
+- Audit
 
-Tabs show organization-specific slices where existing backend APIs expose enough tenant-scoped data. Unsupported slices display honest limitation states.
+Tabs show organization-specific slices from `GET /organizations/:id/detail` where the backend can safely aggregate tenant-scoped related data. Unsupported slices display honest limitation states.
 
 ## Actor-Aware Behavior
 
@@ -94,33 +99,27 @@ Actor roles drive profile emphasis and conditional tabs:
 - Work Validator reveals project/production relevance when project data is available.
 - Cash Controller reveals Finance and emphasizes invoices, settlements, payments, and AP/Billing contacts.
 
-The backend stores `actor_roles` as text values. No new authority model or workflow category is introduced.
+The backend stores approved actor role values as an array. No new authority model or workflow category is introduced.
 
 ## Recommended Next Action
 
-The current UI follows the approved deterministic order, with one important backend limitation:
+The backend returns a deterministic recommended next action:
 
 1. Archived organizations are view-only.
-2. Relationship owner is treated as missing because the backend has no organization owner field.
-3. Actor role, territory, contacts, signals, relationship map, capacity provider, and finance-contact checks are displayed in the profile checklist.
-
-Because relationship owner is not stored yet, `Assign Owner` is the most common recommendation. This is a documented backend gap, not an inferred hidden owner.
+2. Missing relationship owner recommends owner assignment.
+3. Missing actor roles, territory, contacts, verified contacts, work-creator signals, capacity provider profile, or cash-controller billing intelligence are surfaced as missing intelligence items where data is available.
+4. If no blocking item applies, the recommendation is profile review.
 
 ## Backend Gaps / Unsupported Sections
 
-- Organization schema lacks legal name, DBA/trade names, website, phone, email, address, description, strategic boolean, relationship owner, and manual relevance-score fields.
-- Backend organization type enum is limited to `unknown`, `carrier`, `contractor`, `customer`, `vendor`, `partner`, and `agency`; the product taxonomy is richer.
-- `GET /contacts`, `GET /opportunity-candidates`, `GET /opportunities`, and several later-module list endpoints do not expose explicit organization filters. The UI filters tenant-scoped rows client-side when permitted.
-- No organization-scoped timeline endpoint exists.
-- No organization-scoped audit-summary endpoint exists.
+- Some downstream list endpoints still have limited first-class organization filtering. The detail endpoint aggregates safe slices where practical.
 - Relationship maps are not exposed as an organization profile slice.
 - Detailed capacity sub-slices for crews, workers, equipment, documents, and capacity records require provider-scoped product work later.
-- Customer payment stats are not exposed through an organization profile API.
-- Organization archive API does not currently persist an archive reason.
+- Organization timeline includes direct events and safely joinable related events; it is not yet a full cross-object activity graph.
+- Organization audit summary is direct organization audit only in v1.
 
 ## Deferred Work
 
-- Backend organization contract hardening for owner, product taxonomy, durable profile metadata, organization timeline, and organization audit summary.
 - Full Contact Directory.
 - Full Relationship Mapping Workspace.
 - Full Opportunity Workspace.

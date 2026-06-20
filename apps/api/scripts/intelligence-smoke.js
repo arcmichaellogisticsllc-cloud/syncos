@@ -144,7 +144,7 @@ async function main() {
 async function createBase(client, tenantId) {
   const suffix = Date.now();
   const territory = await client.query("INSERT INTO territories (tenant_id, name, code) VALUES ($1, $2, $3) RETURNING id", [tenantId, `Intel Territory ${suffix}`, "INT"]);
-  const organization = await client.query("INSERT INTO organizations (tenant_id, territory_id, name, type, actor_roles, source_name) VALUES ($1, $2, $3, 'carrier', $4, 'intelligence-smoke') RETURNING id", [tenantId, territory.rows[0].id, `Intel Organization ${suffix}`, ["owner"]]);
+  const organization = await client.query("INSERT INTO organizations (tenant_id, territory_id, name, type, organization_type, actor_roles, source_name) VALUES ($1, $2, $3, 'isp_carrier', 'isp_carrier', $4, 'intelligence-smoke') RETURNING id", [tenantId, territory.rows[0].id, `Intel Organization ${suffix}`, ["work_creator"]]);
   const contact = await client.query("INSERT INTO contacts (tenant_id, organization_id, full_name, email) VALUES ($1, $2, $3, $4) RETURNING id", [tenantId, organization.rows[0].id, "Intel Contact", `intel-${suffix}@example.test`]);
   return { territoryId: territory.rows[0].id, organizationId: organization.rows[0].id, contactId: contact.rows[0].id };
 }

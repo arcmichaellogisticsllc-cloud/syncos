@@ -45,7 +45,10 @@ test("migration ordering is lexical and complete", () => {
   const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
   assert.deepEqual(migrations, [...migrations].sort());
   assert.equal(migrations[0], "001_tenants_users_roles_permissions.sql");
-  assert.equal(migrations.at(-1), "017_intelligence_signal_contract_hardening.sql");
+  migrations.forEach((migration, index) => {
+    const expectedPrefix = String(index + 1).padStart(3, "0");
+    assert.equal(migration.slice(0, 3), expectedPrefix, `${migration} should keep contiguous migration numbering`);
+  });
 });
 
 test("write helpers remain the only shared write action path", () => {
@@ -57,7 +60,7 @@ test("write helpers remain the only shared write action path", () => {
 });
 
 test("Sprint 14 does not introduce disallowed business artifacts", () => {
-  const allFiles = listFiles(root).filter((file) => !file.includes("node_modules") && !file.includes(".git"));
+  const allFiles = listFiles(root).filter((file) => !file.includes("node_modules") && !file.includes(".git") && !file.includes(`${path.sep}dist${path.sep}`) && !file.includes(`${path.sep}.next${path.sep}`));
   const forbidden = ["ai_models", "forecasts", "autonomous_recommendations", "vector_embeddings", "payroll_records", "collections_automation"];
   for (const file of allFiles) {
     const relative = path.relative(root, file);

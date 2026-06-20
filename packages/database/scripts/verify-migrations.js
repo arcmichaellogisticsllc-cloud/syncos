@@ -1,4 +1,6 @@
 const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 const { Client } = require("pg");
 
 async function main() {
@@ -34,7 +36,8 @@ async function main() {
   const auditTable = await verifyClient.query("SELECT to_regclass('public.audit_logs') AS name");
   await verifyClient.end();
 
-  assertEqual(migrationCount.rows[0].count, 17, "expected 17 applied migrations");
+  const expectedMigrationCount = fs.readdirSync(path.join(__dirname, "../migrations")).filter((file) => file.endsWith(".sql")).length;
+  assertEqual(migrationCount.rows[0].count, expectedMigrationCount, `expected ${expectedMigrationCount} applied migrations`);
   assertEqual(tenantCount.rows[0].count, 1, "expected Jackson Telcom tenant");
   if (roleCount.rows[0].count < 19) {
     throw new Error("expected core roles to be seeded");

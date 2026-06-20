@@ -18,7 +18,7 @@ Validate that an operator can use the Organization workspace as a telecom actor 
 3. Confirm the Organization List loads.
 4. Use quick filters for Strategic, Work Creators, Capacity Providers, Missing Contacts, and Needs Research.
 5. Open `/intelligence/organizations/new`.
-6. Create a realistic telecom actor, for example a utility, carrier, contractor, customer, vendor, or public agency using the backend-supported type values.
+6. Create a realistic telecom actor, for example a utility, ISP/carrier, engineering firm, prime contractor, subcontractor, customer, vendor, or public agency using the approved backend type values.
 7. Assign at least one actor role.
 8. Assign a territory.
 9. Save and confirm navigation to the Organization Profile.
@@ -26,7 +26,7 @@ Validate that an operator can use the Organization workspace as a telecom actor 
 11. Confirm the actor scorecard shows influence, work, capacity, payment, contacts, signals, opportunities, constraints, and next action.
 12. Confirm the strategic sidebar shows primary role, secondary roles, missing intelligence, warnings, and best next action.
 13. Open Edit Organization.
-14. Update type, actor roles, status, source, or trust score.
+14. Update type, actor roles, status, relationship owner, trust level, scores, description, or identity fields.
 15. Save and confirm the profile reflects the update.
 16. Qualify organization if backend requirements are met.
 17. Add a contact from the profile.
@@ -40,10 +40,12 @@ Validate that an operator can use the Organization workspace as a telecom actor 
 25. Open Finance for a customer or cash-controller actor and confirm settlements, invoices, and payments appear where available or honest empty states are shown.
 26. Open Constraints and Recommendations tabs.
 27. Open Learning tab.
-28. Open Events and Audit tabs and confirm unsupported states are explicit.
-29. Confirm unauthorized or permission-limited users cannot perform hidden/disabled actions.
-30. Open Research Organization and confirm the AI research placeholder states that no automatic field updates occur.
-31. Archive an organization if authorized and confirm actions become limited.
+28. Open Events and confirm the organization timeline loads.
+29. Open Audit as an authorized user and confirm organization audit records load.
+30. Open Audit as an unauthorized user and confirm audit details are hidden.
+31. Confirm unauthorized or permission-limited users cannot perform hidden/disabled actions.
+32. Open Research Organization and confirm the AI research placeholder states that no automatic field updates occur.
+33. Archive an organization if authorized, choose an approved archive reason, and confirm actions become limited.
 
 ## Pass Criteria
 
@@ -54,12 +56,11 @@ Validate that an operator can use the Organization workspace as a telecom actor 
 - Tenant boundaries are enforced by the API.
 - Writes create backend event, audit log, and system action through existing APIs.
 - Actor roles visibly change profile emphasis and conditional tabs.
+- Timeline and audit access use backend permissions.
 - Unsupported backend relationships are clearly labeled.
 - Tester can explain why the organization matters to telecom work.
 
 ## Known Limitations To Observe
 
-- Relationship owner is not captured by the backend.
-- Product organization type taxonomy is richer than the current backend enum.
-- Organization timeline and audit summary APIs are not available yet.
-- Some related-object counts are filtered client-side over tenant-scoped rows.
+- Relationship maps remain a placeholder until the Relationship Mapping Workspace is built.
+- Some later-module relationship slices may still show partial data where the backend cannot safely infer an organization relationship.
