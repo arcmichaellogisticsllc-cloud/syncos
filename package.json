@@ -34,6 +34,7 @@
     "contact:smoke": "npm run smoke:contact -w @syncos/api",
     "relationship:smoke": "npm run smoke:relationship -w @syncos/api",
     "candidate:smoke": "npm run smoke:candidate -w @syncos/api",
+    "opportunity:smoke": "npm run smoke:opportunity -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {

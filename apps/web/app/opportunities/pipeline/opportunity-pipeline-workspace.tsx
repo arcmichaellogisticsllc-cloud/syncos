@@ -22,6 +22,7 @@ const productStatuses = ["draft", "pursuit_review", "pursuit_approved", "pursuin
 const workTypes = ["fiber", "coax", "aerial", "underground", "directional_bore", "trenching", "splicing", "drops", "make_ready", "inspection", "restoration", "project_management", "unknown"];
 const lostReasons = ["price", "relationship_access", "capacity", "schedule", "compliance", "competitor", "customer_cancelled", "poor_fit", "other"];
 const deferredReasons = ["timing", "funding_delay", "relationship_gap", "capacity_gap", "customer_delay", "more_research_needed", "other"];
+const archiveReasons = ["duplicate", "stale", "no_longer_relevant", "converted_or_replaced", "cleanup", "other"];
 
 type OpportunityData = {
   opportunities: SyncRecord[];
@@ -125,7 +126,7 @@ export function OpportunityPipeline() {
       {error ? <div className="error-banner">{error}</div> : null}
       <UnsupportedNotice unavailable={data.unavailable} />
       <div className="warning-box">
-        Relationship access is not a creation blocker in this workspace. The current backend may still block pursuit approval when no relationship path exists; the UI does not bypass that backend rule.
+        Relationship access is not a creation blocker. Weak or missing access is shown as a warning and requires an override reason at pursuit approval.
       </div>
       <div className="summary-grid">
         <SummaryCard label="Total Opportunities" value={summary.total} onClick={() => setFilters(initialFilters)} />
@@ -289,17 +290,19 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
     if (!form.organization_id) return setError("Organization is required.");
     if (!form.territory_id) return setError("Territory is required.");
     if (!form.owner_user_id) return setError("Owner is required.");
-    if (!form.evidence_summary.trim()) return setError("Summary / evidence is required by the current backend.");
+    if (!form.evidence_summary.trim()) return setError("Summary is required.");
     try {
       const body = prune({
-        title: form.title,
-        candidate_id: form.candidate_id,
+        opportunity_name: form.title,
+        source_candidate_id: form.candidate_id,
         organization_id: form.organization_id,
         territory_id: form.territory_id,
         work_type: form.work_type,
         estimated_value: optionalNumber(form.estimated_value),
         owner_user_id: form.owner_user_id,
+        summary: form.evidence_summary,
         evidence_summary: form.evidence_summary,
+        source_type: form.candidate_id ? "candidate_conversion" : "manual_entry",
         scope_summary: form.scope_summary,
         next_action: form.next_action,
         signal_strength_score: optionalNumber(form.signal_strength_score),
@@ -311,7 +314,9 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
       });
       const saved = mode === "edit" && opportunityId
         ? await syncosFetch<SyncRecord>(`/opportunities/${opportunityId}`, { method: "PATCH", body })
-        : await syncosFetch<SyncRecord>("/opportunities", { method: "POST", body });
+        : form.candidate_id
+          ? await syncosFetch<SyncRecord>(`/opportunity-candidates/${form.candidate_id}/convert-to-opportunity`, { method: "POST", body })
+          : await syncosFetch<SyncRecord>("/opportunities", { method: "POST", body });
       router.push(`/opportunities/${String(saved.id ?? opportunityId)}`);
     } catch (nextError) {
       setError((nextError as Error).message);
@@ -343,7 +348,7 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
           <label>Summary / evidence<textarea value={form.evidence_summary} onChange={(event) => setForm({ ...form, evidence_summary: event.target.value })} required /></label>
           <label>Scope summary<textarea value={form.scope_summary} onChange={(event) => setForm({ ...form, scope_summary: event.target.value })} /></label>
         </div>
-        <div className="warning-box">The current backend starts created opportunities at `qualified`, displayed here as Draft. Candidate-backed creation uses existing `POST /opportunities` with `candidate_id`; no project, capacity deployment, or finance record is created.</div>
+        <div className="warning-box">Candidate-backed creation uses the explicit conversion endpoint. No project, capacity deployment, or finance record is created.</div>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update")}>{mode === "create" ? "Create Opportunity" : "Save Opportunity"}</button>
           <Link href={opportunityId ? `/opportunities/${opportunityId}` : "/opportunities/pipeline"}>Cancel</Link>
@@ -365,11 +370,24 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
   async function load() {
     setError("");
     try {
-      const [nextData, row, score] = await Promise.all([
+      const [nextData, rowDetail, score] = await Promise.all([
         loadOpportunityData(),
-        syncosFetch<SyncRecord>(`/opportunities/${opportunityId}`),
+        syncosFetch<SyncRecord>(`/opportunities/${opportunityId}/detail`),
         optionalRecord(`/opportunities/${opportunityId}/score-summary`),
       ]);
+      const timeline = await optionalList(`/opportunities/${opportunityId}/timeline`);
+      const audit = await optionalList(`/opportunities/${opportunityId}/audit-summary`);
+      const row: SyncRecord = {
+        ...(rowDetail.opportunity ?? rowDetail),
+        _source_candidate: rowDetail.source_candidate,
+        _organization_context: rowDetail.organization_context,
+        _relationship_map_context: rowDetail.relationship_map_context,
+        _capacity_requirements: rowDetail.capacity_requirements,
+        _constraints_summary: rowDetail.constraints_summary,
+        _recommendations_summary: rowDetail.recommendations_summary,
+        _timeline: timeline,
+        _audit: audit,
+      };
       const merged = {
         ...nextData,
         opportunities: [row, ...nextData.opportunities.filter((item) => item.id !== row.id)],
@@ -413,11 +431,11 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
               </div>
               <div className="form-actions">
                 <Link href={`/opportunities/${opportunity.id}/edit`}>Edit Opportunity</Link>
-                <button type="button" disabled>Submit for Pursuit Review</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursuit_approve") || opportunity.backendStatus !== "qualified"} onClick={() => setModal("approve")}>Approve Pursuit</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.submit_review") || opportunity.productStatus !== "draft"} onClick={() => setModal("review")}>Submit for Pursuit Review</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursuit_approve") || !["draft", "pursuit_review"].includes(opportunity.productStatus)} onClick={() => setModal("approve")}>Approve Pursuit</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursue") || opportunity.backendStatus !== "pursuit_approved"} onClick={() => setModal("pursue")}>Begin Pursuit</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity.proposal") || opportunity.backendStatus !== "pursuing"} onClick={() => setModal("proposal")}>Move to Proposal</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.backendStatus !== "bid_proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.productStatus !== "proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity.award") || opportunity.backendStatus !== "negotiation"} onClick={() => setModal("award")}>Mark Awarded</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity.defer") || opportunity.backendStatus === "archived"} onClick={() => setModal("defer")}>Defer</button>
@@ -433,7 +451,7 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
               <SummaryMetric label="Relationship Access" value={scoreValue(opportunity.relationshipAccessScore)} />
               <SummaryMetric label="Capacity Requirements" value={String(opportunity.capacityRequirements.length)} />
               <SummaryMetric label="Open Constraints" value={String(opportunity.constraints.length)} />
-              <SummaryMetric label="Probability" value="Not captured yet" />
+              <SummaryMetric label="Probability" value={scoreValue(nullableNumber(opportunity.probability))} />
               <SummaryMetric label="Expected Decision Date" value={dateValue(opportunity.expected_decision_date ?? opportunity.review_date)} />
               <SummaryMetric label="Next Action" value={formatAction(opportunity.recommendedNextAction)} />
             </div>
@@ -461,6 +479,7 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
               <OpportunityTab tab={tab} opportunity={opportunity} scoreSummary={scoreSummary} permissions={session.permissions} onCapacity={() => setModal("capacity")} />
             </section>
           </div>
+          {modal === "review" ? <ReviewModal opportunity={opportunity} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "approve" ? <ApproveModal opportunity={opportunity} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "pursue" ? <PursueModal opportunity={opportunity} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "proposal" ? <ProposalModal opportunity={opportunity} onClose={() => setModal("")} onSaved={load} /> : null}
@@ -564,7 +583,7 @@ function OpportunityTab({ tab, opportunity, scoreSummary, permissions, onCapacit
   if (tab === "relationship") {
     return (
       <div className="workspace-panel">
-        <div className="warning-box">Relationship access is weak or missing when below 50. This does not hide or kill the opportunity. The current backend may still block pursuit approval until a relationship path exists.</div>
+        <div className="warning-box">Relationship access is weak or missing when below 50. This does not hide or kill the opportunity; pursuit approval captures an override reason for this warning.</div>
         <ObjectSlice title="Relationship Access" rows={opportunity.relationshipMap ? [opportunity.relationshipMap] : []} columns={["map_name", "map_type", "status", "target_organization_name", "target_contact_name", "relationship_access_score", "best_path_strength", "best_path_confidence", "recommended_next_action"]} empty="No relationship map is directly linked to this opportunity or source candidate." action={opportunity.relationshipMap ? <Link href={`/intelligence/relationship-maps/${opportunity.relationshipMap.id}`}>Open Relationship Map</Link> : <button type="button" disabled>Create Relationship Map</button>} />
       </div>
     );
@@ -572,15 +591,45 @@ function OpportunityTab({ tab, opportunity, scoreSummary, permissions, onCapacit
   if (tab === "capacity") return <ObjectSlice title="Capacity Requirements" rows={opportunity.capacityRequirements} columns={["capacity_type", "quantity", "unit", "territory_id", "start_date", "end_date", "status"]} empty="No capacity requirements are connected yet. Capacity is planning only in this sprint." action={hasPermission(permissions, "capacity_requirement.create") ? <button type="button" onClick={onCapacity}>Add Capacity Requirement</button> : undefined} />;
   if (tab === "constraints") return <ObjectSlice title="Constraints" rows={opportunity.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this opportunity." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={opportunity.recommendations} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this opportunity." />;
-  if (tab === "timeline") return <div className="empty-state">Opportunity timeline endpoint is not available yet.</div>;
-  if (tab === "audit") return <div className="empty-state">Opportunity audit summary is not available yet or you do not have permission.</div>;
+  if (tab === "timeline") return <ObjectSlice title="Timeline" rows={arrayRecords(opportunity._timeline) ?? []} columns={["event_type", "actor_name", "timestamp", "object_type", "object_id", "summary"]} empty="Opportunity timeline endpoint is not available yet." />;
+  if (tab === "audit") return <ObjectSlice title="Audit" rows={arrayRecords(opportunity._audit) ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} empty="Opportunity audit summary is not available yet or you do not have permission." />;
   return null;
 }
 
+function ReviewModal({ opportunity, onClose, onSaved }: { opportunity: OpportunityView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [reason, setReason] = useState("Ready for pursuit review.");
+  const [note, setNote] = useState("");
+  return (
+    <ActionModal title="Submit for Pursuit Review" submitLabel="Submit for Review" onClose={onClose} onSubmit={async () => {
+      await syncosFetch(`/opportunities/${opportunity.id}/submit-for-review`, { method: "POST", body: { pursuit_review_reason: reason, pursuit_review_note: note } });
+      await onSaved();
+    }}>
+      <label>Review reason<input value={reason} onChange={(event) => setReason(event.target.value)} required /></label>
+      <label>Review note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+    </ActionModal>
+  );
+}
+
 function ApproveModal({ opportunity, onClose, onSaved }: { opportunity: OpportunityView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [relationshipReason, setRelationshipReason] = useState("Relationship access risk reviewed; build relationship path remains required.");
+  const [capacityReason, setCapacityReason] = useState("Capacity planning risk reviewed.");
+  const [marginReason, setMarginReason] = useState("Margin risk reviewed.");
+  const [constraintsReason, setConstraintsReason] = useState("Open constraints reviewed.");
+  const [approvalReason, setApprovalReason] = useState("Pursuit score or approval readiness warning reviewed.");
+  const [note, setNote] = useState("");
   return (
     <ActionModal title="Approve Pursuit" submitLabel="Approve Pursuit" onClose={onClose} onSubmit={async () => {
-      await syncosFetch(`/opportunities/${opportunity.id}/pursuit-approve`, { method: "POST", body: {} });
+      await syncosFetch(`/opportunities/${opportunity.id}/pursuit-approve`, {
+        method: "POST",
+        body: {
+          relationship_access_override_reason: relationshipReason,
+          capacity_override_reason: capacityReason,
+          margin_override_reason: marginReason,
+          constraints_override_reason: constraintsReason,
+          pursuit_approval_override_reason: approvalReason,
+          pursuit_approval_override_note: note,
+        },
+      });
       await onSaved();
     }}>
       <SummaryMetric label="Estimated value" value={moneyValue(opportunity.estimatedValue)} />
@@ -588,7 +637,13 @@ function ApproveModal({ opportunity, onClose, onSaved }: { opportunity: Opportun
       <SummaryMetric label="Capacity requirements" value={opportunity.capacityRequirements.length ? "Defined" : "Missing"} />
       <SummaryMetric label="Open constraints" value={String(opportunity.constraints.length)} />
       <SummaryMetric label="Pursuit score" value={scoreValue(opportunity.pursuitScore)} />
-      <div className="warning-box">If backend blocks approval due to relationship path, capacity fit, margin fit, authority, or pursuit score, the UI will show that backend result. No client-side override is available in this sprint.</div>
+      <label>Relationship override reason<textarea value={relationshipReason} onChange={(event) => setRelationshipReason(event.target.value)} /></label>
+      <label>Capacity override reason<textarea value={capacityReason} onChange={(event) => setCapacityReason(event.target.value)} /></label>
+      <label>Margin override reason<textarea value={marginReason} onChange={(event) => setMarginReason(event.target.value)} /></label>
+      <label>Constraint override reason<textarea value={constraintsReason} onChange={(event) => setConstraintsReason(event.target.value)} /></label>
+      <label>Approval readiness override reason<textarea value={approvalReason} onChange={(event) => setApprovalReason(event.target.value)} /></label>
+      <label>Approval note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
+      <div className="warning-box">Weak relationship access, missing capacity, missing margin, constraints, or missing pursuit score require override reasons. Core required-field and permission failures remain blockers.</div>
     </ActionModal>
   );
 }
@@ -639,12 +694,14 @@ function AwardModal({ opportunity, onClose, onSaved }: { opportunity: Opportunit
 
 function LostModal({ opportunity, onClose, onSaved }: { opportunity: OpportunityView; onClose: () => void; onSaved: () => Promise<void> }) {
   const [reason, setReason] = useState("relationship_access");
+  const [note, setNote] = useState("");
   return (
     <ActionModal title="Mark Lost" submitLabel="Mark Lost" onClose={onClose} onSubmit={async () => {
-      await syncosFetch(`/opportunities/${opportunity.id}/lost`, { method: "POST", body: { loss_reason: reason } });
+      await syncosFetch(`/opportunities/${opportunity.id}/lost`, { method: "POST", body: { lost_reason: reason, lost_note: note } });
       await onSaved();
     }}>
       <label>Loss reason<SelectInline value={reason} options={lostReasons} onChange={setReason} /></label>
+      <label>Loss note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </ActionModal>
   );
 }
@@ -652,24 +709,29 @@ function LostModal({ opportunity, onClose, onSaved }: { opportunity: Opportunity
 function DeferModal({ opportunity, onClose, onSaved }: { opportunity: OpportunityView; onClose: () => void; onSaved: () => Promise<void> }) {
   const [reason, setReason] = useState("timing");
   const [reviewDate, setReviewDate] = useState("");
+  const [note, setNote] = useState("");
   return (
     <ActionModal title="Defer Opportunity" submitLabel="Defer" onClose={onClose} onSubmit={async () => {
-      await syncosFetch(`/opportunities/${opportunity.id}/defer`, { method: "POST", body: { deferral_reason: reason, review_date: reviewDate } });
+      await syncosFetch(`/opportunities/${opportunity.id}/defer`, { method: "POST", body: { deferred_reason: reason, deferred_until: reviewDate, deferred_note: note } });
       await onSaved();
     }}>
       <label>Deferral reason<SelectInline value={reason} options={deferredReasons} onChange={setReason} /></label>
       <label>Review date<input value={reviewDate} onChange={(event) => setReviewDate(event.target.value)} type="date" /></label>
+      <label>Deferral note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </ActionModal>
   );
 }
 
 function ArchiveModal({ opportunity, onClose, onSaved }: { opportunity: OpportunityView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [reason, setReason] = useState("no_longer_relevant");
+  const [note, setNote] = useState("");
   return (
     <ActionModal title="Archive Opportunity" submitLabel="Archive" onClose={onClose} onSubmit={async () => {
-      await syncosFetch(`/opportunities/${opportunity.id}/archive`, { method: "POST", body: {} });
+      await syncosFetch(`/opportunities/${opportunity.id}/archive`, { method: "POST", body: { archive_reason: reason, archive_note: note } });
       await onSaved();
     }}>
-      <div className="warning-box">The current backend archive route does not accept or persist an archive reason. This is documented as a backend gap.</div>
+      <label>Archive reason<SelectInline value={reason} options={archiveReasons} onChange={setReason} /></label>
+      <label>Archive note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
     </ActionModal>
   );
 }
@@ -776,19 +838,20 @@ async function optionalRecord(path: string): Promise<SyncRecord | null> {
 
 function enrichOpportunity(opportunity: SyncRecord, data: OpportunityData): OpportunityView {
   const id = String(opportunity.id ?? "");
-  const backendStatus = textValue(opportunity.status, "qualified");
-  const candidate = data.candidates.find((row) => row.id === opportunity.candidate_id);
-  const organization = data.organizations.find((row) => row.id === opportunity.organization_id) ?? objectFromPrefix(opportunity, "organization");
-  const relationshipMap = data.relationshipMaps.find((map) => map.related_opportunity_id === id || (opportunity.candidate_id && map.related_candidate_id === opportunity.candidate_id));
-  const constraints = relatedConstraints(id, data);
-  const recommendations = relatedRecommendations(id, constraints, data);
-  const capacityRequirements = data.capacityByOpportunity[id] ?? [];
+  const backendStatus = textValue(opportunity.status, "draft");
+  const candidateId = opportunity.source_candidate_id ?? opportunity.candidate_id;
+  const candidate = recordValue(opportunity._source_candidate) ?? data.candidates.find((row) => row.id === candidateId);
+  const organization = recordValue(opportunity._organization_context) ?? data.organizations.find((row) => row.id === opportunity.organization_id) ?? objectFromPrefix(opportunity, "organization");
+  const relationshipMap = recordValue(opportunity._relationship_map_context) ?? data.relationshipMaps.find((map) => map.id === opportunity.relationship_map_id || map.related_opportunity_id === id || (candidateId && map.related_candidate_id === candidateId));
+  const constraints = arrayRecords(opportunity._constraints_summary) ?? relatedConstraints(id, data);
+  const recommendations = arrayRecords(opportunity._recommendations_summary) ?? relatedRecommendations(id, constraints, data);
+  const capacityRequirements = arrayRecords(opportunity._capacity_requirements) ?? data.capacityByOpportunity[id] ?? [];
   const enriched: OpportunityView = {
     ...opportunity,
     id,
-    name: textValue(opportunity.title ?? opportunity.name, "Untitled opportunity"),
+    name: textValue(opportunity.opportunity_name ?? opportunity.title ?? opportunity.name, "Untitled opportunity"),
     backendStatus,
-    productStatus: productStatus(backendStatus),
+    productStatus: textValue(opportunity.normalized_status, productStatus(backendStatus)),
     organization,
     candidate,
     relationshipMap,
@@ -800,7 +863,7 @@ function enrichOpportunity(opportunity: SyncRecord, data: OpportunityData): Oppo
     estimatedValue: nullableNumber(opportunity.estimated_value),
     recommendedNextAction: "",
   };
-  enriched.recommendedNextAction = recommendedNextAction(enriched);
+  enriched.recommendedNextAction = textValue(opportunity.recommended_next_action, recommendedNextAction(enriched));
   return enriched;
 }
 
@@ -815,7 +878,7 @@ function recommendedNextAction(opportunity: OpportunityView) {
   if (!opportunity.organization_id) return "attach_organization";
   if (!opportunity.territory_id) return "attach_territory";
   if (!opportunity.owner_user_id) return "assign_owner";
-  if (!opportunity.candidate_id) return "link_candidate_optional";
+  if (!opportunity.source_candidate_id && !opportunity.candidate_id && !opportunity.source_type) return "define_source";
   if (!opportunity.relationshipMap) return "build_relationship_path";
   if (opportunity.relationshipAccessScore === null || opportunity.relationshipAccessScore < 50) return "relationship_constraint_review";
   if (opportunity.capacityRequirements.length === 0) return "define_capacity_requirements";
@@ -842,8 +905,8 @@ function opportunityMatchesFilters(opportunity: OpportunityView, filters: Filter
   if (filters.pursuitMin && (opportunity.pursuitScore ?? -1) < Number(filters.pursuitMin)) return false;
   if (filters.relationshipMin && (opportunity.relationshipAccessScore ?? -1) < Number(filters.relationshipMin)) return false;
   if (filters.owner && String(opportunity.owner_user_id ?? "") !== filters.owner) return false;
-  if (filters.hasCandidate === "true" && !opportunity.candidate_id) return false;
-  if (filters.hasCandidate === "false" && opportunity.candidate_id) return false;
+  if (filters.hasCandidate === "true" && !opportunity.source_candidate_id && !opportunity.candidate_id) return false;
+  if (filters.hasCandidate === "false" && (opportunity.source_candidate_id || opportunity.candidate_id)) return false;
   if (filters.hasRelationshipMap === "true" && !opportunity.relationshipMap) return false;
   if (filters.hasRelationshipMap === "false" && opportunity.relationshipMap) return false;
   if (filters.hasCapacity === "true" && opportunity.capacityRequirements.length === 0) return false;
@@ -914,7 +977,7 @@ function approvalReadiness(opportunity: OpportunityView): [string, boolean][] {
     ["Territory attached", Boolean(opportunity.territory_id)],
     ["Owner assigned", Boolean(opportunity.owner_user_id)],
     ["Estimated value captured", opportunity.estimatedValue !== null],
-    ["Source candidate attached or manual source reason exists", Boolean(opportunity.candidate_id || opportunity.evidence_summary)],
+    ["Source candidate attached or manual source reason exists", Boolean(opportunity.source_candidate_id || opportunity.candidate_id || opportunity.source_type || opportunity.evidence_summary)],
     ["Relationship access reviewed", opportunity.relationshipAccessScore !== null || Boolean(opportunity.relationshipMap)],
     ["Capacity requirements reviewed", opportunity.capacityRequirements.length > 0],
     ["Critical constraints reviewed", !opportunity.constraints.some((constraint) => textValue(constraint.severity, "").toLowerCase() === "critical")],
@@ -936,10 +999,18 @@ function relatedRecommendations(opportunityId: string, constraints: SyncRecord[]
   );
 }
 
+function recordValue(value: unknown): SyncRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as SyncRecord : undefined;
+}
+
+function arrayRecords(value: unknown): SyncRecord[] | undefined {
+  return Array.isArray(value) ? value as SyncRecord[] : undefined;
+}
+
 function UnsupportedNotice({ unavailable }: { unavailable: string[] }) {
   return (
     <div className="empty-state">
-      Opportunity Pipeline uses existing opportunity, candidate, organization, relationship map, capacity requirement, constraint, and recommendation APIs. Timeline, audit, draft, pursuit review, archive reason, direct opportunity relationship map linkage, and value-threshold approval remain backend gaps.
+      Opportunity Pipeline uses hardened opportunity, candidate conversion, relationship map, capacity requirement, timeline, and audit APIs. Value-threshold approval remains deferred unless backend role/value authority is added later.
       {unavailable.length ? <p className="muted">Unavailable reads in this session: {unique(unavailable).join(", ")}.</p> : null}
     </div>
   );
