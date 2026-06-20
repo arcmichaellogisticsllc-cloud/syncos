@@ -5,7 +5,7 @@ import { CommandShell } from "../dashboard-components";
 const intelligenceNav = [
   ["/intelligence/signals", "Signal Feed", "active"],
   ["/intelligence/organizations", "Organizations", "active"],
-  ["/intelligence/contacts", "Contacts", "coming"],
+  ["/intelligence/contacts", "Contacts", "active"],
   ["/intelligence/relationship-maps", "Relationship Maps", "coming"],
 ];
 

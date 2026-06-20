@@ -54,6 +54,14 @@ export const defaultOrganizationPermissions = [
   "learning_score.read",
 ];
 
+export const defaultContactPermissions = [
+  ...defaultOrganizationPermissions,
+  "contact.update",
+  "contact.archive",
+  "constraint.create",
+  "recommendation.read",
+];
+
 export function readToken() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem(tokenKey) ?? "";

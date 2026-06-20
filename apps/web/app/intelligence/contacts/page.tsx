@@ -1,5 +1,5 @@
-import { PlaceholderPage } from "../intelligence-shell";
+import { ContactDirectory } from "./contact-workspace";
 
-export default function ContactsPlaceholder() {
-  return <PlaceholderPage title="Contacts" />;
+export default function ContactsPage() {
+  return <ContactDirectory />;
 }
