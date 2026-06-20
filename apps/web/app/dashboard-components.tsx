@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { formatValue, type DashboardData, valueAt } from "./dashboard-data";
 
 const navItems = [
+  ["/intelligence/signals", "Intelligence"],
   ["/executive", "Executive"],
   ["/growth", "Growth"],
   ["/operations", "Operations"],
