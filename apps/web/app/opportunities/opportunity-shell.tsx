@@ -4,7 +4,7 @@ import { CommandShell } from "../dashboard-components";
 
 const opportunityNav = [
   ["/opportunities/candidates", "Candidate Board", "active"],
-  ["/opportunities/pipeline", "Opportunity Pipeline", "placeholder"],
+  ["/opportunities/pipeline", "Opportunity Pipeline", "active"],
   ["/opportunities/pursuits", "Pursuit Management", "placeholder"],
 ];
 
@@ -32,4 +32,3 @@ export function OpportunityShell({ title, purpose, children }: { title: string; 
     </CommandShell>
   );
 }
-

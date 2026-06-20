@@ -104,6 +104,22 @@ export const defaultOpportunityPermissions = [
   "candidate_signal.create",
   "candidate_signal.update",
   "candidate_signal.archive",
+  "opportunity.read",
+  "opportunity.create",
+  "opportunity.update",
+  "opportunity.pursuit_approve",
+  "opportunity.pursue",
+  "opportunity.proposal",
+  "opportunity.negotiation",
+  "opportunity.award",
+  "opportunity.lost",
+  "opportunity.defer",
+  "opportunity.archive",
+  "opportunity.score",
+  "capacity_requirement.read",
+  "capacity_requirement.create",
+  "capacity_requirement.update",
+  "capacity_requirement.archive",
 ];
 
 export function readToken() {
