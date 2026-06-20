@@ -141,7 +141,7 @@ async function main() {
   const opportunityCount = await client.query("SELECT count(*)::int AS count FROM opportunities");
   if (opportunityCount.rows[0].count !== 0) throw new Error("Sprint 2 smoke created an opportunity record");
 
-  await expectStatus("archive candidate signal", "POST", `/candidate-signals/${candidateSignal.id}/archive`, `Bearer ${token}`, 201, {});
+  await expectStatus("archive candidate signal", "POST", `/candidate-signals/${candidateSignal.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "signal_no_longer_relevant" });
   await client.end();
   console.log("sprint2 smoke passed");
 }

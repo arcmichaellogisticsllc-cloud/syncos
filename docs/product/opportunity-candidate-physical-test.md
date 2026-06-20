@@ -8,7 +8,7 @@ Validate that an operator can use the Opportunity Candidate workspace without AP
 
 - Tester has a valid SyncOS user session or JWT.
 - Tester has permissions required for the actions being tested.
-- Existing organization and signal data are available for the tenant.
+- Existing organization, signal, and relationship map data are available for the tenant.
 
 ## Test Steps
 
@@ -20,27 +20,31 @@ Validate that an operator can use the Opportunity Candidate workspace without AP
 6. Assign organization.
 7. Assign territory.
 8. Assign work type.
-9. Attach a signal during create if available.
-10. Open Candidate Detail.
-11. Confirm header shows candidate status, organization, territory, work type, signal count, and score fields.
-12. View related organization panel.
-13. View related signals panel.
-14. Attach another signal from Candidate Detail.
-15. View relationship access panel.
-16. Confirm no relationship map is invented when none exists.
-17. Score candidate if the user has `opportunity_candidate.score`.
-18. Move candidate to Monitoring.
-19. Move candidate to Investigating.
-20. Qualify candidate when backend readiness allows it.
-21. Reject a candidate with reason.
-22. Archive a candidate with reason where supported.
-23. View constraints slice.
-24. View recommendations slice.
-25. View timeline slice and confirm unsupported state if endpoint is absent.
-26. View audit slice as authorized user and confirm unsupported state if endpoint is absent.
-27. Confirm unauthorized user cannot perform hidden or disabled actions.
-28. Open AI Candidate Research placeholder.
-29. Confirm no opportunity is created.
+9. Enter estimated value if known.
+10. Assign owner where permitted.
+11. Link a relationship map where permitted.
+12. Attach a signal during create if available.
+13. Open Candidate Detail.
+14. Confirm header shows candidate status, organization, territory, work type, estimated value, signal count, relationship access, and score fields.
+15. View related organization panel.
+16. View related signals panel.
+17. Attach another signal from Candidate Detail.
+18. View relationship access panel and confirm linked map data is backend-truthful.
+19. Score candidate if the user has `opportunity_candidate.score`.
+20. Move candidate to Monitoring.
+21. Move candidate to Investigating.
+22. Qualify candidate when backend readiness allows it.
+23. Confirm readiness/completeness updates from backend data.
+24. Reject a candidate with reason and optional note.
+25. Archive a candidate with reason and optional note.
+26. Archive a candidate signal link with reason where available.
+27. View constraints slice.
+28. View recommendations slice.
+29. View timeline slice and confirm candidate/candidate-signal events are visible when permitted.
+30. View audit slice as authorized user.
+31. Confirm unauthorized user cannot see audit.
+32. Open AI Candidate Research placeholder.
+33. Confirm no opportunity is created.
 
 ## Pass Criteria
 
@@ -55,11 +59,8 @@ Validate that an operator can use the Opportunity Candidate workspace without AP
 - Unsupported backend relationships are shown honestly.
 - No Opportunity Pipeline, project creation, capacity deployment, or finance execution is introduced.
 
-## Expected Unsupported States
+## Expected Deferred States
 
-- Candidate timeline endpoint is not available yet.
-- Candidate audit summary endpoint is not available yet.
-- Candidate estimated value is not captured by the current backend contract.
-- Direct candidate-to-relationship-map linking is not available yet.
+- Full Opportunity Pipeline is not present.
 - Capacity fit is only a placeholder/score display in this sprint.
-
+- Project, capacity deployment, pricing, and finance execution are not introduced.

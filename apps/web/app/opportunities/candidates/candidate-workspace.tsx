@@ -19,11 +19,12 @@ import {
 } from "../../intelligence/api";
 import { OpportunityShell } from "../opportunity-shell";
 
-const candidateStatuses = ["created", "monitoring", "investigating", "qualified_candidate", "rejected", "archived"];
+const candidateStatuses = ["created", "monitoring", "investigating", "qualified", "rejected", "archived"];
 const boardStatuses = candidateStatuses;
 const workTypes = ["fiber", "coax", "aerial", "underground", "directional_bore", "trenching", "splicing", "drops", "make_ready", "inspection", "restoration", "project_management", "unknown"];
 const rejectReasons = ["insufficient_evidence", "no_relationship_access", "out_of_territory", "low_value", "poor_fit", "capacity_gap", "not_telecom_work", "duplicate", "other"];
-const archiveReasons = ["duplicate", "stale", "no_longer_relevant", "converted_later", "other"];
+const archiveReasons = ["duplicate", "stale", "no_longer_relevant", "converted_later", "rejected_cleanup", "other"];
+const sourceTypes = ["signal", "organization_research", "relationship_map", "manual_entry", "customer_request", "prime_request", "public_source", "internal_note", "other"];
 
 type CandidateData = {
   candidates: SyncRecord[];
@@ -51,6 +52,8 @@ type CandidateView = SyncRecord & {
   recommendedNextAction: string;
   readyForOpportunity: boolean;
   missingItems: string[];
+  timeline: SyncRecord[];
+  audit: SyncRecord[];
 };
 
 type Filters = {
@@ -128,14 +131,14 @@ export function CandidateBoard() {
         <SummaryCard label="Total Candidates" value={summary.total} onClick={() => setFilters(initialFilters)} />
         <SummaryCard label="Monitoring" value={summary.monitoring} onClick={() => setFilters({ ...initialFilters, status: "monitoring" })} />
         <SummaryCard label="Investigating" value={summary.investigating} onClick={() => setFilters({ ...initialFilters, status: "investigating" })} />
-        <SummaryCard label="Qualified" value={summary.qualified} onClick={() => setFilters({ ...initialFilters, status: "qualified_candidate" })} />
+        <SummaryCard label="Qualified" value={summary.qualified} onClick={() => setFilters({ ...initialFilters, status: "qualified" })} />
         <SummaryCard label="Rejected" value={summary.rejected} onClick={() => setFilters({ ...initialFilters, status: "rejected", archived: "" })} />
         <SummaryCard label="Archived" value={summary.archived} onClick={() => setFilters({ ...initialFilters, archived: "true" })} />
         <SummaryCard label="High Confidence" value={summary.highConfidence} onClick={() => setFilters({ ...initialFilters, confidenceMin: "75" })} />
         <SummaryCard label="Missing Organization" value={summary.missingOrganization} onClick={() => setFilters({ ...initialFilters, hasOrganization: "false", archived: "" })} />
         <SummaryCard label="Missing Signals" value={summary.missingSignals} onClick={() => setFilters({ ...initialFilters, hasSignals: "false", archived: "" })} />
         <SummaryCard label="Missing Relationship Access" value={summary.missingRelationshipAccess} onClick={() => setFilters({ ...initialFilters, hasRelationshipMap: "false", archived: "" })} />
-        <SummaryCard label="Ready For Opportunity" value={summary.readyForOpportunity} onClick={() => setFilters({ ...initialFilters, status: "qualified_candidate" })} />
+        <SummaryCard label="Ready For Opportunity" value={summary.readyForOpportunity} onClick={() => setFilters({ ...initialFilters, status: "qualified" })} />
       </div>
 
       <section className="workspace-panel">
@@ -172,12 +175,12 @@ export function CandidateBoard() {
             ["Needs Review", { status: "created" }],
             ["Monitoring", { status: "monitoring" }],
             ["Investigating", { status: "investigating" }],
-            ["Qualified", { status: "qualified_candidate" }],
+            ["Qualified", { status: "qualified" }],
             ["High Confidence", { confidenceMin: "75" }],
             ["Missing Signals", { hasSignals: "false", archived: "" }],
             ["Missing Organization", { hasOrganization: "false", archived: "" }],
             ["Missing Relationship Access", { hasRelationshipMap: "false", archived: "" }],
-            ["Ready For Opportunity", { status: "qualified_candidate" }],
+            ["Ready For Opportunity", { status: "qualified" }],
             ["Rejected", { status: "rejected", archived: "" }],
             ["Archived", { archived: "true" }],
           ].map(([label, patch]) => (
@@ -212,8 +215,12 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
     work_type: "unknown",
     status: "created",
     evidence_summary: "",
+    source_type: "manual_entry",
+    source_note: "",
+    estimated_value: "",
+    candidate_score: "",
+    relationship_map_id: "",
     confidence_score: "",
-    relationship_access_score: "",
     capacity_fit_score: "",
     strategic_fit_score: "",
     risk_score: "",
@@ -235,10 +242,14 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
             organization_id: textValue(candidate.organization_id, ""),
             territory_id: textValue(candidate.territory_id, ""),
             work_type: textValue(candidate.work_type, "unknown"),
-            status: textValue(candidate.status, "created"),
-            evidence_summary: textValue(candidate.evidence_summary, ""),
+            status: textValue(candidate.normalized_status ?? candidate.status, "created"),
+            evidence_summary: textValue(candidate.summary ?? candidate.evidence_summary, ""),
+            source_type: textValue(candidate.source_type, "manual_entry"),
+            source_note: textValue(candidate.source_note, ""),
+            estimated_value: textValue(candidate.estimated_value, ""),
+            candidate_score: textValue(candidate.candidate_score ?? candidate.score, ""),
+            relationship_map_id: textValue(candidate.relationship_map_id, ""),
             confidence_score: textValue(candidate.confidence_score, ""),
-            relationship_access_score: textValue(candidate.relationship_access_score, ""),
             capacity_fit_score: textValue(candidate.capacity_fit_score, ""),
             strategic_fit_score: textValue(candidate.strategic_fit_score, ""),
             risk_score: textValue(candidate.risk_score, ""),
@@ -267,16 +278,22 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
         organization_id: form.organization_id,
         territory_id: form.territory_id,
         work_type: form.work_type,
+        status: form.status,
+        summary: form.evidence_summary,
         evidence_summary: form.evidence_summary,
+        source_type: form.source_type,
+        source_note: form.source_note,
+        estimated_value: optionalNumber(form.estimated_value),
+        candidate_score: optionalNumber(form.candidate_score),
+        relationship_map_id: form.relationship_map_id,
         owner_user_id: form.owner_user_id,
         confidence_score: optionalNumber(form.confidence_score),
-        relationship_access_score: optionalNumber(form.relationship_access_score),
         capacity_fit_score: optionalNumber(form.capacity_fit_score),
         strategic_fit_score: optionalNumber(form.strategic_fit_score),
         risk_score: optionalNumber(form.risk_score),
       });
       const saved = mode === "edit" && candidateId
-        ? await syncosFetch<SyncRecord>(`/opportunity-candidates/${candidateId}`, { method: "PATCH", body: { ...body, status: form.status } })
+        ? await syncosFetch<SyncRecord>(`/opportunity-candidates/${candidateId}`, { method: "PATCH", body })
         : await syncosFetch<SyncRecord>("/opportunity-candidates", { method: "POST", body });
       const id = String(saved.id ?? candidateId);
       if (mode === "create" && form.owner_user_id) {
@@ -302,17 +319,21 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
           <label>Territory id<input value={form.territory_id} onChange={(event) => setForm({ ...form, territory_id: event.target.value })} required /></label>
           <label>Work type<SelectInline value={form.work_type} options={workTypes} onChange={(work_type) => setForm({ ...form, work_type })} /></label>
           <label>Status<SelectInline value={form.status} options={candidateStatuses} onChange={(status) => setForm({ ...form, status })} /></label>
+          <label>Estimated value<input value={form.estimated_value} onChange={(event) => setForm({ ...form, estimated_value: event.target.value })} type="number" min="0" step="0.01" /></label>
           <label>Confidence score<input value={form.confidence_score} onChange={(event) => setForm({ ...form, confidence_score: event.target.value })} type="number" min="0" max="100" /></label>
+          <label>Candidate score<input value={form.candidate_score} onChange={(event) => setForm({ ...form, candidate_score: event.target.value })} type="number" min="0" max="100" /></label>
           <label>Owner user id<input value={form.owner_user_id} onChange={(event) => setForm({ ...form, owner_user_id: event.target.value })} /></label>
+          <label>Source type<SelectInline value={form.source_type} options={sourceTypes} onChange={(source_type) => setForm({ ...form, source_type })} /></label>
+          <label>Source note<input value={form.source_note} onChange={(event) => setForm({ ...form, source_note: event.target.value })} /></label>
+          <label>Relationship map<SelectInline value={form.relationship_map_id} options={["", ...data.relationshipMaps.map((map) => String(map.id))]} labels={labelMap(data.relationshipMaps, "map_name")} onChange={(relationship_map_id) => setForm({ ...form, relationship_map_id })} /></label>
           <label>Related signal<SelectInline value={form.related_signal_id} options={["", ...data.signals.map((signal) => String(signal.id))]} labels={labelMap(data.signals, "title")} onChange={(related_signal_id) => setForm({ ...form, related_signal_id })} /></label>
           <label>Signal contribution score<input value={form.contribution_score} onChange={(event) => setForm({ ...form, contribution_score: event.target.value })} type="number" min="0" max="100" /></label>
-          <label>Relationship access score<input value={form.relationship_access_score} onChange={(event) => setForm({ ...form, relationship_access_score: event.target.value })} type="number" min="0" max="100" /></label>
           <label>Capacity fit score<input value={form.capacity_fit_score} onChange={(event) => setForm({ ...form, capacity_fit_score: event.target.value })} type="number" min="0" max="100" /></label>
           <label>Strategic fit score<input value={form.strategic_fit_score} onChange={(event) => setForm({ ...form, strategic_fit_score: event.target.value })} type="number" min="0" max="100" /></label>
           <label>Risk score<input value={form.risk_score} onChange={(event) => setForm({ ...form, risk_score: event.target.value })} type="number" min="0" max="100" /></label>
           <label>Summary / evidence<textarea value={form.evidence_summary} onChange={(event) => setForm({ ...form, evidence_summary: event.target.value })} /></label>
         </div>
-        <div className="warning-box">The existing create route starts candidates in Created status. Lifecycle movement uses the dedicated Monitor, Investigate, Qualify, Reject, and Archive actions from Candidate Detail.</div>
+        <div className="warning-box">Lifecycle movement should still use the dedicated Monitor, Investigate, Qualify, Reject, and Archive actions where possible.</div>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity_candidate.create" : "opportunity_candidate.update")}>{mode === "create" ? "Create Candidate" : "Save Candidate"}</button>
           <Link href={candidateId ? `/opportunities/candidates/${candidateId}` : "/opportunities/candidates"}>Cancel</Link>
@@ -334,12 +355,23 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
   async function load() {
     setError("");
     try {
-      const [nextData, row, signals, score] = await Promise.all([
+      const [nextData, detail, timeline, audit] = await Promise.all([
         loadCandidateData(),
-        syncosFetch<SyncRecord>(`/opportunity-candidates/${candidateId}`),
-        optionalList(`/opportunity-candidates/${candidateId}/signals`),
-        optionalRecord(`/opportunity-candidates/${candidateId}/score-summary`),
+        syncosFetch<SyncRecord>(`/opportunity-candidates/${candidateId}/detail`),
+        optionalList(`/opportunity-candidates/${candidateId}/timeline`),
+        optionalList(`/opportunity-candidates/${candidateId}/audit-summary`),
       ]);
+      const row = {
+        ...(detail.candidate as SyncRecord),
+        organization_context: detail.organization_context,
+        attached_signals: detail.attached_signals,
+        relationship_map_context: detail.relationship_map_context,
+        constraints_summary: detail.constraints_summary,
+        recommendations_summary: detail.recommendations_summary,
+        timeline,
+        audit,
+      } as SyncRecord;
+      const signals = Array.isArray(detail.attached_signals) ? detail.attached_signals as SyncRecord[] : [];
       const merged = {
         ...nextData,
         candidates: [row, ...nextData.candidates.filter((candidateRow) => candidateRow.id !== row.id)],
@@ -347,7 +379,7 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
       };
       setData(merged);
       setCandidate(enrichCandidate(row, merged));
-      setScoreSummary(score);
+      setScoreSummary(detail.score_summary && typeof detail.score_summary === "object" ? detail.score_summary as SyncRecord : null);
     } catch (nextError) {
       setError((nextError as Error).message);
     }
@@ -385,6 +417,8 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.qualify") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "qualify", load, setError)}>Qualify</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.reject") || candidate.status === "archived"} onClick={() => setModal("reject")}>Reject</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.archive") || candidate.status === "archived"} onClick={() => setModal("archive")}>Archive</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.assign_owner") || candidate.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.link_relationship_map") || candidate.status === "archived"} onClick={() => setModal("relationship")}>{candidate.relationshipMap ? "Change Relationship Map" : "Link Relationship Map"}</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "candidate_signal.create") || candidate.status === "archived"} onClick={() => setModal("signal")}>Attach Signal</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.score") || candidate.status === "archived"} onClick={() => void scoreCandidate(candidate, load, setError)}>Score Candidate</button>
                 <button type="button" onClick={() => setModal("research")}>Research Candidate</button>
@@ -393,7 +427,7 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
             <div className="summary-grid">
               <SummaryMetric label="Candidate Score" value={scoreValue(candidate.candidateScore)} />
               <SummaryMetric label="Confidence Score" value={scoreValue(candidate.confidenceScore)} />
-              <SummaryMetric label="Estimated Value" value="Not captured yet" />
+              <SummaryMetric label="Estimated Value" value={moneyValue(candidate.estimated_value)} />
               <SummaryMetric label="Signal Count" value={String(candidate.signalLinks.length)} />
               <SummaryMetric label="Relationship Access" value={scoreValue(candidate.relationshipAccessScore)} />
               <SummaryMetric label="Organization Work Relevance" value={scoreValue(nullableNumber(candidate.organization?.work_relevance_score))} />
@@ -413,7 +447,7 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
                 <dt>Actor roles</dt><dd>{arrayValue(candidate.organization?.actor_roles).map(formatAction).join(", ") || "Not captured yet"}</dd>
                 <dt>Territory</dt><dd>{textValue(candidate.territory_name ?? candidate.territory_id)}</dd>
                 <dt>Work type</dt><dd>{formatAction(candidate.work_type)}</dd>
-                <dt>Estimated value</dt><dd>Not captured yet</dd>
+                <dt>Estimated value</dt><dd>{moneyValue(candidate.estimated_value)}</dd>
                 <dt>Relationship access</dt><dd>{candidate.relationshipMap ? "Connected" : "Not linked"}</dd>
               </dl>
               <Checklist title="Candidate readiness" items={candidateReadiness(candidate)} />
@@ -427,6 +461,8 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
             </section>
           </div>
           {modal === "signal" ? <AttachSignalModal candidate={candidate} data={data} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "owner" ? <AssignOwnerModal candidate={candidate} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "relationship" ? <RelationshipMapModal candidate={candidate} data={data} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "reject" ? <RejectModal candidate={candidate} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "archive" ? <ArchiveModal candidate={candidate} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "research" ? <ResearchModal candidate={candidate} onClose={() => setModal("")} /> : null}
@@ -458,7 +494,7 @@ function CandidateCard({ candidate }: { candidate: CandidateView }) {
       <div className="mini-grid">
         <span>Territory: {textValue(candidate.territory_name ?? candidate.territory_id)}</span>
         <span>Work: {formatAction(candidate.work_type)}</span>
-        <span>Value: Not captured yet</span>
+        <span>Value: {moneyValue(candidate.estimated_value)}</span>
         <span>Confidence: {scoreValue(candidate.confidenceScore)}</span>
         <span>Candidate score: {scoreValue(candidate.candidateScore)}</span>
         <span>Relationship: {scoreValue(candidate.relationshipAccessScore)}</span>
@@ -487,7 +523,7 @@ function CandidateTable({ candidates }: { candidates: CandidateView[] }) {
               <td>{candidate.organization ? <Link href={`/intelligence/organizations/${candidate.organization.id}`}>{textValue(candidate.organization.name)}</Link> : "Not linked"}</td>
               <td>{textValue(candidate.territory_name ?? candidate.territory_id)}</td>
               <td>{formatAction(candidate.work_type)}</td>
-              <td>Not captured yet</td>
+              <td>{moneyValue(candidate.estimated_value)}</td>
               <td>{scoreValue(candidate.confidenceScore)}</td>
               <td>{scoreValue(candidate.candidateScore)}</td>
               <td>{candidate.relationshipMap ? <Link href={`/intelligence/relationship-maps/${candidate.relationshipMap.id}`}>{scoreValue(candidate.relationshipAccessScore)}</Link> : scoreValue(candidate.relationshipAccessScore)}</td>
@@ -508,11 +544,11 @@ function CandidateTab({ tab, candidate, data, scoreSummary, permissions, onAttac
   if (tab === "overview") {
     return (
       <div className="workspace-panel">
-        <SummaryMetric label="Candidate summary" value={textValue(candidate.evidence_summary, "No summary captured yet.")} />
+        <SummaryMetric label="Candidate summary" value={textValue(candidate.summary ?? candidate.evidence_summary, "No summary captured yet.")} />
         <SummaryMetric label="Why this candidate matters" value="This candidate represents possible telecom work that has not yet become a formal opportunity. It should be monitored, investigated, qualified, or rejected based on evidence, relationship access, capacity fit, and strategic relevance." />
-        <SummaryMetric label="Source / origin" value={candidate.signals.length ? "Attached signal intelligence" : "Not linked yet"} />
+        <SummaryMetric label="Source / origin" value={candidate.source_type ? formatAction(candidate.source_type) : candidate.signals.length ? "Attached signal intelligence" : "Not linked yet"} />
         <SummaryMetric label="Work type" value={formatAction(candidate.work_type)} />
-        <SummaryMetric label="Estimated value" value="Not captured yet" />
+        <SummaryMetric label="Estimated value" value={moneyValue(candidate.estimated_value)} />
         <SummaryMetric label="Created" value={dateValue(candidate.created_at)} />
         <SummaryMetric label="Updated" value={dateValue(candidate.updated_at)} />
         <SummaryMetric label="Owner" value={textValue(candidate.owner_name ?? candidate.owner_user_id)} />
@@ -544,21 +580,78 @@ function CandidateTab({ tab, candidate, data, scoreSummary, permissions, onAttac
   }
   if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(candidate, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this candidate." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={relatedRecommendations(candidate, data)} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this candidate." />;
-  if (tab === "timeline") return <div className="empty-state">Candidate timeline endpoint is not available yet.</div>;
-  if (tab === "audit") return <div className="empty-state">Candidate audit summary is not available yet.</div>;
+  if (tab === "timeline") return <ObjectSlice title="Candidate Timeline" rows={candidate.timeline} columns={["event_type", "actor_name", "timestamp", "object_type", "object_id", "summary"]} empty="Candidate timeline endpoint is not available yet." />;
+  if (tab === "audit") return <ObjectSlice title="Candidate Audit" rows={candidate.audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} empty="Candidate audit summary is not available or you do not have permission." />;
   return null;
+}
+
+function AssignOwnerModal({ candidate, onClose, onSaved }: { candidate: CandidateView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [ownerUserId, setOwnerUserId] = useState(textValue(candidate.owner_user_id, ""));
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    if (!ownerUserId) return setError("Owner user id is required.");
+    try {
+      await syncosFetch(`/opportunity-candidates/${candidate.id}/assign-owner`, { method: "POST", body: { owner_user_id: ownerUserId } });
+      await onSaved();
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    }
+  }
+  return (
+    <Modal title="Assign Candidate Owner" onClose={onClose}>
+      {error ? <div className="error-banner">{error}</div> : null}
+      <form className="compact-modal" onSubmit={(event) => void submit(event)}>
+        <label>Owner user id<input value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} /></label>
+        <button className="primary-button" type="submit">Assign Owner</button>
+      </form>
+    </Modal>
+  );
+}
+
+function RelationshipMapModal({ candidate, data, onClose, onSaved }: { candidate: CandidateView; data: CandidateData; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [relationshipMapId, setRelationshipMapId] = useState(textValue(candidate.relationship_map_id, ""));
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      if (relationshipMapId) {
+        await syncosFetch(`/opportunity-candidates/${candidate.id}/link-relationship-map`, { method: "POST", body: { relationship_map_id: relationshipMapId } });
+      } else {
+        await syncosFetch(`/opportunity-candidates/${candidate.id}/unlink-relationship-map`, { method: "POST", body: {} });
+      }
+      await onSaved();
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    }
+  }
+  return (
+    <Modal title="Link Relationship Map" onClose={onClose}>
+      {error ? <div className="error-banner">{error}</div> : null}
+      <form className="compact-modal" onSubmit={(event) => void submit(event)}>
+        <label>Relationship map<SelectInline value={relationshipMapId} options={["", ...data.relationshipMaps.map((map) => String(map.id))]} labels={labelMap(data.relationshipMaps, "map_name")} onChange={setRelationshipMapId} /></label>
+        <div className="empty-state">Select a tenant-scoped relationship map to make relationship access backend-truthful for this candidate. Leave blank to unlink.</div>
+        <button className="primary-button" type="submit">Save Relationship Link</button>
+      </form>
+    </Modal>
+  );
 }
 
 function AttachSignalModal({ candidate, data, onClose, onSaved }: { candidate: CandidateView; data: CandidateData; onClose: () => void; onSaved: () => Promise<void> }) {
   const [signalId, setSignalId] = useState("");
   const [contribution, setContribution] = useState("50");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     if (!signalId) return setError("Select a signal to attach.");
     try {
-      await syncosFetch(`/opportunity-candidates/${candidate.id}/signals`, { method: "POST", body: { signal_id: signalId, contribution_score: optionalNumber(contribution) ?? 50 } });
+      await syncosFetch(`/opportunity-candidates/${candidate.id}/signals`, { method: "POST", body: { signal_id: signalId, contribution_score: optionalNumber(contribution) ?? 50, contribution_note: note } });
       await onSaved();
       onClose();
     } catch (nextError) {
@@ -571,6 +664,7 @@ function AttachSignalModal({ candidate, data, onClose, onSaved }: { candidate: C
       <form className="compact-modal" onSubmit={(event) => void submit(event)}>
         <label>Signal<SelectInline value={signalId} options={["", ...data.signals.map((signal) => String(signal.id))]} labels={labelMap(data.signals, "title")} onChange={setSignalId} /></label>
         <label>Contribution score<input value={contribution} onChange={(event) => setContribution(event.target.value)} type="number" min="0" max="100" /></label>
+        <label>Contribution note<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
         <button className="primary-button" type="submit">Attach Signal</button>
       </form>
     </Modal>
@@ -579,12 +673,13 @@ function AttachSignalModal({ candidate, data, onClose, onSaved }: { candidate: C
 
 function RejectModal({ candidate, onClose, onSaved }: { candidate: CandidateView; onClose: () => void; onSaved: () => Promise<void> }) {
   const [reason, setReason] = useState("insufficient_evidence");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     try {
-      await syncosFetch(`/opportunity-candidates/${candidate.id}/reject`, { method: "POST", body: { rejection_reason: reason } });
+      await syncosFetch(`/opportunity-candidates/${candidate.id}/reject`, { method: "POST", body: { rejection_reason: reason, rejection_note: note } });
       await onSaved();
       onClose();
     } catch (nextError) {
@@ -596,6 +691,7 @@ function RejectModal({ candidate, onClose, onSaved }: { candidate: CandidateView
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="compact-modal" onSubmit={(event) => void submit(event)}>
         <label>Reason<SelectInline value={reason} options={rejectReasons} onChange={setReason} /></label>
+        <label>Note<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
         <button className="primary-button" type="submit">Reject Candidate</button>
       </form>
     </Modal>
@@ -604,12 +700,13 @@ function RejectModal({ candidate, onClose, onSaved }: { candidate: CandidateView
 
 function ArchiveModal({ candidate, onClose, onSaved }: { candidate: CandidateView; onClose: () => void; onSaved: () => Promise<void> }) {
   const [reason, setReason] = useState("stale");
+  const [note, setNote] = useState("");
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     try {
-      await syncosFetch(`/opportunity-candidates/${candidate.id}/archive`, { method: "POST", body: { archive_reason: reason } });
+      await syncosFetch(`/opportunity-candidates/${candidate.id}/archive`, { method: "POST", body: { archive_reason: reason, archive_note: note } });
       await onSaved();
       onClose();
     } catch (nextError) {
@@ -621,7 +718,7 @@ function ArchiveModal({ candidate, onClose, onSaved }: { candidate: CandidateVie
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="compact-modal" onSubmit={(event) => void submit(event)}>
         <label>Reason<SelectInline value={reason} options={archiveReasons} onChange={setReason} /></label>
-        <div className="empty-state">The current backend archive route preserves the candidate but does not persist archive reason yet.</div>
+        <label>Note<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
         <button className="primary-button" type="submit">Archive Candidate</button>
       </form>
     </Modal>
@@ -694,21 +791,21 @@ async function optionalRecord(path: string): Promise<SyncRecord | null> {
 
 function enrichCandidate(candidate: SyncRecord, data: CandidateData): CandidateView {
   const id = String(candidate.id ?? "");
-  const signalLinks = data.candidateSignalsByCandidate[id] ?? [];
+  const signalLinks = Array.isArray(candidate.attached_signals) ? candidate.attached_signals as SyncRecord[] : data.candidateSignalsByCandidate[id] ?? [];
   const signals: SyncRecord[] = signalLinks.map((link) => {
     const signal = data.signals.find((row) => row.id === link.signal_id) ?? {};
-    return { ...signal, contribution_score: link.contribution_score, candidate_signal_id: link.id } as SyncRecord;
+    return { ...signal, ...link, title: link.signal_title ?? link.title ?? signal.title, contribution_score: link.contribution_score, candidate_signal_id: link.candidate_signal_id ?? link.id } as SyncRecord;
   }).filter((signal) => signal.id || signal.candidate_signal_id);
-  const organization = data.organizations.find((row) => row.id === candidate.organization_id) ?? objectFromPrefix(candidate, "organization");
-  const relationshipMap = bestRelationshipMap(candidate, organization, data.relationshipMaps);
-  const relationshipAccessScore = nullableNumber(candidate.relationship_access_score ?? relationshipMap?.relationship_access_score ?? relationshipMap?.access_score);
+  const organization = objectRecord(candidate.organization_context) ?? data.organizations.find((row) => row.id === candidate.organization_id) ?? objectFromPrefix(candidate, "organization");
+  const relationshipMap = objectRecord(candidate.relationship_map_context) ?? bestRelationshipMap(candidate, data.relationshipMaps);
+  const relationshipAccessScore = nullableNumber(candidate.relationship_access_score ?? relationshipMap?.relationship_access_score);
   const candidateScore = nullableNumber(candidate.score ?? candidate.candidate_score);
   const confidenceScore = nullableNumber(candidate.confidence_score);
   const enriched: CandidateView = {
     ...candidate,
     id,
     name: textValue(candidate.name ?? candidate.title, "Untitled candidate"),
-    status: textValue(candidate.status, "created"),
+    status: textValue(candidate.normalized_status ?? normalizeCandidateStatus(candidate.status), "created"),
     organization,
     signals,
     signalLinks,
@@ -719,32 +816,29 @@ function enrichCandidate(candidate: SyncRecord, data: CandidateData): CandidateV
     recommendedNextAction: "",
     readyForOpportunity: false,
     missingItems: [],
+    timeline: Array.isArray(candidate.timeline) ? candidate.timeline as SyncRecord[] : [],
+    audit: Array.isArray(candidate.audit) ? candidate.audit as SyncRecord[] : [],
   };
-  enriched.missingItems = missingCandidateItems(enriched);
-  enriched.readyForOpportunity = enriched.status === "qualified_candidate" && enriched.missingItems.length === 0;
-  enriched.recommendedNextAction = recommendedNextAction(enriched);
+  enriched.missingItems = arrayValue(candidate.missing_candidate_items).length ? arrayValue(candidate.missing_candidate_items) : missingCandidateItems(enriched);
+  enriched.readyForOpportunity = Boolean(candidate.candidate_ready_for_opportunity) || (enriched.status === "qualified" && enriched.missingItems.length === 0);
+  enriched.recommendedNextAction = textValue(candidate.recommended_next_action, "") || recommendedNextAction(enriched);
   return enriched;
 }
 
-function bestRelationshipMap(candidate: SyncRecord, organization: SyncRecord | undefined, relationshipMaps: SyncRecord[]) {
-  const candidateId = candidate.id;
-  const organizationId = candidate.organization_id ?? organization?.id;
-  const matches = relationshipMaps.filter((map) =>
-    map.related_candidate_id === candidateId ||
-    (map.target_object_type === "opportunity_candidate" && map.target_object_id === candidateId) ||
-    (organizationId && map.target_organization_id === organizationId),
-  );
-  return [...matches].sort((a, b) => numberValue(b.relationship_access_score ?? b.access_score, 0) - numberValue(a.relationship_access_score ?? a.access_score, 0))[0];
+function bestRelationshipMap(candidate: SyncRecord, relationshipMaps: SyncRecord[]) {
+  if (!candidate.relationship_map_id) return undefined;
+  return relationshipMaps.find((map) => map.id === candidate.relationship_map_id);
 }
 
 function missingCandidateItems(candidate: CandidateView) {
   const missing: string[] = [];
   if (!candidate.organization) missing.push("organization");
   if (!candidate.territory_id && !candidate.territory_name) missing.push("territory");
-  if (candidate.signalLinks.length === 0) missing.push("signals");
+  if (Number(candidate.active_signal_count ?? candidate.signalLinks.length) === 0) missing.push("signals");
   if (candidate.confidenceScore === null) missing.push("confidence_score");
   if (candidate.candidateScore === null && candidate.score === undefined) missing.push("candidate_score");
-  if (candidate.relationshipAccessScore === null || candidate.relationshipAccessScore < 50) missing.push("relationship_access");
+  if (!candidate.relationship_map_id) missing.push("relationship_map");
+  else if (candidate.relationshipAccessScore === null || candidate.relationshipAccessScore < 50) missing.push("relationship_access");
   return missing;
 }
 
@@ -752,12 +846,12 @@ function candidateReadiness(candidate: CandidateView): [string, boolean][] {
   return [
     ["Organization attached", Boolean(candidate.organization)],
     ["Territory attached", Boolean(candidate.territory_id ?? candidate.territory_name)],
-    ["At least one signal attached", candidate.signalLinks.length > 0],
+    ["At least one signal attached", Number(candidate.active_signal_count ?? candidate.signalLinks.length) > 0],
     ["Confidence score captured", candidate.confidenceScore !== null],
     ["Candidate score captured", candidate.candidateScore !== null || candidate.score !== undefined],
     ["Relationship access available", candidate.relationshipAccessScore !== null && candidate.relationshipAccessScore >= 50],
     ["No critical constraints", true],
-    ["Qualified status if ready", candidate.status === "qualified_candidate"],
+    ["Qualified status if ready", candidate.status === "qualified"],
   ];
 }
 
@@ -765,13 +859,15 @@ function recommendedNextAction(candidate: CandidateView) {
   if (candidate.status === "archived") return "view_only";
   if (candidate.status === "rejected") return "review_rejection";
   if (!candidate.organization) return "attach_organization";
-  if (candidate.signalLinks.length === 0) return "attach_signal";
+  if (!candidate.territory_id && !candidate.territory_name) return "attach_territory";
+  if (Number(candidate.active_signal_count ?? candidate.signalLinks.length) === 0) return "attach_signal";
+  if (!candidate.relationship_map_id) return "link_relationship_map";
   if (candidate.relationshipAccessScore === null || candidate.relationshipAccessScore < 50) return "build_relationship_access";
-  if (candidate.confidenceScore === null) return "score_candidate";
+  if (candidate.confidenceScore === null && candidate.candidateScore === null) return "score_candidate";
   if (candidate.status === "created") return "monitor_or_investigate";
   if (candidate.status === "monitoring") return "investigate";
-  if (candidate.status === "investigating" && (candidate.candidateScore ?? 0) >= 60) return "qualify_candidate";
-  if (candidate.status === "qualified_candidate") return "create_opportunity_later";
+  if (candidate.status === "investigating" && ((candidate.candidateScore ?? 0) >= 60 || (candidate.confidenceScore ?? 0) >= 60)) return "qualify_candidate";
+  if (candidate.status === "qualified") return "ready_for_opportunity_later";
   return "continue_review";
 }
 
@@ -787,8 +883,9 @@ function candidateMatchesFilters(candidate: CandidateView, filters: Filters) {
   if (filters.scoreMin && (candidate.candidateScore ?? -1) < Number(filters.scoreMin)) return false;
   if (filters.relationshipMin && (candidate.relationshipAccessScore ?? -1) < Number(filters.relationshipMin)) return false;
   if (filters.owner && String(candidate.owner_user_id ?? "") !== filters.owner) return false;
-  if (filters.hasSignals === "true" && candidate.signalLinks.length === 0) return false;
-  if (filters.hasSignals === "false" && candidate.signalLinks.length > 0) return false;
+  const activeSignalCount = Number(candidate.active_signal_count ?? candidate.signalLinks.length);
+  if (filters.hasSignals === "true" && activeSignalCount === 0) return false;
+  if (filters.hasSignals === "false" && activeSignalCount > 0) return false;
   if (filters.hasOrganization === "true" && !candidate.organization) return false;
   if (filters.hasOrganization === "false" && candidate.organization) return false;
   if (filters.hasRelationshipMap === "true" && !candidate.relationshipMap) return false;
@@ -806,7 +903,7 @@ function sortCandidates(candidates: CandidateView[], sort: string) {
     if (sort === "status") return a.status.localeCompare(b.status);
     if (sort === "organization") return textValue(a.organization?.name, "").localeCompare(textValue(b.organization?.name, ""));
     if (sort === "created_desc") return dateNumber(b.created_at) - dateNumber(a.created_at);
-    if (sort === "value_desc") return 0;
+    if (sort === "value_desc") return (nullableNumber(b.estimated_value) ?? -1) - (nullableNumber(a.estimated_value) ?? -1);
     return dateNumber(b.updated_at) - dateNumber(a.updated_at);
   });
 }
@@ -816,7 +913,7 @@ function buildSummary(candidates: CandidateView[]) {
     total: candidates.length,
     monitoring: candidates.filter((candidate) => candidate.status === "monitoring").length,
     investigating: candidates.filter((candidate) => candidate.status === "investigating").length,
-    qualified: candidates.filter((candidate) => candidate.status === "qualified_candidate").length,
+    qualified: candidates.filter((candidate) => candidate.status === "qualified").length,
     rejected: candidates.filter((candidate) => candidate.status === "rejected").length,
     archived: candidates.filter((candidate) => candidate.status === "archived").length,
     highConfidence: candidates.filter((candidate) => (candidate.confidenceScore ?? 0) >= 75).length,
@@ -867,7 +964,7 @@ function statusExplanation(status: string) {
     created: "Candidate exists but has not been actively worked.",
     monitoring: "Candidate is worth watching but not ready for investigation.",
     investigating: "User is gathering more intelligence.",
-    qualified_candidate: "Candidate has enough evidence to support future opportunity creation.",
+    qualified: "Candidate has enough evidence to support future opportunity creation.",
     rejected: "Candidate should not be pursued.",
     archived: "Candidate is preserved but inactive.",
   };
@@ -877,7 +974,7 @@ function statusExplanation(status: string) {
 function UnsupportedNotice({ unavailable }: { unavailable: string[] }) {
   return (
     <div className="empty-state">
-      Candidate workspace uses existing candidate, signal, organization, relationship map, constraint, and recommendation APIs. Estimated value, candidate-specific timeline, candidate audit summary, and direct relationship map linking are not exposed by the current backend contract.
+      Candidate workspace uses enriched candidate, signal, organization, relationship map, constraint, recommendation, timeline, and audit APIs. Unsupported downstream opportunity, capacity, and finance execution remains intentionally deferred.
       {unavailable.length ? <p className="muted">Unavailable reads in this session: {unique(unavailable).join(", ")}.</p> : null}
     </div>
   );
@@ -1001,6 +1098,10 @@ function objectFromPrefix(row: SyncRecord, prefix: string): SyncRecord | undefin
   return result;
 }
 
+function objectRecord(value: unknown): SyncRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as SyncRecord : undefined;
+}
+
 function labelMap(rows: SyncRecord[], field: string) {
   return Object.fromEntries(rows.map((row) => [String(row.id), textValue(row[field] ?? row.name ?? row.title, String(row.id))]));
 }
@@ -1047,6 +1148,15 @@ function displayValue(value: unknown) {
 
 function scoreValue(value: number | null) {
   return value === null ? "Not captured yet" : String(Math.round(value));
+}
+
+function moneyValue(value: unknown) {
+  const next = nullableNumber(value);
+  return next === null ? "Not captured yet" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(next);
+}
+
+function normalizeCandidateStatus(value: unknown) {
+  return value === "qualified_candidate" ? "qualified" : textValue(value, "created");
 }
 
 function formatAction(value: unknown) {

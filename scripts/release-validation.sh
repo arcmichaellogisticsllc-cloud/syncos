@@ -53,5 +53,6 @@ npm run intelligence:smoke
 npm run organization:smoke
 npm run contact:smoke
 npm run relationship:smoke
+npm run candidate:smoke
 
 echo "release validation passed"

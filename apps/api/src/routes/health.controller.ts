@@ -60,6 +60,12 @@ export class HealthController {
       "013_workflows_tasks_escalations.sql",
       "014_kpis_learning.sql",
       "015_files_file_links.sql",
+      "016_tenant_fk_hardening.sql",
+      "017_intelligence_signal_contract_hardening.sql",
+      "018_organization_contract_hardening.sql",
+      "019_contact_contract_hardening.sql",
+      "020_relationship_contract_hardening.sql",
+      "021_opportunity_candidate_contract_hardening.sql",
     ];
     const result = await this.pool.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id");
     const applied = result.rows.map((row) => row.id);
