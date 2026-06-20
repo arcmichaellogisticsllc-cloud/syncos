@@ -32,6 +32,7 @@
     "intelligence:smoke": "npm run smoke:intelligence -w @syncos/api",
     "organization:smoke": "npm run smoke:organization -w @syncos/api",
     "contact:smoke": "npm run smoke:contact -w @syncos/api",
+    "relationship:smoke": "npm run smoke:relationship -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {

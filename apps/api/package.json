@@ -28,6 +28,7 @@
     "smoke:intelligence": "node scripts/intelligence-smoke.js",
     "smoke:organization": "node scripts/organization-smoke.js",
     "smoke:contact": "node scripts/contact-smoke.js",
+    "smoke:relationship": "node scripts/relationship-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

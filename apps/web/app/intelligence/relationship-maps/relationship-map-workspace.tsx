@@ -20,7 +20,7 @@ import { IntelligenceShell } from "../intelligence-shell";
 
 const mapTypes = ["organization_access", "opportunity_access", "customer_access", "prime_access", "engineering_access", "capacity_access", "billing_access", "field_access", "executive_access"];
 const mapStatuses = ["no_path", "weak_path", "identified_path", "introduction_requested", "conversation_opened", "relationship_active", "strategic_access", "dormant", "archived"];
-const backendMapStatuses = ["no_path", "weak_path", "identified_path", "introduction_requested", "conversation_opened", "relationship_active", "archived"];
+const backendMapStatuses = mapStatuses.filter((status) => status !== "archived");
 const pathStatuses = ["proposed", "active", "inactive", "archived"];
 const archiveReasons = ["no_longer_relevant", "duplicate", "target_changed", "organization_inactive", "opportunity_lost", "relationship_no_longer_useful", "other"];
 
@@ -34,6 +34,8 @@ type RelationshipData = {
   constraints: SyncRecord[];
   recommendations: SyncRecord[];
   workflowTasks: SyncRecord[];
+  timelineByMap: Record<string, SyncRecord[]>;
+  auditByMap: Record<string, SyncRecord[]>;
   unavailable: string[];
 };
 
@@ -54,11 +56,12 @@ type MapView = SyncRecord & {
   gaps: RelationshipGap[];
   mapType: string;
   objective: string;
+  desiredOutcome: string;
 };
 
 type RelationshipGap = {
   type: string;
-  severity: "high" | "medium" | "low";
+  severity: "critical" | "high" | "medium" | "low";
   suggestedAction: string;
 };
 
@@ -141,7 +144,7 @@ export function RelationshipMapDirectory() {
         <div className="section-toolbar">
           <div>
             <h2>Relationship Map Directory</h2>
-            <p className="muted">Filters are client-side over tenant-scoped rows because the current backend list route returns raw relationship maps.</p>
+            <p className="muted">Filters are shown over the tenant-scoped enriched relationship read model.</p>
           </div>
           <Link className="primary-button link-button" href="/intelligence/relationship-maps/new" aria-disabled={!hasPermission(session.permissions, "relationship_map.create")}>Create Relationship Map</Link>
         </div>
@@ -203,7 +206,12 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
     target_contact_id: "",
     objective: "",
     desired_outcome: "",
-    target_object_id: "",
+    related_candidate_id: "",
+    related_opportunity_id: "",
+    owner_user_id: "",
+    priority: "",
+    strategic_flag: false,
+    due_date: "",
     status: "no_path",
   });
   const [error, setError] = useState("");
@@ -217,12 +225,17 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
           const map = await syncosFetch<SyncRecord>(`/relationship-maps/${mapId}`);
           setForm({
             name: textValue(map.name, ""),
-            map_type: deriveMapType(map),
+            map_type: textValue(map.map_type, deriveMapType(map)),
             target_organization_id: textValue(map.target_organization_id, ""),
             target_contact_id: textValue(map.target_contact_id, ""),
-            objective: "",
-            desired_outcome: "",
-            target_object_id: textValue(map.target_object_type === "opportunity_candidate" ? map.target_object_id : "", ""),
+            objective: textValue(map.objective, ""),
+            desired_outcome: textValue(map.desired_outcome, ""),
+            related_candidate_id: textValue(map.related_candidate_id ?? (map.target_object_type === "opportunity_candidate" ? map.target_object_id : ""), ""),
+            related_opportunity_id: textValue(map.related_opportunity_id, ""),
+            owner_user_id: textValue(map.owner_user_id, ""),
+            priority: textValue(map.priority, ""),
+            strategic_flag: Boolean(map.strategic_flag),
+            due_date: textValue(map.due_date, ""),
             status: textValue(map.status, "no_path"),
           });
         }
@@ -238,19 +251,26 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
     setError("");
     if (!form.name.trim()) return setError("Relationship map name is required.");
     if (!form.target_organization_id) return setError("Target organization is required.");
-    if (!form.objective.trim()) return setError("Objective is required for the operator workflow. The current backend does not persist it yet.");
+    if (!form.objective.trim()) return setError("Objective is required.");
     const body = prune({
       name: form.name,
+      map_type: form.map_type,
+      objective: form.objective,
+      desired_outcome: form.desired_outcome,
       target_organization_id: form.target_organization_id,
       target_contact_id: form.target_contact_id,
-      target_object_type: form.target_object_id ? "opportunity_candidate" : undefined,
-      target_object_id: form.target_object_id || undefined,
+      related_candidate_id: form.related_candidate_id || undefined,
+      related_opportunity_id: form.related_opportunity_id || undefined,
+      owner_user_id: form.owner_user_id || undefined,
+      priority: form.priority || undefined,
+      strategic_flag: form.strategic_flag,
+      due_date: form.due_date || undefined,
       status: mode === "create" && backendMapStatuses.includes(form.status) ? form.status : undefined,
     });
     try {
       const saved = mode === "edit" && mapId ? await syncosFetch<SyncRecord>(`/relationship-maps/${mapId}`, { method: "PATCH", body }) : await syncosFetch<SyncRecord>("/relationship-maps", { method: "POST", body });
       if (mode === "edit" && mapId && form.status && backendMapStatuses.includes(form.status)) {
-        await syncosFetch(`/relationship-maps/${mapId}/status`, { method: "POST", body: { status: form.status } });
+        await syncosFetch(`/relationship-maps/${mapId}/status`, { method: "POST", body: { status: form.status, reason: "Updated from relationship map edit form." } });
       }
       router.push(`/intelligence/relationship-maps/${saved.id ?? mapId}`);
     } catch (nextError) {
@@ -269,12 +289,17 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
           <label>Map type<SelectInline value={form.map_type} options={mapTypes} onChange={(map_type) => setForm({ ...form, map_type })} /></label>
           <label>Target organization<SelectInline value={form.target_organization_id} options={["", ...data.organizations.map((organization) => String(organization.id))]} labels={labelMap(data.organizations, "name")} onChange={(target_organization_id) => setForm({ ...form, target_organization_id, target_contact_id: "" })} /></label>
           <label>Target contact<SelectInline value={form.target_contact_id} options={["", ...data.contacts.filter((contact) => !form.target_organization_id || contact.organization_id === form.target_organization_id).map((contact) => String(contact.id))]} labels={contactLabels(data.contacts)} onChange={(target_contact_id) => setForm({ ...form, target_contact_id })} /></label>
-          <label>Related candidate<SelectInline value={form.target_object_id} options={["", ...data.candidates.map((candidate) => String(candidate.id))]} labels={labelMap(data.candidates, "name")} onChange={(target_object_id) => setForm({ ...form, target_object_id })} /></label>
+          <label>Related candidate<SelectInline value={form.related_candidate_id} options={["", ...data.candidates.map((candidate) => String(candidate.id))]} labels={labelMap(data.candidates, "name")} onChange={(related_candidate_id) => setForm({ ...form, related_candidate_id })} /></label>
+          <label>Related opportunity<SelectInline value={form.related_opportunity_id} options={["", ...data.opportunities.map((opportunity) => String(opportunity.id))]} labels={labelMap(data.opportunities, "name")} onChange={(related_opportunity_id) => setForm({ ...form, related_opportunity_id })} /></label>
+          <label>Owner user id<input value={form.owner_user_id} onChange={(event) => setForm({ ...form, owner_user_id: event.target.value })} /></label>
+          <label>Priority<input value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} /></label>
+          <label>Due date<input value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} type="date" /></label>
+          <label>Strategic flag<input type="checkbox" checked={form.strategic_flag} onChange={(event) => setForm({ ...form, strategic_flag: event.target.checked })} /></label>
           <label>Status<SelectInline value={form.status} options={backendMapStatuses} onChange={(status) => setForm({ ...form, status })} /></label>
           <label>Objective<textarea value={form.objective} onChange={(event) => setForm({ ...form, objective: event.target.value })} required /></label>
           <label>Desired outcome<textarea value={form.desired_outcome} onChange={(event) => setForm({ ...form, desired_outcome: event.target.value })} /></label>
         </div>
-        <div className="warning-box">Map type, objective, desired outcome, owner, priority, strategic flag, and due date are product fields not persisted by the current relationship map backend. They are collected for operator context and documented as backend gaps.</div>
+        <div className="warning-box">This form uses the hardened relationship map API. Owner choices appear when the backend exposes tenant users to the UI.</div>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update")}>{mode === "create" ? "Create Relationship Map" : "Save Relationship Map"}</button>
           <Link href={mapId ? `/intelligence/relationship-maps/${mapId}` : "/intelligence/relationship-maps"}>Cancel</Link>
@@ -295,12 +320,21 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
   async function load() {
     setError("");
     try {
-      const [nextData, nextMap, paths] = await Promise.all([
+      const [nextData, detail, timeline, audit] = await Promise.all([
         loadRelationshipData(),
-        syncosFetch<SyncRecord>(`/relationship-maps/${mapId}`),
-        optionalList(`/relationship-maps/${mapId}/paths`),
+        syncosFetch<SyncRecord>(`/relationship-maps/${mapId}/detail`),
+        hasPermission(session.permissions, "relationship_map.timeline.read") ? optionalList(`/relationship-maps/${mapId}/timeline`) : Promise.resolve([]),
+        hasPermission(session.permissions, "relationship_map.audit.read") ? optionalList(`/relationship-maps/${mapId}/audit-summary`) : Promise.resolve([]),
       ]);
+      const nextMap = (detail.relationship_map ?? detail) as SyncRecord;
+      const paths = Array.isArray(detail.paths) ? detail.paths as SyncRecord[] : [];
+      const candidates = detail.related_candidate ? [detail.related_candidate as SyncRecord, ...nextData.candidates.filter((candidate) => candidate.id !== (detail.related_candidate as SyncRecord).id)] : nextData.candidates;
+      const opportunities = detail.related_opportunity ? [detail.related_opportunity as SyncRecord, ...nextData.opportunities.filter((opportunity) => opportunity.id !== (detail.related_opportunity as SyncRecord).id)] : nextData.opportunities;
       const merged = { ...nextData, maps: [nextMap, ...nextData.maps.filter((row) => row.id !== nextMap.id)], pathsByMap: { ...nextData.pathsByMap, [mapId]: paths } };
+      merged.candidates = candidates;
+      merged.opportunities = opportunities;
+      merged.timelineByMap = { ...nextData.timelineByMap, [mapId]: timeline };
+      merged.auditByMap = { ...nextData.auditByMap, [mapId]: audit };
       setData(merged);
       setMap(enrichMap(nextMap, merged));
     } catch (nextError) {
@@ -364,9 +398,9 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
                 <dt>Target actor roles</dt><dd>{arrayValue(map.targetOrganization?.actor_roles).map(formatAction).join(", ") || "Not captured yet"}</dd>
                 <dt>Target contact role</dt><dd>{formatAction(map.targetContact?.contact_role)}</dd>
                 <dt>Objective</dt><dd>{map.objective}</dd>
-                <dt>Owner</dt><dd>Not captured yet</dd>
-                <dt>Priority</dt><dd>Not captured yet</dd>
-                <dt>Due date</dt><dd>Not captured yet</dd>
+                <dt>Owner</dt><dd>{textValue(map.owner_name ?? map.owner_user_id)}</dd>
+                <dt>Priority</dt><dd>{textValue(map.priority)}</dd>
+                <dt>Due date</dt><dd>{dateValue(map.due_date)}</dd>
                 <dt>Best path</dt><dd>{map.bestPath ? pathName(map.bestPath, data) : "No active path"}</dd>
               </dl>
               <Checklist items={map.gaps.map((gap) => [gap.type, false])} />
@@ -408,8 +442,8 @@ function RelationshipMapTable({ maps }: { maps: MapView[] }) {
               <td>{formatAction(map.mapType)}</td>
               <td>{map.objective}</td>
               <td><span className="badge">{formatAction(map.status)}</span></td>
-              <td>Not captured yet</td>
-              <td>Not captured yet</td>
+              <td>{textValue(map.owner_name ?? map.owner_user_id)}</td>
+              <td>{textValue(map.priority)}</td>
               <td>{scoreBand(map.bestStrength, "strength")}</td>
               <td>{confidenceBand(map.bestConfidence)}</td>
               <td>{map.accessScore}</td>
@@ -430,11 +464,10 @@ function RelationshipTab({ tab, map, data, permissions, onRank, onEditPath }: { 
     return (
       <div className="workspace-panel">
         <SummaryMetric label="Objective" value={map.objective} />
-        <SummaryMetric label="Desired outcome" value="Not captured yet" />
+        <SummaryMetric label="Desired outcome" value={map.desiredOutcome} />
         <SummaryMetric label="Why it matters" value={mapTypeGuidance(map.mapType)} />
         <SummaryMetric label="Current access gap" value={map.gaps[0]?.type ? formatAction(map.gaps[0].type) : "No blocking gap detected"} />
         <SummaryMetric label="Recommended next action" value={formatAction(map.recommendedNextAction)} />
-        <UnsupportedNotice />
       </div>
     );
   }
@@ -446,9 +479,9 @@ function RelationshipTab({ tab, map, data, permissions, onRank, onEditPath }: { 
   if (tab === "opportunity") return <ObjectSlice title="Related Opportunity" rows={map.opportunity ? [map.opportunity] : []} columns={["name", "status", "estimated_value", "pursuit_score", "capacity_coverage", "relationship_access_score", "owner_name", "decision_date"]} empty="No opportunity is linked to this relationship map." />;
   if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(map, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this relationship map." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={relatedRecommendations(map, data)} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this relationship map." />;
-  if (tab === "workflow") return <ObjectSlice title="Workflow Tasks" rows={[]} columns={["task_name", "assigned_to", "due_at", "status"]} empty="Workflow task linkage for relationship maps is not available yet." />;
-  if (tab === "timeline") return <ObjectSlice title="Timeline" rows={[]} columns={["event_type", "actor_name", "timestamp", "summary"]} empty="Relationship timeline endpoint is not available yet." />;
-  if (tab === "audit") return <ObjectSlice title="Audit" rows={[]} columns={["actor_name", "action", "object_type", "created_at", "correlation_id"]} empty="Relationship audit summary is not available yet." />;
+  if (tab === "workflow") return <ObjectSlice title="Workflow Tasks" rows={data.workflowTasks.filter((task) => task.source_object_type === "relationship_map" && task.source_object_id === map.id)} columns={["task_name", "title", "assigned_to", "due_at", "status"]} empty="Workflow task linkage for relationship maps is not available yet." />;
+  if (tab === "timeline") return <ObjectSlice title="Timeline" rows={data.timelineByMap[map.id] ?? []} columns={["event_type", "actor_name", "timestamp", "summary"]} empty="No relationship timeline entries are available yet." />;
+  if (tab === "audit") return <ObjectSlice title="Audit" rows={data.auditByMap[map.id] ?? []} columns={["actor_name", "action", "object_type", "created_at", "correlation_id"]} empty="Relationship audit summary is not available for this user." />;
   return null;
 }
 
@@ -481,8 +514,8 @@ function PathList({ map, data, permissions, onRank, onEditPath }: { map: MapView
             <dt>To contact</dt><dd>{contactLink(path.to_contact_id, data.contacts)}</dd>
             <dt>Path summary</dt><dd>{pathSummary(path)}</dd>
             <dt>Recommended action</dt><dd>{pathRecommendedAction(path)}</dd>
-            <dt>Risk notes</dt><dd>Not captured yet</dd>
-            <dt>Blocked reason</dt><dd>Not captured yet</dd>
+            <dt>Risk notes</dt><dd>{textValue(path.risk_notes)}</dd>
+            <dt>Blocked reason</dt><dd>{textValue(path.blocked_reason)}</dd>
           </dl>
         </div>
       ))}
@@ -492,6 +525,7 @@ function PathList({ map, data, permissions, onRank, onEditPath }: { map: MapView
 
 function PathModal({ map, data, path, onClose, onSaved }: { map: MapView; data: RelationshipData; path?: SyncRecord; onClose: () => void; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState({
+    path_name: textValue(path?.path_name, ""),
     from_contact_id: textValue(path?.from_contact_id, ""),
     to_contact_id: textValue(path?.to_contact_id ?? map.target_contact_id, ""),
     intermediary_contact_ids: arrayValue(path?.intermediary_contact_ids).join(","),
@@ -508,7 +542,9 @@ function PathModal({ map, data, path, onClose, onSaved }: { map: MapView; data: 
     setError("");
     if (!form.from_contact_id || !form.to_contact_id) return setError("From contact and target contact are required.");
     if (form.from_contact_id === form.to_contact_id) return setError("From contact and target contact must be different.");
+    if (!form.path_name.trim()) return setError("Path name is required.");
     const body = prune({
+      path_name: form.path_name,
       from_contact_id: form.from_contact_id,
       to_contact_id: form.to_contact_id,
       intermediary_contact_ids: form.intermediary_contact_ids.split(",").map((value) => value.trim()).filter(Boolean),
@@ -516,6 +552,7 @@ function PathModal({ map, data, path, onClose, onSaved }: { map: MapView; data: 
       confidence_score: form.confidence_score === "" ? undefined : Number(form.confidence_score),
       rank: form.rank === "" ? undefined : Number(form.rank),
       status: form.status,
+      path_summary: form.path_summary,
       path: form.path_summary ? [{ summary: form.path_summary }] : [],
     });
     try {
@@ -533,6 +570,7 @@ function PathModal({ map, data, path, onClose, onSaved }: { map: MapView; data: 
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
         <div className="form-grid">
+          <label>Path name<input value={form.path_name} onChange={(event) => setForm({ ...form, path_name: event.target.value })} required /></label>
           <label>From contact<SelectInline value={form.from_contact_id} options={["", ...data.contacts.map((contact) => String(contact.id))]} labels={contactLabels(data.contacts)} onChange={(from_contact_id) => setForm({ ...form, from_contact_id })} /></label>
           <label>To contact<SelectInline value={form.to_contact_id} options={["", ...data.contacts.map((contact) => String(contact.id))]} labels={contactLabels(data.contacts)} onChange={(to_contact_id) => setForm({ ...form, to_contact_id })} /></label>
           <label>Intermediary contact ids<input value={form.intermediary_contact_ids} onChange={(event) => setForm({ ...form, intermediary_contact_ids: event.target.value })} placeholder="Comma-separated contact ids" /></label>
@@ -555,6 +593,7 @@ function StatusModal({ map, onClose, onSaved }: { map: MapView; onClose: () => v
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!backendMapStatuses.includes(status)) return setError("The current backend does not support this status.");
+    if (!reason.trim()) return setError("Reason is required.");
     try {
       await syncosFetch(`/relationship-maps/${map.id}/status`, { method: "POST", body: { status, reason } });
       await onSaved();
@@ -568,7 +607,7 @@ function StatusModal({ map, onClose, onSaved }: { map: MapView; onClose: () => v
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
         <label>New status<SelectInline value={status} options={backendMapStatuses} onChange={setStatus} /></label>
-        <label>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+        <label>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} required /></label>
         <button className="primary-button" type="submit">Update Status</button>
       </form>
     </Modal>
@@ -606,9 +645,9 @@ function ArchiveModal({ map, onClose, onSaved }: { map: MapView; onClose: () => 
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!reason) return setError("Archive reason is required by the product workflow. The backend does not persist the reason yet.");
+    if (!reason) return setError("Archive reason is required.");
     try {
-      await syncosFetch(`/relationship-maps/${map.id}/archive`, { method: "POST", body: { reason } });
+      await syncosFetch(`/relationship-maps/${map.id}/archive`, { method: "POST", body: { archive_reason: reason } });
       await onSaved();
       onClose();
     } catch (nextError) {
@@ -666,7 +705,7 @@ async function loadRelationshipData(): Promise<RelationshipData> {
     if (!id) return;
     pathsByMap[id] = await optionalList(`/relationship-maps/${id}/paths`, unavailable, "relationship paths");
   }));
-  return { maps, pathsByMap, organizations, contacts, candidates, opportunities, constraints, recommendations, workflowTasks, unavailable };
+  return { maps, pathsByMap, organizations, contacts, candidates, opportunities, constraints, recommendations, workflowTasks, timelineByMap: {}, auditByMap: {}, unavailable };
 }
 
 async function optionalList(path: string, unavailable: string[] = [], label = path): Promise<SyncRecord[]> {
@@ -685,12 +724,13 @@ function enrichMap(map: SyncRecord, data: RelationshipData): MapView {
   const activePaths = paths.filter((path) => path.status === "active");
   const scoredPaths = (activePaths.length ? activePaths : paths).filter((path) => path.status !== "archived");
   const bestPath = [...scoredPaths].sort((a, b) => accessScoreForPath(b) - accessScoreForPath(a))[0];
-  const targetOrganization = data.organizations.find((organization) => organization.id === map.target_organization_id);
-  const targetContact = data.contacts.find((contact) => contact.id === map.target_contact_id);
-  const candidate = map.target_object_type === "opportunity_candidate" ? data.candidates.find((row) => row.id === map.target_object_id) : undefined;
-  const opportunity = data.opportunities.find((row) => row.relationship_map_id === id || row.opportunity_candidate_id === candidate?.id);
-  const bestStrength = nullableNumber(bestPath?.strength_score);
-  const bestConfidence = nullableNumber(bestPath?.confidence_score);
+  const targetOrganization = data.organizations.find((organization) => organization.id === map.target_organization_id) ?? objectFromPrefix(map, "target_organization");
+  const targetContact = data.contacts.find((contact) => contact.id === map.target_contact_id) ?? objectFromPrefix(map, "target_contact");
+  const candidateId = map.related_candidate_id ?? (map.target_object_type === "opportunity_candidate" ? map.target_object_id : undefined);
+  const candidate = data.candidates.find((row) => row.id === candidateId) ?? objectFromPrefix(map, "related_candidate");
+  const opportunity = data.opportunities.find((row) => row.id === map.related_opportunity_id || row.relationship_map_id === id || row.opportunity_candidate_id === candidate?.id) ?? objectFromPrefix(map, "related_opportunity");
+  const bestStrength = nullableNumber(map.best_path_strength ?? bestPath?.strength_score);
+  const bestConfidence = nullableNumber(map.best_path_confidence ?? bestPath?.confidence_score);
   const enriched = {
     ...map,
     id,
@@ -704,12 +744,13 @@ function enrichMap(map: SyncRecord, data: RelationshipData): MapView {
     bestPath,
     bestStrength,
     bestConfidence,
-    accessScore: bestPath ? accessScoreForPath(bestPath) : 0,
-    mapType: deriveMapType(map),
-    objective: deriveObjective(map),
+    accessScore: numberValue(map.relationship_access_score ?? map.access_score, bestPath ? accessScoreForPath(bestPath) : 0),
+    mapType: textValue(map.map_type, deriveMapType(map)),
+    objective: textValue(map.objective, deriveObjective(map)),
+    desiredOutcome: textValue(map.desired_outcome),
   } as MapView;
-  enriched.gaps = relationshipGaps(enriched);
-  enriched.recommendedNextAction = recommendedNextAction(enriched);
+  enriched.gaps = normalizeGaps(map.relationship_gaps ?? map.relationship_gap_summary) ?? relationshipGaps(enriched);
+  enriched.recommendedNextAction = textValue(map.recommended_next_action, recommendedNextAction(enriched));
   return enriched;
 }
 
@@ -721,6 +762,38 @@ function deriveMapType(map: SyncRecord) {
 function deriveObjective(map: SyncRecord) {
   if (map.target_object_type === "opportunity_candidate") return "Build relationship access for the linked opportunity candidate.";
   return "Build relationship access to the target organization.";
+}
+
+function objectFromPrefix(row: SyncRecord, prefix: string): SyncRecord | undefined {
+  const id = row[`${prefix}_id`];
+  if (!id) return undefined;
+  const result: SyncRecord = { id };
+  for (const [key, value] of Object.entries(row)) {
+    if (key.startsWith(`${prefix}_`) && value !== undefined) {
+      result[key.replace(`${prefix}_`, "")] = value;
+    }
+  }
+  return result;
+}
+
+function normalizeGaps(value: unknown): RelationshipGap[] | null {
+  let rows = value;
+  if (typeof value === "string") {
+    try {
+      rows = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(rows)) return null;
+  return rows.map((row) => {
+    const record = row as SyncRecord;
+    return {
+      type: textValue(record.gap_type ?? record.type, "relationship_gap"),
+      severity: ["critical", "high", "medium", "low"].includes(String(record.severity)) ? String(record.severity) as RelationshipGap["severity"] : "medium",
+      suggestedAction: textValue(record.suggested_action ?? record.suggestedAction, "Review relationship gap."),
+    };
+  });
 }
 
 function accessScoreForPath(path: SyncRecord) {
@@ -811,7 +884,9 @@ async function rankPath(path: SyncRecord, rank: number, onSaved: () => Promise<v
 }
 
 async function archivePath(path: SyncRecord, onSaved: () => Promise<void>) {
-  await syncosFetch(`/relationship-paths/${path.id}/archive`, { method: "POST" });
+  const reason = window.prompt("Archive reason", "no_longer_valid");
+  if (!reason) return;
+  await syncosFetch(`/relationship-paths/${path.id}/archive`, { method: "POST", body: { archive_reason: reason } });
   await onSaved();
 }
 
@@ -848,7 +923,7 @@ function GapList({ gaps, permissions }: { gaps: RelationshipGap[]; permissions: 
 function UnsupportedNotice() {
   return (
     <div className="empty-state">
-      Current backend gaps: map type, objective, desired outcome, owner, priority, strategic flag, due date, archive reason persistence, relationship timeline, and relationship audit summary are not exposed yet. The workspace uses existing map/path APIs and shows unsupported sections honestly.
+      Relationship Mapping uses the hardened backend contract for persisted map fields, backend access scores, relationship gaps, timeline, and audit. Workflow task linkage appears only when existing workflow records safely reference a relationship map.
     </div>
   );
 }
@@ -970,7 +1045,7 @@ function contactLabels(rows: SyncRecord[]) {
 
 function contactName(contact?: SyncRecord) {
   if (!contact) return "";
-  return textValue(contact.full_name ?? [contact.first_name, contact.last_name].filter(Boolean).join(" "), "Unnamed contact");
+  return textValue(contact.full_name ?? contact.name ?? [contact.first_name, contact.last_name].filter(Boolean).join(" "), "Unnamed contact");
 }
 
 function contactLink(contactId: unknown, contacts: SyncRecord[]) {
@@ -979,17 +1054,20 @@ function contactLink(contactId: unknown, contacts: SyncRecord[]) {
 }
 
 function pathName(path: SyncRecord, data: RelationshipData) {
+  if (path.path_name) return textValue(path.path_name);
   const from = contactName(data.contacts.find((contact) => contact.id === path.from_contact_id)) || "Unknown source";
   const to = contactName(data.contacts.find((contact) => contact.id === path.to_contact_id)) || "Unknown target";
   return `${from} to ${to}`;
 }
 
 function pathSummary(path: SyncRecord) {
+  if (path.path_summary) return textValue(path.path_summary);
   const rows = Array.isArray(path.path) ? path.path as SyncRecord[] : [];
   return textValue(rows[0]?.summary, "Not captured yet");
 }
 
 function pathRecommendedAction(path: SyncRecord) {
+  if (path.recommended_action) return formatAction(path.recommended_action);
   if (path.status === "archived") return "View only";
   if ((nullableNumber(path.confidence_score) ?? 0) < 50) return "Verify path";
   if ((nullableNumber(path.strength_score) ?? 0) < 50) return "Strengthen path";
@@ -1074,5 +1152,7 @@ const emptyData: RelationshipData = {
   constraints: [],
   recommendations: [],
   workflowTasks: [],
+  timelineByMap: {},
+  auditByMap: {},
   unavailable: [],
 };

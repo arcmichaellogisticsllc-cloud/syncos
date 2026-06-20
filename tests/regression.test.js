@@ -41,6 +41,7 @@ test("all sprint smoke commands are wired", () => {
   assert.equal(typeof packageJson.scripts["intelligence:smoke"], "string");
   assert.equal(typeof packageJson.scripts["organization:smoke"], "string");
   assert.equal(typeof packageJson.scripts["contact:smoke"], "string");
+  assert.equal(typeof packageJson.scripts["relationship:smoke"], "string");
   assert.equal(typeof packageJson.scripts.test, "string");
 });
 
