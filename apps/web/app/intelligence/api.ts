@@ -58,6 +58,11 @@ export const defaultContactPermissions = [
   ...defaultOrganizationPermissions,
   "contact.update",
   "contact.archive",
+  "contact.assign_owner",
+  "contact.mark_invalid",
+  "contact.mark_relationship_active",
+  "contact.timeline.read",
+  "contact.audit.read",
   "constraint.create",
   "recommendation.read",
 ];

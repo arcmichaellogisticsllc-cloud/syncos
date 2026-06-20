@@ -38,7 +38,7 @@ const contactRoles = [
 
 const verificationMethods = ["direct_confirmation", "email_validated", "phone_validated", "linkedin_confirmed", "organization_website", "public_source", "relationship_source", "internal_note"];
 const contactStatuses = ["discovered", "enriched", "verified", "contacted", "engaged", "relationship_active", "dormant", "invalid", "archived"];
-const verificationStatuses = ["unverified", "verified", "invalid"];
+const verificationStatuses = ["unverified", "partially_verified", "verified", "invalid", "stale"];
 const financeRoles = new Set(["ap_contact", "billing_contact", "contract_manager", "economic_buyer"]);
 const projectRoles = new Set(["project_manager", "field_supervisor", "field_inspector", "qc_contact", "safety_contact", "construction_manager"]);
 
@@ -232,8 +232,8 @@ export function ContactForm({ mode, contactId }: { mode: "create" | "edit"; cont
             mobile: textValue(nextContact.mobile, ""),
             linkedin_url: textValue(nextContact.linkedin_url, ""),
             status: textValue(nextContact.status, "discovered"),
-            contact_role: "",
-            notes: "",
+            contact_role: textValue(nextContact.contact_role, "unknown"),
+            notes: textValue(nextContact.notes, ""),
           });
         }
       } catch (nextError) {
@@ -259,11 +259,13 @@ export function ContactForm({ mode, contactId }: { mode: "create" | "edit"; cont
         organization_id: form.organization_id,
         full_name: form.full_name,
         title: form.title,
+        contact_role: form.contact_role || "unknown",
         email: form.email,
         phone: form.phone,
         mobile: form.mobile,
         linkedin_url: form.linkedin_url,
         status: form.status,
+        notes: form.notes,
       });
       const saved = mode === "edit" && contactId ? await syncosFetch<SyncRecord>(`/contacts/${contactId}`, { method: "PATCH", body }) : await syncosFetch<SyncRecord>("/contacts", { method: "POST", body });
       router.push(`/intelligence/contacts/${saved.id ?? contactId}`);
@@ -281,7 +283,6 @@ export function ContactForm({ mode, contactId }: { mode: "create" | "edit"; cont
         <label>Full name<input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required /></label>
         <label>Title or role description<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
         <label>Contact role<SelectInline value={form.contact_role} options={["", ...contactRoles]} onChange={(contact_role) => setForm({ ...form, contact_role })} /></label>
-        <p className="muted">Contact role is not persisted by the current backend contract yet. Use title/role description for durable context.</p>
         <label>Email<input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
         <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
         <label>Mobile<input value={form.mobile} onChange={(event) => setForm({ ...form, mobile: event.target.value })} /></label>
@@ -301,6 +302,7 @@ export function ContactDetail({ contactId }: { contactId: string }) {
   const [session, setSession] = useSession();
   const [data, setData] = useState<ContactData>(emptyContactData);
   const [contact, setContact] = useState<ContactView | null>(null);
+  const [related, setRelated] = useState<RelatedSlices>(emptyRelated);
   const [tab, setTab] = useState("overview");
   const [modal, setModal] = useState("");
   const [error, setError] = useState("");
@@ -308,10 +310,29 @@ export function ContactDetail({ contactId }: { contactId: string }) {
   async function load() {
     setError("");
     try {
-      const [nextData, nextContact] = await Promise.all([loadContactData(), syncosFetch<SyncRecord>(`/contacts/${contactId}`)]);
+      const [nextData, detail, timeline, audit] = await Promise.all([
+        loadContactData(),
+        syncosFetch<SyncRecord>(`/contacts/${contactId}/detail`),
+        hasPermission(session.permissions, "contact.timeline.read") ? optionalSingle(`/contacts/${contactId}/timeline`) : Promise.resolve([]),
+        hasPermission(session.permissions, "contact.audit.read") ? optionalSingle(`/contacts/${contactId}/audit-summary`) : Promise.resolve([]),
+      ]);
+      const nextContact = (detail.contact ?? detail) as SyncRecord;
       const merged = { ...nextData, contacts: [nextContact, ...nextData.contacts.filter((row) => row.id !== nextContact.id)] };
       setData(merged);
       setContact(enrichContact(nextContact, merged));
+      setRelated({
+        signals: asRows(detail.related_signals),
+        candidates: asRows(detail.related_candidates),
+        opportunities: asRows(detail.related_opportunities),
+        projects: asRows(detail.related_projects),
+        settlements: asRows((detail.finance_relevance as SyncRecord | undefined)?.settlements),
+        invoices: asRows((detail.finance_relevance as SyncRecord | undefined)?.invoices),
+        payments: asRows((detail.finance_relevance as SyncRecord | undefined)?.payments),
+        constraints: asRows(detail.constraints_summary),
+        recommendations: asRows(detail.recommendations_summary),
+        events: asRows(timeline),
+        audit: asRows(audit),
+      });
     } catch (nextError) {
       setError((nextError as Error).message);
     }
@@ -319,9 +340,8 @@ export function ContactDetail({ contactId }: { contactId: string }) {
 
   useEffect(() => {
     void load();
-  }, [contactId]);
+  }, [contactId, session.permissions.join(",")]);
 
-  const related = useMemo(() => (contact ? buildRelatedSlices(contact, data) : emptyRelated), [contact, data]);
   const tabs = contact ? buildTabs(contact, related) : [];
 
   return (
@@ -346,8 +366,13 @@ export function ContactDetail({ contactId }: { contactId: string }) {
               <div className="button-row">
                 <Link href={`/intelligence/contacts/${contact.id}/edit`}>Edit Contact</Link>
                 <button type="button" disabled={!hasPermission(session.permissions, "contact.verify") || contact.status === "archived"} onClick={() => setModal("verify")}>Verify Contact</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "contact.assign_owner") || contact.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("contacted")}>Mark Contacted</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("engaged")}>Mark Engaged</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_relationship_active") || contact.status === "archived"} onClick={() => setModal("active")}>Relationship Active</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("dormant")}>Mark Dormant</button>
+                <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_invalid") || contact.status === "archived"} onClick={() => setModal("invalid")}>Mark Invalid</button>
                 <button type="button" disabled onClick={() => undefined}>Add to Relationship Map</button>
-                <button type="button" disabled onClick={() => undefined}>Log Interaction</button>
                 <button type="button" disabled={!hasPermission(session.permissions, "contact.archive") || contact.status === "archived"} onClick={() => setModal("archive")}>Archive</button>
               </div>
             </div>
@@ -386,6 +411,12 @@ export function ContactDetail({ contactId }: { contactId: string }) {
             </section>
           </div>
           {modal === "verify" ? <VerifyModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "owner" ? <OwnerModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "contacted" ? <ContactedModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "engaged" ? <EngagedModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "active" ? <RelationshipActiveModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "dormant" ? <ReasonModal title="Mark Dormant" path={`/contacts/${contact.id}/mark-dormant`} reasonKey="reason" onClose={() => setModal("")} onSaved={load} /> : null}
+          {modal === "invalid" ? <InvalidModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
           {modal === "archive" ? <ArchiveModal contact={contact} onClose={() => setModal("")} onSaved={load} /> : null}
         </>
       )}
@@ -434,8 +465,8 @@ function ContactTab({ tab, contact, related, permissions }: { tab: string; conta
   if (tab === "finance") return <FinanceSlice related={related} />;
   if (tab === "constraints") return <ObjectSlice title="Constraints" rows={related.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this contact." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={related.recommendations} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this contact." />;
-  if (tab === "events") return <div className="empty-state">Contact timeline endpoint not available yet.</div>;
-  if (tab === "audit") return <div className="empty-state">Contact audit summary endpoint not available yet.</div>;
+  if (tab === "events") return <ObjectSlice title="Events" rows={related.events} columns={["event_type", "actor_name", "timestamp", "object_type", "summary"]} empty="No contact timeline events are available or you do not have timeline permission." />;
+  if (tab === "audit") return <ObjectSlice title="Audit" rows={related.audit} columns={["actor_name", "action", "object_type", "reason", "created_at", "correlation_id"]} empty="Audit summary is unavailable or you do not have audit permission." />;
   return null;
 }
 
@@ -470,7 +501,7 @@ function ContactTable({ contacts, permissions, reload }: { contacts: ContactView
               <div className="button-row">
                 <Link href={`/intelligence/contacts/${contact.id}`}>Open</Link>
                 <Link href={`/intelligence/contacts/${contact.id}/edit`} aria-disabled={!hasPermission(permissions, "contact.update")}>Edit</Link>
-                <button type="button" disabled={!hasPermission(permissions, "contact.verify") || contact.status === "archived"} onClick={() => verifyContact(contact.id, reload)}>Verify</button>
+                <button type="button" disabled title="Open detail to verify with method and source">Verify</button>
               </div>
             </td>
           </tr>
@@ -488,9 +519,12 @@ function ContactMethods({ contact }: { contact: ContactView }) {
         <dt>Phone</dt><dd>{textValue(contact.phone)}</dd>
         <dt>Mobile</dt><dd>{textValue(contact.mobile)}</dd>
         <dt>LinkedIn</dt><dd>{contact.linkedin_url ? <a href={String(contact.linkedin_url)} target="_blank" rel="noreferrer">Open LinkedIn</a> : "Not captured yet"}</dd>
-        <dt>Preferred contact method</dt><dd>Not captured yet</dd>
-        <dt>Best time to contact</dt><dd>Not captured yet</dd>
-        <dt>Source</dt><dd>Not captured yet</dd>
+        <dt>Preferred contact method</dt><dd>{textValue(contact.preferred_contact_method)}</dd>
+        <dt>Best time to contact</dt><dd>{textValue(contact.best_time_to_contact)}</dd>
+        <dt>Source</dt><dd>{textValue(contact.source)}</dd>
+        <dt>Verification method</dt><dd>{formatAction(contact.verification_method)}</dd>
+        <dt>Verification source</dt><dd>{textValue(contact.verification_source)}</dd>
+        <dt>Verification note</dt><dd>{textValue(contact.verification_note)}</dd>
         <dt>Last verified</dt><dd>{dateValue(contact.last_verified_at)}</dd>
       </dl>
       <Checklist items={[
@@ -516,7 +550,7 @@ function FinanceSlice({ related }: { related: RelatedSlices }) {
 }
 
 function VerifyModal({ contact, onClose, onSaved }: { contact: ContactView; onClose: () => void; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ method: "", source: "", note: "", methodVerified: "" });
+  const [form, setForm] = useState({ verification_method: "", verification_source: "", verification_note: "" });
   const [error, setError] = useState("");
 
   async function submit(event: React.FormEvent) {
@@ -525,7 +559,7 @@ function VerifyModal({ contact, onClose, onSaved }: { contact: ContactView; onCl
       setError("Verification requires at least one contact method.");
       return;
     }
-    if (!form.method || (!form.source && !form.note)) {
+    if (!form.verification_method || (!form.verification_source && !form.verification_note)) {
       setError("Verification method and source or note are required.");
       return;
     }
@@ -542,12 +576,129 @@ function VerifyModal({ contact, onClose, onSaved }: { contact: ContactView; onCl
     <Modal title="Verify Contact" onClose={onClose}>
       {error ? <div className="error">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
-        <label>Verification method<SelectInline value={form.method} options={["", ...verificationMethods]} onChange={(method) => setForm({ ...form, method })} /></label>
-        <label>Verification source<input value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })} /></label>
-        <label>Verified contact method<input value={form.methodVerified} onChange={(event) => setForm({ ...form, methodVerified: event.target.value })} /></label>
-        <label>Verification note<textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label>
-        <p className="muted">The current backend verify route records verification status and timestamp. Verification method details are not persisted yet.</p>
+        <label>Verification method<SelectInline value={form.verification_method} options={["", ...verificationMethods]} onChange={(verification_method) => setForm({ ...form, verification_method })} /></label>
+        <label>Verification source<input value={form.verification_source} onChange={(event) => setForm({ ...form, verification_source: event.target.value })} /></label>
+        <label>Verification note<textarea value={form.verification_note} onChange={(event) => setForm({ ...form, verification_note: event.target.value })} /></label>
         <button className="primary-button" type="submit">Verify Contact</button>
+      </form>
+    </Modal>
+  );
+}
+
+function OwnerModal({ contact, onClose, onSaved }: { contact: ContactView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [ownerUserId, setOwnerUserId] = useState(textValue(contact.relationship_owner_user_id, ""));
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!ownerUserId) {
+      setError("Owner user id is required.");
+      return;
+    }
+    try {
+      await syncosFetch(`/contacts/${contact.id}/assign-owner`, { method: "POST", body: { owner_user_id: ownerUserId } });
+      await onSaved();
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    }
+  }
+  return (
+    <Modal title="Assign Owner" onClose={onClose}>
+      {error ? <div className="error">{error}</div> : null}
+      <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <label>Owner user id<input value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} /></label>
+        <button className="primary-button" type="submit">Assign Owner</button>
+      </form>
+    </Modal>
+  );
+}
+
+function ContactedModal({ contact, onClose, onSaved }: { contact: ContactView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [form, setForm] = useState({ contact_date: new Date().toISOString().slice(0, 10), interaction_type: "call", summary: "", outcome: "connected" });
+  return <ActionFormModal title="Mark Contacted" path={`/contacts/${contact.id}/mark-contacted`} form={form} setForm={(next) => setForm(next as typeof form)} onClose={onClose} onSaved={onSaved} fields={[
+    ["contact_date", "Contact date"],
+    ["interaction_type", "Interaction type"],
+    ["summary", "Summary"],
+    ["outcome", "Outcome"],
+  ]} />;
+}
+
+function EngagedModal({ contact, onClose, onSaved }: { contact: ContactView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [form, setForm] = useState({ engagement_date: new Date().toISOString().slice(0, 10), summary: "", outcome: "requested_follow_up" });
+  return <ActionFormModal title="Mark Engaged" path={`/contacts/${contact.id}/mark-engaged`} form={form} setForm={(next) => setForm(next as typeof form)} onClose={onClose} onSaved={onSaved} fields={[
+    ["engagement_date", "Engagement date"],
+    ["summary", "Summary"],
+    ["outcome", "Outcome"],
+  ]} />;
+}
+
+function RelationshipActiveModal({ contact, onClose, onSaved }: { contact: ContactView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [form, setForm] = useState({ reason: "", recent_interaction_summary: "", relationship_strength_score: "" });
+  return <ActionFormModal title="Relationship Active" path={`/contacts/${contact.id}/mark-relationship-active`} form={form} setForm={(next) => setForm(next as typeof form)} onClose={onClose} onSaved={onSaved} fields={[
+    ["reason", "Reason"],
+    ["recent_interaction_summary", "Recent interaction summary"],
+    ["relationship_strength_score", "Relationship strength score"],
+  ]} />;
+}
+
+function InvalidModal({ contact, onClose, onSaved }: { contact: ContactView; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [form, setForm] = useState({ invalid_reason: "", invalid_note: "" });
+  return <ActionFormModal title="Mark Invalid" path={`/contacts/${contact.id}/mark-invalid`} form={form} setForm={(next) => setForm(next as typeof form)} onClose={onClose} onSaved={onSaved} fields={[
+    ["invalid_reason", "Invalid reason"],
+    ["invalid_note", "Invalid note"],
+  ]} selectOptions={{ invalid_reason: ["", "bad_email", "bad_phone", "left_company", "wrong_person", "duplicate", "not_relevant", "other"] }} />;
+}
+
+function ReasonModal({ title, path, reasonKey, onClose, onSaved }: { title: string; path: string; reasonKey: string; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!reason) {
+      setError("Reason is required.");
+      return;
+    }
+    try {
+      await syncosFetch(path, { method: "POST", body: { [reasonKey]: reason } });
+      await onSaved();
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    }
+  }
+  return (
+    <Modal title={title} onClose={onClose}>
+      {error ? <div className="error">{error}</div> : null}
+      <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <label>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+        <button className="primary-button" type="submit">{title}</button>
+      </form>
+    </Modal>
+  );
+}
+
+function ActionFormModal({ title, path, form, setForm, fields, selectOptions = {}, onClose, onSaved }: { title: string; path: string; form: Record<string, string>; setForm: (form: Record<string, string>) => void; fields: Array<[string, string]>; selectOptions?: Record<string, string[]>; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      await syncosFetch(path, { method: "POST", body: prune(form) });
+      await onSaved();
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    }
+  }
+  return (
+    <Modal title={title} onClose={onClose}>
+      {error ? <div className="error">{error}</div> : null}
+      <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        {fields.map(([key, label]) => (
+          selectOptions[key]
+            ? <label key={key}>{label}<SelectInline value={form[key] ?? ""} options={selectOptions[key]} onChange={(value) => setForm({ ...form, [key]: value })} /></label>
+            : <label key={key}>{label}<input value={form[key] ?? ""} onChange={(event) => setForm({ ...form, [key]: event.target.value })} /></label>
+        ))}
+        <button className="primary-button" type="submit">{title}</button>
       </form>
     </Modal>
   );
@@ -563,7 +714,7 @@ function ArchiveModal({ contact, onClose, onSaved }: { contact: ContactView; onC
       return;
     }
     try {
-      await syncosFetch(`/contacts/${contact.id}/archive`, { method: "POST", body: { reason } });
+      await syncosFetch(`/contacts/${contact.id}/archive`, { method: "POST", body: { archive_reason: reason } });
       await onSaved();
       onClose();
     } catch (nextError) {
@@ -575,7 +726,6 @@ function ArchiveModal({ contact, onClose, onSaved }: { contact: ContactView; onC
       {error ? <div className="error">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
         <label>Reason<SelectInline value={reason} options={["", "duplicate", "left_company", "not_relevant", "bad_data", "inactive", "other"]} onChange={setReason} /></label>
-        <p className="muted">The current backend archive route soft-archives the contact. Archive reason persistence is not exposed yet.</p>
         <button className="primary-button" type="submit">Archive Contact</button>
       </form>
     </Modal>
@@ -610,6 +760,18 @@ async function optionalList(path: string, unavailable: string[], label: string) 
   }
 }
 
+async function optionalSingle(path: string) {
+  try {
+    return await syncosFetch<unknown>(path);
+  } catch {
+    return [];
+  }
+}
+
+function asRows(value: unknown): SyncRecord[] {
+  return Array.isArray(value) ? (value as SyncRecord[]) : [];
+}
+
 function enrichContact(contact: SyncRecord, data: ContactData): ContactView {
   const id = String(contact.id);
   const organization = data.organizations.find((row) => row.id === contact.organization_id);
@@ -625,19 +787,19 @@ function enrichContact(contact: SyncRecord, data: ContactData): ContactView {
     id,
     name: textValue(contact.full_name ?? [contact.first_name, contact.last_name].filter(Boolean).join(" "), "Unnamed contact"),
     organization,
-    organizationName: organization ? textValue(organization.name) : "Not linked yet",
-    organizationType: textValue(organization?.organization_type ?? organization?.type, "Not captured yet"),
-    organizationActorRoles: organization ? arrayValue(organization.actor_roles) : [],
+    organizationName: textValue(contact.organization_name ?? organization?.name, "Not linked yet"),
+    organizationType: textValue(contact.organization_type ?? organization?.organization_type ?? organization?.type, "Not captured yet"),
+    organizationActorRoles: arrayValue(contact.organization_actor_roles ?? organization?.actor_roles),
     contactRole,
-    ownerName: textValue(contact.owner_name ?? contact.owner_user_id, "Unassigned"),
+    ownerName: textValue(contact.relationship_owner_name ?? contact.owner_name ?? contact.relationship_owner_user_id, "Unassigned"),
     influenceScore,
     decisionAuthorityScore,
     relationshipStrengthScore,
-    completenessScore: completeness.score,
-    completenessBand: completeness.band,
+    completenessScore: numberValue(contact.completeness_score, completeness.score),
+    completenessBand: textValue(contact.completeness_band, completeness.band),
     missingContactMethod,
-    stale,
-    recommendedNextAction: recommendedNextAction(contact, contactRole, missingContactMethod, stale, relationshipStrengthScore),
+    stale: Boolean(contact.stale ?? stale),
+    recommendedNextAction: textValue(contact.recommended_next_action, recommendedNextAction(contact, contactRole, missingContactMethod, stale, relationshipStrengthScore)),
   };
   return enriched;
 }
@@ -652,9 +814,11 @@ type RelatedSlices = {
   payments: SyncRecord[];
   constraints: SyncRecord[];
   recommendations: SyncRecord[];
+  events: SyncRecord[];
+  audit: SyncRecord[];
 };
 
-const emptyRelated: RelatedSlices = { signals: [], candidates: [], opportunities: [], projects: [], settlements: [], invoices: [], payments: [], constraints: [], recommendations: [] };
+const emptyRelated: RelatedSlices = { signals: [], candidates: [], opportunities: [], projects: [], settlements: [], invoices: [], payments: [], constraints: [], recommendations: [], events: [], audit: [] };
 
 function buildRelatedSlices(contact: ContactView, data: ContactData): RelatedSlices {
   const orgId = String(contact.organization_id ?? "");
@@ -674,6 +838,8 @@ function buildRelatedSlices(contact: ContactView, data: ContactData): RelatedSli
     payments: data.payments.filter((payment) => payment.contact_id === contactId || payment.customer_organization_id === orgId || payment.organization_id === orgId || invoices.some((invoice) => invoice.id === payment.invoice_id)),
     constraints: data.constraints.filter((constraint) => (constraint.affected_object_type === "contact" && constraint.affected_object_id === contactId) || (constraint.related_object_type === "contact" && constraint.related_object_id === contactId)),
     recommendations: data.recommendations.filter((recommendation) => (recommendation.related_object_type === "contact" && recommendation.related_object_id === contactId) || recommendation.object_id === contactId),
+    events: [],
+    audit: [],
   };
 }
 

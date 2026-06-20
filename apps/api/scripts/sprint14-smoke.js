@@ -87,6 +87,7 @@ async function main() {
     "016_tenant_fk_hardening.sql",
     "017_intelligence_signal_contract_hardening.sql",
     "018_organization_contract_hardening.sql",
+    "019_contact_contract_hardening.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));

@@ -483,6 +483,19 @@ export class SignalsController {
     this.addEqualsFilter(parameters, clauses, "s.owner_user_id", query.owner_user_id);
     this.addEqualsFilter(parameters, clauses, "po.organization_id", query.organization_id);
     this.addEqualsFilter(parameters, clauses, "pt.territory_id", query.territory_id);
+    if (query.contact_id) {
+      parameters.push(query.contact_id);
+      clauses.push(`EXISTS (
+        SELECT 1
+        FROM signal_entities secf
+        WHERE secf.tenant_id = s.tenant_id
+          AND secf.signal_id = s.id
+          AND secf.entity_type = 'contact'
+          AND secf.entity_id = $${parameters.length}
+          AND secf.archived_at IS NULL
+          AND secf.deleted_at IS NULL
+      )`);
+    }
     if (query.source_name) {
       parameters.push(`%${query.source_name.trim()}%`);
       clauses.push(`s.source_name ILIKE $${parameters.length}`);

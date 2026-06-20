@@ -69,7 +69,11 @@ async function main() {
     full_name: "No Method Contact",
   });
   await expectStatus("verify contact requires method", "POST", `/contacts/${noMethodContact.id}/verify`, `Bearer ${token}`, 400, {});
-  const verifiedContact = await expectStatus("verify contact", "POST", `/contacts/${contact.id}/verify`, `Bearer ${token}`, 201, {});
+  const verifiedContact = await expectStatus("verify contact", "POST", `/contacts/${contact.id}/verify`, `Bearer ${token}`, 201, {
+    verification_method: "email_validated",
+    verification_source: "Sprint 1 smoke validation",
+    verification_note: "Confirmed contact email for baseline smoke.",
+  });
   if (verifiedContact.status !== "verified") throw new Error("contact verify did not set status verified");
 
   const signalBefore = await counts(client);

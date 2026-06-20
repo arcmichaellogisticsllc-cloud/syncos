@@ -51,5 +51,6 @@ npm run sprint13:smoke
 npm run sprint14:smoke
 npm run intelligence:smoke
 npm run organization:smoke
+npm run contact:smoke
 
 echo "release validation passed"
