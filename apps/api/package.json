@@ -25,6 +25,7 @@
     "smoke:sprint12": "node scripts/sprint12-smoke.js",
     "smoke:sprint13": "node scripts/sprint13-smoke.js",
     "smoke:sprint14": "node scripts/sprint14-smoke.js",
+    "smoke:intelligence": "node scripts/intelligence-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

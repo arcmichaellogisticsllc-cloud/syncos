@@ -98,11 +98,11 @@ async function main() {
   if (scored.status !== "scored") throw new Error("signal score did not set status scored");
   await expectStatus("verify signal requires evidence or verifier input", "POST", `/signals/${signal.id}/verify`, `Bearer ${token}`, 400, {});
   await expectStatus("signal evidence must match tenant signal", "POST", `/signals/${outside.signalId}/evidence`, `Bearer ${token}`, 404, {
-    evidence_type: "source",
+    evidence_type: "source_url",
     description: "Should fail",
   });
   const evidence = await expectStatus("create signal evidence", "POST", `/signals/${signal.id}/evidence`, `Bearer ${token}`, 201, {
-    evidence_type: "source",
+    evidence_type: "source_url",
     description: "Public notice from source",
     source_url: "https://example.test/source",
   });

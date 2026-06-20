@@ -45,7 +45,7 @@ test("migration ordering is lexical and complete", () => {
   const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
   assert.deepEqual(migrations, [...migrations].sort());
   assert.equal(migrations[0], "001_tenants_users_roles_permissions.sql");
-  assert.equal(migrations.at(-1), "016_tenant_fk_hardening.sql");
+  assert.equal(migrations.at(-1), "017_intelligence_signal_contract_hardening.sql");
 });
 
 test("write helpers remain the only shared write action path", () => {

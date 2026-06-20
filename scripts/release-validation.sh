@@ -49,5 +49,6 @@ npm run sprint11:smoke
 npm run sprint12:smoke
 npm run sprint13:smoke
 npm run sprint14:smoke
+npm run intelligence:smoke
 
 echo "release validation passed"

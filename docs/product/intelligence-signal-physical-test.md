@@ -16,8 +16,13 @@ Validate that an operator can use the Intelligence Workspace without API calls, 
   - `signal.score`
   - `signal.verify`
   - `signal.archive`
+  - `signal.assign_owner`
+  - `signal.timeline.read`
+  - `signal.audit.read` if testing audit panel
   - `signal_evidence.create`
   - `signal_evidence.archive`
+  - `signal_entity.create`
+  - `signal_entity.archive`
   - `opportunity_candidate.create`
   - `candidate_signal.create`
 
@@ -45,15 +50,18 @@ Validate that an operator can use the Intelligence Workspace without API calls, 
 12. Categorize the signal if it is still discovered.
 13. Score the signal with a confidence score of at least 60.
 14. Add evidence with evidence type `funding_notice` or `source_url`.
-15. Attach organization if supported by the current API. If disabled, confirm the UI states that the backend does not expose this action yet.
-16. Verify the signal.
-17. Confirm the Candidate Readiness checklist is visible.
-18. If all checklist items are complete, click Create Opportunity Candidate.
-19. Confirm the candidate modal is prefilled from the signal and requires the confirmation statement.
-20. Create the candidate.
-21. Create a second weak signal or open an existing weak signal.
-22. Archive it with an approved reason such as Stale or Insufficient evidence.
-23. Return to Signal Feed and confirm filters are still understandable.
+15. Confirm organization and territory links are displayed from the backend if they were selected during creation.
+16. Attach an organization, territory, or contact from Signal Detail if one is missing.
+17. Verify the signal. If no active evidence exists, confirm verification is blocked with a plain-language error.
+18. Confirm the Candidate Readiness checklist is backend-truthful and shows missing items.
+19. If all checklist items are complete, click Create Opportunity Candidate.
+20. Confirm the candidate modal is prefilled from the signal and requires the confirmation statement.
+21. Create the candidate and confirm the signal shows converted/candidate-linked state.
+22. Confirm Event Timeline displays recent signal events.
+23. If the tester has `signal.audit.read`, confirm Audit Summary displays audit rows.
+24. Create a second weak signal or open an existing weak signal.
+25. Archive it with an approved snake_case reason such as `stale` or `insufficient_evidence`.
+26. Return to Signal Feed and confirm filters use backend data.
 
 ## Pass Criteria
 
@@ -64,6 +72,8 @@ Validate that an operator can use the Intelligence Workspace without API calls, 
 - Permissions are reflected in visible or disabled UI actions.
 - Backend remains the source of truth for permissions and tenant boundaries.
 - Signal writes still create events and audit logs through the existing API.
+- Signal Feed fields come from enriched backend data, not browser local storage.
+- Candidate readiness comes from the backend readiness calculation.
 - The tester can understand the next action for a signal.
 
 ## Findings Log

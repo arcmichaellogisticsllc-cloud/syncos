@@ -83,8 +83,18 @@ async function main() {
   if (!packageJson.scripts["release:validate"]) throw new Error("release validation command is required");
 
   const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
-  if (migrations.length !== 16) throw new Error("RC1.1 should only add the tenant FK hardening migration");
-  if (!migrations.includes("016_tenant_fk_hardening.sql")) throw new Error("tenant FK hardening migration is required");
+  const approvedPostRc1Migrations = new Set([
+    "016_tenant_fk_hardening.sql",
+    "017_intelligence_signal_contract_hardening.sql",
+  ]);
+  const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
+  const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));
+  if (unexpectedPostRc1Migrations.length > 0) {
+    throw new Error(`unexpected post-RC1 hardening migrations: ${unexpectedPostRc1Migrations.join(", ")}`);
+  }
+  for (const migration of approvedPostRc1Migrations) {
+    if (!migrations.includes(migration)) throw new Error(`${migration} is required`);
+  }
   for (const forbidden of ["ai_models", "forecasts", "autonomous_recommendations", "payroll_records", "collections_automation"]) {
     if (repositoryContainsCreateTable(forbidden)) throw new Error(`forbidden business artifact introduced: ${forbidden}`);
   }
