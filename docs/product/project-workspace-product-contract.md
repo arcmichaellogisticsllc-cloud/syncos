@@ -1,6 +1,6 @@
 # Project Workspace Product Contract
 
-This document defines the future Project Workspace operator experience. No UI is implemented in the backend hardening sprint.
+This document defines the Project Workspace operator experience implemented for the Project Workspace UI sprint.
 
 ## Routes
 
@@ -14,34 +14,31 @@ Help operations understand whether accepted awarded work is ready to be planned,
 
 The workspace must make clear that Project is an operational container, not a work order or production entry surface.
 
+Manual project creation is not exposed in this sprint. Projects are created by the approved Project Handoff backend route.
+
 ## Project List
 
-Required list fields:
+The `/projects` directory consumes `GET /projects` and displays:
 
 - Project Name
 - Status
 - Phase
-- Source Opportunity
-- Source Coverage Plan
-- Source Project Handoff
 - Customer
 - Territory
 - Work Type
+- Scope Summary
+- Location Summary
 - Planned Start
 - Planned End
 - Operations Owner
 - Project Manager
 - Field Supervisor
-- Coverage Readiness
-- Compliance Readiness
-- Financial Readiness
 - Project Readiness
 - Readiness Band
 - Open Constraints
-- Hard Stop Constraints
-- Work Order Count if safely available
-- Production Record Count if safely available
+- Hard Blockers
 - Recommended Next Action
+- Updated Date
 
 Filters:
 
@@ -52,33 +49,42 @@ Filters:
 - Work type
 - Operations owner
 - Project manager
+- Field supervisor
+- Readiness score range
 - Readiness band
-- Planned date range
-- Has hard-stop constraints
+- Has blockers
+- Has warnings
+- Has open constraints
+- Planned start date range
+- Planned end date range
 - Archived / Active
 - Text search
 
 Default sort:
 
-- hard-stop constraints first
+- hard blockers first where available
 - lowest readiness
+- planned start date
 - recently updated
 
 ## Project Detail
+
+The `/projects/:id` detail page consumes `GET /projects/:id/detail`, `GET /projects/:id/timeline`, and `GET /projects/:id/audit-summary`.
 
 Sections:
 
 - Header
 - Readiness scorecard
-- Source opportunity panel
-- Source coverage plan panel
-- Source project handoff panel
-- Operations ownership panel
-- Scope/location panel
-- Compliance/safety panel
-- Financial/billing readiness panel
-- Documentation requirements panel
-- Constraints/risk panel
+- Strategic sidebar
+- Overview tab
+- Source context tab
+- Operations ownership tab
+- Scope & Location tab
+- Readiness tab
+- Compliance / Safety tab
+- Financial / Billing readiness tab
+- Documentation tab
+- Constraints / Risks tab
 - Future work orders placeholder
 - Future production placeholder
 - Timeline
@@ -116,6 +122,17 @@ Primary actions:
 
 Actions must be permission-aware and route-backed.
 
+Action routes:
+
+- `POST /projects/:id/recalculate-readiness`
+- `POST /projects/:id/mark-ready-for-work`
+- `POST /projects/:id/start`
+- `POST /projects/:id/place-on-hold`
+- `POST /projects/:id/release-hold`
+- `POST /projects/:id/complete`
+- `POST /projects/:id/close`
+- `POST /projects/:id/archive`
+
 ## Readiness Scorecard
 
 Cards:
@@ -125,22 +142,69 @@ Cards:
 - Compliance Readiness
 - Financial Readiness
 - Open Constraints
-- Hard Stop Constraints
+- Hard Blockers
+- Warnings
 - Recommended Next Action
 
 Warnings should be visible and overridable only when backend permits. Blockers should disable the blocked action.
+
+Bands:
+
+- `not_ready`: 0-39
+- `needs_planning`: 40-69
+- `ready_with_risk`: 70-84
+- `ready_for_work`: 85-100
+
+## Edit Page
+
+The `/projects/:id/edit` page uses `PATCH /projects/:id` for planning fields only:
+
+- `project_name`
+- `project_phase`
+- `scope_summary`
+- `location_summary`
+- `planned_start_date`
+- `planned_end_date`
+- `operations_owner_user_id`
+- `project_manager_user_id`
+- `field_supervisor_user_id`
+- `billing_package_requirements`
+- `documentation_requirements`
+- `customer_validation_requirements`
+- `risk_notes`
+
+Lifecycle status changes remain on dedicated backend action routes.
+
+## Permissions
+
+The UI surfaces these permissions:
+
+- `project.read`
+- `project.update`
+- `project.recalculate_readiness`
+- `project.mark_ready`
+- `project.start`
+- `project.place_hold`
+- `project.release_hold`
+- `project.complete`
+- `project.close`
+- `project.archive`
+- `project.timeline.read`
+- `project.audit.read`
+
+The backend remains the source of truth for every action.
 
 ## Future Work Order Placeholder
 
 Message:
 
-“Work orders will be created in a future Work Order Workspace. Starting a project does not create work orders.”
+“Work Orders are not available in this sprint. A Work Order will represent a specific package of assigned work under this project.”
 
 ## Future Production Placeholder
 
 Message:
 
-“Production will be recorded in a future Production Workspace. Project actions do not create production records.”
+“Production entry is not available in this sprint. Production records will capture field-completed work against work orders.”
 
 ## Timeline
 
@@ -153,6 +217,8 @@ Display project events and linked handoff project-created event where returned.
 Use `GET /projects/:id/audit-summary`.
 
 Only visible when the actor has `project.audit.read`.
+
+Unauthorized users see a permission message instead of audit payloads.
 
 ## Error Handling
 
