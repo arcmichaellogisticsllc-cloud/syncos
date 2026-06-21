@@ -6,6 +6,7 @@ const navItems = [
   ["/intelligence/signals", "Intelligence"],
   ["/opportunities/candidates", "Opportunity"],
   ["/projects", "Projects"],
+  ["/work-orders", "Work Orders"],
   ["/executive", "Executive"],
   ["/growth", "Growth"],
   ["/operations", "Operations"],
