@@ -324,6 +324,7 @@ export class ProjectHandoffsController {
       if (readiness.blockers.length) throw new BadRequestException({ message: "Project creation blocked.", blockers: readiness.blockers });
       const missing = this.projectCreationMissingFields(before, body);
       if (missing.length) throw new BadRequestException({ message: "Project creation requires minimum project fields.", missing_fields: missing });
+      const coveragePlan = await findTenantRecordById(client, "coverage_plans", request.auth.tenantId, before.coverage_plan_id);
       const project = await insertTenantRecord(client, "projects", request.auth.tenantId, {
         opportunity_id: before.opportunity_id,
         source_opportunity_id: before.opportunity_id,
@@ -338,8 +339,16 @@ export class ProjectHandoffsController {
         project_manager_user_id: before.project_manager_user_id,
         expected_start_date: before.expected_start_date,
         expected_end_date: before.expected_end_date,
+        planned_start_date: before.expected_start_date,
+        planned_end_date: before.expected_end_date,
+        project_phase: "intake",
+        coverage_readiness_score: coveragePlan?.coverage_readiness_score,
+        compliance_readiness_score: coveragePlan?.compliance_readiness_score,
+        financial_readiness_score: coveragePlan?.economic_readiness_score,
         name: projectName(before),
         status: "planning",
+        created_by: request.auth.userId,
+        updated_by: request.auth.userId,
       });
       await updateTenantRecord(client, "project_handoffs", request.auth.tenantId, id, {
         project_id: project.id,

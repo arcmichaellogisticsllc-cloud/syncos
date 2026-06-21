@@ -37,6 +37,7 @@
     "opportunity:smoke": "npm run smoke:opportunity -w @syncos/api",
     "coverage:smoke": "npm run smoke:coverage -w @syncos/api",
     "project-handoff:smoke": "npm run smoke:project-handoff -w @syncos/api",
+    "project:smoke": "npm run smoke:project -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {

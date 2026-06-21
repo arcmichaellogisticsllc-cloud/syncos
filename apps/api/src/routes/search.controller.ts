@@ -113,9 +113,13 @@ export class SearchController {
           capacity_type ILIKE $2 OR unit ILIKE $2 OR compliance_status ILIKE $2 OR insurance_status ILIKE $2
         )
         UNION ALL
-        SELECT 'project' AS object_type, id, name AS title, status, concat_ws(' ', name, status) AS snippet
-        FROM projects
-        WHERE tenant_id = $1 AND deleted_at IS NULL AND (name ILIKE $2 OR status ILIKE $2)
+        SELECT 'project' AS object_type, p.id, p.name AS title, p.status, concat_ws(' ', p.name, p.scope_summary, p.location_summary, co.name, t.name, p.status) AS snippet
+        FROM projects p
+        LEFT JOIN organizations co ON co.tenant_id = p.tenant_id AND co.id = p.customer_organization_id
+        LEFT JOIN territories t ON t.tenant_id = p.tenant_id AND t.id = p.territory_id
+        WHERE p.tenant_id = $1 AND p.deleted_at IS NULL AND ($3::boolean OR p.status <> 'archived') AND (
+          p.name ILIKE $2 OR p.scope_summary ILIKE $2 OR p.location_summary ILIKE $2 OR co.name ILIKE $2 OR t.name ILIKE $2 OR p.status ILIKE $2
+        )
         UNION ALL
         SELECT 'work_order' AS object_type, id, title, status, concat_ws(' ', title, work_type, location_description, unit_type, status) AS snippet
         FROM work_orders

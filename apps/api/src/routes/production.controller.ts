@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -8,6 +8,8 @@ import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick, requireAllowed, requireString } from "./intelligence.types";
 
 const projectStatuses = new Set(["created", "planning", "ready_for_work", "active", "on_hold", "completed", "closed", "archived"]);
+const projectPhases = new Set(["intake", "planning", "pre_construction", "construction", "closeout", "complete"]);
+const projectArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "customer_cancelled", "other"]);
 const workOrderStatuses = new Set(["created", "assigned", "in_progress", "archived"]);
 const productionRecordStatuses = new Set(["draft", "submitted", "correction_required", "qc_review", "accepted", "approved", "billable", "rejected", "archived"]);
 const evidenceTypes = new Set(["photo", "video", "gps", "daily_report", "safety_form", "inspection_note", "material_ticket", "other"]);
@@ -26,32 +28,117 @@ export class ProductionController {
 
   @Get("projects")
   @RequirePermission("project.read")
-  async listProjects(@Req() request: AuthenticatedRequest) {
-    return this.withClient((client) => listTenantRecords(client, "projects", request.auth.tenantId, { searchColumns: ["name", "status"] }));
+  async listProjects(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient((client) => this.listProjectsEnriched(client, request.auth.tenantId, query));
+  }
+
+  @Get("projects/:id/detail")
+  @RequirePermission("project.read")
+  async getProjectDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const project = await this.projectDetail(client, request.auth.tenantId, id);
+      return project;
+    });
+  }
+
+  @Get("projects/:id/timeline")
+  @RequirePermission("project.timeline.read")
+  async getProjectTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const project = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      const result = await client.query(
+        `
+        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+          e.aggregate_type AS object_type, e.aggregate_id AS object_id,
+          e.event_type AS summary,
+          ep.payload
+        FROM events e
+        LEFT JOIN users u ON u.id = e.actor_user_id
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1 AND (
+          (e.aggregate_type = 'project' AND e.aggregate_id = $2)
+          OR (e.aggregate_type = 'project_handoff' AND e.aggregate_id = $3 AND e.event_type = 'project_handoff.project_created')
+        )
+        ORDER BY e.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, project.source_project_handoff_id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("projects/:id/audit-summary")
+  @RequirePermission("project.audit.read")
+  async getProjectAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const project = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      const result = await client.query(
+        `
+        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+          al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
+          al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
+        FROM audit_logs al
+        LEFT JOIN users u ON u.id = al.actor_user_id
+        WHERE al.tenant_id = $1 AND (
+          (al.entity_type = 'project' AND al.entity_id = $2)
+          OR (al.entity_type = 'project_handoff' AND al.entity_id = $3 AND al.action = 'project_handoff.create_project')
+        )
+        ORDER BY al.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, project.source_project_handoff_id],
+      );
+      return result.rows;
+    });
   }
 
   @Get("projects/:id")
   @RequirePermission("project.read")
   async getProject(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return this.withClient((client) => this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found"));
+    return this.withClient((client) => this.projectRow(client, request.auth.tenantId, id));
   }
 
   @Post("projects")
   @RequirePermission("project.create")
   async createProject(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
     try {
-      const name = requireString(body.name, "project name is required");
+      const name = this.requiredText(body.project_name ?? body.name, "project name is required");
       return await this.write(request, "project.create", "project.created", "project", async (client) => {
-        const opportunity = await this.requireRecord(client, "opportunities", request.auth.tenantId, this.requiredId(body.opportunity_id, "opportunity_id"), "opportunity not found");
+        const opportunityId = this.requiredId(body.source_opportunity_id ?? body.opportunity_id, "source_opportunity_id");
+        const opportunity = await this.requireRecord(client, "opportunities", request.auth.tenantId, opportunityId, "opportunity not found");
         if (opportunity.status !== "awarded") throw new BadRequestException("opportunity must be awarded");
-        await this.requireRecord(client, "organizations", request.auth.tenantId, this.requiredId(body.customer_organization_id, "customer_organization_id"), "customer organization not found");
+        const customerId = this.requiredId(body.customer_organization_id ?? opportunity.customer_organization_id ?? opportunity.organization_id, "customer_organization_id");
+        await this.requireRecord(client, "organizations", request.auth.tenantId, customerId, "customer organization not found");
+        const territoryId = this.requiredId(body.territory_id ?? opportunity.territory_id, "territory_id");
+        await this.requireRecord(client, "territories", request.auth.tenantId, territoryId, "territory not found");
+        if (body.operations_owner_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.operations_owner_user_id);
+        if (body.project_manager_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.project_manager_user_id);
+        if (body.field_supervisor_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.field_supervisor_user_id);
+        const workType = this.requiredText(body.work_type ?? opportunity.work_type, "work_type is required");
         const project = await insertTenantRecord(client, "projects", request.auth.tenantId, {
-          opportunity_id: body.opportunity_id,
-          customer_organization_id: body.customer_organization_id,
+          opportunity_id: opportunityId,
+          source_opportunity_id: opportunityId,
+          customer_organization_id: customerId,
+          territory_id: territoryId,
+          work_type: workType,
           name,
-          status: "created",
+          status: "planning",
+          project_phase: "intake",
+          scope_summary: body.scope_summary,
+          location_summary: body.location_summary,
+          planned_start_date: body.planned_start_date,
+          planned_end_date: body.planned_end_date,
+          operations_owner_user_id: body.operations_owner_user_id ?? request.auth.userId,
+          project_manager_user_id: body.project_manager_user_id,
+          field_supervisor_user_id: body.field_supervisor_user_id,
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
         });
-        return { entityType: "project", entityId: project.id, afterState: project };
+        const readiness = await this.calculateProjectReadiness(client, request.auth.tenantId, project.id, project);
+        await this.persistProjectReadiness(client, request.auth.tenantId, project.id, readiness, request.auth.userId);
+        const detail = await this.projectDetail(client, request.auth.tenantId, project.id);
+        return { entityType: "project", entityId: project.id, afterState: { id: project.id, ...detail }, eventType: "project.created" };
       });
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -64,20 +151,54 @@ export class ProductionController {
   async updateProject(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       if (body.status !== undefined) requireAllowed(body.status, projectStatuses, "project status");
-      const values = pick(body, ["name", "status"]);
+      if (body.project_phase !== undefined) requireAllowed(body.project_phase, projectPhases, "project_phase");
+      const values = pick(body, [
+        "name",
+        "project_phase",
+        "prime_organization_id",
+        "contractor_organization_id",
+        "territory_id",
+        "work_type",
+        "scope_summary",
+        "location_summary",
+        "planned_start_date",
+        "planned_end_date",
+        "operations_owner_user_id",
+        "project_manager_user_id",
+        "field_supervisor_user_id",
+        "billing_package_requirements",
+        "documentation_requirements",
+        "customer_validation_requirements",
+        "risk_notes",
+      ]);
+      if (body.project_name !== undefined) values.name = body.project_name;
       return await this.write(request, "project.update", "project.updated", "project", async (client) => {
         const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+        if (before.status === "archived") throw new BadRequestException("archived projects are view-only");
         if (body.opportunity_id) {
           await this.requireRecord(client, "opportunities", request.auth.tenantId, this.requiredId(body.opportunity_id, "opportunity_id"), "opportunity not found");
           values.opportunity_id = body.opportunity_id;
+        }
+        if (body.source_opportunity_id) {
+          await this.requireRecord(client, "opportunities", request.auth.tenantId, this.requiredId(body.source_opportunity_id, "source_opportunity_id"), "opportunity not found");
+          values.source_opportunity_id = body.source_opportunity_id;
         }
         if (body.customer_organization_id) {
           await this.requireRecord(client, "organizations", request.auth.tenantId, this.requiredId(body.customer_organization_id, "customer_organization_id"), "customer organization not found");
           values.customer_organization_id = body.customer_organization_id;
         }
+        if (body.prime_organization_id) await this.requireRecord(client, "organizations", request.auth.tenantId, this.requiredId(body.prime_organization_id, "prime_organization_id"), "prime organization not found");
+        if (body.contractor_organization_id) await this.requireRecord(client, "organizations", request.auth.tenantId, this.requiredId(body.contractor_organization_id, "contractor_organization_id"), "contractor organization not found");
+        if (body.territory_id) await this.requireRecord(client, "territories", request.auth.tenantId, this.requiredId(body.territory_id, "territory_id"), "territory not found");
+        if (body.operations_owner_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.operations_owner_user_id);
+        if (body.project_manager_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.project_manager_user_id);
+        if (body.field_supervisor_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.field_supervisor_user_id);
+        values.updated_by = request.auth.userId;
         const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, values);
         if (!after) throw new NotFoundException("project not found");
-        return { entityType: "project", entityId: id, beforeState: before, afterState: after };
+        const readiness = await this.calculateProjectReadiness(client, request.auth.tenantId, id, after);
+        await this.persistProjectReadiness(client, request.auth.tenantId, id, readiness, request.auth.userId);
+        return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.updated" };
       }, body.reason);
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -85,10 +206,151 @@ export class ProductionController {
     }
   }
 
+  @Post("projects/:id/recalculate-readiness")
+  @RequirePermission("project.recalculate_readiness")
+  async recalculateProjectReadiness(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.write(request, "project.recalculate_readiness", "project.readiness_recalculated", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      const readiness = await this.calculateProjectReadiness(client, request.auth.tenantId, id, before);
+      await this.persistProjectReadiness(client, request.auth.tenantId, id, readiness, request.auth.userId);
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.readiness_recalculated" };
+    });
+  }
+
+  @Post("projects/:id/mark-ready-for-work")
+  @RequirePermission("project.mark_ready")
+  async markProjectReady(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "project.mark_ready", "project.ready_for_work", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      const readiness = await this.calculateProjectReadiness(client, request.auth.tenantId, id, before);
+      this.assertNoProjectBlockers(readiness);
+      this.assertProjectOverrides(readiness, body.override_reasons);
+      const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+        status: "ready_for_work",
+        project_phase: "pre_construction",
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("project not found");
+      await this.persistProjectReadiness(client, request.auth.tenantId, id, await this.calculateProjectReadiness(client, request.auth.tenantId, id, after), request.auth.userId);
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.ready_for_work" };
+    }, body.reason);
+  }
+
+  @Post("projects/:id/start")
+  @RequirePermission("project.start")
+  async startProject(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "project.start", "project.started", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      if (before.status !== "ready_for_work") throw new BadRequestException("project must be ready_for_work");
+      const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+        status: "active",
+        project_phase: "construction",
+        actual_start_date: before.actual_start_date ?? body.actual_start_date ?? new Date(),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("project not found");
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.started" };
+    });
+  }
+
+  @Post("projects/:id/place-on-hold")
+  @RequirePermission("project.place_hold")
+  async placeProjectOnHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const holdReason = this.requiredText(body.hold_reason, "hold_reason is required");
+    return this.write(request, "project.place_hold", "project.on_hold", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      if (before.status === "archived") throw new BadRequestException("archived projects are view-only");
+      const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+        status: "on_hold",
+        previous_status: before.status === "on_hold" ? before.previous_status : before.status,
+        hold_reason: holdReason,
+        hold_note: body.hold_note,
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("project not found");
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.on_hold" };
+    }, holdReason);
+  }
+
+  @Post("projects/:id/release-hold")
+  @RequirePermission("project.release_hold")
+  async releaseProjectHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const releaseNote = this.requiredText(body.release_note, "release_note is required");
+    return this.write(request, "project.release_hold", "project.hold_released", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      if (before.status !== "on_hold") throw new BadRequestException("project must be on_hold");
+      const restoredStatus = before.previous_status && projectStatuses.has(before.previous_status) && before.previous_status !== "archived" ? before.previous_status : "planning";
+      const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+        status: restoredStatus,
+        previous_status: null,
+        hold_released_at: new Date(),
+        hold_release_note: releaseNote,
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("project not found");
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.hold_released" };
+    }, releaseNote);
+  }
+
+  @Post("projects/:id/complete")
+  @RequirePermission("project.complete")
+  async completeProject(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const completionNote = this.requiredText(body.completion_note, "completion_note is required");
+    return this.write(request, "project.complete", "project.completed", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      if (!["active", "ready_for_work"].includes(before.status)) throw new BadRequestException("project must be active or ready_for_work");
+      const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+        status: "completed",
+        project_phase: "closeout",
+        actual_end_date: before.actual_end_date ?? body.actual_end_date ?? new Date(),
+        closeout_notes: completionNote,
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("project not found");
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.completed" };
+    }, completionNote);
+  }
+
+  @Post("projects/:id/close")
+  @RequirePermission("project.close")
+  async closeProject(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const closeoutNotes = this.requiredText(body.closeout_notes, "closeout_notes is required");
+    return this.write(request, "project.close", "project.closed", "project", async (client) => {
+      const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+      if (before.status !== "completed" && !body.override_reason) throw new BadRequestException("project must be completed before close unless override_reason is supplied");
+      const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+        status: "closed",
+        project_phase: "complete",
+        closeout_notes: closeoutNotes,
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("project not found");
+      return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.closed" };
+    }, closeoutNotes);
+  }
+
   @Post("projects/:id/archive")
   @RequirePermission("project.archive")
-  async archiveProject(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return this.archiveRecord(request, "projects", id, "project", "project.archive", "project.archived");
+  async archiveProject(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      const archiveReason = requireAllowed(body.archive_reason, projectArchiveReasons, "archive_reason");
+      return await this.write(request, "project.archive", "project.archived", "project", async (client) => {
+        const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
+        const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
+          status: "archived",
+          archived_at: new Date(),
+          archived_by: request.auth.userId,
+          archive_reason: archiveReason,
+          archive_note: body.archive_note,
+          updated_by: request.auth.userId,
+        });
+        if (!after) throw new NotFoundException("project not found");
+        return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.archived" };
+      }, archiveReason);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
   }
 
   @Get("work-orders")
@@ -644,6 +906,260 @@ export class ProductionController {
     });
   }
 
+  private async listProjectsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+    const conditions = ["p.tenant_id = $1", "p.deleted_at IS NULL"];
+    const params: unknown[] = [tenantId];
+    if (query.archived !== "true") conditions.push("p.status <> 'archived'");
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      conditions.push(sql.replace("?", `$${params.length}`));
+    };
+    if (query.status) add("p.status = ?", query.status);
+    if (query.customer_organization_id) add("p.customer_organization_id = ?", query.customer_organization_id);
+    if (query.territory_id) add("p.territory_id = ?", query.territory_id);
+    if (query.project_manager_user_id) add("p.project_manager_user_id = ?", query.project_manager_user_id);
+    if (query.q) {
+      params.push(`%${query.q}%`);
+      conditions.push(`(p.name ILIKE $${params.length} OR p.scope_summary ILIKE $${params.length} OR p.location_summary ILIKE $${params.length} OR co.name ILIKE $${params.length} OR t.name ILIKE $${params.length})`);
+    }
+    const orderBy = query.sort === "planned_start" ? "p.planned_start_date ASC NULLS LAST, p.updated_at DESC" : query.sort === "readiness_desc" ? "p.project_readiness_score DESC NULLS LAST, p.updated_at DESC" : "p.updated_at DESC";
+    const result = await client.query(
+      `
+      WITH constraint_counts AS (
+        SELECT affected_object_id AS project_id,
+          count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived'))::int AS open_constraints_count,
+          count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived') AND COALESCE(hard_stop, false))::int AS hard_stop_constraints_count
+        FROM constraints
+        WHERE tenant_id = $1 AND affected_object_type = 'project' AND deleted_at IS NULL
+        GROUP BY affected_object_id
+      ),
+      work_order_counts AS (
+        SELECT project_id, count(*)::int AS work_order_count
+        FROM work_orders
+        WHERE tenant_id = $1 AND deleted_at IS NULL
+        GROUP BY project_id
+      ),
+      production_counts AS (
+        SELECT project_id, count(*)::int AS production_record_count
+        FROM production_records
+        WHERE tenant_id = $1 AND deleted_at IS NULL
+        GROUP BY project_id
+      ),
+      coverage_gap_counts AS (
+        SELECT cp.id AS coverage_plan_id, count(cg.id)::int AS coverage_gap_count
+        FROM coverage_plans cp
+        LEFT JOIN coverage_gaps cg ON cg.tenant_id = cp.tenant_id AND cg.coverage_plan_id = cp.id AND cg.deleted_at IS NULL AND cg.status NOT IN ('resolved', 'overridden', 'archived')
+        WHERE cp.tenant_id = $1
+        GROUP BY cp.id
+      )
+      SELECT p.id, p.name AS project_name, p.status, p.project_phase, p.source_opportunity_id, o.title AS source_opportunity_name,
+        p.source_coverage_plan_id, p.source_project_handoff_id, p.customer_organization_id, co.name AS customer_organization_name,
+        p.territory_id, t.name AS territory_name, p.work_type, p.scope_summary, p.location_summary, p.planned_start_date, p.planned_end_date,
+        p.actual_start_date, p.actual_end_date, p.operations_owner_user_id, ou.display_name AS operations_owner_name,
+        p.project_manager_user_id, pm.display_name AS project_manager_name, p.field_supervisor_user_id, fs.display_name AS field_supervisor_name,
+        p.coverage_readiness_score, p.compliance_readiness_score, p.financial_readiness_score, p.project_readiness_score, p.project_readiness_band,
+        p.billing_package_requirements, p.documentation_requirements, p.customer_validation_requirements,
+        p.created_at, p.updated_at, p.archived_at,
+        COALESCE(cc.open_constraints_count, 0) AS open_constraints_count,
+        COALESCE(cc.hard_stop_constraints_count, 0) AS hard_stop_constraints_count,
+        COALESCE(woc.work_order_count, 0) AS work_order_count,
+        COALESCE(pc.production_record_count, 0) AS production_record_count,
+        COALESCE(cgc.coverage_gap_count, 0) AS coverage_gap_count
+      FROM projects p
+      LEFT JOIN opportunities o ON o.tenant_id = p.tenant_id AND o.id = p.source_opportunity_id
+      LEFT JOIN organizations co ON co.tenant_id = p.tenant_id AND co.id = p.customer_organization_id
+      LEFT JOIN territories t ON t.tenant_id = p.tenant_id AND t.id = p.territory_id
+      LEFT JOIN users ou ON ou.id = p.operations_owner_user_id
+      LEFT JOIN users pm ON pm.id = p.project_manager_user_id
+      LEFT JOIN users fs ON fs.id = p.field_supervisor_user_id
+      LEFT JOIN constraint_counts cc ON cc.project_id = p.id
+      LEFT JOIN work_order_counts woc ON woc.project_id = p.id
+      LEFT JOIN production_counts pc ON pc.project_id = p.id
+      LEFT JOIN coverage_gap_counts cgc ON cgc.coverage_plan_id = p.source_coverage_plan_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY ${orderBy}
+      LIMIT 200
+      `,
+      params,
+    );
+    return Promise.all(result.rows.map((row) => this.withProjectDerived(client, tenantId, row.id, row)));
+  }
+
+  private async projectRow(client: PoolClient, tenantId: string, id: string) {
+    const result = await client.query(
+      `
+      SELECT *
+      FROM (${await this.projectRowsSql()}) p
+      WHERE p.id = $2
+      LIMIT 1
+      `,
+      [tenantId, id],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException("project not found");
+    return this.withProjectDerived(client, tenantId, id, row);
+  }
+
+  private async projectRowsSql() {
+    return `
+      SELECT p.id, p.name AS project_name, p.name, p.status, p.project_phase, p.source_opportunity_id, o.title AS source_opportunity_name,
+        p.source_coverage_plan_id, p.source_project_handoff_id, p.customer_organization_id, co.name AS customer_organization_name,
+        p.territory_id, t.name AS territory_name, p.work_type, p.scope_summary, p.location_summary, p.planned_start_date, p.planned_end_date,
+        p.actual_start_date, p.actual_end_date, p.operations_owner_user_id, ou.display_name AS operations_owner_name,
+        p.project_manager_user_id, pm.display_name AS project_manager_name, p.field_supervisor_user_id, fs.display_name AS field_supervisor_name,
+        p.coverage_readiness_score, p.compliance_readiness_score, p.financial_readiness_score, p.project_readiness_score, p.project_readiness_band,
+        p.billing_package_requirements, p.documentation_requirements, p.customer_validation_requirements,
+        p.risk_notes, p.hold_reason, p.closeout_notes, p.created_at, p.updated_at, p.archived_at,
+        0::int AS open_constraints_count, 0::int AS hard_stop_constraints_count, 0::int AS work_order_count, 0::int AS production_record_count, 0::int AS coverage_gap_count
+      FROM projects p
+      LEFT JOIN opportunities o ON o.tenant_id = p.tenant_id AND o.id = p.source_opportunity_id
+      LEFT JOIN organizations co ON co.tenant_id = p.tenant_id AND co.id = p.customer_organization_id
+      LEFT JOIN territories t ON t.tenant_id = p.tenant_id AND t.id = p.territory_id
+      LEFT JOIN users ou ON ou.id = p.operations_owner_user_id
+      LEFT JOIN users pm ON pm.id = p.project_manager_user_id
+      LEFT JOIN users fs ON fs.id = p.field_supervisor_user_id
+      WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
+    `;
+  }
+
+  private async projectDetail(client: PoolClient, tenantId: string, id: string) {
+    const project = (await this.projectRow(client, tenantId, id)) as Record<string, any>;
+    const readiness = await this.calculateProjectReadiness(client, tenantId, id, project);
+    return {
+      project: { ...project, warnings: readiness.warnings, blockers: readiness.blockers, recommended_next_action: this.projectNextAction(project, readiness), ready_for_work: readiness.ready_for_work },
+      source_opportunity: project.source_opportunity_id ? await this.optionalRecord(client, "opportunities", tenantId, project.source_opportunity_id) : null,
+      source_coverage_plan: project.source_coverage_plan_id ? await this.optionalRecord(client, "coverage_plans", tenantId, project.source_coverage_plan_id) : null,
+      source_project_handoff: project.source_project_handoff_id ? await this.optionalRecord(client, "project_handoffs", tenantId, project.source_project_handoff_id) : null,
+      customer_context: { id: project.customer_organization_id, name: project.customer_organization_name, territory_id: project.territory_id, territory_name: project.territory_name },
+      operations_context: {
+        operations_owner_user_id: project.operations_owner_user_id,
+        operations_owner_name: project.operations_owner_name,
+        project_manager_user_id: project.project_manager_user_id,
+        project_manager_name: project.project_manager_name,
+        field_supervisor_user_id: project.field_supervisor_user_id,
+        field_supervisor_name: project.field_supervisor_name,
+      },
+      readiness,
+      warnings: readiness.warnings,
+      blockers: readiness.blockers,
+      documentation_requirements: project.documentation_requirements ?? null,
+      billing_package_requirements: project.billing_package_requirements ?? null,
+      customer_validation_requirements: project.customer_validation_requirements ?? null,
+      constraints_summary: await this.projectConstraints(client, tenantId, id),
+      work_orders_summary: await this.projectWorkOrdersSummary(client, tenantId, id),
+      production_summary: await this.projectProductionSummary(client, tenantId, id),
+      timeline_available: true,
+      audit_allowed: true,
+    };
+  }
+
+  private async withProjectDerived(client: PoolClient, tenantId: string, id: string, row: Record<string, any>) {
+    const readiness = await this.calculateProjectReadiness(client, tenantId, id, row);
+    return { ...row, warnings: readiness.warnings, blockers: readiness.blockers, recommended_next_action: this.projectNextAction(row, readiness), ready_for_work: readiness.ready_for_work };
+  }
+
+  private async calculateProjectReadiness(client: PoolClient, tenantId: string, projectId: string, project: Record<string, any>) {
+    const constraints = await this.projectConstraints(client, tenantId, projectId);
+    const items = [
+      { key: "customer_organization_attached", complete: Boolean(project.customer_organization_id), hard: true },
+      { key: "territory_attached", complete: Boolean(project.territory_id), hard: true },
+      { key: "work_type_attached", complete: Boolean(project.work_type), hard: true },
+      { key: "scope_summary_present", complete: Boolean(project.scope_summary), hard: true },
+      { key: "location_summary_present", complete: Boolean(project.location_summary), hard: true },
+      { key: "planned_dates_reviewed", complete: Boolean(project.planned_start_date || project.planned_end_date), hard: false },
+      { key: "operations_owner_assigned", complete: Boolean(project.operations_owner_user_id), hard: false },
+      { key: "project_manager_assigned", complete: Boolean(project.project_manager_user_id), hard: false },
+      { key: "field_supervisor_identified", complete: Boolean(project.field_supervisor_user_id), hard: false },
+      { key: "source_coverage_plan_attached", complete: Boolean(project.source_coverage_plan_id), hard: false },
+      { key: "source_project_handoff_attached", complete: Boolean(project.source_project_handoff_id), hard: false },
+      { key: "coverage_reviewed", complete: project.coverage_readiness_score !== null && project.coverage_readiness_score !== undefined, hard: false },
+      { key: "compliance_reviewed", complete: project.compliance_readiness_score !== null && project.compliance_readiness_score !== undefined, hard: false },
+      { key: "financial_reviewed", complete: project.financial_readiness_score !== null && project.financial_readiness_score !== undefined, hard: false },
+      { key: "documentation_requirements_identified", complete: Boolean(project.documentation_requirements), hard: false },
+      { key: "billing_package_requirements_identified", complete: Boolean(project.billing_package_requirements), hard: false },
+      { key: "customer_validation_requirements_identified", complete: Boolean(project.customer_validation_requirements), hard: false },
+      { key: "hard_stop_constraints_resolved", complete: Number(constraints.hard_stop_constraints_count ?? 0) === 0, hard: true },
+    ];
+    const completed = items.filter((item) => item.complete).length;
+    let score = Math.round((completed / items.length) * 100);
+    const blockers = items
+      .filter((item) => !item.complete && item.hard)
+      .map((item) => ({ blocker_type: item.key, severity: "high", message: item.key, related_object_type: "project", related_object_id: projectId }));
+    const warnings = items
+      .filter((item) => !item.complete && !item.hard)
+      .map((item) => ({ warning_type: item.key, severity: "medium", message: item.key, required_override_field: "readiness_override_reason", related_object_type: "project", related_object_id: projectId }));
+    if (project.status === "archived") blockers.push({ blocker_type: "archived_project", severity: "critical", message: "archived project", related_object_type: "project", related_object_id: projectId });
+    if (Number(constraints.hard_stop_constraints_count ?? 0) > 0 || blockers.length) score = Math.min(score, 39);
+    if (!project.operations_owner_user_id || !project.project_manager_user_id) score = Math.min(score, 69);
+    if (project.compliance_readiness_score === null || project.compliance_readiness_score === undefined || project.financial_readiness_score === null || project.financial_readiness_score === undefined) score = Math.min(score, 84);
+    const band = score >= 85 ? "ready_for_work" : score >= 70 ? "ready_with_risk" : score >= 40 ? "needs_planning" : "not_ready";
+    const requiredOverrideFields = [...new Set(warnings.map((warning) => warning.required_override_field).filter(Boolean))];
+    return { checklist: items, project_readiness_score: score, project_readiness_band: band, warnings, blockers, required_override_fields: requiredOverrideFields, ready_for_work: score >= 85 && blockers.length === 0 };
+  }
+
+  private async persistProjectReadiness(client: PoolClient, tenantId: string, id: string, readiness: Record<string, unknown>, actorUserId: string) {
+    await updateTenantRecord(client, "projects", tenantId, id, {
+      project_readiness_score: readiness.project_readiness_score,
+      project_readiness_band: readiness.project_readiness_band,
+      updated_by: actorUserId,
+    });
+  }
+
+  private assertNoProjectBlockers(readiness: { blockers: unknown[] }) {
+    if (readiness.blockers.length) throw new BadRequestException({ message: "Project readiness has blockers.", blockers: readiness.blockers });
+  }
+
+  private assertProjectOverrides(readiness: { required_override_fields: string[] }, overrides: unknown) {
+    if (!readiness.required_override_fields.length) return;
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+      throw new BadRequestException({ message: "Project readiness requires override reasons for warnings.", required_override_fields: readiness.required_override_fields });
+    }
+    const record = overrides as Record<string, unknown>;
+    const missing = readiness.required_override_fields.filter((field) => typeof record[field] !== "string" || !String(record[field]).trim());
+    if (missing.length) throw new BadRequestException({ message: "Project readiness requires override reasons for warnings.", required_override_fields: missing });
+  }
+
+  private projectNextAction(project: Record<string, any>, readiness: { blockers: unknown[]; project_readiness_score: number }) {
+    if (project.status === "archived") return "view_only";
+    if (readiness.blockers.length) return "resolve_blockers";
+    if (project.project_readiness_score === null || project.project_readiness_score === undefined) return "recalculate_readiness";
+    if (project.status === "planning" && readiness.project_readiness_score < 85) return "complete_project_readiness";
+    if (project.status === "planning" && readiness.project_readiness_score >= 85) return "mark_ready_for_work";
+    if (project.status === "ready_for_work") return "prepare_work_orders_later";
+    if (project.status === "active") return "monitor_execution";
+    if (project.status === "on_hold") return "resolve_hold";
+    if (project.status === "completed") return "begin_closeout";
+    if (project.status === "closed") return "view_closed_project";
+    return "review_project";
+  }
+
+  private async projectConstraints(client: PoolClient, tenantId: string, projectId: string) {
+    const result = await client.query(
+      `
+      SELECT count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived'))::int AS open_constraints_count,
+        count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived') AND COALESCE(hard_stop, false))::int AS hard_stop_constraints_count
+      FROM constraints
+      WHERE tenant_id = $1 AND affected_object_type = 'project' AND affected_object_id = $2 AND deleted_at IS NULL
+      `,
+      [tenantId, projectId],
+    );
+    return result.rows[0] ?? { open_constraints_count: 0, hard_stop_constraints_count: 0 };
+  }
+
+  private async projectWorkOrdersSummary(client: PoolClient, tenantId: string, projectId: string) {
+    const result = await client.query("SELECT count(*)::int AS work_order_count FROM work_orders WHERE tenant_id = $1 AND project_id = $2 AND deleted_at IS NULL", [tenantId, projectId]);
+    return result.rows[0] ?? { work_order_count: 0 };
+  }
+
+  private async projectProductionSummary(client: PoolClient, tenantId: string, projectId: string) {
+    const result = await client.query("SELECT count(*)::int AS production_record_count FROM production_records WHERE tenant_id = $1 AND project_id = $2 AND deleted_at IS NULL", [tenantId, projectId]);
+    return result.rows[0] ?? { production_record_count: 0 };
+  }
+
+  private async optionalRecord(client: PoolClient, table: string, tenantId: string, id: string) {
+    return findTenantRecordById(client, table, tenantId, id);
+  }
+
   private requireLocation(body: Record<string, unknown>) {
     if (typeof body.location_description === "string" && body.location_description.trim()) return;
     if (body.gps_lat !== undefined && body.gps_lng !== undefined) return;
@@ -793,6 +1309,11 @@ export class ProductionController {
     if (value === undefined || value === null) return {};
     if (typeof value !== "object" || Array.isArray(value)) throw new Error("metadata must be an object");
     return value;
+  }
+
+  private requiredText(value: unknown, message: string) {
+    if (typeof value !== "string" || !value.trim()) throw new BadRequestException(message);
+    return value.trim();
   }
 
   private async write<T>(

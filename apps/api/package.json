@@ -33,6 +33,7 @@
     "smoke:opportunity": "node scripts/opportunity-smoke.js",
     "smoke:coverage": "node scripts/coverage-smoke.js",
     "smoke:project-handoff": "node scripts/project-handoff-smoke.js",
+    "smoke:project": "node scripts/project-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
