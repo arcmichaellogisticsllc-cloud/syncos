@@ -35,6 +35,17 @@ Conversion copies only approved candidate fields into opportunity source fields.
 
 `POST /opportunities/:id/pursuit-approve` hard-blocks only true integrity or permission failures: wrong tenant, missing permission, archived record, missing core fields, invalid status, or explicit critical constraints without review. Relationship, capacity, margin, constraint, and pursuit-score risks require override reasons and are persisted.
 
+Approval policy fields include `approval_tier`, `approval_required_role`, `pursuit_approval_warnings`, `pursuit_approval_blockers`, `pursuit_approval_override_reasons`, and `missing_value_override_reason`.
+
+Approval tiers:
+
+- `tier_1_under_50k`: Growth Director, Regional Director, Executive, System Admin
+- `tier_2_50k_to_250k`: Regional Director, Executive, System Admin
+- `tier_3_250k_plus`: Executive, System Admin
+- `missing_value`: Regional Director, Executive, System Admin with `missing_value_override_reason`
+
+Critical constraints hard-block only when `hard_stop = true`. Non-hard-stop critical constraints require `constraints_override_reason`.
+
 ## Reasons
 
 Lost requires `lost_reason`. Deferred requires `deferred_reason`. Archive requires `archive_reason`. Capacity requirement archive also requires an approved archive reason.
@@ -63,4 +74,4 @@ Awarding an opportunity only changes opportunity status and metadata. It does no
 
 ## Deferred Gaps
 
-Value-based approval thresholds and full pursuit management remain deferred. Capacity coverage and margin automation are warnings only unless future backend policy explicitly models hard-stop constraints.
+Award approval thresholds and full pursuit management remain deferred. Capacity coverage and margin automation are warnings only unless future backend policy explicitly models hard-stop constraints.

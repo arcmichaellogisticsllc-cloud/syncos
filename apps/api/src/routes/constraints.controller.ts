@@ -10,6 +10,7 @@ import { pick } from "./intelligence.types";
 const constraintTypes = new Set(["information", "relationship", "capacity", "compliance", "execution", "qc", "safety", "billing", "cash", "decision", "data_trust"]);
 const openConstraintStatuses = ["detected", "open", "assigned", "in_progress", "blocked", "resolved"];
 const severities = new Set(["low", "medium", "high", "critical"]);
+const approvalBehaviors = new Set(["warning", "override_required", "hard_block"]);
 const recommendationTypes = new Set([
   "pursue",
   "monitor",
@@ -148,6 +149,9 @@ export class ConstraintsController {
       title,
       description: body.description,
       severity,
+      hard_stop: booleanValue(body.hard_stop, false),
+      override_allowed: body.override_allowed === undefined ? true : booleanValue(body.override_allowed, true),
+      approval_behavior: approvalBehavior(body.approval_behavior, severity, booleanValue(body.hard_stop, false)),
       status: "open",
     }, "constraint.created");
   }
@@ -159,8 +163,14 @@ export class ConstraintsController {
     if (body.status !== undefined) throw new BadRequestException("status changes must use lifecycle action routes");
     if (body.constraint_type !== undefined) values.constraint_type = this.requireAllowed(body.constraint_type, constraintTypes, "constraint_type");
     if (body.severity !== undefined) values.severity = this.requireAllowed(body.severity, severities, "severity");
+    if (body.hard_stop !== undefined) values.hard_stop = booleanValue(body.hard_stop, false);
+    if (body.override_allowed !== undefined) values.override_allowed = booleanValue(body.override_allowed, true);
+    if (body.approval_behavior !== undefined) values.approval_behavior = this.requireAllowed(body.approval_behavior, approvalBehaviors, "approval_behavior");
     return this.write(request, "constraint.update", "constraint.updated", "constraint", async (client) => {
       const before = await this.requireRecord(client, "constraints", request.auth.tenantId, id, "constraint not found");
+      if (values.approval_behavior === undefined && (values.severity !== undefined || values.hard_stop !== undefined)) {
+        values.approval_behavior = approvalBehavior(undefined, String(values.severity ?? before.severity), Boolean(values.hard_stop ?? before.hard_stop));
+      }
       const after = await updateTenantRecord(client, "constraints", request.auth.tenantId, id, values);
       if (!after) throw new NotFoundException("constraint not found");
       return { entityType: "constraint", entityId: id, beforeState: before, afterState: after };
@@ -729,4 +739,21 @@ export class ConstraintsController {
       client.release();
     }
   }
+}
+
+function booleanValue(value: unknown, fallback: boolean) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value === "true";
+  return Boolean(value);
+}
+
+function approvalBehavior(value: unknown, severity: string, hardStop: boolean) {
+  if (value !== undefined) {
+    if (!approvalBehaviors.has(String(value))) throw new BadRequestException("approval_behavior is invalid");
+    return String(value);
+  }
+  if (hardStop) return "hard_block";
+  if (severity === "critical" || severity === "high") return "override_required";
+  return "warning";
 }

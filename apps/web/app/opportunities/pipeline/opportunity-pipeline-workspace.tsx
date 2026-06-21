@@ -49,6 +49,13 @@ type OpportunityView = SyncRecord & {
   relationshipAccessScore: number | null;
   pursuitScore: number | null;
   estimatedValue: number | null;
+  approvalTier: string;
+  approvalRequiredRoles: string[];
+  actorCanApproveCurrentTier: boolean | null;
+  approvalWarnings: SyncRecord[];
+  approvalBlockers: SyncRecord[];
+  requiredOverrideFields: string[];
+  approvalReadinessBand: string;
   recommendedNextAction: string;
 };
 
@@ -454,6 +461,10 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
               <SummaryMetric label="Probability" value={scoreValue(nullableNumber(opportunity.probability))} />
               <SummaryMetric label="Expected Decision Date" value={dateValue(opportunity.expected_decision_date ?? opportunity.review_date)} />
               <SummaryMetric label="Next Action" value={formatAction(opportunity.recommendedNextAction)} />
+              <SummaryMetric label="Approval Tier" value={formatAction(opportunity.approvalTier)} />
+              <SummaryMetric label="Approval Readiness" value={formatAction(opportunity.approvalReadinessBand)} />
+              <SummaryMetric label="Approval Warnings" value={String(opportunity.approvalWarnings.length)} />
+              <SummaryMetric label="Approval Blockers" value={String(opportunity.approvalBlockers.length)} />
             </div>
           </section>
 
@@ -468,6 +479,11 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
                 <dt>Relationship map</dt><dd>{opportunity.relationshipMap ? textValue(opportunity.relationshipMap.map_name ?? opportunity.relationshipMap.name) : "Not linked"}</dd>
                 <dt>Relationship access</dt><dd>{scoreValue(opportunity.relationshipAccessScore)}</dd>
                 <dt>Capacity state</dt><dd>{opportunity.capacityRequirements.length ? "Defined" : "Missing"}</dd>
+                <dt>Approval tier</dt><dd>{formatAction(opportunity.approvalTier)}</dd>
+                <dt>Required approver roles</dt><dd>{opportunity.approvalRequiredRoles.join(", ") || "Not captured yet"}</dd>
+                <dt>Actor authority</dt><dd>{opportunity.actorCanApproveCurrentTier === null ? "Not captured yet" : opportunity.actorCanApproveCurrentTier ? "Allowed" : "Requires escalation"}</dd>
+                <dt>Approved by</dt><dd>{textValue(opportunity.pursuit_approved_by, "Not approved")}</dd>
+                <dt>Approved at</dt><dd>{dateValue(opportunity.pursuit_approved_at)}</dd>
               </dl>
               <Checklist title="Approval readiness" items={approvalReadiness(opportunity)} />
               {opportunity.relationshipAccessScore === null || opportunity.relationshipAccessScore < 50 ? <div className="warning-box">Relationship access is weak or missing. This does not block acquisition, but it creates a relationship constraint. Build or improve the relationship path to increase win probability.</div> : null}
@@ -616,17 +632,21 @@ function ApproveModal({ opportunity, onClose, onSaved }: { opportunity: Opportun
   const [marginReason, setMarginReason] = useState("Margin risk reviewed.");
   const [constraintsReason, setConstraintsReason] = useState("Open constraints reviewed.");
   const [approvalReason, setApprovalReason] = useState("Pursuit score or approval readiness warning reviewed.");
+  const [missingValueReason, setMissingValueReason] = useState("Estimated value is not known during early pursuit.");
   const [note, setNote] = useState("");
+  const requires = (field: string) => opportunity.requiredOverrideFields.includes(field);
+  const blocked = opportunity.approvalBlockers.length > 0 || opportunity.actorCanApproveCurrentTier === false;
   return (
-    <ActionModal title="Approve Pursuit" submitLabel="Approve Pursuit" onClose={onClose} onSubmit={async () => {
+    <ActionModal title="Approve Pursuit" submitLabel="Approve Pursuit" disabled={blocked} onClose={onClose} onSubmit={async () => {
       await syncosFetch(`/opportunities/${opportunity.id}/pursuit-approve`, {
         method: "POST",
         body: {
-          relationship_access_override_reason: relationshipReason,
-          capacity_override_reason: capacityReason,
-          margin_override_reason: marginReason,
-          constraints_override_reason: constraintsReason,
-          pursuit_approval_override_reason: approvalReason,
+          relationship_access_override_reason: requires("relationship_access_override_reason") ? relationshipReason : undefined,
+          capacity_override_reason: requires("capacity_override_reason") ? capacityReason : undefined,
+          margin_override_reason: requires("margin_override_reason") ? marginReason : undefined,
+          constraints_override_reason: requires("constraints_override_reason") ? constraintsReason : undefined,
+          pursuit_approval_override_reason: requires("pursuit_approval_override_reason") ? approvalReason : undefined,
+          missing_value_override_reason: requires("missing_value_override_reason") ? missingValueReason : undefined,
           pursuit_approval_override_note: note,
         },
       });
@@ -637,13 +657,21 @@ function ApproveModal({ opportunity, onClose, onSaved }: { opportunity: Opportun
       <SummaryMetric label="Capacity requirements" value={opportunity.capacityRequirements.length ? "Defined" : "Missing"} />
       <SummaryMetric label="Open constraints" value={String(opportunity.constraints.length)} />
       <SummaryMetric label="Pursuit score" value={scoreValue(opportunity.pursuitScore)} />
-      <label>Relationship override reason<textarea value={relationshipReason} onChange={(event) => setRelationshipReason(event.target.value)} /></label>
-      <label>Capacity override reason<textarea value={capacityReason} onChange={(event) => setCapacityReason(event.target.value)} /></label>
-      <label>Margin override reason<textarea value={marginReason} onChange={(event) => setMarginReason(event.target.value)} /></label>
-      <label>Constraint override reason<textarea value={constraintsReason} onChange={(event) => setConstraintsReason(event.target.value)} /></label>
-      <label>Approval readiness override reason<textarea value={approvalReason} onChange={(event) => setApprovalReason(event.target.value)} /></label>
+      <SummaryMetric label="Approval tier" value={formatAction(opportunity.approvalTier)} />
+      <SummaryMetric label="Required roles" value={opportunity.approvalRequiredRoles.join(", ")} />
+      <SummaryMetric label="Warnings" value={String(opportunity.approvalWarnings.length)} />
+      <SummaryMetric label="Blockers" value={String(opportunity.approvalBlockers.length)} />
+      {opportunity.actorCanApproveCurrentTier === false ? <div className="error-banner">You do not have authority to approve this opportunity value tier. Required: {opportunity.approvalRequiredRoles.join(", ")}</div> : null}
+      {opportunity.approvalBlockers.length ? <ObjectSlice title="Hard Blockers" rows={opportunity.approvalBlockers} columns={["blocker_type", "severity", "message", "related_object_type", "related_object_id"]} empty="" /> : null}
+      {opportunity.approvalWarnings.length ? <ObjectSlice title="Approval Warnings" rows={opportunity.approvalWarnings} columns={["warning_type", "severity", "message", "required_override_field", "related_object_type", "related_object_id"]} empty="" /> : null}
+      {requires("relationship_access_override_reason") ? <label>Relationship override reason<textarea value={relationshipReason} onChange={(event) => setRelationshipReason(event.target.value)} required /></label> : null}
+      {requires("capacity_override_reason") ? <label>Capacity override reason<textarea value={capacityReason} onChange={(event) => setCapacityReason(event.target.value)} required /></label> : null}
+      {requires("margin_override_reason") ? <label>Margin override reason<textarea value={marginReason} onChange={(event) => setMarginReason(event.target.value)} required /></label> : null}
+      {requires("constraints_override_reason") ? <label>Constraint override reason<textarea value={constraintsReason} onChange={(event) => setConstraintsReason(event.target.value)} required /></label> : null}
+      {requires("pursuit_approval_override_reason") ? <label>Approval readiness override reason<textarea value={approvalReason} onChange={(event) => setApprovalReason(event.target.value)} required /></label> : null}
+      {requires("missing_value_override_reason") ? <label>Missing value override reason<textarea value={missingValueReason} onChange={(event) => setMissingValueReason(event.target.value)} required /></label> : null}
       <label>Approval note<textarea value={note} onChange={(event) => setNote(event.target.value)} /></label>
-      <div className="warning-box">Weak relationship access, missing capacity, missing margin, constraints, or missing pursuit score require override reasons. Core required-field and permission failures remain blockers.</div>
+      <div className="warning-box">Operationally fixable issues require override reasons. Hard-stop constraints, tenant integrity, permission, and lifecycle failures remain blockers.</div>
     </ActionModal>
   );
 }
@@ -775,7 +803,7 @@ function ResearchModal({ opportunity, onClose }: { opportunity: OpportunityView;
   );
 }
 
-function ActionModal({ title, submitLabel, onClose, onSubmit, children }: { title: string; submitLabel: string; onClose: () => void; onSubmit: () => Promise<void>; children: ReactNode }) {
+function ActionModal({ title, submitLabel, disabled = false, onClose, onSubmit, children }: { title: string; submitLabel: string; disabled?: boolean; onClose: () => void; onSubmit: () => Promise<void>; children: ReactNode }) {
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -792,7 +820,7 @@ function ActionModal({ title, submitLabel, onClose, onSubmit, children }: { titl
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="compact-modal" onSubmit={(event) => void submit(event)}>
         {children}
-        <button className="primary-button" type="submit">{submitLabel}</button>
+        <button className="primary-button" type="submit" disabled={disabled}>{submitLabel}</button>
       </form>
     </Modal>
   );
@@ -861,6 +889,13 @@ function enrichOpportunity(opportunity: SyncRecord, data: OpportunityData): Oppo
     relationshipAccessScore: nullableNumber(opportunity.relationship_access_score ?? relationshipMap?.relationship_access_score ?? relationshipMap?.access_score),
     pursuitScore: nullableNumber(opportunity.pursuit_score),
     estimatedValue: nullableNumber(opportunity.estimated_value),
+    approvalTier: textValue(opportunity.approval_tier, "missing_value"),
+    approvalRequiredRoles: arrayValue(opportunity.approval_required_roles),
+    actorCanApproveCurrentTier: typeof opportunity.actor_can_approve_current_tier === "boolean" ? opportunity.actor_can_approve_current_tier : null,
+    approvalWarnings: arrayRecords(opportunity.pursuit_approval_warnings) ?? [],
+    approvalBlockers: arrayRecords(opportunity.pursuit_approval_blockers) ?? [],
+    requiredOverrideFields: arrayValue(opportunity.required_override_fields),
+    approvalReadinessBand: textValue(opportunity.approval_readiness_band ?? opportunity.readiness_band, "incomplete"),
     recommendedNextAction: "",
   };
   enriched.recommendedNextAction = textValue(opportunity.recommended_next_action, recommendedNextAction(enriched));

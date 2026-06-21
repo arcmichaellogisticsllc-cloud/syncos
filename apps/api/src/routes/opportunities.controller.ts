@@ -13,7 +13,13 @@ const capacityRequirementStatuses = new Set(["active", "archived"]);
 const workTypes = new Set(["fiber", "coax", "aerial", "underground", "directional_bore", "trenching", "splicing", "drops", "make_ready", "inspection", "restoration", "project_management", "unknown"]);
 const legacyWorkTypeMap = new Map<string, string>([["fiber_build", "fiber"]]);
 const sourceTypes = new Set(["candidate_conversion", "manual_entry", "signal", "organization_research", "relationship_map", "customer_request", "prime_request", "public_source", "internal_note", "other"]);
-const authorityRoles = new Set(["Executive", "Growth Director"]);
+const authorityRoles = new Set(["Executive", "System Admin"]);
+const approvalTierRoles: Record<string, string[]> = {
+  missing_value: ["Regional Director", "Executive", "System Admin"],
+  tier_1_under_50k: ["Growth Director", "Regional Director", "Executive", "System Admin"],
+  tier_2_50k_to_250k: ["Regional Director", "Executive", "System Admin"],
+  tier_3_250k_plus: ["Executive", "System Admin"],
+};
 const lostReasons = new Set(["price", "relationship_access", "capacity", "schedule", "compliance", "competitor", "customer_cancelled", "poor_fit", "other"]);
 const deferredReasons = new Set(["timing", "funding_delay", "relationship_gap", "capacity_gap", "customer_delay", "more_research_needed", "other"]);
 const archiveReasons = new Set(["duplicate", "stale", "no_longer_relevant", "converted_or_replaced", "cleanup", "other"]);
@@ -37,6 +43,23 @@ type OpportunityRow = QueryResultRow & {
   archived_at?: Date | null;
 };
 
+type ApprovalWarning = {
+  warning_type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  message: string;
+  required_override_field: string;
+  related_object_type?: string;
+  related_object_id?: string | null;
+};
+
+type ApprovalBlocker = {
+  blocker_type: string;
+  severity: "critical";
+  message: string;
+  related_object_type?: string;
+  related_object_id?: string | null;
+};
+
 @Controller()
 export class OpportunitiesController {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
@@ -44,13 +67,13 @@ export class OpportunitiesController {
   @Get("opportunities")
   @RequirePermission("opportunity.read")
   async list(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.listEnrichedOpportunities(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.listEnrichedOpportunities(client, request.auth.tenantId, query, request.auth.userId));
   }
 
   @Get("opportunities/:id/detail")
   @RequirePermission("opportunity.read")
   async detail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return this.withClient((client) => this.getDetail(client, request.auth.tenantId, id));
+    return this.withClient((client) => this.getDetail(client, request.auth.tenantId, id, request.auth.userId));
   }
 
   @Get("opportunities/:id/timeline")
@@ -358,32 +381,71 @@ export class OpportunitiesController {
   async pursuitApprove(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     return this.write(request, "opportunity.pursuit_approve", "opportunity.pursuit_approved", "opportunity", async (client) => {
       const before = await this.requireOpportunity(client, request.auth.tenantId, id);
-      if (before.status === "archived") throw new BadRequestException("Archived opportunities cannot be approved.");
-      if (!["draft", "pursuit_review", "qualified"].includes(normalizeOpportunityStatus(before.status))) throw new BadRequestException("opportunity must be in pursuit review");
-      const blockers = this.coreBlockers(before);
-      if (blockers.length) throw new BadRequestException(`opportunity is missing required core fields: ${blockers.join(", ")}`);
-      const openCriticalConstraints = await this.openCriticalConstraintCount(client, request.auth.tenantId, id);
-      if (openCriticalConstraints > 0 && !body.constraints_override_reason) throw new BadRequestException("Pursuit approval requires override reason for warnings.");
-      const warnings = await this.approvalWarnings(client, request.auth.tenantId, before);
-      const missingOverride = warnings.some((warning) => !this.overrideForWarning(warning, body));
-      if (missingOverride) {
-        throw new BadRequestException({ message: "Pursuit approval requires override reason for warnings.", warnings });
+      const actorRoles = await this.actorRoles(client, request.auth.tenantId, request.auth.userId);
+      const approvalTier = this.approvalTier(before.estimated_value);
+      if (!approvalTier.required_roles.some((role) => actorRoles.includes(role))) {
+        throw new ForbiddenException({
+          message: "You do not have authority to approve pursuit for this opportunity value tier.",
+          approval_tier: approvalTier.approval_tier,
+          required_roles: approvalTier.required_roles,
+          actor_roles: actorRoles,
+        });
       }
+      const blockers = await this.approvalBlockers(client, request.auth.tenantId, before);
+      if (blockers.length) {
+        throw new BadRequestException({ message: "Pursuit approval is blocked.", approval_tier: approvalTier.approval_tier, required_roles: approvalTier.required_roles, blockers });
+      }
+      const warnings = await this.approvalWarnings(client, request.auth.tenantId, before);
+      const requiredOverrideFields = this.requiredOverrideFields(warnings);
+      const missingOverrideFields = requiredOverrideFields.filter((field) => !body[field]);
+      if (missingOverrideFields.length) {
+        throw new BadRequestException({
+          message: "Pursuit approval requires override reason for warnings.",
+          warnings,
+          required_override_fields: missingOverrideFields,
+          approval_tier: approvalTier.approval_tier,
+          required_roles: approvalTier.required_roles,
+        });
+      }
+      const overrideReasons = this.overrideReasons(body, requiredOverrideFields);
       const after = await updateTenantRecord(client, "opportunities", request.auth.tenantId, id, {
         status: "pursuit_approved",
         stage: "pursuit_approved",
         pursuit_approved_by: request.auth.userId,
         pursuit_approved_at: new Date(),
+        approval_tier: approvalTier.approval_tier,
+        approval_required_role: approvalTier.required_roles.join(", "),
+        pursuit_approval_warnings: JSON.stringify(warnings),
+        pursuit_approval_blockers: JSON.stringify(blockers),
+        pursuit_approval_override_reasons: JSON.stringify(overrideReasons),
         pursuit_approval_override_reason: optionalText(body.pursuit_approval_override_reason),
         pursuit_approval_override_note: optionalText(body.pursuit_approval_override_note ?? body.approval_note),
         relationship_access_override_reason: optionalText(body.relationship_access_override_reason),
         capacity_override_reason: optionalText(body.capacity_override_reason),
         margin_override_reason: optionalText(body.margin_override_reason),
         constraints_override_reason: optionalText(body.constraints_override_reason),
+        missing_value_override_reason: optionalText(body.missing_value_override_reason),
       });
       if (!after) throw new NotFoundException("opportunity not found");
-      const enriched = await this.getEnrichedOpportunity(client, request.auth.tenantId, id);
-      return { entityType: "opportunity", entityId: id, beforeState: before, afterState: { ...(enriched ?? after), warnings } };
+      const enriched = await this.getEnrichedOpportunity(client, request.auth.tenantId, id, request.auth.userId);
+      return {
+        entityType: "opportunity",
+        entityId: id,
+        beforeState: before,
+        afterState: {
+          ...(enriched ?? after),
+          approval_tier: approvalTier.approval_tier,
+          approval_required_roles: approvalTier.required_roles,
+          approver_roles: actorRoles,
+          warnings_present: warnings,
+          hard_blockers: blockers,
+          override_reasons: overrideReasons,
+          estimated_value: nullableNumber(before.estimated_value),
+          relationship_access_score: nullableNumber(before.relationship_access_score),
+          capacity_readiness_score: nullableNumber(before.capacity_readiness_score ?? before.capacity_fit_score),
+          margin_potential_score: nullableNumber(before.margin_potential_score),
+        },
+      };
     });
   }
 
@@ -639,9 +701,9 @@ export class OpportunitiesController {
     }
   }
 
-  private async listEnrichedOpportunities(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+  private async listEnrichedOpportunities(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, actorUserId?: string) {
     const rows = await this.baseOpportunityRows(client, tenantId);
-    let enriched: QueryResultRow[] = await Promise.all(rows.map((row) => this.enrichOpportunityRow(client, tenantId, row)));
+    let enriched: QueryResultRow[] = await Promise.all(rows.map((row) => this.enrichOpportunityRow(client, tenantId, row, actorUserId)));
     enriched = this.filterOpportunities(enriched, query);
     enriched = this.sortOpportunities(enriched, query.sort);
     const limit = Math.min(Math.max(Number(query.limit ?? 50), 1), 200);
@@ -649,14 +711,14 @@ export class OpportunitiesController {
     return enriched.slice(offset, offset + limit);
   }
 
-  private async getEnrichedOpportunity(client: PoolClient, tenantId: string, id: string) {
+  private async getEnrichedOpportunity(client: PoolClient, tenantId: string, id: string, actorUserId?: string) {
     const rows = await this.baseOpportunityRows(client, tenantId, id);
     if (!rows[0]) return null;
-    return this.enrichOpportunityRow(client, tenantId, rows[0]);
+    return this.enrichOpportunityRow(client, tenantId, rows[0], actorUserId);
   }
 
-  private async getDetail(client: PoolClient, tenantId: string, id: string) {
-    const opportunity = await this.getEnrichedOpportunity(client, tenantId, id);
+  private async getDetail(client: PoolClient, tenantId: string, id: string, actorUserId?: string) {
+    const opportunity = await this.getEnrichedOpportunity(client, tenantId, id, actorUserId);
     if (!opportunity) throw new NotFoundException("opportunity not found");
     const [sourceCandidate, organization, relationshipMap, capacityRequirements, constraints, recommendations] = await Promise.all([
       opportunity.source_candidate_id ? this.findById(client, "opportunity_candidates", tenantId, opportunity.source_candidate_id) : null,
@@ -718,13 +780,15 @@ export class OpportunitiesController {
     return result.rows;
   }
 
-  private async enrichOpportunityRow(client: PoolClient, tenantId: string, row: OpportunityRow) {
+  private async enrichOpportunityRow(client: PoolClient, tenantId: string, row: OpportunityRow, actorUserId?: string) {
     const relationshipScore = row.relationship_map_id ? await this.relationshipAccessForMap(client, tenantId, row.relationship_map_id) : nullableNumber(row.relationship_access_score);
     const capacityCount = Number(row.capacity_requirement_count ?? 0);
-    const criticalConstraints = await this.openCriticalConstraintCount(client, tenantId, row.id);
-    const warnings = this.readinessWarnings({ ...row, relationship_access_score: relationshipScore }, capacityCount, criticalConstraints);
-    const blockers = this.coreBlockers(row);
-    const readiness = this.readiness(row, capacityCount, criticalConstraints, warnings, blockers);
+    const approvalTier = this.approvalTier(row.estimated_value);
+    const actorRoles = actorUserId ? await this.actorRoles(client, tenantId, actorUserId) : [];
+    const warnings = await this.approvalWarnings(client, tenantId, { ...row, relationship_access_score: relationshipScore });
+    const blockers = await this.approvalBlockers(client, tenantId, row);
+    const requiredOverrideFields = this.requiredOverrideFields(warnings);
+    const readiness = this.readiness(row, capacityCount, warnings, blockers, approvalTier);
     return {
       ...row,
       opportunity_name: row.opportunity_name ?? row.title,
@@ -737,9 +801,19 @@ export class OpportunitiesController {
       readiness,
       readiness_score: readiness.readiness_score,
       readiness_band: readiness.readiness_band,
+      approval_tier: row.approval_tier ?? approvalTier.approval_tier,
+      approval_required_roles: approvalTier.required_roles,
+      approval_required_role: row.approval_required_role ?? approvalTier.required_roles.join(", "),
+      actor_can_approve_current_tier: actorUserId ? approvalTier.required_roles.some((role) => actorRoles.includes(role)) : null,
+      pursuit_approval_warnings: warnings,
+      pursuit_approval_blockers: blockers,
+      required_override_fields: requiredOverrideFields,
+      approval_readiness_score: readiness.readiness_score,
+      approval_readiness_band: readiness.readiness_band,
+      override_reasons: row.pursuit_approval_override_reasons ?? this.persistedOverrideReasons(row),
       warnings,
       blockers,
-      recommended_next_action: this.recommendedNextAction({ ...row, relationship_access_score: relationshipScore, normalized_status: normalizeOpportunityStatus(row.status) }, capacityCount, criticalConstraints),
+      recommended_next_action: this.recommendedNextAction({ ...row, relationship_access_score: relationshipScore, normalized_status: normalizeOpportunityStatus(row.status) }, capacityCount, blockers),
     };
   }
 
@@ -910,17 +984,19 @@ export class OpportunitiesController {
     return "Priority Pursuit";
   }
 
-  private readiness(row: QueryResultRow, capacityCount: number, criticalConstraints: number, warnings: string[], blockers: string[]) {
+  private readiness(row: QueryResultRow, capacityCount: number, warnings: ApprovalWarning[], blockers: ApprovalBlocker[], approvalTier: { approval_tier: string }) {
     const checks = [
       ["organization_attached", Boolean(row.organization_id)],
       ["territory_attached", Boolean(row.territory_id)],
       ["owner_assigned", Boolean(row.owner_user_id)],
       ["estimated_value_captured", row.estimated_value !== null && row.estimated_value !== undefined],
+      ["value_tier_known", approvalTier.approval_tier !== "missing_value" || row.missing_value_override_reason !== null],
       ["source_candidate_attached_or_manual_source_reason", Boolean(row.source_candidate_id || row.source_type)],
       ["relationship_access_reviewed", Boolean(row.relationship_map_id) || row.relationship_access_override_reason !== null],
       ["capacity_requirements_reviewed", capacityCount > 0 || row.capacity_override_reason !== null],
-      ["critical_constraints_reviewed", criticalConstraints === 0 || row.constraints_override_reason !== null],
+      ["constraints_reviewed", !warnings.some((warning) => warning.required_override_field === "constraints_override_reason") || row.constraints_override_reason !== null],
       ["pursuit_score_captured_if_supported", row.pursuit_score !== null && row.pursuit_score !== undefined],
+      ["no_hard_blockers", blockers.length === 0],
     ] as const;
     const completed = checks.filter(([, done]) => done).length;
     const readinessScore = Math.round((completed / checks.length) * 100);
@@ -928,48 +1004,34 @@ export class OpportunitiesController {
     return {
       checks: Object.fromEntries(checks),
       readiness_score: readinessScore,
-      readiness_band: band(readinessScore),
+      readiness_band: approvalBand(readinessScore),
       missing_items: missing,
       warnings,
       blockers,
-      ready_for_pursuit_approval: blockers.length === 0 && criticalConstraints === 0,
+      ready_for_pursuit_approval: blockers.length === 0,
     };
-  }
-
-  private readinessWarnings(row: QueryResultRow, capacityCount: number, criticalConstraints: number) {
-    const warnings: string[] = [];
-    if (!row.relationship_map_id) warnings.push("missing_relationship_map");
-    if (row.relationship_access_score === null || row.relationship_access_score === undefined || Number(row.relationship_access_score) < 50) warnings.push("weak_relationship_access");
-    if (capacityCount === 0) warnings.push("missing_capacity_requirements");
-    if (row.capacity_readiness_score === null && row.capacity_fit_score === null) warnings.push("missing_capacity_readiness");
-    if (row.margin_potential_score === null || row.margin_potential_score === undefined) warnings.push("missing_margin_potential");
-    if (row.pursuit_score === null || row.pursuit_score === undefined) warnings.push("missing_pursuit_score");
-    if (criticalConstraints > 0) warnings.push("open_critical_constraints");
-    return warnings;
   }
 
   private async approvalWarnings(client: PoolClient, tenantId: string, opportunity: QueryResultRow) {
     const capacityCount = await this.capacityRequirementCount(client, tenantId, opportunity.id);
-    const criticalConstraints = await this.openCriticalConstraintCount(client, tenantId, opportunity.id);
-    const warnings = this.readinessWarnings(opportunity, capacityCount, criticalConstraints);
     const hasLegacyRelationshipPath = await this.relationshipPathExists(client, tenantId, opportunity);
     const relationshipScore = nullableNumber(opportunity.relationship_access_score);
-    return warnings.filter((warning) => {
-      if (warning === "missing_relationship_map") return !hasLegacyRelationshipPath && relationshipScore !== null && relationshipScore < 50;
-      if (warning === "weak_relationship_access") return relationshipScore === null || relationshipScore < 50;
-      if (warning === "missing_capacity_requirements") return capacityCount === 0 && nullableNumber(opportunity.capacity_readiness_score ?? opportunity.capacity_fit_score) === null;
-      if (warning === "missing_capacity_readiness") return nullableNumber(opportunity.capacity_readiness_score ?? opportunity.capacity_fit_score) === null;
-      return true;
-    });
-  }
-
-  private overrideForWarning(warning: string, body: Record<string, unknown>) {
-    if (warning === "missing_relationship_map" || warning === "weak_relationship_access") return body.relationship_access_override_reason;
-    if (warning === "missing_capacity_requirements" || warning === "missing_capacity_readiness") return body.capacity_override_reason;
-    if (warning === "missing_margin_potential") return body.margin_override_reason;
-    if (warning === "open_critical_constraints") return body.constraints_override_reason;
-    if (warning === "missing_pursuit_score") return body.pursuit_approval_override_reason;
-    return true;
+    const warnings: ApprovalWarning[] = [];
+    const add = (warning_type: string, severity: ApprovalWarning["severity"], message: string, required_override_field: string, related_object_type?: string, related_object_id?: string | null) => warnings.push({ warning_type, severity, message, required_override_field, related_object_type, related_object_id });
+    if (!opportunity.relationship_map_id && (!hasLegacyRelationshipPath || relationshipScore === null || relationshipScore < 50)) add("missing_relationship_map", "high", "No relationship map is linked. Build or link a relationship path.", "relationship_access_override_reason", "opportunity", opportunity.id);
+    if (relationshipScore === null || relationshipScore < 50) add("weak_relationship_access", "high", "Relationship access is missing or below 50.", "relationship_access_override_reason", "opportunity", opportunity.id);
+    if (capacityCount === 0 && nullableNumber(opportunity.capacity_readiness_score ?? opportunity.capacity_fit_score) === null) add("missing_capacity_requirements", "high", "No capacity requirements are captured.", "capacity_override_reason", "opportunity", opportunity.id);
+    if (nullableNumber(opportunity.capacity_readiness_score ?? opportunity.capacity_fit_score) === null) add("unknown_capacity_readiness", "high", "Capacity readiness is unknown.", "capacity_override_reason", "opportunity", opportunity.id);
+    const capacityReadiness = nullableNumber(opportunity.capacity_readiness_score ?? opportunity.capacity_fit_score);
+    if (capacityReadiness !== null && capacityReadiness < 50) add("low_capacity_readiness", "high", "Capacity readiness is below 50.", "capacity_override_reason", "opportunity", opportunity.id);
+    const marginPotential = nullableNumber(opportunity.margin_potential_score);
+    if (marginPotential === null) add("unknown_margin_potential", "high", "Margin potential is unknown.", "margin_override_reason", "opportunity", opportunity.id);
+    if (marginPotential !== null && marginPotential < 50) add("low_margin_potential", "high", "Margin potential is below 50.", "margin_override_reason", "opportunity", opportunity.id);
+    if (opportunity.pursuit_score === null || opportunity.pursuit_score === undefined) add("missing_pursuit_score", "medium", "Pursuit score is not captured.", "pursuit_approval_override_reason", "opportunity", opportunity.id);
+    if (opportunity.estimated_value === null || opportunity.estimated_value === undefined) add("missing_estimated_value", "high", "Estimated value is missing.", "missing_value_override_reason", "opportunity", opportunity.id);
+    if (!opportunity.source_candidate_id && !opportunity.source_type) add("missing_source_candidate", "medium", "Source candidate or manual source is not defined.", "pursuit_approval_override_reason", "opportunity", opportunity.id);
+    const constraintWarnings = await this.approvalConstraintWarnings(client, tenantId, opportunity.id);
+    return [...warnings, ...constraintWarnings];
   }
 
   private relationshipWarnings(relationshipMapId: unknown, relationshipScore: unknown) {
@@ -979,17 +1041,22 @@ export class OpportunitiesController {
     return warnings;
   }
 
-  private coreBlockers(opportunity: QueryResultRow) {
-    const blockers: string[] = [];
-    if (!opportunity.organization_id) blockers.push("missing_organization");
-    if (!opportunity.territory_id) blockers.push("missing_territory");
-    if (!opportunity.owner_user_id) blockers.push("missing_owner");
-    if (!storedOpportunityStatuses.has(String(opportunity.status))) blockers.push("invalid_status");
-    if (opportunity.status === "archived") blockers.push("archived_opportunity");
+  private async approvalBlockers(client: PoolClient, tenantId: string, opportunity: QueryResultRow) {
+    const blockers: ApprovalBlocker[] = [];
+    const add = (blocker_type: string, message: string, related_object_type?: string, related_object_id?: string | null) => blockers.push({ blocker_type, severity: "critical", message, related_object_type, related_object_id });
+    if (!opportunity.organization_id) add("missing_organization", "Opportunity must have an organization.", "opportunity", opportunity.id);
+    if (!opportunity.territory_id) add("missing_territory", "Opportunity must have a territory.", "opportunity", opportunity.id);
+    if (!opportunity.owner_user_id) add("missing_owner", "Opportunity must have an owner.", "opportunity", opportunity.id);
+    if (!storedOpportunityStatuses.has(String(opportunity.status))) add("invalid_status", "Opportunity status is invalid.", "opportunity", opportunity.id);
+    if (opportunity.status === "archived") add("archived_opportunity", "Archived opportunities cannot be approved.", "opportunity", opportunity.id);
+    const estimatedValue = nullableNumber(opportunity.estimated_value);
+    if (estimatedValue !== null && estimatedValue < 0) add("invalid_estimated_value", "Estimated value cannot be negative.", "opportunity", opportunity.id);
+    const hardStops = await this.approvalHardStopConstraints(client, tenantId, opportunity.id);
+    for (const constraint of hardStops) add("hard_stop_constraint", `${constraint.constraint_type} hard-stop constraint blocks approval.`, "constraint", constraint.id);
     return blockers;
   }
 
-  private recommendedNextAction(row: QueryResultRow, capacityCount: number, criticalConstraints: number) {
+  private recommendedNextAction(row: QueryResultRow, capacityCount: number, blockers: ApprovalBlocker[]) {
     const status = String(row.normalized_status ?? normalizeOpportunityStatus(row.status));
     if (status === "archived") return "view_only";
     if (!row.organization_id) return "attach_organization";
@@ -999,7 +1066,7 @@ export class OpportunitiesController {
     if (!row.relationship_map_id) return "build_relationship_path";
     if (row.relationship_access_score === null || row.relationship_access_score === undefined || Number(row.relationship_access_score) < 50) return "relationship_constraint_review";
     if (capacityCount === 0) return "define_capacity_requirements";
-    if (criticalConstraints > 0) return "resolve_constraints";
+    if (blockers.length > 0) return "resolve_constraints";
     if (status === "draft") return "submit_for_pursuit_review";
     if (status === "pursuit_review") return "approve_or_defer_pursuit";
     if (status === "pursuit_approved") return "begin_pursuit";
@@ -1196,6 +1263,106 @@ export class OpportunitiesController {
     return result.rows[0]?.count ?? 0;
   }
 
+  private approvalTier(estimatedValue: unknown) {
+    const value = nullableNumber(estimatedValue);
+    const approval_tier = value === null ? "missing_value" : value < 50000 ? "tier_1_under_50k" : value < 250000 ? "tier_2_50k_to_250k" : "tier_3_250k_plus";
+    return {
+      approval_tier,
+      required_roles: approvalTierRoles[approval_tier],
+      missing_value_requires_override: approval_tier === "missing_value",
+    };
+  }
+
+  private async actorRoles(client: PoolClient, tenantId: string, userId: string) {
+    const result = await client.query<{ name: string }>(
+      `
+      SELECT DISTINCT r.name
+      FROM tenant_users tu
+      JOIN user_roles ur ON ur.tenant_user_id = tu.id
+      JOIN roles r ON r.id = ur.role_id
+      WHERE tu.tenant_id = $1
+        AND tu.user_id = $2
+        AND tu.status = 'active'
+        AND r.deleted_at IS NULL
+      ORDER BY r.name
+      `,
+      [tenantId, userId],
+    );
+    return result.rows.map((row) => row.name);
+  }
+
+  private requiredOverrideFields(warnings: ApprovalWarning[]) {
+    return Array.from(new Set(warnings.map((warning) => warning.required_override_field).filter(Boolean))).sort();
+  }
+
+  private overrideReasons(body: Record<string, unknown>, fields: string[]) {
+    return Object.fromEntries(fields.map((field) => [field, optionalText(body[field])]).filter(([, value]) => value));
+  }
+
+  private persistedOverrideReasons(row: QueryResultRow) {
+    return {
+      pursuit_approval_override_reason: row.pursuit_approval_override_reason,
+      relationship_access_override_reason: row.relationship_access_override_reason,
+      capacity_override_reason: row.capacity_override_reason,
+      margin_override_reason: row.margin_override_reason,
+      constraints_override_reason: row.constraints_override_reason,
+      missing_value_override_reason: row.missing_value_override_reason,
+    };
+  }
+
+  private coreBlockers(opportunity: QueryResultRow) {
+    const blockers: string[] = [];
+    if (!opportunity.organization_id) blockers.push("missing_organization");
+    if (!opportunity.territory_id) blockers.push("missing_territory");
+    if (!opportunity.owner_user_id) blockers.push("missing_owner");
+    if (!storedOpportunityStatuses.has(String(opportunity.status))) blockers.push("invalid_status");
+    if (opportunity.status === "archived") blockers.push("archived_opportunity");
+    return blockers;
+  }
+
+  private async approvalHardStopConstraints(client: PoolClient, tenantId: string, opportunityId: string) {
+    const result = await client.query(
+      `
+      SELECT id, constraint_type, severity, status
+      FROM constraints
+      WHERE tenant_id = $1
+        AND affected_object_type = 'opportunity'
+        AND affected_object_id = $2
+        AND hard_stop = true
+        AND status NOT IN ('resolved', 'verified', 'closed', 'archived')
+        AND deleted_at IS NULL
+      ORDER BY created_at DESC
+      `,
+      [tenantId, opportunityId],
+    );
+    return result.rows;
+  }
+
+  private async approvalConstraintWarnings(client: PoolClient, tenantId: string, opportunityId: string): Promise<ApprovalWarning[]> {
+    const result = await client.query(
+      `
+      SELECT id, constraint_type, severity, approval_behavior
+      FROM constraints
+      WHERE tenant_id = $1
+        AND affected_object_type = 'opportunity'
+        AND affected_object_id = $2
+        AND COALESCE(hard_stop, false) = false
+        AND status NOT IN ('resolved', 'verified', 'closed', 'archived')
+        AND deleted_at IS NULL
+      ORDER BY created_at DESC
+      `,
+      [tenantId, opportunityId],
+    );
+    return result.rows.map((constraint) => ({
+      warning_type: "open_noncritical_constraints",
+      severity: ["low", "medium", "high", "critical"].includes(String(constraint.severity)) ? constraint.severity : "medium",
+      message: `${constraint.constraint_type} constraint requires review.`,
+      required_override_field: "constraints_override_reason",
+      related_object_type: "constraint",
+      related_object_id: constraint.id,
+    }));
+  }
+
   private async relationshipPathExists(client: PoolClient, tenantId: string, opportunity: QueryResultRow) {
     const result = await client.query(
       `
@@ -1237,7 +1404,7 @@ export class OpportunitiesController {
       `,
       [tenantId, userId, Array.from(authorityRoles)],
     );
-    if (!result.rows[0]) throw new ForbiddenException("Executive or Growth Director authority is required");
+    if (!result.rows[0]) throw new ForbiddenException("Executive or System Admin authority is required");
   }
 
   private scoreFields() {
@@ -1339,4 +1506,11 @@ function band(score: number) {
   if (score < 70) return "partial";
   if (score < 90) return "usable";
   return "complete";
+}
+
+function approvalBand(score: number) {
+  if (score < 40) return "incomplete";
+  if (score < 70) return "needs_review";
+  if (score < 90) return "approvable_with_overrides";
+  return "clean_approval";
 }

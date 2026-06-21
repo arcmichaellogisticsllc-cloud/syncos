@@ -20,15 +20,24 @@ Validate that an operator can manage pursue-worthy work without creating downstr
 12. Confirm weak/no relationship access remains visible as warning, not a UI blocker.
 13. Submit for pursuit review.
 14. Approve pursuit with override reasons when warnings exist.
-15. Confirm missing core fields and missing permissions still block.
-16. Move to pursuing, proposal, negotiation, awarded, lost, deferred, and archived where permissions allow.
-17. Confirm lost, deferred, archive, and capacity archive reasons are captured.
-18. Add and edit a capacity requirement.
-19. Archive capacity requirement with reason.
-20. Mark an opportunity awarded and confirm no project, work order, contract, settlement, invoice, payment, payroll, or cash record is created.
-21. Confirm timeline shows opportunity and capacity events.
-22. Confirm audit is visible only to authorized users.
-23. Confirm Analyze Pursuit placeholder is visible and performs no live AI automation.
+15. Confirm approval tier and required approver roles are visible.
+16. Confirm Growth Director can approve pursuit under `$50k`.
+17. Confirm Growth Director cannot approve pursuit at `$50k+`.
+18. Confirm missing estimated value requires Regional Director+ and `missing_value_override_reason`.
+19. Confirm weak relationship access requires `relationship_access_override_reason`.
+20. Confirm unknown capacity requires `capacity_override_reason`.
+21. Confirm unknown margin requires `margin_override_reason`.
+22. Confirm non-hard-stop critical constraints require `constraints_override_reason`.
+23. Confirm `hard_stop = true` constraints block approval.
+24. Confirm missing core fields and missing permissions still block.
+25. Move to pursuing, proposal, negotiation, awarded, lost, deferred, and archived where permissions allow.
+26. Confirm lost, deferred, archive, and capacity archive reasons are captured.
+27. Add and edit a capacity requirement.
+28. Archive capacity requirement with reason.
+29. Mark an opportunity awarded and confirm no project, work order, contract, settlement, invoice, payment, payroll, or cash record is created.
+30. Confirm timeline shows opportunity and capacity events.
+31. Confirm audit is visible only to authorized users.
+32. Confirm Analyze Pursuit placeholder is visible and performs no live AI automation.
 
 ## Pass Criteria
 

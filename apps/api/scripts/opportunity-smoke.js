@@ -28,6 +28,12 @@ async function main() {
   const limitedUserId = await createLimitedUser(client, tenantId);
   const limitedToken = createToken({ sub: limitedUserId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
   const ownerUserId = await createOwnerUser(client, tenantId);
+  const growthUserId = await createRoleUser(client, tenantId, "Growth Director");
+  const growthToken = createToken({ sub: growthUserId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
+  const regionalUserId = await createRoleUser(client, tenantId, "Regional Director");
+  const regionalToken = createToken({ sub: regionalUserId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
+  const executiveUserId = await createRoleUser(client, tenantId, "Executive");
+  const executiveToken = createToken({ sub: executiveUserId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
   const base = await createBase(client, tenantId, ownerUserId);
   const outside = await createOutsideTenant(client);
 
@@ -71,6 +77,56 @@ async function main() {
     pursuit_approval_override_reason: "Pursuit score warning accepted.",
   });
   if (approvedWeak.status !== "pursuit_approved" || !approvedWeak.relationship_access_override_reason) throw new Error("approval override did not persist");
+  if (approvedWeak.approval_tier !== "tier_2_50k_to_250k" || !Array.isArray(approvedWeak.warnings_present) || !approvedWeak.override_reasons?.relationship_access_override_reason) {
+    throw new Error("approval event payload response missing tier/warnings/override data");
+  }
+  const approvalPayload = await latestEventPayload(client, approvedWeak.id, "opportunity.pursuit_approved");
+  if (approvalPayload?.approval_tier !== "tier_2_50k_to_250k" || !approvalPayload.override_reasons?.relationship_access_override_reason) {
+    throw new Error("approval event payload missing approval tier or override reasons");
+  }
+  const approvalAudit = await client.query("SELECT after_state FROM audit_logs WHERE entity_type = 'opportunity' AND entity_id = $1 AND action = 'opportunity.pursuit_approve' ORDER BY created_at DESC LIMIT 1", [approvedWeak.id]);
+  if (approvalAudit.rows[0]?.after_state?.approval_tier !== "tier_2_50k_to_250k") throw new Error("approval audit missing approval tier");
+
+  const under50 = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 25000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Tier 1 opportunity under $50k can be approved by Growth Director", "POST", `/opportunities/${under50}/pursuit-approve`, `Bearer ${growthToken}`, 201, {});
+
+  const tier2GrowthBlocked = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 50000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  const tier2GrowthError = await expectStatus("Tier 2 opportunity cannot be approved by Growth Director", "POST", `/opportunities/${tier2GrowthBlocked}/pursuit-approve`, `Bearer ${growthToken}`, 403, {});
+  if (tier2GrowthError.approval_tier !== "tier_2_50k_to_250k" || !tier2GrowthError.required_roles?.includes("Regional Director")) throw new Error("tier 2 authority response missing required roles");
+
+  const tier2Regional = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 125000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Tier 2 can be approved by Regional Director", "POST", `/opportunities/${tier2Regional}/pursuit-approve`, `Bearer ${regionalToken}`, 201, {});
+
+  const tier3RegionalBlocked = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 250000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Tier 3 cannot be approved by Regional Director", "POST", `/opportunities/${tier3RegionalBlocked}/pursuit-approve`, `Bearer ${regionalToken}`, 403, {});
+  await expectStatus("Tier 3 cannot be approved by Growth Director", "POST", `/opportunities/${tier3RegionalBlocked}/pursuit-approve`, `Bearer ${growthToken}`, 403, {});
+
+  const tier3Executive = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 250000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Tier 3 can be approved by Executive", "POST", `/opportunities/${tier3Executive}/pursuit-approve`, `Bearer ${executiveToken}`, 201, {});
+
+  const missingValue = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: null, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Missing estimated value blocks Growth Director", "POST", `/opportunities/${missingValue}/pursuit-approve`, `Bearer ${growthToken}`, 403, {});
+  await expectStatus("Missing estimated value requires missing_value_override_reason", "POST", `/opportunities/${missingValue}/pursuit-approve`, `Bearer ${regionalToken}`, 400, {});
+  const missingApproved = await expectStatus("Missing estimated value can be approved by Regional Director with override", "POST", `/opportunities/${missingValue}/pursuit-approve`, `Bearer ${regionalToken}`, 201, { missing_value_override_reason: "Value not known during early pursuit." });
+  if (missingApproved.approval_tier !== "missing_value" || missingApproved.missing_value_override_reason !== "Value not known during early pursuit.") throw new Error("missing value approval metadata missing");
+
+  const capacityUnknown = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 10000, margin_potential_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Capacity unknown returns warning requiring capacity override", "POST", `/opportunities/${capacityUnknown}/pursuit-approve`, `Bearer ${growthToken}`, 400, {});
+  await expectStatus("Capacity unknown succeeds with override", "POST", `/opportunities/${capacityUnknown}/pursuit-approve`, `Bearer ${growthToken}`, 201, { capacity_override_reason: "Capacity will be planned during pursuit." });
+
+  const marginUnknown = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 10000, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await expectStatus("Margin unknown returns warning requiring margin override", "POST", `/opportunities/${marginUnknown}/pursuit-approve`, `Bearer ${growthToken}`, 400, {});
+  await expectStatus("Margin unknown succeeds with override", "POST", `/opportunities/${marginUnknown}/pursuit-approve`, `Bearer ${growthToken}`, 201, { margin_override_reason: "Margin will be refined during pursuit." });
+
+  const constraintWarning = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 10000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await client.query("INSERT INTO constraints (tenant_id, constraint_type, affected_object_type, affected_object_id, title, severity, hard_stop, approval_behavior) VALUES ($1, 'relationship', 'opportunity', $2, 'Non-hard-stop critical constraint', 'critical', false, 'override_required')", [tenantId, constraintWarning]);
+  await expectStatus("Critical constraint without hard_stop requires override", "POST", `/opportunities/${constraintWarning}/pursuit-approve`, `Bearer ${growthToken}`, 400, {});
+  await expectStatus("Critical constraint without hard_stop succeeds with constraints override", "POST", `/opportunities/${constraintWarning}/pursuit-approve`, `Bearer ${growthToken}`, 201, { constraints_override_reason: "Critical non-hard-stop reviewed." });
+
+  const hardStop = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 10000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
+  await client.query("INSERT INTO constraints (tenant_id, constraint_type, affected_object_type, affected_object_id, title, severity, hard_stop, override_allowed, approval_behavior) VALUES ($1, 'safety', 'opportunity', $2, 'Safety hard stop', 'critical', true, false, 'hard_block')", [tenantId, hardStop]);
+  const hardStopError = await expectStatus("Constraint with hard_stop true blocks approval", "POST", `/opportunities/${hardStop}/pursuit-approve`, `Bearer ${growthToken}`, 400, { constraints_override_reason: "Cannot override." });
+  if (!hardStopError.blockers?.some((blocker) => blocker.blocker_type === "hard_stop_constraint")) throw new Error("hard-stop blocker response missing");
 
   const missingCore = await client.query("INSERT INTO opportunities (tenant_id, title, status, stage, estimated_value) VALUES ($1, 'Missing Core Opportunity', 'draft', 'draft', 1) RETURNING id", [tenantId]);
   await expectStatus("pursuit approval still blocks missing core required fields", "POST", `/opportunities/${missingCore.rows[0].id}/pursuit-approve`, `Bearer ${token}`, 400, {
@@ -204,6 +260,49 @@ async function createOwnerUser(client, tenantId) {
   return user.rows[0].id;
 }
 
+async function createRoleUser(client, tenantId, roleName) {
+  const suffix = `${Date.now()}-${roleName.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+  const user = await client.query("INSERT INTO users (email, display_name, password_hash) VALUES ($1, $2, 'x') RETURNING id", [`${suffix}@example.test`, `${roleName} Opportunity Approver`]);
+  const tenantUser = await client.query("INSERT INTO tenant_users (tenant_id, user_id) VALUES ($1, $2) RETURNING id", [tenantId, user.rows[0].id]);
+  const role = await client.query("SELECT id FROM roles WHERE tenant_id = $1 AND name = $2", [tenantId, roleName]);
+  if (!role.rows[0]) throw new Error(`seeded role not found: ${roleName}`);
+  await client.query("INSERT INTO user_roles (tenant_id, tenant_user_id, role_id, scope_type, scope_id) VALUES ($1, $2, $3, 'tenant', $1)", [tenantId, tenantUser.rows[0].id, role.rows[0].id]);
+  await client.query(
+    `
+    INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+    SELECT $1, $2, p.id
+    FROM permissions p
+    WHERE p.key IN ('opportunity.read', 'opportunity.pursuit_approve')
+    ON CONFLICT (role_id, permission_id) DO NOTHING
+    `,
+    [tenantId, role.rows[0].id],
+  );
+  return user.rows[0].id;
+}
+
+async function createApprovalOpportunity(client, tenantId, base, ownerUserId, patch) {
+  const suffix = Date.now();
+  const fields = {
+    title: `Approval Policy Opportunity ${suffix}`,
+    organization_id: base.organizationId,
+    territory_id: base.territoryId,
+    owner_user_id: ownerUserId,
+    work_type: "fiber",
+    status: "pursuit_review",
+    stage: "pursuit_review",
+    source_type: "manual_entry",
+    summary: "Approval policy smoke opportunity.",
+    evidence_summary: "Approval policy smoke opportunity.",
+    estimated_value: 10000,
+    ...patch,
+  };
+  const columns = Object.keys(fields).filter((key) => fields[key] !== undefined);
+  const values = columns.map((key) => fields[key]);
+  const placeholders = columns.map((_, index) => `$${index + 2}`);
+  const result = await client.query(`INSERT INTO opportunities (tenant_id, ${columns.join(", ")}) VALUES ($1, ${placeholders.join(", ")}) RETURNING id`, [tenantId, ...values]);
+  return result.rows[0].id;
+}
+
 async function createOutsideTenant(client) {
   const suffix = Date.now();
   const tenant = await client.query("INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id", ["Outside Opportunity Tenant", `outside-opportunity-${suffix}`]);
@@ -253,6 +352,21 @@ async function expectWriteDelta(client, before, events, eventPayloads, auditLogs
   if (after.event_payloads !== before.event_payloads + eventPayloads) throw new Error(`${label}: expected ${eventPayloads} event payload delta`);
   if (after.audit_logs !== before.audit_logs + auditLogs) throw new Error(`${label}: expected ${auditLogs} audit delta`);
   if (after.system_actions !== before.system_actions + systemActions) throw new Error(`${label}: expected ${systemActions} system action delta`);
+}
+
+async function latestEventPayload(client, aggregateId, eventType) {
+  const result = await client.query(
+    `
+    SELECT ep.payload
+    FROM events e
+    JOIN event_payloads ep ON ep.event_id = e.id
+    WHERE e.aggregate_id = $1 AND e.event_type = $2
+    ORDER BY e.occurred_at DESC
+    LIMIT 1
+    `,
+    [aggregateId, eventType],
+  );
+  return result.rows[0]?.payload;
 }
 
 async function expectStatus(name, method, path, authorization, expected, body) {

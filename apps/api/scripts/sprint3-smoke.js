@@ -79,7 +79,9 @@ async function main() {
   await expectStatus("pursuit approval blocked below threshold", "POST", `/opportunities/${low.id}/pursuit-approve`, `Bearer ${token}`, 400, {});
 
   const approveBefore = await counts(client);
-  const approved = await expectStatus("pursuit approval succeeds above threshold", "POST", `/opportunities/${opportunity.id}/pursuit-approve`, `Bearer ${token}`, 201, {});
+  const approved = await expectStatus("pursuit approval succeeds above threshold", "POST", `/opportunities/${opportunity.id}/pursuit-approve`, `Bearer ${token}`, 201, {
+    missing_value_override_reason: "Legacy Sprint 3 smoke opportunity has no estimated value.",
+  });
   await expectDelta(client, approveBefore, 1, 1, 1, 1, "pursuit approval event/audit/payload/system action");
   if (approved.status !== "pursuit_approved") throw new Error("pursuit approval did not update status");
 
