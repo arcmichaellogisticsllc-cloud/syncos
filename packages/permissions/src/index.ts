@@ -247,6 +247,7 @@ export type PermissionKey =
   | "coverage_plan.recalculate"
   | "coverage_plan.approve_handoff"
   | "coverage_plan.archive"
+  | "coverage_plan.audit.read"
   | "coverage_requirement.read"
   | "coverage_requirement.create"
   | "coverage_requirement.update"

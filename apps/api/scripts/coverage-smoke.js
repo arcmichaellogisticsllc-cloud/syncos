@@ -92,13 +92,29 @@ async function main() {
 
     const recalculated = await expectStatus("recalculate updates readiness scores", "POST", `/coverage-plans/${planId}/recalculate`, `Bearer ${token}`, 201, {});
     if (recalculated.readiness.capacity_readiness_score === null || recalculated.readiness.coverage_readiness_score === null) throw new Error("recalculate did not return readiness scores");
-    await expectStatus("non-hard-stop gap requires override reason", "POST", `/coverage-plans/${planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Ready with open gap." });
+    const listRows = await expectStatus("coverage list returns enriched fields", "GET", "/coverage-plans", `Bearer ${token}`, 200);
+    const listPlan = listRows.find((row) => row.id === planId);
+    if (!listPlan) throw new Error("created coverage plan missing from enriched list");
+    for (const field of ["requirements_count", "active_requirements_count", "sources_count", "active_sources_count", "open_gaps_count", "hard_stop_gaps_count", "recommended_next_action", "warnings", "blockers", "required_override_fields", "operations_owner_name"]) {
+      if (!(field in listPlan)) throw new Error(`coverage list missing ${field}`);
+    }
+    if (listPlan.open_gaps_count < 1 || listPlan.recommended_next_action !== "resolve_or_override_gaps") throw new Error("coverage list did not return gap-driven next action");
+    await expectListHas("coverage list filters hard stop", "/coverage-plans?has_hard_stop_gaps=false", token, planId);
+    await expectListHas("coverage list filters economic risk", "/coverage-plans?has_economic_risk=false", token, planId);
+    await expectListHas("coverage list filters compliance risk", "/coverage-plans?has_compliance_risk=false", token, planId);
+    await expectListHas("coverage list filters capacity gap", "/coverage-plans?has_capacity_gap=true", token, planId);
+    await expectListHas("coverage list sorts hard stops", "/coverage-plans?sort=hard_stops_desc", token, planId);
+    await expectListHas("coverage list sorts readiness", "/coverage-plans?sort=readiness_asc", token, planId);
+    await expectListHas("coverage list sorts open gaps", "/coverage-plans?sort=open_gaps_desc", token, planId);
+
+    const missingOverride = await expectStatus("non-hard-stop gap requires override reason", "POST", `/coverage-plans/${planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Ready with open gap." });
+    if (!missingOverride.required_override_fields?.includes("capacity_override_reason")) throw new Error("capacity override field missing for non-hard-stop gap");
     await expectStatus("gap override works", "POST", `/coverage-gaps/${gap.id}/override`, `Bearer ${token}`, 201, { override_reason: "Backup source action plan accepted." });
     const approvedWithGapOverride = await expectStatus("approve for handoff succeeds with override reasons", "POST", `/coverage-plans/${planId}/approve-for-handoff`, `Bearer ${token}`, 201, {
       approval_note: "Operations accepts coverage plan with documented warnings.",
       override_reasons: {
-        partial_coverage: "Remaining quantity has accepted action plan.",
-        compliance_readiness_risk: "Provider compliance is reviewed for planning.",
+        capacity_override_reason: "Remaining quantity has accepted action plan.",
+        source_override_reason: "Verbal commitment is accepted for handoff planning.",
       },
     });
     if (approvedWithGapOverride.coverage_plan.status !== "approved_for_handoff") throw new Error("handoff approval did not persist");
@@ -108,19 +124,19 @@ async function main() {
       source: { expected_margin_percent: undefined, margin_confidence: undefined },
     });
     const unknownApproval = await expectStatus("margin unknown creates warning, not hard block", "POST", `/coverage-plans/${unknownPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Unknown margin." });
-    if (!hasWarning(unknownApproval, "margin_unknown_gap") || unknownApproval.blockers?.length) throw new Error("margin unknown was not warning-only");
+    if (!hasWarning(unknownApproval, "margin_unknown") || unknownApproval.blockers?.length || !unknownApproval.required_override_fields?.includes("economic_override_reason")) throw new Error("margin unknown was not warning-only");
     await expectStatus("margin unknown approval succeeds with override", "POST", `/coverage-plans/${unknownPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 201, {
       approval_note: "Unknown margin accepted for planning.",
-      override_reasons: { margin_unknown_gap: "Margin will be reviewed before handoff execution.", unknown_compliance_readiness: "Compliance source is not provider-linked." },
+      override_reasons: { economic_override_reason: "Margin will be reviewed before handoff execution.", compliance_override_reason: "Compliance source is not provider-linked.", source_override_reason: "Identified source accepted for planning." },
     });
 
     const lowPlan = await createPlanWithRequirementAndSource(client, token, base, { source: { expected_margin_percent: 0, margin_confidence: "low" } });
     const lowApproval = await expectStatus("low margin creates warning, not hard block", "POST", `/coverage-plans/${lowPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Low margin." });
-    if (!hasWarning(lowApproval, "low_margin_gap") || lowApproval.blockers?.length) throw new Error("low margin was not warning-only");
+    if (!hasWarning(lowApproval, "low_margin") || lowApproval.blockers?.length) throw new Error("low margin was not warning-only");
 
     const negativePlan = await createPlanWithRequirementAndSource(client, token, base, { source: { expected_margin_percent: -5, margin_confidence: "low" } });
     const negativeApproval = await expectStatus("negative margin creates high warning, not automatic hard block", "POST", `/coverage-plans/${negativePlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Negative margin." });
-    if (!hasWarning(negativeApproval, "negative_margin_gap") || negativeApproval.blockers?.length) throw new Error("negative margin was not warning-only");
+    if (!hasWarning(negativeApproval, "negative_margin") || negativeApproval.blockers?.length) throw new Error("negative margin was not warning-only");
 
     const hardStopPlan = await createPlanWithRequirementAndSource(client, token, base, { source: { expected_margin_percent: 20, margin_confidence: "medium" } });
     const hardStopGap = await expectStatus("hard stop gap create works", "POST", `/coverage-plans/${hardStopPlan.planId}/gaps`, `Bearer ${token}`, 201, {
@@ -141,11 +157,21 @@ async function main() {
     await expectStatus("coverage requirement archive requires reason", "POST", `/coverage-requirements/${requirement.id}/archive`, `Bearer ${token}`, 400, {});
     await expectStatus("coverage source archive requires reason", "POST", `/coverage-sources/${source.id}/archive`, `Bearer ${token}`, 400, {});
     await expectStatus("coverage gap archive requires reason", "POST", `/coverage-gaps/${gap.id}/archive`, `Bearer ${token}`, 400, {});
-    await expectStatus("coverage source archive works", "POST", `/coverage-sources/${source.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "planning_changed" });
-    await expectStatus("coverage requirement archive works", "POST", `/coverage-requirements/${requirement.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "planning_changed" });
-    await expectStatus("coverage gap archive works", "POST", `/coverage-gaps/${gap.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "planning_changed" });
+    await expectStatus("coverage source archive works", "POST", `/coverage-sources/${source.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "replaced" });
+    await expectStatus("coverage requirement archive works", "POST", `/coverage-requirements/${requirement.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "replaced" });
+    await expectStatus("coverage gap archive works", "POST", `/coverage-gaps/${gap.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "replaced" });
     await expectStatus("coverage plan archive requires reason", "POST", `/coverage-plans/${duplicate.coverage_plan.id}/archive`, `Bearer ${token}`, 400, {});
-    await expectStatus("coverage plan archive works", "POST", `/coverage-plans/${duplicate.coverage_plan.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "planning_changed" });
+    await expectStatus("coverage plan archive works", "POST", `/coverage-plans/${duplicate.coverage_plan.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "replaced" });
+
+    const detail = await expectStatus("coverage detail returns warnings and blockers", "GET", `/coverage-plans/${planId}/detail`, `Bearer ${token}`, 200);
+    if (!("recommended_next_action" in detail) || !Array.isArray(detail.warnings) || !Array.isArray(detail.blockers) || !Array.isArray(detail.required_override_fields)) throw new Error("coverage detail missing hardened approval context");
+    const timeline = await expectStatus("timeline endpoint returns coverage events", "GET", `/coverage-plans/${planId}/timeline`, `Bearer ${token}`, 200);
+    for (const eventType of ["coverage_plan.created", "coverage_requirement.created", "coverage_source.created", "coverage_gap.created"]) {
+      if (!timeline.some((row) => row.event_type === eventType)) throw new Error(`coverage timeline missing ${eventType}`);
+    }
+    await expectStatus("audit endpoint enforces permission", "GET", `/coverage-plans/${planId}/audit-summary`, `Bearer ${limitedToken}`, 403);
+    const auditSummary = await expectStatus("audit endpoint returns coverage audit", "GET", `/coverage-plans/${planId}/audit-summary`, `Bearer ${token}`, 200);
+    if (!auditSummary.some((row) => row.object_type === "coverage_plan")) throw new Error("coverage audit summary missing plan audit records");
 
     const search = await expectStatus("global search includes active coverage plans", "GET", "/search?q=Coverage", `Bearer ${token}`, 200);
     if (!search.some((row) => row.object_type === "coverage_plan" && row.id === planId)) throw new Error("coverage plan was not searchable");
@@ -153,9 +179,9 @@ async function main() {
     if (!archivedSearch.some((row) => row.object_type === "coverage_plan" && row.id === duplicate.coverage_plan.id)) throw new Error("archived coverage plan was not searchable with archived=true");
 
     const payload = await latestEventPayload(client, planId, "coverage_plan.approved_for_handoff");
-    if (!payload?.warnings?.length || !payload?.override_reasons?.partial_coverage) throw new Error("approval event payload missing warnings or override reasons");
+    if (!payload?.warnings?.length || !payload?.override_reasons?.capacity_override_reason) throw new Error("approval event payload missing warnings or override reasons");
     const coverageAudit = await client.query("SELECT after_state FROM audit_logs WHERE entity_type = 'coverage_plan' AND entity_id = $1 AND action = 'coverage_plan.approve_handoff' ORDER BY created_at DESC LIMIT 1", [planId]);
-    if (!coverageAudit.rows[0]?.after_state?.override_reasons?.partial_coverage) throw new Error("coverage audit missing override reason data");
+    if (!coverageAudit.rows[0]?.after_state?.override_reasons?.capacity_override_reason) throw new Error("coverage audit missing override reason data");
     const finalCounts = await writeCounts(client);
     if (finalCounts.events <= createBefore.events || finalCounts.event_payloads <= createBefore.event_payloads || finalCounts.audit_logs <= createBefore.audit_logs || finalCounts.system_actions <= createBefore.system_actions) {
       throw new Error("coverage writes did not create event/audit/system_action records");
@@ -183,6 +209,7 @@ async function createPlanWithRequirementAndSource(client, token, base, options =
     source_type: "internal_workforce",
     covered_quantity: 10,
     unit: "days",
+    confidence_score: 75,
     commitment_status: "identified",
     ...options.source,
   };
@@ -325,7 +352,15 @@ async function expectStatus(name, method, path, authorization, expected, body) {
     throw new Error(`${name}: expected ${expectedStatus}, got ${response.status}: ${text}`);
   }
   const text = await response.text();
-  return text ? JSON.parse(text) : undefined;
+  if (!text) return undefined;
+  const parsed = JSON.parse(text);
+  return parsed && typeof parsed.message === "object" && !Array.isArray(parsed.message) ? { ...parsed, ...parsed.message } : parsed;
+}
+
+async function expectListHas(name, path, token, id) {
+  const rows = await expectStatus(name, "GET", path, `Bearer ${token}`, 200);
+  if (!Array.isArray(rows) || !rows.some((row) => row.id === id)) throw new Error(`${name}: expected list to include ${id}`);
+  return rows;
 }
 
 function createToken(claims, secret) {

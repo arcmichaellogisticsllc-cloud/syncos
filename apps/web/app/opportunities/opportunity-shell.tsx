@@ -5,6 +5,7 @@ import { CommandShell } from "../dashboard-components";
 const opportunityNav = [
   ["/opportunities/candidates", "Candidate Board", "active"],
   ["/opportunities/pipeline", "Opportunity Pipeline", "active"],
+  ["/opportunities/coverage", "Coverage Planning", "active"],
   ["/opportunities/pursuits", "Pursuit Management", "placeholder"],
 ];
 

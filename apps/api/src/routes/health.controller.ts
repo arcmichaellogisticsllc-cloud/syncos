@@ -69,6 +69,7 @@ export class HealthController {
       "022_opportunity_pipeline_contract_hardening.sql",
       "023_opportunity_approval_policy_hardening.sql",
       "024_coverage_planning_contract_foundation.sql",
+      "025_coverage_planning_backend_hardening.sql",
     ];
     const result = await this.pool.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id");
     const applied = result.rows.map((row) => row.id);

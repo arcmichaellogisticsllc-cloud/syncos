@@ -102,6 +102,8 @@ Coverage Plans:
 - `GET /coverage-plans`
 - `GET /coverage-plans/:id`
 - `GET /coverage-plans/:id/detail`
+- `GET /coverage-plans/:id/timeline`
+- `GET /coverage-plans/:id/audit-summary`
 - `POST /coverage-plans`
 - `PATCH /coverage-plans/:id`
 - `POST /coverage-plans/:id/recalculate`
@@ -135,9 +137,118 @@ Gaps:
 
 `POST /coverage-plans/:id/approve-for-handoff` requires `approval_note` and `override_reasons` when warnings exist.
 
-Approval validates tenant ownership, permission, requirements, coverage source presence unless overridden, reviewed capacity/compliance/economic readiness, and absence of unresolved hard-stop gaps.
+Approval validates tenant ownership, permission, awarded opportunity state, non-archived plan state, requirements, coverage source presence unless overridden, reviewed capacity/compliance/economic readiness, and absence of unresolved hard-stop or hard-blocked gaps.
 
 Approval sets status to `approved_for_handoff`, stores approval actor/timestamp, stores override reasons, emits `coverage_plan.approved_for_handoff`, and creates audit/system_action records. It does not create a project.
+
+Warnings require matching override fields:
+
+- economic warnings: `economic_override_reason`
+- capacity warnings: `capacity_override_reason`
+- compliance warnings: `compliance_override_reason`
+- open gap warnings: `gaps_override_reason` when no more specific category applies
+- missing source or source commitment warnings: `source_override_reason`
+
+Hard-stop gaps, hard-blocked gaps, archived plans, and non-awarded opportunities block approval.
+
+## Enriched List Response
+
+`GET /coverage-plans` returns backend-enriched rows with plan, opportunity, organization, territory, owner, approval, readiness, and count fields:
+
+- `requirements_count`, `active_requirements_count`
+- `sources_count`, `active_sources_count`
+- `gaps_count`, `open_gaps_count`, `hard_stop_gaps_count`
+- `overridden_gaps_count`, `resolved_gaps_count`
+- `economic_gaps_count`, `compliance_gaps_count`, `capacity_gaps_count`
+- `warnings`, `blockers`, `required_override_fields`
+- `recommended_next_action`
+- `ready_for_handoff`, `has_hard_stop`, `has_economic_risk`, `has_compliance_risk`, `has_capacity_gap`
+- `operations_owner_name`, `approved_for_handoff_by_name`
+
+Archived child rows do not count toward active counts.
+
+Filters include status, opportunity, organization, territory, owner, readiness ranges, requirement/source/gap booleans, hard-stop/economic/compliance/capacity risk booleans, approved state, archived state, and text search.
+
+Sorting includes `updated_desc`, `readiness_asc`, `readiness_desc`, `hard_stops_desc`, `open_gaps_desc`, `opportunity_value_desc`, `status`, `approved_at_desc`, and default sorting by hard stops, lowest readiness, and recently updated.
+
+## Recommended Next Action
+
+The backend returns deterministic `recommended_next_action`:
+
+- `view_only` for archived plans
+- `define_requirements` when no active requirements exist
+- `identify_sources` when no active sources exist
+- `resolve_hard_stops` when hard-stop gaps exist
+- `resolve_or_override_gaps` when open gaps exist
+- `review_margin` when economic readiness is unknown
+- `review_margin_risk` when economic readiness is below 70
+- `review_compliance` when compliance readiness is unknown
+- `review_capacity` when capacity readiness is unknown
+- `approve_for_handoff` when readiness is at least 85
+- `continue_coverage_planning` otherwise
+
+The backend never auto-approves.
+
+## Enriched Detail Response
+
+`GET /coverage-plans/:id/detail` returns:
+
+- `coverage_plan` with enriched list fields
+- `opportunity_context`
+- `requirements`
+- `sources`
+- `gaps`
+- `readiness`
+- `warnings`
+- `blockers`
+- `required_override_fields`
+- `recommended_next_action`
+- `approval_context`
+- `economic_summary`
+- `capacity_summary`
+- `compliance_summary`
+- `audit_allowed`
+- `timeline_available`
+
+Source rows include safe organization, capacity provider, crew, equipment, and actor names where available. Gap rows include owner and resolver names where available.
+
+## Timeline And Audit
+
+`GET /coverage-plans/:id/timeline` returns tenant-scoped coverage plan, requirement, source, and gap events:
+
+- `coverage_plan.created`, `updated`, `recalculated`, `approved_for_handoff`, `archived`
+- `coverage_requirement.created`, `updated`, `archived`
+- `coverage_source.created`, `updated`, `archived`
+- `coverage_gap.created`, `updated`, `resolved`, `overridden`, `archived`
+
+`GET /coverage-plans/:id/audit-summary` returns direct coverage plan, requirement, source, and gap audit records. It requires `coverage_plan.audit.read` and never exposes cross-tenant audit payloads.
+
+## Compliance Readiness
+
+Compliance readiness uses only safe existing indicators:
+
+- compliance and safety gap types
+- sources linked to capacity providers
+- capacity provider status
+- capacity record compliance and insurance status
+- compliance documents linked to provider sources
+
+If compliance data is unavailable, the backend returns a `compliance_unknown` warning instead of fabricating readiness.
+
+## Archive Reasons
+
+Archive routes require `archive_reason` for plans, requirements, sources, and gaps.
+
+Approved reasons:
+
+- `duplicate`
+- `no_longer_relevant`
+- `replaced`
+- `created_in_error`
+- `opportunity_cancelled`
+- `other`
+
+Archive metadata stores reason, optional note where supported, actor, and timestamp.
 
 ## Permissions
 
@@ -149,6 +260,7 @@ Added permissions:
 - `coverage_plan.recalculate`
 - `coverage_plan.approve_handoff`
 - `coverage_plan.archive`
+- `coverage_plan.audit.read`
 - `coverage_requirement.read`
 - `coverage_requirement.create`
 - `coverage_requirement.update`
