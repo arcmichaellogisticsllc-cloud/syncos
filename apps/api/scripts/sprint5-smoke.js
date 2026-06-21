@@ -72,6 +72,7 @@ async function main() {
     name: `Project ${marker}`,
   });
   await expectWrite(client, projectBefore, "project.created", "project create");
+  await client.query("UPDATE projects SET status = 'ready_for_work', project_phase = 'pre_construction' WHERE id = $1", [project.id]);
   await expectStatus("cross-tenant project blocked", "GET", `/projects/${outside.projectId}`, `Bearer ${token}`, 404);
 
   const workOrderBefore = await counts(client);

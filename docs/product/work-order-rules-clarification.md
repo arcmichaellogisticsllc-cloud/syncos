@@ -687,3 +687,16 @@ NO-GO for Work Order Workspace UI, Production Workspace UI, expanded QC UI, sett
 
 The current Work Order primitive is useful but not backend-truthful enough for the approved execution bridge. The next sprint should harden the Work Order backend contract before any operator UI is built.
 
+## 25. Backend Foundation Decisions Applied
+
+The Work Order Backend Contract Foundation sprint applies these clarified decisions:
+
+- Harden the existing `work_orders` table rather than creating a new backend business object.
+- Permit draft Work Orders while a Project is `planning`.
+- Require Project `ready_for_work` or `active` for assignment/start/production eligibility.
+- Keep coverage linkage optional at creation but visible and recommended in readiness.
+- Require assignment targets before assignment unless assignment type remains `unassigned`.
+- Normalize legacy `created` status to `draft`.
+- Require archive and cancellation reasons.
+- Treat Work Order `billable` as eligibility only; it creates no settlement, invoice, AR, payment, payroll, or cash record.
+- Do not create production records or QC evidence from Work Order lifecycle actions.

@@ -34,6 +34,7 @@
     "smoke:coverage": "node scripts/coverage-smoke.js",
     "smoke:project-handoff": "node scripts/project-handoff-smoke.js",
     "smoke:project": "node scripts/project-smoke.js",
+    "smoke:work-order": "node scripts/work-order-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

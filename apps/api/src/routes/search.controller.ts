@@ -121,10 +121,10 @@ export class SearchController {
           p.name ILIKE $2 OR p.scope_summary ILIKE $2 OR p.location_summary ILIKE $2 OR co.name ILIKE $2 OR t.name ILIKE $2 OR p.status ILIKE $2
         )
         UNION ALL
-        SELECT 'work_order' AS object_type, id, title, status, concat_ws(' ', title, work_type, location_description, unit_type, status) AS snippet
+        SELECT 'work_order' AS object_type, id, coalesce(work_order_name, title) AS title, status, concat_ws(' ', work_order_name, title, work_order_number, customer_work_order_number, prime_work_order_number, scope_summary, location_summary, work_type, unit, status) AS snippet
         FROM work_orders
-        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
-          title ILIKE $2 OR work_type ILIKE $2 OR location_description ILIKE $2 OR unit_type ILIKE $2 OR status ILIKE $2
+        WHERE tenant_id = $1 AND deleted_at IS NULL AND ($3::boolean OR status <> 'archived') AND (
+          work_order_name ILIKE $2 OR title ILIKE $2 OR work_order_number ILIKE $2 OR customer_work_order_number ILIKE $2 OR prime_work_order_number ILIKE $2 OR scope_summary ILIKE $2 OR location_summary ILIKE $2 OR work_type ILIKE $2 OR unit ILIKE $2 OR status ILIKE $2
         )
         UNION ALL
         SELECT 'production_record' AS object_type, id, unit_type AS title, status, concat_ws(' ', unit_type, status, billable_status, stop_work_status, correction_reason, rejection_reason) AS snippet

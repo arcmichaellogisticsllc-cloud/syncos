@@ -10,7 +10,15 @@ import { pick, requireAllowed, requireString } from "./intelligence.types";
 const projectStatuses = new Set(["created", "planning", "ready_for_work", "active", "on_hold", "completed", "closed", "archived"]);
 const projectPhases = new Set(["intake", "planning", "pre_construction", "construction", "closeout", "complete"]);
 const projectArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "customer_cancelled", "other"]);
-const workOrderStatuses = new Set(["created", "assigned", "in_progress", "archived"]);
+const workOrderStatuses = new Set(["draft", "ready_to_assign", "assigned", "scheduled", "in_progress", "submitted", "qc_review", "corrections_required", "approved", "billable", "closed", "on_hold", "cancelled", "archived"]);
+const legacyWorkOrderStatusMap: Record<string, string> = { created: "draft" };
+const workOrderReadinessStatuses = new Set(["not_ready", "ready_to_assign", "ready_to_start", "blocked"]);
+const workOrderReadinessBands = new Set(["not_ready", "needs_assignment", "ready_with_risk", "ready_to_start"]);
+const workOrderQcStatuses = new Set(["not_started", "pending_review", "corrections_required", "approved", "rejected"]);
+const workOrderBillableStatuses = new Set(["not_billable", "pending_approval", "billable", "billed_later", "blocked"]);
+const workOrderAssignmentTypes = new Set(["unassigned", "internal_crew", "subcontractor", "partner_contractor", "vendor_equipment", "staffing_source"]);
+const workOrderUnits = new Set(["feet", "miles", "drops", "addresses", "passings", "splice_cases", "nodes", "poles", "permits", "inspections", "restoration_items", "days", "crews", "workers", "equipment_units", "each"]);
+const workOrderArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "project_cancelled", "other"]);
 const productionRecordStatuses = new Set(["draft", "submitted", "correction_required", "qc_review", "accepted", "approved", "billable", "rejected", "archived"]);
 const evidenceTypes = new Set(["photo", "video", "gps", "daily_report", "safety_form", "inspection_note", "material_ticket", "other"]);
 const evidenceStatuses = new Set(["active", "archived"]);
@@ -355,43 +363,137 @@ export class ProductionController {
 
   @Get("work-orders")
   @RequirePermission("work_order.read")
-  async listWorkOrders(@Req() request: AuthenticatedRequest) {
-    return this.withClient((client) => listTenantRecords(client, "work_orders", request.auth.tenantId, { searchColumns: ["title", "work_type", "status"] }));
+  async listWorkOrders(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient((client) => this.listWorkOrdersEnriched(client, request.auth.tenantId, query));
+  }
+
+  @Get("work-orders/:id/detail")
+  @RequirePermission("work_order.read")
+  async getWorkOrderDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.workOrderDetail(client, request.auth.tenantId, id));
+  }
+
+  @Get("work-orders/:id/timeline")
+  @RequirePermission("work_order.timeline.read")
+  async getWorkOrderTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      const result = await client.query(
+        `
+        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+          e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN users u ON u.id = e.actor_user_id
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1 AND e.aggregate_type = 'work_order' AND e.aggregate_id = $2
+        ORDER BY e.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("work-orders/:id/audit-summary")
+  @RequirePermission("work_order.audit.read")
+  async getWorkOrderAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      const result = await client.query(
+        `
+        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+          al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
+          al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
+        FROM audit_logs al
+        LEFT JOIN users u ON u.id = al.actor_user_id
+        WHERE al.tenant_id = $1 AND al.entity_type = 'work_order' AND al.entity_id = $2
+        ORDER BY al.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
   }
 
   @Get("work-orders/:id")
   @RequirePermission("work_order.read")
   async getWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return this.withClient((client) => this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found"));
+    return this.withClient((client) => this.workOrderRow(client, request.auth.tenantId, id));
   }
 
   @Post("work-orders")
   @RequirePermission("work_order.create")
   async createWorkOrder(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
     try {
-      const title = requireString(body.title, "work order title is required");
+      const title = requireString(body.work_order_name ?? body.title, "work order name is required");
       const workType = requireString(body.work_type, "work_type is required");
-      this.requireLocation(body);
-      const expectedUnits = this.requireNonNegative(body.expected_units, "expected_units");
-      const unitType = requireString(body.unit_type, "unit_type is required");
+      const scopeSummary = requireString(body.scope_summary ?? body.title ?? body.work_order_name, "scope_summary is required");
+      const locationSummary = requireString(body.location_summary ?? body.location_description, "location_summary is required");
+      const plannedQuantity = this.requireNonNegative(body.planned_quantity ?? body.expected_units, "planned_quantity");
+      const unit = requireAllowed(body.unit ?? body.unit_type, workOrderUnits, "unit");
+      const requestedStatus = body.status === undefined ? "draft" : this.normalizeWorkOrderStatus(String(body.status));
+      if (requestedStatus !== "draft") throw new BadRequestException("new work orders must start as draft");
       return await this.write(request, "work_order.create", "work_order.created", "work_order", async (client) => {
-        await this.requireRecord(client, "projects", request.auth.tenantId, this.requiredId(body.project_id, "project_id"), "project not found");
-        if (body.assigned_capacity_provider_id) await this.requireProvider(client, request.auth.tenantId, body.assigned_capacity_provider_id);
-        if (body.assigned_crew_id) await this.requireCrew(client, request.auth.tenantId, body.assigned_crew_id, body.assigned_capacity_provider_id);
+        const project = await this.requireRecord(client, "projects", request.auth.tenantId, this.requiredId(body.project_id, "project_id"), "project not found");
+        if (project.status === "archived") throw new BadRequestException("project is archived");
+        if (!["planning", "ready_for_work", "active"].includes(project.status)) throw new BadRequestException("project must be planning, ready_for_work, or active");
+        await this.validateWorkOrderReferences(client, request.auth.tenantId, project, body);
         const workOrder = await insertTenantRecord(client, "work_orders", request.auth.tenantId, {
           project_id: body.project_id,
+          coverage_plan_id: body.coverage_plan_id,
+          coverage_requirement_id: body.coverage_requirement_id,
+          coverage_source_id: body.coverage_source_id,
           assigned_capacity_provider_id: body.assigned_capacity_provider_id,
           assigned_crew_id: body.assigned_crew_id,
           title,
+          work_order_name: title,
+          work_order_number: body.work_order_number,
+          customer_work_order_number: body.customer_work_order_number,
+          prime_work_order_number: body.prime_work_order_number,
+          internal_work_order_number: body.internal_work_order_number,
+          scope_summary: scopeSummary,
+          location_summary: locationSummary,
+          location_description: locationSummary,
+          route_name: body.route_name,
+          node_id: body.node_id,
+          segment_id: body.segment_id,
+          address_range: body.address_range,
+          permit_reference: body.permit_reference,
+          map_link: body.map_link,
           work_type: workType,
-          location_description: body.location_description,
+          territory_id: body.territory_id ?? project.territory_id,
           gps_lat: body.gps_lat,
           gps_lng: body.gps_lng,
-          expected_units: expectedUnits,
-          unit_type: unitType,
-          status: "created",
+          expected_units: plannedQuantity,
+          unit_type: unit,
+          planned_quantity: plannedQuantity,
+          unit,
+          planned_start_date: body.planned_start_date,
+          planned_end_date: body.planned_end_date,
+          assignment_type: body.assignment_type ? requireAllowed(body.assignment_type, workOrderAssignmentTypes, "assignment_type") : "unassigned",
+          assigned_organization_id: body.assigned_organization_id,
+          assigned_equipment_id: body.assigned_equipment_id,
+          owner_user_id: body.owner_user_id,
+          field_supervisor_user_id: body.field_supervisor_user_id,
+          qc_owner_user_id: body.qc_owner_user_id,
+          documentation_requirements: body.documentation_requirements,
+          production_requirements: body.production_requirements,
+          customer_validation_requirements: body.customer_validation_requirements,
+          billing_package_requirements: body.billing_package_requirements,
+          risk_notes: body.risk_notes,
+          status: "draft",
+          readiness_status: "not_ready",
+          readiness_band: "not_ready",
+          qc_status: "not_started",
+          billable_status: "not_billable",
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
         });
-        return { entityType: "work_order", entityId: workOrder.id, afterState: workOrder };
+        const readiness = await this.calculateWorkOrderReadiness(client, request.auth.tenantId, workOrder.id, workOrder);
+        await this.persistWorkOrderReadiness(client, request.auth.tenantId, workOrder.id, readiness, request.auth.userId);
+        return { entityType: "work_order", entityId: workOrder.id, afterState: await this.workOrderDetail(client, request.auth.tenantId, workOrder.id) };
       });
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -404,25 +506,40 @@ export class ProductionController {
   async updateWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       if (body.status !== undefined) throw new BadRequestException("status changes must use lifecycle action routes");
-      const values = pick(body, ["title", "work_type", "location_description", "gps_lat", "gps_lng", "unit_type"]);
-      if (body.expected_units !== undefined) values.expected_units = this.requireNonNegative(body.expected_units, "expected_units");
+      const values = pick(body, ["work_order_number", "customer_work_order_number", "prime_work_order_number", "internal_work_order_number", "work_type", "scope_summary", "location_summary", "route_name", "node_id", "segment_id", "address_range", "permit_reference", "map_link", "territory_id", "planned_start_date", "planned_end_date", "scheduled_start_date", "scheduled_end_date", "owner_user_id", "field_supervisor_user_id", "qc_owner_user_id", "documentation_requirements", "production_requirements", "customer_validation_requirements", "billing_package_requirements", "risk_notes"]);
+      if (body.work_order_name !== undefined || body.title !== undefined) {
+        values.work_order_name = requireString(body.work_order_name ?? body.title, "work order name is required");
+        values.title = values.work_order_name;
+      }
+      if (body.location_description !== undefined) values.location_summary = body.location_description;
+      if (body.location_summary !== undefined) values.location_description = body.location_summary;
+      if (body.planned_quantity !== undefined || body.expected_units !== undefined) {
+        values.planned_quantity = this.requireNonNegative(body.planned_quantity ?? body.expected_units, "planned_quantity");
+        values.expected_units = values.planned_quantity;
+      }
+      if (body.completed_quantity !== undefined) values.completed_quantity = this.requireNonNegative(body.completed_quantity, "completed_quantity");
+      if (body.approved_quantity !== undefined) values.approved_quantity = this.requireNonNegative(body.approved_quantity, "approved_quantity");
+      if (body.billable_quantity !== undefined) values.billable_quantity = this.requireNonNegative(body.billable_quantity, "billable_quantity");
+      if (body.unit !== undefined || body.unit_type !== undefined) {
+        values.unit = requireAllowed(body.unit ?? body.unit_type, workOrderUnits, "unit");
+        values.unit_type = values.unit;
+      }
       return await this.write(request, "work_order.update", "work_order.updated", "work_order", async (client) => {
         const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-        if (body.project_id) {
-          await this.requireRecord(client, "projects", request.auth.tenantId, this.requiredId(body.project_id, "project_id"), "project not found");
-          values.project_id = body.project_id;
+        if (["archived", "cancelled", "closed"].includes(before.status)) throw new BadRequestException("closed, cancelled, and archived work orders are view-only");
+        if (body.project_id) values.project_id = this.requiredId(body.project_id, "project_id");
+        const project = await this.requireRecord(client, "projects", request.auth.tenantId, String(values.project_id ?? before.project_id), "project not found");
+        await this.validateWorkOrderReferences(client, request.auth.tenantId, project, body, before);
+        for (const key of ["coverage_plan_id", "coverage_requirement_id", "coverage_source_id", "assigned_organization_id", "assigned_capacity_provider_id", "assigned_crew_id", "assigned_equipment_id", "assignment_type"] as const) {
+          if (body[key] !== undefined) values[key] = body[key];
         }
-        if (body.assigned_capacity_provider_id) {
-          await this.requireProvider(client, request.auth.tenantId, body.assigned_capacity_provider_id);
-          values.assigned_capacity_provider_id = body.assigned_capacity_provider_id;
-        }
-        if (body.assigned_crew_id) {
-          await this.requireCrew(client, request.auth.tenantId, body.assigned_crew_id, values.assigned_capacity_provider_id ?? before.assigned_capacity_provider_id);
-          values.assigned_crew_id = body.assigned_crew_id;
-        }
+        if (values.assignment_type !== undefined) requireAllowed(values.assignment_type, workOrderAssignmentTypes, "assignment_type");
+        values.updated_by = request.auth.userId;
         const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, values);
         if (!after) throw new NotFoundException("work order not found");
-        return { entityType: "work_order", entityId: id, beforeState: before, afterState: after };
+        const readiness = await this.calculateWorkOrderReadiness(client, request.auth.tenantId, id, after);
+        await this.persistWorkOrderReadiness(client, request.auth.tenantId, id, readiness, request.auth.userId);
+        return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
       }, body.reason);
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
@@ -430,24 +547,79 @@ export class ProductionController {
     }
   }
 
+  @Post("work-orders/:id/recalculate-readiness")
+  @RequirePermission("work_order.recalculate_readiness")
+  async recalculateWorkOrderReadiness(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.write(request, "work_order.recalculate_readiness", "work_order.readiness_recalculated", "work_order", async (client) => {
+      const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      const readiness = await this.calculateWorkOrderReadiness(client, request.auth.tenantId, id, before);
+      await this.persistWorkOrderReadiness(client, request.auth.tenantId, id, readiness, request.auth.userId);
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
+    });
+  }
+
+  @Post("work-orders/:id/mark-ready-to-assign")
+  @RequirePermission("work_order.mark_ready")
+  async markWorkOrderReady(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "work_order.mark_ready", "work_order.ready_to_assign", "work_order", async (client) => {
+      const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      const readiness = await this.calculateWorkOrderReadiness(client, request.auth.tenantId, id, before);
+      this.assertNoWorkOrderBlockers(readiness);
+      this.assertWorkOrderOverrides(readiness, body.override_reasons);
+      if (readiness.readiness_score < 70) throw new BadRequestException("work order readiness is not sufficient to mark ready_to_assign");
+      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "ready_to_assign", updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("work order not found");
+      await this.persistWorkOrderReadiness(client, request.auth.tenantId, id, await this.calculateWorkOrderReadiness(client, request.auth.tenantId, id, after), request.auth.userId);
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
+    }, body.reason);
+  }
+
   @Post("work-orders/:id/assign")
   @RequirePermission("work_order.assign")
   async assignWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     return this.write(request, "work_order.assign", "work_order.assigned", "work_order", async (client) => {
       const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-      const providerId = body.assigned_capacity_provider_id ?? before.assigned_capacity_provider_id;
-      const provider = await this.requireProvider(client, request.auth.tenantId, providerId);
-      if (provider.status !== "activated") throw new BadRequestException("capacity provider must be activated");
-      const crewId = body.assigned_crew_id ?? before.assigned_crew_id;
+      await this.requireProjectReadyForWorkOrder(client, request.auth.tenantId, before.project_id);
+      this.requireWorkOrderOpen(before);
+      const assignmentType = requireAllowed(body.assignment_type ?? before.assignment_type ?? "unassigned", workOrderAssignmentTypes, "assignment_type");
+      const providerId = body.assigned_capacity_provider_id ?? before.assigned_capacity_provider_id ?? null;
+      const crewId = body.assigned_crew_id ?? before.assigned_crew_id ?? null;
+      const organizationId = body.assigned_organization_id ?? before.assigned_organization_id ?? null;
+      const equipmentId = body.assigned_equipment_id ?? before.assigned_equipment_id ?? null;
+      if (assignmentType !== "unassigned" && !providerId && !crewId && !organizationId && !equipmentId) throw new BadRequestException("assignment target is required");
+      if (providerId) {
+        const provider = await this.requireProvider(client, request.auth.tenantId, providerId);
+        if (["archived", "suspended"].includes(String(provider.status))) throw new BadRequestException("assigned provider is archived or suspended");
+        if (provider.status !== "activated" && !this.hasOverride(body.override_reasons, "assignment_override_reason")) {
+          throw new BadRequestException({ message: "Work order assignment requires override reasons for warnings.", required_override_fields: ["assignment_override_reason"] });
+        }
+      }
       if (crewId) await this.requireCrew(client, request.auth.tenantId, crewId, providerId);
+      if (organizationId) await this.requireRecord(client, "organizations", request.auth.tenantId, this.requiredId(organizationId, "assigned_organization_id"), "assigned organization not found");
+      if (equipmentId) await this.requireRecord(client, "equipment", request.auth.tenantId, this.requiredId(equipmentId, "assigned_equipment_id"), "assigned equipment not found");
       const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, {
+        assignment_type: assignmentType,
+        assigned_organization_id: organizationId,
         assigned_capacity_provider_id: providerId,
         assigned_crew_id: crewId,
+        assigned_equipment_id: equipmentId,
+        assigned_by: request.auth.userId,
+        assigned_at: new Date(),
+        assignment_note: body.assignment_note,
         status: "assigned",
+        updated_by: request.auth.userId,
       });
       if (!after) throw new NotFoundException("work order not found");
-      return { entityType: "work_order", entityId: id, beforeState: before, afterState: after };
+      await this.persistWorkOrderReadiness(client, request.auth.tenantId, id, await this.calculateWorkOrderReadiness(client, request.auth.tenantId, id, after), request.auth.userId);
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
     });
+  }
+
+  @Post("work-orders/:id/schedule")
+  @RequirePermission("work_order.schedule")
+  async scheduleWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    if (!body.scheduled_start_date && !body.schedule_note) throw new BadRequestException("scheduled_start_date or schedule_note is required");
+    return this.workOrderStatusAction(request, id, "work_order.schedule", "work_order.scheduled", ["ready_to_assign", "assigned"], { status: "scheduled", scheduled_start_date: body.scheduled_start_date, scheduled_end_date: body.scheduled_end_date, updated_by: request.auth.userId });
   }
 
   @Post("work-orders/:id/start")
@@ -455,18 +627,109 @@ export class ProductionController {
   async startWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.write(request, "work_order.start", "work_order.started", "work_order", async (client) => {
       const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-      if (before.status !== "assigned") throw new BadRequestException("work order must be assigned");
-      await this.requireProvider(client, request.auth.tenantId, before.assigned_capacity_provider_id);
-      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "in_progress" });
+      await this.requireProjectReadyForWorkOrder(client, request.auth.tenantId, before.project_id);
+      if (!["assigned", "scheduled"].includes(before.status)) throw new BadRequestException("work order must be assigned or scheduled");
+      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "in_progress", actual_start_date: before.actual_start_date ?? new Date(), updated_by: request.auth.userId });
       if (!after) throw new NotFoundException("work order not found");
-      return { entityType: "work_order", entityId: id, beforeState: before, afterState: after };
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
     });
+  }
+
+  @Post("work-orders/:id/submit")
+  @RequirePermission("work_order.submit")
+  async submitWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.workOrderStatusAction(request, id, "work_order.submit", "work_order.submitted", ["in_progress"], { status: "submitted", updated_by: request.auth.userId });
+  }
+
+  @Post("work-orders/:id/start-qc-review")
+  @RequirePermission("work_order.qc_review")
+  async startWorkOrderQcReview(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.workOrderStatusAction(request, id, "work_order.qc_review", "work_order.qc_review_started", ["submitted"], { status: "qc_review", qc_status: "pending_review", updated_by: request.auth.userId });
+  }
+
+  @Post("work-orders/:id/request-corrections")
+  @RequirePermission("work_order.corrections")
+  async requestWorkOrderCorrections(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.correction_reason ?? body.reason, "correction_reason is required");
+    return this.workOrderStatusAction(request, id, "work_order.corrections", "work_order.corrections_required", ["submitted", "qc_review"], { status: "corrections_required", qc_status: "corrections_required", correction_reason: reason, updated_by: request.auth.userId }, reason);
+  }
+
+  @Post("work-orders/:id/approve")
+  @RequirePermission("work_order.approve")
+  async approveWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const note = this.requiredText(body.approval_note, "approval_note is required");
+    return this.workOrderStatusAction(request, id, "work_order.approve", "work_order.approved", ["submitted", "qc_review", "corrections_required"], { status: "approved", qc_status: "approved", approval_note: note, approved_quantity: body.approved_quantity === undefined ? undefined : this.requireNonNegative(body.approved_quantity, "approved_quantity"), updated_by: request.auth.userId }, note);
+  }
+
+  @Post("work-orders/:id/mark-billable")
+  @RequirePermission("work_order.mark_billable")
+  async markWorkOrderBillable(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "work_order.mark_billable", "work_order.marked_billable", "work_order", async (client) => {
+      const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      if (before.status !== "approved" && !body.override_reason) throw new BadRequestException("work order must be approved before marking billable unless override_reason is supplied");
+      if (Number(before.approved_quantity ?? 0) <= 0 && !body.override_reason) throw new BadRequestException("approved_quantity must be > 0 unless override_reason is supplied");
+      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "billable", billable_status: "billable", billable_note: body.billable_note, updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("work order not found");
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
+    }, body.override_reason ?? body.billable_note);
+  }
+
+  @Post("work-orders/:id/place-on-hold")
+  @RequirePermission("work_order.place_hold")
+  async placeWorkOrderOnHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const holdReason = this.requiredText(body.hold_reason, "hold_reason is required");
+    return this.write(request, "work_order.place_hold", "work_order.on_hold", "work_order", async (client) => {
+      const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      this.requireWorkOrderOpen(before);
+      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "on_hold", previous_status: before.status === "on_hold" ? before.previous_status : before.status, hold_reason: holdReason, hold_note: body.hold_note, updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("work order not found");
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
+    }, holdReason);
+  }
+
+  @Post("work-orders/:id/release-hold")
+  @RequirePermission("work_order.release_hold")
+  async releaseWorkOrderHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const releaseNote = this.requiredText(body.release_note, "release_note is required");
+    return this.write(request, "work_order.release_hold", "work_order.hold_released", "work_order", async (client) => {
+      const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      if (before.status !== "on_hold") throw new BadRequestException("work order must be on_hold");
+      const restored = before.previous_status && workOrderStatuses.has(before.previous_status) && !["archived", "cancelled", "closed", "on_hold"].includes(before.previous_status) ? before.previous_status : before.assigned_capacity_provider_id || before.assigned_crew_id ? "assigned" : "ready_to_assign";
+      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: restored, previous_status: null, hold_release_note: releaseNote, updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("work order not found");
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
+    }, releaseNote);
+  }
+
+  @Post("work-orders/:id/cancel")
+  @RequirePermission("work_order.cancel")
+  async cancelWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.cancellation_reason ?? body.reason, "cancellation_reason is required");
+    return this.workOrderStatusAction(request, id, "work_order.cancel", "work_order.cancelled", ["draft", "ready_to_assign", "assigned", "scheduled", "on_hold"], { status: "cancelled", cancellation_reason: reason, cancellation_note: body.cancellation_note, updated_by: request.auth.userId }, reason);
+  }
+
+  @Post("work-orders/:id/close")
+  @RequirePermission("work_order.close")
+  async closeWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const closeoutNotes = this.requiredText(body.closeout_notes, "closeout_notes is required");
+    return this.workOrderStatusAction(request, id, "work_order.close", "work_order.closed", ["billable", "approved"], { status: "closed", closeout_notes: closeoutNotes, actual_end_date: body.actual_end_date ?? new Date(), updated_by: request.auth.userId }, closeoutNotes);
   }
 
   @Post("work-orders/:id/archive")
   @RequirePermission("work_order.archive")
-  async archiveWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return this.archiveRecord(request, "work_orders", id, "work_order", "work_order.archive", "work_order.archived");
+  async archiveWorkOrder(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      const archiveReason = requireAllowed(body.archive_reason, workOrderArchiveReasons, "archive_reason");
+      return await this.write(request, "work_order.archive", "work_order.archived", "work_order", async (client) => {
+        const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+        const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "archived", archived_at: new Date(), archived_by: request.auth.userId, archive_reason: archiveReason, archive_note: body.archive_note, deleted_at: new Date(), updated_by: request.auth.userId });
+        if (!after) throw new NotFoundException("work order not found");
+        return { entityType: "work_order", entityId: id, beforeState: before, afterState: after };
+      }, archiveReason);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
   }
 
   @Get("qc/review-queue")
@@ -864,6 +1127,303 @@ export class ProductionController {
   @RequirePermission("production_evidence.archive")
   async archiveEvidence(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.archiveRecord(request, "production_evidence", id, "production_evidence", "production_evidence.archive", "production_evidence.archived");
+  }
+
+  private async listWorkOrdersEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>): Promise<Array<Record<string, any>>> {
+    const conditions = ["wo.tenant_id = $1", "wo.deleted_at IS NULL"];
+    const params: unknown[] = [tenantId];
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      conditions.push(sql.replace("?", `$${params.length}`));
+    };
+    if (query.archived !== "true") conditions.push("wo.status <> 'archived'");
+    if (query.id) add("wo.id = ?", query.id);
+    if (query.project_id) add("wo.project_id = ?", query.project_id);
+    if (query.status) add("wo.status = ?", this.normalizeWorkOrderStatus(query.status));
+    if (query.normalized_status) add("wo.status = ?", this.normalizeWorkOrderStatus(query.normalized_status));
+    if (query.readiness_status) add("wo.readiness_status = ?", query.readiness_status);
+    if (query.qc_status) add("wo.qc_status = ?", query.qc_status);
+    if (query.billable_status) add("wo.billable_status = ?", query.billable_status);
+    if (query.territory_id) add("wo.territory_id = ?", query.territory_id);
+    if (query.work_type) add("wo.work_type = ?", query.work_type);
+    if (query.assigned_capacity_provider_id) add("wo.assigned_capacity_provider_id = ?", query.assigned_capacity_provider_id);
+    if (query.assigned_crew_id) add("wo.assigned_crew_id = ?", query.assigned_crew_id);
+    if (query.assignment_type) add("wo.assignment_type = ?", query.assignment_type);
+    if (query.production_eligible === "true") conditions.push("wo.status IN ('assigned', 'scheduled', 'in_progress') AND p.status IN ('ready_for_work', 'active')");
+    if (query.production_eligible === "false") conditions.push("NOT (wo.status IN ('assigned', 'scheduled', 'in_progress') AND p.status IN ('ready_for_work', 'active'))");
+    if (query.planned_start_from) add("wo.planned_start_date >= ?", query.planned_start_from);
+    if (query.planned_start_to) add("wo.planned_start_date <= ?", query.planned_start_to);
+    if (query.scheduled_start_from) add("wo.scheduled_start_date >= ?", query.scheduled_start_from);
+    if (query.scheduled_start_to) add("wo.scheduled_start_date <= ?", query.scheduled_start_to);
+    if (query.q) {
+      params.push(`%${query.q}%`);
+      conditions.push(`(wo.work_order_name ILIKE $${params.length} OR wo.title ILIKE $${params.length} OR wo.work_order_number ILIKE $${params.length} OR wo.customer_work_order_number ILIKE $${params.length} OR wo.prime_work_order_number ILIKE $${params.length} OR wo.scope_summary ILIKE $${params.length} OR wo.location_summary ILIKE $${params.length} OR p.name ILIKE $${params.length})`);
+    }
+    const orderBy = query.sort === "planned_start_asc" ? "wo.planned_start_date ASC NULLS LAST, wo.updated_at DESC" : query.sort === "scheduled_start_asc" ? "wo.scheduled_start_date ASC NULLS LAST, wo.updated_at DESC" : query.sort === "readiness_desc" ? "wo.readiness_score DESC NULLS LAST, wo.updated_at DESC" : query.sort === "readiness_asc" ? "wo.readiness_score ASC NULLS FIRST, wo.updated_at DESC" : query.sort === "status" ? "wo.status ASC, wo.updated_at DESC" : query.sort === "project" ? "p.name ASC, wo.updated_at DESC" : query.sort === "assigned_provider" ? "cp.name ASC NULLS LAST, wo.updated_at DESC" : "wo.readiness_score ASC NULLS FIRST, wo.scheduled_start_date ASC NULLS LAST, wo.updated_at DESC";
+    const result = await client.query(
+      `
+      WITH production_counts AS (
+        SELECT work_order_id, count(*)::int AS production_record_count
+        FROM production_records
+        WHERE tenant_id = $1 AND deleted_at IS NULL
+        GROUP BY work_order_id
+      ),
+      constraint_counts AS (
+        SELECT affected_object_id AS work_order_id,
+          count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived'))::int AS open_constraints_count,
+          count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived') AND COALESCE(hard_stop, false))::int AS hard_stop_constraints_count
+        FROM constraints
+        WHERE tenant_id = $1 AND affected_object_type = 'work_order' AND deleted_at IS NULL
+        GROUP BY affected_object_id
+      ),
+      evidence_counts AS (
+        SELECT pr.work_order_id, count(pe.id)::int AS evidence_count
+        FROM production_records pr
+        JOIN production_evidence pe ON pe.tenant_id = pr.tenant_id AND pe.production_record_id = pr.id AND pe.deleted_at IS NULL
+        WHERE pr.tenant_id = $1 AND pr.deleted_at IS NULL
+        GROUP BY pr.work_order_id
+      )
+      SELECT wo.id, wo.coverage_plan_id, wo.coverage_requirement_id, wo.coverage_source_id, wo.work_order_name, wo.title,
+        wo.work_order_number, wo.customer_work_order_number, wo.prime_work_order_number,
+        wo.project_id, p.name AS project_name, p.status AS project_status, p.customer_organization_id, co.name AS customer_organization_name,
+        wo.territory_id, t.name AS territory_name, wo.work_type, wo.status, wo.status AS normalized_status,
+        wo.readiness_status, wo.readiness_score, wo.readiness_band, wo.qc_status, wo.billable_status,
+        wo.planned_quantity, wo.completed_quantity, wo.approved_quantity, wo.billable_quantity, wo.unit,
+        wo.scope_summary, wo.location_summary, wo.planned_start_date, wo.planned_end_date, wo.scheduled_start_date, wo.scheduled_end_date, wo.actual_start_date, wo.actual_end_date,
+        wo.documentation_requirements, wo.production_requirements, wo.customer_validation_requirements, wo.billing_package_requirements,
+        wo.assignment_type, wo.assigned_organization_id, ao.name AS assigned_organization_name,
+        wo.assigned_capacity_provider_id, cp.name AS assigned_capacity_provider_name,
+        wo.assigned_crew_id, c.name AS assigned_crew_name, wo.assigned_equipment_id, wo.assigned_by, wo.assigned_at, wo.assignment_note,
+        wo.owner_user_id, ou.display_name AS owner_name, wo.field_supervisor_user_id, fs.display_name AS field_supervisor_name,
+        wo.archived_at, wo.created_at, wo.updated_at,
+        COALESCE(pc.production_record_count, 0) AS production_record_count,
+        COALESCE(cc.open_constraints_count, 0) AS open_constraints_count,
+        COALESCE(ec.evidence_count, 0) AS evidence_count,
+        COALESCE(cc.hard_stop_constraints_count, 0) AS hard_stop_constraints_count
+      FROM work_orders wo
+      JOIN projects p ON p.tenant_id = wo.tenant_id AND p.id = wo.project_id
+      LEFT JOIN organizations co ON co.tenant_id = p.tenant_id AND co.id = p.customer_organization_id
+      LEFT JOIN organizations ao ON ao.tenant_id = wo.tenant_id AND ao.id = wo.assigned_organization_id
+      LEFT JOIN territories t ON t.tenant_id = wo.tenant_id AND t.id = wo.territory_id
+      LEFT JOIN capacity_providers cp ON cp.tenant_id = wo.tenant_id AND cp.id = wo.assigned_capacity_provider_id
+      LEFT JOIN crews c ON c.tenant_id = wo.tenant_id AND c.id = wo.assigned_crew_id
+      LEFT JOIN users ou ON ou.id = wo.owner_user_id
+      LEFT JOIN users fs ON fs.id = wo.field_supervisor_user_id
+      LEFT JOIN production_counts pc ON pc.work_order_id = wo.id
+      LEFT JOIN constraint_counts cc ON cc.work_order_id = wo.id
+      LEFT JOIN evidence_counts ec ON ec.work_order_id = wo.id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY ${orderBy}
+      LIMIT 200
+      `,
+      params,
+    );
+    const rows = await Promise.all(result.rows.map((row) => this.withWorkOrderDerived(client, tenantId, row.id, row)));
+    if (query.has_blockers === "true") return rows.filter((row) => row.blockers.length > 0);
+    if (query.has_blockers === "false") return rows.filter((row) => row.blockers.length === 0);
+    if (query.has_warnings === "true") return rows.filter((row) => row.warnings.length > 0);
+    if (query.has_warnings === "false") return rows.filter((row) => row.warnings.length === 0);
+    return rows;
+  }
+
+  private async workOrderRow(client: PoolClient, tenantId: string, id: string): Promise<Record<string, any>> {
+    const result = await client.query("SELECT 1 FROM work_orders WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL LIMIT 1", [tenantId, id]);
+    if (!result.rows[0]) throw new NotFoundException("work order not found");
+    const rows = await this.listWorkOrdersEnriched(client, tenantId, { archived: "true", id });
+    const row = rows.find((item) => item.id === id);
+    if (!row) throw new NotFoundException("work order not found");
+    return row;
+  }
+
+  private async workOrderDetail(client: PoolClient, tenantId: string, id: string) {
+    const workOrder = (await this.workOrderRow(client, tenantId, id)) as Record<string, any>;
+    const readiness = await this.calculateWorkOrderReadiness(client, tenantId, id, workOrder);
+    const workOrderWithReadiness = { ...workOrder, warnings: readiness.warnings, blockers: readiness.blockers, required_override_fields: readiness.required_override_fields, production_eligible: readiness.production_eligible, recommended_next_action: this.workOrderNextAction(workOrder, readiness) };
+    const detail = {
+      work_order: { ...workOrder, warnings: readiness.warnings, blockers: readiness.blockers, required_override_fields: readiness.required_override_fields, production_eligible: readiness.production_eligible, recommended_next_action: this.workOrderNextAction(workOrder, readiness) },
+      project_context: await this.optionalRecord(client, "projects", tenantId, workOrder.project_id),
+      coverage_context: {
+        coverage_plan: workOrder.coverage_plan_id ? await this.optionalRecord(client, "coverage_plans", tenantId, workOrder.coverage_plan_id) : null,
+        coverage_requirement: workOrder.coverage_requirement_id ? await this.optionalRecord(client, "coverage_requirements", tenantId, workOrder.coverage_requirement_id) : null,
+        coverage_source: workOrder.coverage_source_id ? await this.optionalRecord(client, "coverage_sources", tenantId, workOrder.coverage_source_id) : null,
+      },
+      assignment_context: {
+        assignment_type: workOrder.assignment_type,
+        assigned_organization_id: workOrder.assigned_organization_id,
+        assigned_organization_name: workOrder.assigned_organization_name,
+        assigned_capacity_provider_id: workOrder.assigned_capacity_provider_id,
+        assigned_capacity_provider_name: workOrder.assigned_capacity_provider_name,
+        assigned_crew_id: workOrder.assigned_crew_id,
+        assigned_crew_name: workOrder.assigned_crew_name,
+        assigned_equipment_id: workOrder.assigned_equipment_id,
+        assigned_by: workOrder.assigned_by,
+        assigned_at: workOrder.assigned_at,
+        assignment_note: workOrder.assignment_note,
+      },
+      readiness,
+      warnings: readiness.warnings,
+      blockers: readiness.blockers,
+      quantity_summary: { planned_quantity: workOrder.planned_quantity, completed_quantity: workOrder.completed_quantity, approved_quantity: workOrder.approved_quantity, billable_quantity: workOrder.billable_quantity, unit: workOrder.unit },
+      production_summary: { production_record_count: workOrder.production_record_count ?? 0 },
+      qc_summary: { qc_status: workOrder.qc_status },
+      billable_summary: { billable_status: workOrder.billable_status },
+      constraints_summary: { open_constraints_count: workOrder.open_constraints_count ?? 0, hard_stop_constraints_count: workOrder.hard_stop_constraints_count ?? 0 },
+      timeline_available: true,
+      audit_allowed: true,
+    };
+    return { ...workOrderWithReadiness, ...detail };
+  }
+
+  private async withWorkOrderDerived(client: PoolClient, tenantId: string, id: string, row: Record<string, any>): Promise<Record<string, any>> {
+    const readiness = await this.calculateWorkOrderReadiness(client, tenantId, id, row);
+    return { ...row, normalized_status: this.normalizeWorkOrderStatus(row.status), warnings: readiness.warnings, blockers: readiness.blockers, required_override_fields: readiness.required_override_fields, production_eligible: readiness.production_eligible, recommended_next_action: this.workOrderNextAction(row, readiness) };
+  }
+
+  private async calculateWorkOrderReadiness(client: PoolClient, tenantId: string, workOrderId: string, workOrder: Record<string, any>) {
+    const project = await this.optionalRecord(client, "projects", tenantId, String(workOrder.project_id));
+    const constraints = await this.workOrderConstraints(client, tenantId, workOrderId);
+    const projectReady = project && ["ready_for_work", "active"].includes(project.status);
+    const assignmentPresent = Boolean(workOrder.assigned_capacity_provider_id || workOrder.assigned_crew_id || workOrder.assigned_organization_id || workOrder.assigned_equipment_id);
+    const assignmentRequired = !["draft", "ready_to_assign"].includes(String(workOrder.status));
+    const items = [
+      { key: "project_valid", complete: Boolean(project), hard: true },
+      { key: "project_ready_or_active", complete: Boolean(projectReady), hard: workOrder.status !== "draft" },
+      { key: "scope_summary_present", complete: Boolean(workOrder.scope_summary ?? workOrder.title), hard: true },
+      { key: "location_summary_present", complete: Boolean(workOrder.location_summary ?? workOrder.location_description), hard: true },
+      { key: "work_type_present", complete: Boolean(workOrder.work_type), hard: true },
+      { key: "territory_present", complete: Boolean(workOrder.territory_id), hard: true },
+      { key: "planned_quantity_present", complete: Number(workOrder.planned_quantity ?? workOrder.expected_units) >= 0, hard: true },
+      { key: "unit_present", complete: Boolean(workOrder.unit ?? workOrder.unit_type), hard: true },
+      { key: "assignment_target_present", complete: !assignmentRequired || assignmentPresent, hard: false },
+      { key: "schedule_present", complete: Boolean(workOrder.scheduled_start_date || workOrder.planned_start_date), hard: false },
+      { key: "coverage_source_linked", complete: Boolean(workOrder.coverage_source_id), hard: false },
+      { key: "documentation_requirements_identified", complete: Boolean(workOrder.documentation_requirements), hard: false },
+      { key: "hard_stop_constraints_resolved", complete: Number(constraints.hard_stop_constraints_count ?? 0) === 0, hard: true },
+    ];
+    const completed = items.filter((item) => item.complete).length;
+    let score = Math.round((completed / items.length) * 100);
+    const blockers = items.filter((item) => !item.complete && item.hard).map((item) => ({ blocker_type: item.key, severity: "high", message: item.key, related_object_type: "work_order", related_object_id: workOrderId }));
+    const warnings = items.filter((item) => !item.complete && !item.hard).map((item) => ({ warning_type: item.key, severity: "medium", message: item.key, required_override_field: "readiness_override_reason", related_object_type: "work_order", related_object_id: workOrderId }));
+    if (["archived", "cancelled", "closed"].includes(workOrder.status)) blockers.push({ blocker_type: `work_order_${workOrder.status}`, severity: "critical", message: `work order ${workOrder.status}`, related_object_type: "work_order", related_object_id: workOrderId });
+    if (!projectReady && workOrder.status !== "draft") score = Math.min(score, 39);
+    if (blockers.length || Number(constraints.hard_stop_constraints_count ?? 0) > 0) score = Math.min(score, 39);
+    if (assignmentRequired && !assignmentPresent) score = Math.min(score, 69);
+    if (warnings.length) score = Math.min(score, 84);
+    const band = score >= 85 ? "ready_to_start" : score >= 70 ? "ready_with_risk" : score >= 40 ? "needs_assignment" : "not_ready";
+    const readinessStatus = blockers.length ? "blocked" : score >= 85 ? "ready_to_start" : score >= 70 ? "ready_to_assign" : "not_ready";
+    const requiredOverrideFields = [...new Set(warnings.map((warning) => warning.required_override_field).filter(Boolean))];
+    return { checklist: items, readiness_score: score, readiness_status: readinessStatus, readiness_band: band, warnings, blockers, required_override_fields: requiredOverrideFields, production_eligible: Boolean(projectReady && ["assigned", "scheduled", "in_progress"].includes(workOrder.status) && !blockers.length) };
+  }
+
+  private async persistWorkOrderReadiness(client: PoolClient, tenantId: string, id: string, readiness: Record<string, unknown>, actorUserId: string) {
+    await updateTenantRecord(client, "work_orders", tenantId, id, {
+      readiness_score: readiness.readiness_score,
+      readiness_status: readiness.readiness_status,
+      readiness_band: readiness.readiness_band,
+      updated_by: actorUserId,
+    });
+  }
+
+  private async workOrderConstraints(client: PoolClient, tenantId: string, workOrderId: string) {
+    const result = await client.query(
+      `
+      SELECT count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived'))::int AS open_constraints_count,
+        count(*) FILTER (WHERE status NOT IN ('resolved', 'closed', 'archived') AND COALESCE(hard_stop, false))::int AS hard_stop_constraints_count
+      FROM constraints
+      WHERE tenant_id = $1 AND affected_object_type = 'work_order' AND affected_object_id = $2 AND deleted_at IS NULL
+      `,
+      [tenantId, workOrderId],
+    );
+    return result.rows[0] ?? { open_constraints_count: 0, hard_stop_constraints_count: 0 };
+  }
+
+  private workOrderNextAction(workOrder: Record<string, any>, readiness: { blockers: unknown[]; readiness_score: number }) {
+    if (workOrder.status === "archived") return "view_only";
+    if (readiness.blockers.length) return "resolve_blockers";
+    if (workOrder.readiness_score === null || workOrder.readiness_score === undefined) return "recalculate_readiness";
+    if (workOrder.status === "draft" && readiness.readiness_score >= 70) return "mark_ready_to_assign";
+    if (workOrder.status === "ready_to_assign") return "assign_provider_or_crew";
+    if (workOrder.status === "assigned") return "schedule_work";
+    if (workOrder.status === "scheduled") return "start_work";
+    if (workOrder.status === "in_progress") return "submit_for_review";
+    if (workOrder.status === "submitted") return "start_qc_review";
+    if (workOrder.status === "qc_review") return "approve_or_request_corrections";
+    if (workOrder.status === "corrections_required") return "complete_corrections";
+    if (workOrder.status === "approved") return "mark_billable";
+    if (workOrder.status === "billable") return "close_work_order";
+    if (workOrder.status === "on_hold") return "release_or_resolve_hold";
+    if (workOrder.status === "closed") return "view_closed_work_order";
+    return "review_work_order";
+  }
+
+  private normalizeWorkOrderStatus(status: string) {
+    const normalized = legacyWorkOrderStatusMap[status] ?? status;
+    requireAllowed(normalized, workOrderStatuses, "work_order status");
+    return normalized;
+  }
+
+  private assertNoWorkOrderBlockers(readiness: { blockers: unknown[] }) {
+    if (readiness.blockers.length) throw new BadRequestException({ message: "Work order readiness has blockers.", blockers: readiness.blockers });
+  }
+
+  private assertWorkOrderOverrides(readiness: { required_override_fields: string[] }, overrides: unknown) {
+    if (!readiness.required_override_fields.length) return;
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) throw new BadRequestException({ message: "Work order readiness requires override reasons for warnings.", required_override_fields: readiness.required_override_fields });
+    const record = overrides as Record<string, unknown>;
+    const missing = readiness.required_override_fields.filter((field) => typeof record[field] !== "string" || !String(record[field]).trim());
+    if (missing.length) throw new BadRequestException({ message: "Work order readiness requires override reasons for warnings.", required_override_fields: missing });
+  }
+
+  private hasOverride(overrides: unknown, field: string) {
+    return Boolean(overrides && typeof overrides === "object" && !Array.isArray(overrides) && typeof (overrides as Record<string, unknown>)[field] === "string" && String((overrides as Record<string, unknown>)[field]).trim());
+  }
+
+  private async requireProjectReadyForWorkOrder(client: PoolClient, tenantId: string, projectId: unknown) {
+    const project = await this.requireRecord(client, "projects", tenantId, this.requiredId(projectId, "project_id"), "project not found");
+    if (!["ready_for_work", "active"].includes(project.status)) throw new BadRequestException("project must be ready_for_work or active");
+    return project;
+  }
+
+  private requireWorkOrderOpen(workOrder: Record<string, unknown>) {
+    if (["archived", "cancelled", "closed"].includes(String(workOrder.status))) throw new BadRequestException("work order is closed, cancelled, or archived");
+  }
+
+  private async validateWorkOrderReferences(client: PoolClient, tenantId: string, project: Record<string, any>, body: Record<string, unknown>, before?: Record<string, any>) {
+    if (body.territory_id) await this.requireRecord(client, "territories", tenantId, this.requiredId(body.territory_id, "territory_id"), "territory not found");
+    if (body.owner_user_id) await this.requireTenantUser(client, tenantId, body.owner_user_id);
+    if (body.field_supervisor_user_id) await this.requireTenantUser(client, tenantId, body.field_supervisor_user_id);
+    if (body.qc_owner_user_id) await this.requireTenantUser(client, tenantId, body.qc_owner_user_id);
+    const coveragePlanId = body.coverage_plan_id ?? before?.coverage_plan_id;
+    if (coveragePlanId) {
+      const plan = await this.requireRecord(client, "coverage_plans", tenantId, this.requiredId(coveragePlanId, "coverage_plan_id"), "coverage plan not found");
+      if (project.source_coverage_plan_id && plan.id !== project.source_coverage_plan_id && !this.hasOverride(body.override_reasons, "coverage_mismatch_override_reason")) {
+        throw new BadRequestException({ message: "Coverage source mismatch requires override reason.", required_override_fields: ["coverage_mismatch_override_reason"] });
+      }
+    }
+    if (body.coverage_requirement_id) {
+      const requirement = await this.requireRecord(client, "coverage_requirements", tenantId, this.requiredId(body.coverage_requirement_id, "coverage_requirement_id"), "coverage requirement not found");
+      if (coveragePlanId && requirement.coverage_plan_id !== coveragePlanId) throw new BadRequestException("coverage requirement must belong to coverage plan");
+    }
+    if (body.coverage_source_id) {
+      const source = await this.requireRecord(client, "coverage_sources", tenantId, this.requiredId(body.coverage_source_id, "coverage_source_id"), "coverage source not found");
+      if (coveragePlanId && source.coverage_plan_id !== coveragePlanId) throw new BadRequestException("coverage source must belong to coverage plan");
+    }
+    if (body.assigned_capacity_provider_id) await this.requireProvider(client, tenantId, body.assigned_capacity_provider_id);
+    if (body.assigned_crew_id) await this.requireCrew(client, tenantId, body.assigned_crew_id, body.assigned_capacity_provider_id ?? before?.assigned_capacity_provider_id);
+    if (body.assigned_organization_id) await this.requireRecord(client, "organizations", tenantId, this.requiredId(body.assigned_organization_id, "assigned_organization_id"), "assigned organization not found");
+    if (body.assigned_equipment_id) await this.requireRecord(client, "equipment", tenantId, this.requiredId(body.assigned_equipment_id, "assigned_equipment_id"), "assigned equipment not found");
+  }
+
+  private async workOrderStatusAction(request: AuthenticatedRequest, id: string, action: string, eventType: string, allowedStatuses: string[], values: Record<string, unknown>, reason?: unknown) {
+    return this.write(request, action, eventType, "work_order", async (client) => {
+      const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
+      if (!allowedStatuses.includes(before.status)) throw new BadRequestException(`work order must be ${allowedStatuses.join(" or ")}`);
+      const cleanValues = Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
+      const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, cleanValues);
+      if (!after) throw new NotFoundException("work order not found");
+      await this.persistWorkOrderReadiness(client, request.auth.tenantId, id, await this.calculateWorkOrderReadiness(client, request.auth.tenantId, id, after), request.auth.userId);
+      return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
+    }, reason);
   }
 
   private async validateProductionReferences(client: PoolClient, tenantId: string, values: Record<string, unknown>, body: Record<string, unknown>, before: Record<string, unknown>) {
