@@ -68,6 +68,7 @@ export class HealthController {
       "021_opportunity_candidate_contract_hardening.sql",
       "022_opportunity_pipeline_contract_hardening.sql",
       "023_opportunity_approval_policy_hardening.sql",
+      "024_coverage_planning_contract_foundation.sql",
     ];
     const result = await this.pool.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id");
     const applied = result.rows.map((row) => row.id);
@@ -87,7 +88,7 @@ export class HealthController {
   }
 
   private async checkPermissionSeed() {
-    const required = ["admin.manage_users", "admin.manage_roles", "learning_score.recalculate", "dashboard.executive.read"];
+    const required = ["admin.manage_users", "admin.manage_roles", "learning_score.recalculate", "dashboard.executive.read", "coverage_plan.read", "coverage_gap.override"];
     const result = await this.pool.query<{ key: string }>("SELECT key FROM permissions WHERE key = ANY($1)", [required]);
     const found = new Set(result.rows.map((row) => row.key));
     const missing = required.filter((key) => !found.has(key));

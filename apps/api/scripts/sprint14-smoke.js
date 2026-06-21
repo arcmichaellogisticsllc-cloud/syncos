@@ -92,6 +92,7 @@ async function main() {
     "021_opportunity_candidate_contract_hardening.sql",
     "022_opportunity_pipeline_contract_hardening.sql",
     "023_opportunity_approval_policy_hardening.sql",
+    "024_coverage_planning_contract_foundation.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));

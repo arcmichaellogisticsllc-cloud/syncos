@@ -10,10 +10,11 @@ export class SearchController {
 
   @Get()
   @RequirePermission("search.read")
-  async search(@Req() request: AuthenticatedRequest, @Query("q") q?: string) {
+  async search(@Req() request: AuthenticatedRequest, @Query("q") q?: string, @Query("archived") archived?: string) {
     const query = typeof q === "string" ? q.trim() : "";
     if (!query) return [];
     const search = `%${query}%`;
+    const includeArchived = archived === "true";
     const client = await this.pool.connect();
     try {
       const result = await client.query(
@@ -55,6 +56,16 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           title ILIKE $2 OR work_type ILIKE $2 OR evidence_summary ILIKE $2 OR scope_summary ILIKE $2 OR status ILIKE $2 OR recommendation ILIKE $2
         )
+        UNION ALL
+        SELECT 'coverage_plan' AS object_type, cp.id, concat('Coverage Plan: ', o.title) AS title, cp.status, concat_ws(' ', o.title, cp.status, cp.coverage_readiness_band, cp.notes) AS snippet
+        FROM coverage_plans cp
+        JOIN opportunities o ON o.id = cp.opportunity_id AND o.tenant_id = cp.tenant_id
+        WHERE cp.tenant_id = $1
+          AND cp.deleted_at IS NULL
+          AND ($3::boolean OR (cp.archived_at IS NULL AND cp.status <> 'archived'))
+          AND (
+            o.title ILIKE $2 OR cp.status ILIKE $2 OR cp.coverage_readiness_band ILIKE $2 OR cp.notes ILIKE $2
+          )
         UNION ALL
         SELECT 'capacity_requirement' AS object_type, id, capacity_type AS title, status, concat_ws(' ', capacity_type, unit, status) AS snippet
         FROM opportunity_capacity_requirements
@@ -179,7 +190,7 @@ export class SearchController {
         )
         LIMIT 50
         `,
-        [request.auth.tenantId, search],
+        [request.auth.tenantId, search, includeArchived],
       );
       return result.rows;
     } finally {

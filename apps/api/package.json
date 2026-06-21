@@ -31,6 +31,7 @@
     "smoke:relationship": "node scripts/relationship-smoke.js",
     "smoke:candidate": "node scripts/candidate-smoke.js",
     "smoke:opportunity": "node scripts/opportunity-smoke.js",
+    "smoke:coverage": "node scripts/coverage-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

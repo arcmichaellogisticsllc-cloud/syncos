@@ -8,6 +8,7 @@ import { ConstraintsController } from "../routes/constraints.controller";
 import { DashboardsController } from "../routes/dashboards.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
+import { CoveragePlansController } from "../routes/coverage-plans.controller";
 import { KpisController } from "../routes/kpis.controller";
 import { LearningController } from "../routes/learning.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
@@ -42,6 +43,7 @@ import { DatabaseModule } from "./database.module";
     RelationshipMapsController,
     OpportunityCandidatesController,
     OpportunitiesController,
+    CoveragePlansController,
     CapacityController,
     ProductionController,
     SettlementsController,
