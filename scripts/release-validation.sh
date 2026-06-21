@@ -56,5 +56,6 @@ npm run relationship:smoke
 npm run candidate:smoke
 npm run opportunity:smoke
 npm run coverage:smoke
+npm run project-handoff:smoke
 
 echo "release validation passed"

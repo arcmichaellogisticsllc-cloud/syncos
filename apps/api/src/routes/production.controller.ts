@@ -7,7 +7,7 @@ import { RequirePermission } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick, requireAllowed, requireString } from "./intelligence.types";
 
-const projectStatuses = new Set(["created", "active", "archived"]);
+const projectStatuses = new Set(["created", "planning", "ready_for_work", "active", "on_hold", "completed", "closed", "archived"]);
 const workOrderStatuses = new Set(["created", "assigned", "in_progress", "archived"]);
 const productionRecordStatuses = new Set(["draft", "submitted", "correction_required", "qc_review", "accepted", "approved", "billable", "rejected", "archived"]);
 const evidenceTypes = new Set(["photo", "video", "gps", "daily_report", "safety_form", "inspection_note", "material_ticket", "other"]);

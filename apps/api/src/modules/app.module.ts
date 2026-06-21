@@ -15,6 +15,7 @@ import { OpportunityCandidatesController } from "../routes/opportunity-candidate
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { ProductionController } from "../routes/production.controller";
+import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
 import { ReportsController } from "../routes/reports.controller";
 import { SearchController } from "../routes/search.controller";
@@ -44,6 +45,7 @@ import { DatabaseModule } from "./database.module";
     OpportunityCandidatesController,
     OpportunitiesController,
     CoveragePlansController,
+    ProjectHandoffsController,
     CapacityController,
     ProductionController,
     SettlementsController,

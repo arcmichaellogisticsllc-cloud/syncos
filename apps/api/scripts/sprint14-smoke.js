@@ -94,6 +94,7 @@ async function main() {
     "023_opportunity_approval_policy_hardening.sql",
     "024_coverage_planning_contract_foundation.sql",
     "025_coverage_planning_backend_hardening.sql",
+    "026_project_handoff_contract_foundation.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));

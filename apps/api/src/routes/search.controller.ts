@@ -67,6 +67,16 @@ export class SearchController {
             o.title ILIKE $2 OR cp.status ILIKE $2 OR cp.coverage_readiness_band ILIKE $2 OR cp.notes ILIKE $2
           )
         UNION ALL
+        SELECT 'project_handoff' AS object_type, ph.id, concat('Project Handoff: ', o.title) AS title, ph.status, concat_ws(' ', o.title, ph.status, ph.handoff_readiness_band, ph.scope_summary, ph.location_summary, ph.handoff_notes) AS snippet
+        FROM project_handoffs ph
+        JOIN opportunities o ON o.id = ph.opportunity_id AND o.tenant_id = ph.tenant_id
+        WHERE ph.tenant_id = $1
+          AND ph.deleted_at IS NULL
+          AND ($3::boolean OR (ph.archived_at IS NULL AND ph.status <> 'archived'))
+          AND (
+            o.title ILIKE $2 OR ph.status ILIKE $2 OR ph.handoff_readiness_band ILIKE $2 OR ph.scope_summary ILIKE $2 OR ph.location_summary ILIKE $2 OR ph.handoff_notes ILIKE $2
+          )
+        UNION ALL
         SELECT 'capacity_requirement' AS object_type, id, capacity_type AS title, status, concat_ws(' ', capacity_type, unit, status) AS snippet
         FROM opportunity_capacity_requirements
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
