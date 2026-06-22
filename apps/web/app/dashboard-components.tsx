@@ -8,6 +8,7 @@ const navItems = [
   ["/projects", "Projects"],
   ["/work-orders", "Work Orders"],
   ["/production", "Production"],
+  ["/qc", "QC"],
   ["/executive", "Executive"],
   ["/growth", "Growth"],
   ["/operations", "Operations"],
