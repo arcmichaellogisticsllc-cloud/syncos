@@ -23,6 +23,10 @@ Invoice owns:
 
 Cash Application will later apply payments to invoices and update invoice balances.
 
+Implementation update:
+
+Invoice Backend Contract Foundation - Option B implements invoices and invoice_items as the customer-facing demand-for-payment and receivable-tracking layer. `ar_records` are legacy/deprecated for the new Invoice contract, and invoice create, submit, approval, sent, and ready-for-cash-application actions must create no separate AR records.
+
 The approved financial chain is now:
 
 `Billable -> Settlement -> Invoice -> Cash Application`

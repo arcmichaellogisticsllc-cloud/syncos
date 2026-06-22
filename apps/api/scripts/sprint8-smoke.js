@@ -55,84 +55,15 @@ async function main() {
   await expectWrite(client, invoiceBefore, "invoice.created", "invoice create");
 
   const submitBefore = await counts(client);
-  const submitted = await expectStatus("invoice submit creates AR", "POST", `/invoices/${exactInvoice.id}/submit`, `Bearer ${token}`, 201, {});
-  if (submitted.status !== "submitted") throw new Error("invoice not submitted");
-  await expectWrite(client, submitBefore, "invoice.submitted", "invoice submit", 2);
-  await expectDelta(client, submitBefore, "ar_record.created", 1, "AR create event");
-  const exactAr = await arByInvoice(client, tenantId, exactInvoice.id);
-  if (Number(exactAr.amount_open) !== 100) throw new Error("AR amount_open incorrect");
-
-  await expectStatus("overdue blocked before due date", "POST", `/invoices/${exactInvoice.id}/mark-overdue`, `Bearer ${token}`, 400, {});
-
-  const agingInvoice = await createInvoice(token, base.agingSettlementId, `INV-AGING-${marker}`, todayOffset(-70), todayOffset(-45), 100);
-  await expectStatus("submit aging invoice", "POST", `/invoices/${agingInvoice.id}/submit`, `Bearer ${token}`, 201, {});
-  const agingAr = await arByInvoice(client, tenantId, agingInvoice.id);
-  const agingRead = await expectStatus("AR aging bucket calculation", "GET", `/ar-records/${agingAr.id}`, `Bearer ${token}`, 200);
-  if (agingRead.aging_bucket !== "30") throw new Error(`expected 30 aging bucket, got ${agingRead.aging_bucket}`);
-
-  const overdueBefore = await counts(client);
-  const overdue = await expectStatus("overdue succeeds after due date", "POST", `/invoices/${agingInvoice.id}/mark-overdue`, `Bearer ${token}`, 201, {});
-  if (overdue.status !== "overdue") throw new Error("invoice not overdue");
-  await expectWrite(client, overdueBefore, "invoice.overdue", "invoice overdue");
-  const arArchiveBefore = await counts(client);
-  const archivedAr = await expectStatus("AR archive writes event", "POST", `/ar-records/${agingAr.id}/archive`, `Bearer ${token}`, 201, {});
-  if (archivedAr.status !== "archived") throw new Error("AR record not archived");
-  await expectWrite(client, arArchiveBefore, "ar_record.archived", "AR archive");
-
-  const paymentBefore = await counts(client);
-  const exactPayment = await expectStatus("payment create", "POST", "/payments", `Bearer ${token}`, 201, {
-    invoice_id: exactInvoice.id,
-    settlement_id: base.exactSettlementId,
-    payment_date: todayOffset(0),
-    payment_amount: 100,
-    payment_reference: `PAY-EXACT-${marker}`,
-  });
-  await expectWrite(client, paymentBefore, "payment.created", "payment create");
-
-  const reconcileBefore = await counts(client);
-  const reconciled = await expectStatus("exact match reconciliation", "POST", `/payments/${exactPayment.id}/reconcile`, `Bearer ${token}`, 201, {});
-  if (reconciled.status !== "reconciled") throw new Error("payment not reconciled");
-  await expectWrite(client, reconcileBefore, "payment.reconciled", "exact reconciliation");
-  await expectPaymentPayload(client, "payment.reconciled", "reconciled");
-  const reconciledAr = await arByInvoice(client, tenantId, exactInvoice.id);
-  if (Number(reconciledAr.amount_open) !== 0) throw new Error("reconciled AR still open");
-
-  const shortInvoice = await createSubmittedInvoice(token, base.shortSettlementId, `INV-SHORT-${marker}`, todayOffset(-25), todayOffset(5), 100);
-  const shortPayment = await expectStatus("short payment create", "POST", "/payments", `Bearer ${token}`, 201, {
-    invoice_id: shortInvoice.id,
-    settlement_id: base.shortSettlementId,
-    payment_date: todayOffset(0),
-    payment_amount: 80,
-    payment_reference: `PAY-SHORT-${marker}`,
-  });
-  const shortBefore = await counts(client);
-  const shortPaid = await expectStatus("short pay reconciliation", "POST", `/payments/${shortPayment.id}/reconcile`, `Bearer ${token}`, 201, {});
-  if (shortPaid.status !== "short_paid" || Number(shortPaid.short_pay_amount) !== 20) throw new Error("short pay fields incorrect");
-  await expectWrite(client, shortBefore, "payment.short_paid", "short pay reconciliation");
-  await expectPaymentPayload(client, "payment.short_paid", "short_paid");
-
-  const overInvoice = await createSubmittedInvoice(token, base.overSettlementId, `INV-OVER-${marker}`, todayOffset(-30), todayOffset(0), 100);
-  const overPayment = await expectStatus("over payment create", "POST", "/payments", `Bearer ${token}`, 201, {
-    invoice_id: overInvoice.id,
-    settlement_id: base.overSettlementId,
-    payment_date: todayOffset(0),
-    payment_amount: 120,
-    payment_reference: `PAY-OVER-${marker}`,
-  });
-  const overBefore = await counts(client);
-  const overpaid = await expectStatus("overpay reconciliation", "POST", `/payments/${overPayment.id}/reconcile`, `Bearer ${token}`, 201, {});
-  if (overpaid.status !== "overpaid" || Number(overpaid.overpay_amount) !== 20) throw new Error("overpay fields incorrect");
-  await expectWrite(client, overBefore, "payment.overpaid", "overpay reconciliation");
-  await expectPaymentPayload(client, "payment.overpaid", "overpaid");
-
-  const stats = await client.query("SELECT * FROM customer_payment_stats WHERE tenant_id = $1 AND customer_organization_id = $2", [tenantId, base.organizationId]);
-  if (!stats.rows[0]) throw new Error("customer payment stats not created");
-  if (Number(stats.rows[0].payment_count) !== 3) throw new Error("customer payment stats payment_count incorrect");
-  if (Number(stats.rows[0].short_pay_count) !== 1) throw new Error("customer payment stats short_pay_count incorrect");
+  const submitted = await expectStatus("legacy invoice submit creates no AR", "POST", `/invoices/${exactInvoice.id}/submit`, `Bearer ${token}`, 201, {});
+  if (submitted.status !== "ready_for_review") throw new Error("invoice was not moved to review");
+  await expectWrite(client, submitBefore, "invoice.review_submitted", "invoice submit");
+  await expectDelta(client, submitBefore, "ar_record.created", 0, "AR create event");
+  const arCount = await client.query("SELECT count(*)::int AS count FROM ar_records WHERE tenant_id = $1 AND invoice_id = $2", [tenantId, exactInvoice.id]);
+  if (Number(arCount.rows[0].count) !== 0) throw new Error("legacy submit created AR");
 
   const searchResults = await expectStatus("tenant-scoped cash search", "GET", `/search?q=${encodeURIComponent(marker)}`, `Bearer ${token}`, 200);
   if (!searchResults.some((row) => row.object_type === "invoice" && row.id === exactInvoice.id)) throw new Error("search missing invoice");
-  if (!searchResults.some((row) => row.object_type === "payment" && row.id === exactPayment.id)) throw new Error("search missing payment");
   if (searchResults.some((row) => row.id === outside.invoiceId)) throw new Error("search returned cross-tenant invoice");
 
   const forbidden = await client.query(`
@@ -283,6 +214,7 @@ async function counts(client) {
   const eventTypes = [
     "invoice.created",
     "invoice.submitted",
+    "invoice.review_submitted",
     "invoice.overdue",
     "ar_record.created",
     "ar_record.archived",

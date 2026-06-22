@@ -195,9 +195,26 @@ export class SearchController {
           si.item_type ILIKE $2 OR si.status ILIKE $2 OR si.hold_reason ILIKE $2 OR si.dispute_reason ILIKE $2 OR s.settlement_number ILIKE $2 OR co.name ILIKE $2 OR cp.name ILIKE $2 OR p.name ILIKE $2 OR wo.work_order_name ILIKE $2
         )
         UNION ALL
-        SELECT 'invoice' AS object_type, id, invoice_number AS title, status, concat_ws(' ', invoice_number, status) AS snippet
-        FROM invoices
-        WHERE tenant_id = $1 AND deleted_at IS NULL AND (invoice_number ILIKE $2 OR status ILIKE $2)
+        SELECT 'invoice' AS object_type, i.id, i.invoice_number AS title, i.status,
+          concat_ws(' ', i.invoice_number, i.status, i.delivery_status, i.cash_application_status, i.payment_status, i.collection_status, i.dispute_reason, co.name, p.name, s.settlement_number) AS snippet
+        FROM invoices i
+        LEFT JOIN organizations co ON co.tenant_id = i.tenant_id AND co.id = i.customer_organization_id
+        LEFT JOIN projects p ON p.tenant_id = i.tenant_id AND p.id = i.project_id
+        LEFT JOIN settlements s ON s.tenant_id = i.tenant_id AND s.id = i.settlement_id
+        WHERE i.tenant_id = $1 AND i.deleted_at IS NULL AND ($3::boolean OR i.status <> 'archived') AND (
+          i.invoice_number ILIKE $2 OR i.status ILIKE $2 OR i.delivery_status ILIKE $2 OR i.cash_application_status ILIKE $2 OR i.payment_status ILIKE $2 OR i.collection_status ILIKE $2 OR i.dispute_reason ILIKE $2 OR co.name ILIKE $2 OR p.name ILIKE $2 OR s.settlement_number ILIKE $2
+        )
+        UNION ALL
+        SELECT 'invoice_item' AS object_type, ii.id, concat_ws(' ', ii.item_type, i.invoice_number) AS title, ii.status,
+          concat_ws(' ', ii.item_type, ii.status, ii.description, i.invoice_number, co.name, p.name, s.settlement_number) AS snippet
+        FROM invoice_items ii
+        LEFT JOIN invoices i ON i.tenant_id = ii.tenant_id AND i.id = ii.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = ii.tenant_id AND co.id = ii.customer_organization_id
+        LEFT JOIN projects p ON p.tenant_id = ii.tenant_id AND p.id = ii.project_id
+        LEFT JOIN settlements s ON s.tenant_id = ii.tenant_id AND s.id = ii.settlement_id
+        WHERE ii.tenant_id = $1 AND ii.deleted_at IS NULL AND ($3::boolean OR ii.status <> 'archived') AND (
+          ii.item_type ILIKE $2 OR ii.status ILIKE $2 OR ii.description ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2 OR p.name ILIKE $2 OR s.settlement_number ILIKE $2
+        )
         UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments

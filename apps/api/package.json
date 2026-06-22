@@ -39,6 +39,7 @@
     "smoke:qc": "node scripts/qc-smoke.js",
     "smoke:billable": "node scripts/billable-smoke.js",
     "smoke:settlement": "node scripts/settlement-smoke.js",
+    "smoke:invoice": "node scripts/invoice-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
