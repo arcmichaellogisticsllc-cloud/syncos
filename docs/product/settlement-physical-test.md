@@ -2,12 +2,23 @@
 
 Validate:
 
-- Open Settlement Queue when UI exists.
-- Create settlement with type.
+- Open Settlement Queue.
+- Filter settlements by status, readiness, customer, provider, project, work order, invoice ready, payable ready, hold, dispute, archived, and search text.
+- Create settlement with settlement type.
+- Confirm create does not create invoice, payment, payroll, AR, cash, tax, ACH, card payout, or bank transaction records.
+- Open Settlement Detail.
+- View financial commitment scorecard.
+- View settlement items.
 - Add settlement item from a `ready_for_settlement` billable item.
-- Confirm source billable, QC, production, work order, and project traceability.
+- Confirm no invoice/payment/payroll records are created by item add.
+- Confirm source billable, QC, production, work order, project, customer, provider, and crew traceability.
 - Confirm duplicate active settlement item is blocked unless override is supplied.
 - Confirm totals recalculate from active settlement items.
+- View customer billable tab.
+- View contractor payable tab.
+- View retainage tab.
+- View deductions/chargebacks tab.
+- View margin tab.
 - Confirm retainage, deduction, chargeback, net, contractor payable, and margin values are visible.
 - Recalculate readiness.
 - Submit review.
@@ -24,10 +35,11 @@ Validate:
 - Resolve dispute with note.
 - Reject with reason.
 - Void settlement item with reason and confirm totals exclude it.
+- Archive settlement item with reason.
 - Void settlement with reason.
 - Archive settlement with reason.
 - View timeline.
 - View audit as authorized user.
 - Confirm audit hidden for unauthorized user.
 - Confirm future Invoice placeholder only.
-- Confirm future Payable/Payroll placeholder only.
+- Confirm future Payment/Payroll placeholder only.
