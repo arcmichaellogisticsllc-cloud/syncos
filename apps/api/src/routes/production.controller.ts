@@ -41,6 +41,13 @@ const qcFindingStatuses = new Set(["pending", "sufficient", "insufficient", "not
 const qcLocationStatuses = new Set(["pending", "valid", "invalid", "not_required"]);
 const qcAcceptanceStatuses = new Set(["not_required", "pending", "accepted", "rejected", "correction_required"]);
 const qcArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "voided", "other"]);
+const billableStatuses = new Set(["candidate", "needs_rate", "needs_documentation", "needs_customer_acceptance", "held", "ready_for_settlement", "settlement_created", "disputed", "voided", "archived"]);
+const billableReadinessStatuses = new Set(["not_ready", "needs_review", "ready_with_warning", "ready_for_settlement", "blocked"]);
+const billableReadinessBands = new Set(["not_ready", "needs_review", "ready_with_warning", "ready_for_settlement"]);
+const billableRateSources = new Set(["contract_rate", "project_rate", "customer_rate", "manual_rate", "unknown"]);
+const billableRateConfidences = new Set(["unknown", "low", "medium", "high", "confirmed"]);
+const billableAcceptanceStatuses = new Set(["not_required", "pending", "accepted", "rejected", "correction_required", "disputed"]);
+const billablePackageStatuses = new Set(["not_started", "incomplete", "ready", "submitted_later", "accepted_later", "rejected_later"]);
 
 @Controller()
 export class ProductionController {
@@ -1070,6 +1077,300 @@ export class ProductionController {
     }
   }
 
+  @Get("billable-items")
+  @RequirePermission("billable_item.read")
+  async listBillableItems(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient((client) => this.listBillableItemsEnriched(client, request.auth.tenantId, query));
+  }
+
+  @Get("billable-items/:id/detail")
+  @RequirePermission("billable_item.read")
+  async getBillableItemDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.billableItemDetail(client, request.auth.tenantId, id));
+  }
+
+  @Get("billable-items/:id/timeline")
+  @RequirePermission("billable_item.timeline.read")
+  async getBillableItemTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      const result = await client.query(
+        `
+        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+          e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN users u ON u.id = e.actor_user_id
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1
+          AND e.aggregate_type = 'billable_item'
+          AND e.aggregate_id = $2
+        ORDER BY e.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("billable-items/:id/audit-summary")
+  @RequirePermission("billable_item.audit.read")
+  async getBillableItemAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      const result = await client.query(
+        `
+        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+          al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
+          al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
+        FROM audit_logs al
+        LEFT JOIN users u ON u.id = al.actor_user_id
+        WHERE al.tenant_id = $1
+          AND al.entity_type = 'billable_item'
+          AND al.entity_id = $2
+        ORDER BY al.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("billable-items/:id")
+  @RequirePermission("billable_item.read")
+  async getBillableItem(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.billableItemRow(client, request.auth.tenantId, id));
+  }
+
+  @Post("billable-items")
+  @RequirePermission("billable_item.create")
+  async createBillableItem(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "billable_item.create", "billable_item.created", "billable_item", async (client) => {
+        const context = await this.billableContextFromQcReview(client, request.auth.tenantId, this.requiredId(body.qc_review_id, "qc_review_id"));
+        if (context.qcReview.review_status !== "approved") throw new BadRequestException("qc_review must be approved");
+        if (context.productionRecord.status !== "approved") throw new BadRequestException("production_record must be approved");
+        const duplicate = await client.query(
+          "SELECT 1 FROM billable_items WHERE tenant_id = $1 AND qc_review_id = $2 AND status NOT IN ('voided', 'archived') AND deleted_at IS NULL LIMIT 1",
+          [request.auth.tenantId, context.qcReview.id],
+        );
+        if (duplicate.rows[0] && !this.hasOverride(body.override_reasons, "duplicate_billable_override_reason")) {
+          throw new BadRequestException({ message: "Duplicate active billable item requires override.", required_override_fields: ["duplicate_billable_override_reason"] });
+        }
+        const approvedQuantity = Number(context.qcReview.approved_quantity ?? context.productionRecord.approved_quantity ?? 0);
+        if (approvedQuantity <= 0) throw new BadRequestException("approved_quantity must be > 0");
+        const billableQuantity = body.billable_quantity === undefined ? Number(context.qcReview.billable_candidate_quantity ?? approvedQuantity) : this.requirePositive(body.billable_quantity, "billable_quantity");
+        if (billableQuantity > approvedQuantity && !this.hasOverride(body.override_reasons, "billable_quantity_override_reason")) {
+          throw new BadRequestException({ message: "billable_quantity cannot exceed approved_quantity", required_override_fields: ["billable_quantity_override_reason"] });
+        }
+        const unit = this.optionalAllowed(body.unit, workOrderUnits, "unit") ?? context.qcReview.unit ?? context.productionRecord.unit ?? context.productionRecord.unit_type ?? context.workOrder.unit;
+        if (!unit) throw new BadRequestException("unit is required");
+        const rate = await this.billableRateContext(client, request.auth.tenantId, body, String(unit));
+        const estimatedBillableAmount = this.billableEstimatedAmount(billableQuantity, rate.unitRate);
+        const retainage = this.billableRetainage(body, billableQuantity, estimatedBillableAmount);
+        const values = {
+          project_id: context.project.id,
+          work_order_id: context.workOrder.id,
+          production_record_id: context.productionRecord.id,
+          qc_review_id: context.qcReview.id,
+          customer_organization_id: context.project.customer_organization_id,
+          capacity_provider_id: context.productionRecord.capacity_provider_id ?? context.workOrder.assigned_capacity_provider_id,
+          crew_id: context.productionRecord.crew_id ?? context.workOrder.assigned_crew_id,
+          approved_quantity: approvedQuantity,
+          billable_quantity: billableQuantity,
+          held_quantity: Math.max(0, approvedQuantity - billableQuantity),
+          rejected_quantity: context.qcReview.rejected_quantity ?? context.productionRecord.rejected_quantity,
+          correction_quantity: context.qcReview.correction_required_quantity ?? context.productionRecord.corrected_quantity,
+          unit,
+          rate_code_id: rate.rateCodeId,
+          rate_description: rate.rateDescription,
+          unit_rate: rate.unitRate,
+          rate_source: rate.rateSource,
+          rate_confidence: rate.rateConfidence,
+          estimated_billable_amount: estimatedBillableAmount,
+          retainage_required: retainage.retainageRequired,
+          retainage_percent: retainage.retainagePercent,
+          retainage_amount: retainage.retainageAmount,
+          retainage_release_condition: body.retainage_release_condition,
+          net_billable_amount: retainage.netBillableAmount,
+          customer_acceptance_status: this.optionalAllowed(body.customer_acceptance_status, billableAcceptanceStatuses, "customer_acceptance_status") ?? this.mapBillableAcceptance(context.qcReview.customer_acceptance_status),
+          prime_acceptance_status: this.optionalAllowed(body.prime_acceptance_status, billableAcceptanceStatuses, "prime_acceptance_status") ?? this.mapBillableAcceptance(context.qcReview.prime_acceptance_status),
+          billing_package_status: this.optionalAllowed(body.billing_package_status, billablePackageStatuses, "billing_package_status") ?? "not_started",
+          documentation_status: this.optionalAllowed(body.documentation_status, billablePackageStatuses, "documentation_status") ?? this.mapBillablePackageStatus(context.qcReview.documentation_status),
+          override_reasons: this.jsonObject(body.override_reasons),
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
+        };
+        const derived = this.deriveBillableState(values);
+        const billableItem = await insertTenantRecord(client, "billable_items", request.auth.tenantId, { ...values, status: derived.status, readiness_status: derived.readiness_status, readiness_score: derived.readiness_score, readiness_band: derived.readiness_band });
+        await this.syncBillableSummaries(client, request.auth.tenantId, String(context.productionRecord.id), String(context.workOrder.id), request.auth.userId);
+        return { entityType: "billable_item", entityId: billableItem.id, afterState: await this.billableItemDetail(client, request.auth.tenantId, billableItem.id) };
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Patch("billable-items/:id")
+  @RequirePermission("billable_item.update")
+  async updateBillableItem(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "billable_item.update", "billable_item.updated", "billable_item", async (client) => {
+        const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+        if (["archived", "voided"].includes(String(before.status))) throw new BadRequestException("archived or voided billable items are view-only");
+        if (before.status === "settlement_created") throw new BadRequestException("settlement_created billable items are view-only");
+        const values = pick(body, ["rate_description", "retainage_release_condition", "hold_note", "dispute_note"]);
+        if (body.billable_quantity !== undefined) values.billable_quantity = this.requirePositive(body.billable_quantity, "billable_quantity");
+        if (body.rate_code_id !== undefined || body.unit_rate !== undefined || body.rate_source !== undefined || body.rate_confidence !== undefined) {
+          const rate = await this.billableRateContext(client, request.auth.tenantId, { ...before, ...body }, String(before.unit));
+          values.rate_code_id = rate.rateCodeId;
+          values.rate_description = rate.rateDescription;
+          values.unit_rate = rate.unitRate;
+          values.rate_source = rate.rateSource;
+          values.rate_confidence = rate.rateConfidence;
+          values.estimated_billable_amount = rate.estimatedBillableAmount;
+        }
+        if (body.customer_acceptance_status !== undefined) values.customer_acceptance_status = requireAllowed(body.customer_acceptance_status, billableAcceptanceStatuses, "customer_acceptance_status");
+        if (body.prime_acceptance_status !== undefined) values.prime_acceptance_status = requireAllowed(body.prime_acceptance_status, billableAcceptanceStatuses, "prime_acceptance_status");
+        if (body.billing_package_status !== undefined) values.billing_package_status = requireAllowed(body.billing_package_status, billablePackageStatuses, "billing_package_status");
+        if (body.documentation_status !== undefined) values.documentation_status = requireAllowed(body.documentation_status, billablePackageStatuses, "documentation_status");
+        if (body.rate_source !== undefined) values.rate_source = requireAllowed(body.rate_source, billableRateSources, "rate_source");
+        if (body.rate_confidence !== undefined) values.rate_confidence = requireAllowed(body.rate_confidence, billableRateConfidences, "rate_confidence");
+        if (body.retainage_required !== undefined || body.retainage_percent !== undefined || body.billable_quantity !== undefined || body.unit_rate !== undefined) {
+          const billableQuantity = Number(values.billable_quantity ?? before.billable_quantity);
+          const estimated = values.estimated_billable_amount !== undefined ? Number(values.estimated_billable_amount) : this.billableEstimatedAmount(billableQuantity, values.unit_rate ?? before.unit_rate);
+          const retainage = this.billableRetainage({ ...before, ...body }, billableQuantity, estimated);
+          values.retainage_required = retainage.retainageRequired;
+          values.retainage_percent = retainage.retainagePercent;
+          values.retainage_amount = retainage.retainageAmount;
+          values.net_billable_amount = retainage.netBillableAmount;
+        }
+        if (body.override_reasons !== undefined) values.override_reasons = this.jsonObject(body.override_reasons);
+        values.updated_by = request.auth.userId;
+        const next = { ...before, ...values };
+        const derived = this.deriveBillableState(next);
+        Object.assign(values, derived);
+        const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, values);
+        if (!after) throw new NotFoundException("billable item not found");
+        await this.syncBillableSummaries(client, request.auth.tenantId, String(after.production_record_id), String(after.work_order_id), request.auth.userId);
+        return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+      }, body.reason);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("billable-items/:id/recalculate-readiness")
+  @RequirePermission("billable_item.recalculate_readiness")
+  async recalculateBillableReadiness(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.write(request, "billable_item.recalculate_readiness", "billable_item.readiness_recalculated", "billable_item", async (client) => {
+      const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      const derived = this.deriveBillableState(before, { preserveStatus: true });
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { ...derived, updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("billable item not found");
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+    });
+  }
+
+  @Post("billable-items/:id/mark-ready-for-settlement")
+  @RequirePermission("billable_item.mark_ready")
+  async markBillableReadyForSettlement(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const note = this.requiredText(body.approval_note, "approval_note is required");
+    return this.write(request, "billable_item.mark_ready", "billable_item.ready_for_settlement", "billable_item", async (client) => {
+      const before = await this.billableItemRow(client, request.auth.tenantId, id);
+      if (["archived", "voided", "disputed", "held"].includes(String(before.status))) throw new BadRequestException("billable item is not eligible for ready_for_settlement");
+      if (before.settlement_item_id) throw new BadRequestException("settlement already created");
+      const blockers = this.billableBlockers(before);
+      if (blockers.length) throw new BadRequestException({ message: "Billable blockers must be resolved.", blockers });
+      this.assertBillableOverrides(before, body.override_reasons);
+      const derived = this.deriveBillableState({ ...before, override_reasons: this.jsonObject(body.override_reasons ?? before.override_reasons) }, { preserveStatus: true });
+      if (Number(derived.readiness_score ?? 0) < 85 && !this.hasOverride(body.override_reasons, "readiness_override_reason")) throw new BadRequestException({ message: "readiness is not sufficient", required_override_fields: ["readiness_override_reason"] });
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, {
+        status: "ready_for_settlement",
+        readiness_status: "ready_for_settlement",
+        readiness_score: derived.readiness_score,
+        readiness_band: derived.readiness_band,
+        override_reasons: this.jsonObject(body.override_reasons ?? before.override_reasons),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("billable item not found");
+      await this.syncBillableSummaries(client, request.auth.tenantId, String(after.production_record_id), String(after.work_order_id), request.auth.userId);
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+    }, note);
+  }
+
+  @Post("billable-items/:id/place-hold")
+  @RequirePermission("billable_item.place_hold")
+  async holdBillableItem(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.hold_reason, "hold_reason is required");
+    return this.billableStatusAction(request, id, "billable_item.place_hold", "billable_item.held", { status: "held", hold_reason: reason, hold_note: body.hold_note, updated_by: request.auth.userId }, reason);
+  }
+
+  @Post("billable-items/:id/release-hold")
+  @RequirePermission("billable_item.release_hold")
+  async releaseBillableHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const note = this.requiredText(body.release_note, "release_note is required");
+    return this.write(request, "billable_item.release_hold", "billable_item.hold_released", "billable_item", async (client) => {
+      const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      if (before.status !== "held") throw new BadRequestException("billable item must be held");
+      const derived = this.deriveBillableState({ ...before, status: "candidate", hold_reason: null, hold_note: note });
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { ...derived, hold_note: note, hold_reason: null, updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("billable item not found");
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+    }, note);
+  }
+
+  @Post("billable-items/:id/dispute")
+  @RequirePermission("billable_item.dispute")
+  async disputeBillableItem(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.dispute_reason, "dispute_reason is required");
+    return this.billableStatusAction(request, id, "billable_item.dispute", "billable_item.disputed", { status: "disputed", dispute_reason: reason, dispute_note: body.dispute_note, updated_by: request.auth.userId }, reason);
+  }
+
+  @Post("billable-items/:id/resolve-dispute")
+  @RequirePermission("billable_item.resolve_dispute")
+  async resolveBillableDispute(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const note = this.requiredText(body.resolution_note, "resolution_note is required");
+    return this.write(request, "billable_item.resolve_dispute", "billable_item.dispute_resolved", "billable_item", async (client) => {
+      const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      if (before.status !== "disputed") throw new BadRequestException("billable item must be disputed");
+      const derived = this.deriveBillableState({ ...before, status: "candidate", dispute_reason: null, dispute_note: note, override_reasons: this.jsonObject(body.override_reasons ?? before.override_reasons) });
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { ...derived, dispute_reason: null, dispute_note: note, override_reasons: this.jsonObject(body.override_reasons ?? before.override_reasons), updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("billable item not found");
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+    }, note);
+  }
+
+  @Post("billable-items/:id/void")
+  @RequirePermission("billable_item.void")
+  async voidBillableItem(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.void_reason, "void_reason is required");
+    return this.write(request, "billable_item.void", "billable_item.voided", "billable_item", async (client) => {
+      const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      if (before.settlement_item_id) throw new BadRequestException("billable item with settlement_item_id cannot be voided");
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { status: "voided", void_reason: reason, void_note: body.void_note, voided_by: request.auth.userId, voided_at: new Date(), updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("billable item not found");
+      await this.syncBillableSummaries(client, request.auth.tenantId, String(after.production_record_id), String(after.work_order_id), request.auth.userId);
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+    }, reason);
+  }
+
+  @Post("billable-items/:id/archive")
+  @RequirePermission("billable_item.archive")
+  async archiveBillableItem(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.archive_reason, "archive_reason is required");
+    return this.write(request, "billable_item.archive", "billable_item.archived", "billable_item", async (client) => {
+      const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { status: "archived", archived_by: request.auth.userId, archived_at: new Date(), archive_reason: reason, archive_note: body.archive_note, deleted_at: new Date(), updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("billable item not found");
+      await this.syncBillableSummaries(client, request.auth.tenantId, String(after.production_record_id), String(after.work_order_id), request.auth.userId);
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: after };
+    }, reason);
+  }
+
   @Get("production-records")
   @RequirePermission("production_record.read")
   async listProductionRecords(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
@@ -1850,6 +2151,353 @@ export class ProductionController {
       updated_by: actorUserId,
     });
     if (!after) throw new NotFoundException("production record not found");
+  }
+
+  private async listBillableItemsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+    const conditions = ["bi.tenant_id = $1", "bi.deleted_at IS NULL"];
+    const params: unknown[] = [tenantId];
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      conditions.push(sql.replace("?", `$${params.length}`));
+    };
+    if (query.archived !== "true") conditions.push("bi.status <> 'archived'");
+    if (query.id) add("bi.id = ?", query.id);
+    if (query.project_id) add("bi.project_id = ?", query.project_id);
+    if (query.work_order_id) add("bi.work_order_id = ?", query.work_order_id);
+    if (query.production_record_id) add("bi.production_record_id = ?", query.production_record_id);
+    if (query.qc_review_id) add("bi.qc_review_id = ?", query.qc_review_id);
+    if (query.status) add("bi.status = ?", query.status);
+    if (query.readiness_status) add("bi.readiness_status = ?", query.readiness_status);
+    if (query.customer_organization_id) add("bi.customer_organization_id = ?", query.customer_organization_id);
+    if (query.capacity_provider_id) add("bi.capacity_provider_id = ?", query.capacity_provider_id);
+    if (query.crew_id) add("bi.crew_id = ?", query.crew_id);
+    if (query.customer_acceptance_status) add("bi.customer_acceptance_status = ?", query.customer_acceptance_status);
+    if (query.prime_acceptance_status) add("bi.prime_acceptance_status = ?", query.prime_acceptance_status);
+    if (query.billing_package_status) add("bi.billing_package_status = ?", query.billing_package_status);
+    if (query.documentation_status) add("bi.documentation_status = ?", query.documentation_status);
+    if (query.rate_source) add("bi.rate_source = ?", query.rate_source);
+    if (query.rate_confidence) add("bi.rate_confidence = ?", query.rate_confidence);
+    if (query.retainage_required === "true") conditions.push("bi.retainage_required = true");
+    if (query.retainage_required === "false") conditions.push("bi.retainage_required = false");
+    if (query.q) {
+      params.push(`%${query.q}%`);
+      conditions.push(`(bi.rate_description ILIKE $${params.length} OR bi.hold_reason ILIKE $${params.length} OR bi.dispute_reason ILIKE $${params.length} OR p.name ILIKE $${params.length} OR wo.work_order_name ILIKE $${params.length} OR co.name ILIKE $${params.length})`);
+    }
+    const orderBy = query.sort === "readiness_asc" ? "bi.readiness_score ASC NULLS FIRST, bi.updated_at DESC" : query.sort === "readiness_desc" ? "bi.readiness_score DESC NULLS LAST, bi.updated_at DESC" : query.sort === "amount_desc" ? "bi.estimated_billable_amount DESC NULLS LAST, bi.updated_at DESC" : query.sort === "status" ? "bi.status ASC, bi.updated_at DESC" : query.sort === "project" ? "p.name ASC, bi.updated_at DESC" : query.sort === "customer" ? "co.name ASC NULLS LAST, bi.updated_at DESC" : "bi.updated_at DESC";
+    const result = await client.query(
+      `
+      SELECT bi.*, p.name AS project_name, wo.work_order_name, wo.work_order_number, pr.production_type,
+        pr.status AS production_record_status, qr.review_status AS qc_review_status,
+        co.name AS customer_organization_name, cp.name AS capacity_provider_name, c.name AS crew_name
+      FROM billable_items bi
+      JOIN projects p ON p.tenant_id = bi.tenant_id AND p.id = bi.project_id
+      JOIN work_orders wo ON wo.tenant_id = bi.tenant_id AND wo.id = bi.work_order_id
+      JOIN production_records pr ON pr.tenant_id = bi.tenant_id AND pr.id = bi.production_record_id
+      JOIN qc_reviews qr ON qr.tenant_id = bi.tenant_id AND qr.id = bi.qc_review_id
+      LEFT JOIN organizations co ON co.tenant_id = bi.tenant_id AND co.id = bi.customer_organization_id
+      LEFT JOIN capacity_providers cp ON cp.tenant_id = bi.tenant_id AND cp.id = bi.capacity_provider_id
+      LEFT JOIN crews c ON c.tenant_id = bi.tenant_id AND c.id = bi.crew_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY ${orderBy}
+      LIMIT 200
+      `,
+      params,
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      warnings: this.billableWarnings(row),
+      blockers: this.billableBlockers(row),
+      required_override_fields: this.billableRequiredOverrideFields(row),
+      recommended_next_action: this.billableNextAction(row),
+    }));
+  }
+
+  private async billableItemRow(client: PoolClient, tenantId: string, id: string) {
+    const rows = await this.listBillableItemsEnriched(client, tenantId, { archived: "true", id });
+    const row = rows[0];
+    if (!row) throw new NotFoundException("billable item not found");
+    return row;
+  }
+
+  private async billableItemDetail(client: PoolClient, tenantId: string, id: string) {
+    const billableItem = await this.billableItemRow(client, tenantId, id);
+    return {
+      billable_item: billableItem,
+      project_context: await this.optionalRecord(client, "projects", tenantId, billableItem.project_id),
+      work_order_context: await this.optionalRecord(client, "work_orders", tenantId, billableItem.work_order_id),
+      production_context: await this.optionalRecord(client, "production_records", tenantId, billableItem.production_record_id),
+      qc_context: await this.optionalRecord(client, "qc_reviews", tenantId, billableItem.qc_review_id),
+      customer_context: await this.optionalRecord(client, "organizations", tenantId, billableItem.customer_organization_id),
+      provider_context: {
+        capacity_provider_id: billableItem.capacity_provider_id,
+        capacity_provider_name: billableItem.capacity_provider_name,
+        crew_id: billableItem.crew_id,
+        crew_name: billableItem.crew_name,
+      },
+      quantity_summary: {
+        approved_quantity: billableItem.approved_quantity,
+        billable_quantity: billableItem.billable_quantity,
+        held_quantity: billableItem.held_quantity,
+        rejected_quantity: billableItem.rejected_quantity,
+        correction_quantity: billableItem.correction_quantity,
+        unit: billableItem.unit,
+      },
+      rate_summary: {
+        rate_code_id: billableItem.rate_code_id,
+        rate_description: billableItem.rate_description,
+        unit_rate: billableItem.unit_rate,
+        rate_source: billableItem.rate_source,
+        rate_confidence: billableItem.rate_confidence,
+        estimated_billable_amount: billableItem.estimated_billable_amount,
+      },
+      acceptance_summary: {
+        customer_acceptance_status: billableItem.customer_acceptance_status,
+        prime_acceptance_status: billableItem.prime_acceptance_status,
+      },
+      billing_package_summary: {
+        billing_package_status: billableItem.billing_package_status,
+        documentation_status: billableItem.documentation_status,
+      },
+      retainage_summary: {
+        retainage_required: billableItem.retainage_required,
+        retainage_percent: billableItem.retainage_percent,
+        retainage_amount: billableItem.retainage_amount,
+        retainage_release_condition: billableItem.retainage_release_condition,
+        net_billable_amount: billableItem.net_billable_amount,
+      },
+      readiness: {
+        readiness_score: billableItem.readiness_score,
+        readiness_status: billableItem.readiness_status,
+        readiness_band: billableItem.readiness_band,
+      },
+      warnings: this.billableWarnings(billableItem),
+      blockers: this.billableBlockers(billableItem),
+      required_override_fields: this.billableRequiredOverrideFields(billableItem),
+      recommended_next_action: this.billableNextAction(billableItem),
+      timeline_available: true,
+      audit_allowed: true,
+    };
+  }
+
+  private async billableContextFromQcReview(client: PoolClient, tenantId: string, qcReviewId: string) {
+    const qcReview = await this.requireRecord(client, "qc_reviews", tenantId, qcReviewId, "qc review not found");
+    const productionRecord = await this.requireRecord(client, "production_records", tenantId, String(qcReview.production_record_id), "production record not found");
+    const workOrder = await this.requireRecord(client, "work_orders", tenantId, String(qcReview.work_order_id), "work order not found");
+    const project = await this.requireRecord(client, "projects", tenantId, String(qcReview.project_id), "project not found");
+    if (productionRecord.work_order_id !== workOrder.id || productionRecord.project_id !== project.id || workOrder.project_id !== project.id) throw new BadRequestException("billable source relationships are inconsistent");
+    return { qcReview, productionRecord, workOrder, project };
+  }
+
+  private async billableRateContext(client: PoolClient, tenantId: string, body: Record<string, unknown>, unit: string) {
+    let rateCodeId = typeof body.rate_code_id === "string" && body.rate_code_id ? body.rate_code_id : undefined;
+    let rateDescription = typeof body.rate_description === "string" ? body.rate_description : undefined;
+    let unitRate = body.unit_rate === undefined || body.unit_rate === null || body.unit_rate === "" ? undefined : this.requireNonNegative(body.unit_rate, "unit_rate");
+    let rateSource = this.optionalAllowed(body.rate_source, billableRateSources, "rate_source") ?? "unknown";
+    let rateConfidence = this.optionalAllowed(body.rate_confidence, billableRateConfidences, "rate_confidence") ?? "unknown";
+    if (rateCodeId) {
+      const rateCode = await this.requireActiveRateCode(client, tenantId, rateCodeId, unit);
+      rateDescription = rateDescription ?? rateCode.description ?? rateCode.code;
+      unitRate = unitRate ?? Number(rateCode.customer_rate ?? rateCode.amount);
+      rateSource = rateSource === "unknown" ? "contract_rate" : rateSource;
+      rateConfidence = rateConfidence === "unknown" ? "confirmed" : rateConfidence;
+    }
+    const billableQuantity = Number(body.billable_quantity ?? 0);
+    return {
+      rateCodeId,
+      rateDescription,
+      unitRate,
+      rateSource,
+      rateConfidence,
+      estimatedBillableAmount: this.billableEstimatedAmount(billableQuantity, unitRate),
+    };
+  }
+
+  private billableEstimatedAmount(billableQuantity: unknown, unitRate: unknown) {
+    const quantity = Number(billableQuantity);
+    const rate = Number(unitRate);
+    if (!Number.isFinite(quantity) || !Number.isFinite(rate)) return undefined;
+    return Number((quantity * rate).toFixed(2));
+  }
+
+  private billableRetainage(body: Record<string, unknown>, billableQuantity: number, estimatedBillableAmount: number | undefined) {
+    const retainageRequired = Boolean(body.retainage_required);
+    const retainagePercent = body.retainage_percent === undefined || body.retainage_percent === null || body.retainage_percent === "" ? undefined : this.requireNonNegative(body.retainage_percent, "retainage_percent");
+    if (retainagePercent !== undefined && retainagePercent > 100) throw new BadRequestException("retainage_percent must be <= 100");
+    const baseAmount = Number(estimatedBillableAmount ?? 0);
+    const retainageAmount = retainageRequired && retainagePercent !== undefined && Number.isFinite(baseAmount) ? Number((baseAmount * (retainagePercent / 100)).toFixed(2)) : undefined;
+    const netBillableAmount = estimatedBillableAmount === undefined ? undefined : Number((estimatedBillableAmount - Number(retainageAmount ?? 0)).toFixed(2));
+    return { retainageRequired, retainagePercent, retainageAmount, netBillableAmount, billableQuantity };
+  }
+
+  private mapBillableAcceptance(status: unknown) {
+    if (status === "accepted" || status === "rejected" || status === "correction_required" || status === "pending" || status === "not_required") return status;
+    return "not_required";
+  }
+
+  private mapBillablePackageStatus(status: unknown) {
+    if (status === "sufficient") return "ready";
+    if (status === "insufficient") return "incomplete";
+    if (status === "pending") return "incomplete";
+    return "not_started";
+  }
+
+  private deriveBillableState(row: Record<string, any>, options: { preserveStatus?: boolean } = {}) {
+    const checks = [
+      row.qc_review_status === undefined || row.qc_review_status === "approved",
+      row.production_record_status === undefined || row.production_record_status === "approved",
+      Boolean(row.work_order_id),
+      Boolean(row.project_id),
+      Number(row.billable_quantity ?? 0) > 0,
+      Number(row.billable_quantity ?? 0) <= Number(row.approved_quantity ?? 0) || this.hasOverride(row.override_reasons, "billable_quantity_override_reason"),
+      Boolean(row.unit),
+      this.billableRateKnown(row) || this.hasOverride(row.override_reasons, "rate_override_reason"),
+      this.packageReady(row.billing_package_status) || this.hasOverride(row.override_reasons, "billing_package_override_reason"),
+      this.packageReady(row.documentation_status) || this.hasOverride(row.override_reasons, "documentation_override_reason"),
+      this.acceptanceReviewed(row.customer_acceptance_status),
+      this.acceptanceReviewed(row.prime_acceptance_status),
+      !row.dispute_reason && row.status !== "disputed",
+      !row.hold_reason && row.status !== "held",
+      !["voided", "archived"].includes(String(row.status)),
+      !row.settlement_item_id,
+    ];
+    let score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+    if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") score = Math.min(score, 39);
+    if (row.production_record_status !== undefined && row.production_record_status !== "approved") score = Math.min(score, 39);
+    if (Number(row.billable_quantity ?? 0) <= 0) score = Math.min(score, 39);
+    if (Number(row.billable_quantity ?? 0) > Number(row.approved_quantity ?? 0) && !this.hasOverride(row.override_reasons, "billable_quantity_override_reason")) score = Math.min(score, 39);
+    if (["rejected", "correction_required", "disputed"].includes(String(row.customer_acceptance_status)) || ["rejected", "correction_required", "disputed"].includes(String(row.prime_acceptance_status))) score = Math.min(score, 69);
+    if (!this.billableRateKnown(row)) score = Math.min(score, 69);
+    if (!this.packageReady(row.billing_package_status) || !this.packageReady(row.documentation_status)) score = Math.min(score, 84);
+    if (row.customer_acceptance_status === "pending" || row.prime_acceptance_status === "pending") score = Math.min(score, 84);
+    if (row.status === "held" || row.status === "disputed" || row.hold_reason || row.dispute_reason) score = Math.min(score, 69);
+    const readiness_band = score >= 85 ? "ready_for_settlement" : score >= 70 ? "ready_with_warning" : score >= 40 ? "needs_review" : "not_ready";
+    const readiness_status = this.billableBlockers({ ...row, readiness_score: score }).length ? "blocked" : score >= 85 ? "ready_for_settlement" : score >= 70 ? "ready_with_warning" : score >= 40 ? "needs_review" : "not_ready";
+    let status = row.status;
+    if (!options.preserveStatus && !["held", "disputed", "voided", "archived", "ready_for_settlement", "settlement_created"].includes(String(row.status))) {
+      if (!this.billableRateKnown(row)) status = "needs_rate";
+      else if (!this.packageReady(row.billing_package_status) || !this.packageReady(row.documentation_status)) status = "needs_documentation";
+      else if (row.customer_acceptance_status === "pending" || row.prime_acceptance_status === "pending") status = "needs_customer_acceptance";
+      else status = "candidate";
+    }
+    return { status, readiness_score: score, readiness_status, readiness_band };
+  }
+
+  private billableRateKnown(row: Record<string, any>) {
+    return row.rate_source !== "unknown" && row.unit_rate !== undefined && row.unit_rate !== null;
+  }
+
+  private packageReady(status: unknown) {
+    return status === "ready" || status === "accepted_later";
+  }
+
+  private acceptanceReviewed(status: unknown) {
+    return status === "not_required" || status === "accepted";
+  }
+
+  private billableWarnings(row: Record<string, any>) {
+    const warnings = [];
+    if (!this.billableRateKnown(row)) warnings.push({ warning_type: "rate_unknown", severity: "high", message: "Rate is unknown.", required_override_field: "rate_override_reason" });
+    if (row.rate_source === "manual_rate") warnings.push({ warning_type: "manual_rate", severity: "medium", message: "Manual rate requires audit." });
+    if (!this.packageReady(row.billing_package_status)) warnings.push({ warning_type: "billing_package_incomplete", severity: "medium", message: "Billing package is incomplete.", required_override_field: "billing_package_override_reason" });
+    if (!this.packageReady(row.documentation_status)) warnings.push({ warning_type: "documentation_incomplete", severity: "medium", message: "Documentation is incomplete.", required_override_field: "documentation_override_reason" });
+    if (row.customer_acceptance_status === "pending") warnings.push({ warning_type: "customer_acceptance_pending", severity: "medium", message: "Customer acceptance is pending.", required_override_field: "customer_acceptance_override_reason" });
+    if (row.prime_acceptance_status === "pending") warnings.push({ warning_type: "prime_acceptance_pending", severity: "medium", message: "Prime acceptance is pending.", required_override_field: "prime_acceptance_override_reason" });
+    if (row.retainage_required) warnings.push({ warning_type: "retainage_applies", severity: "low", message: "Retainage applies." });
+    if (Number(row.held_quantity ?? 0) > 0) warnings.push({ warning_type: "partial_quantity_held", severity: "medium", message: "Some approved quantity is held." });
+    if (row.dispute_reason) warnings.push({ warning_type: "provider_dispute", severity: "high", message: "Billable item is disputed." });
+    if (Number(row.billable_quantity ?? 0) !== Number(row.approved_quantity ?? 0)) warnings.push({ warning_type: "quantity_mismatch", severity: "medium", message: "Billable quantity differs from approved quantity." });
+    if (row.work_order_status && row.work_order_status !== "billable") warnings.push({ warning_type: "work_order_not_billable", severity: "low", message: "Work order is not marked billable." });
+    if (row.override_reasons && Object.keys(row.override_reasons).length) warnings.push({ warning_type: "manual_override_present", severity: "medium", message: "Manual override is present." });
+    return warnings;
+  }
+
+  private billableBlockers(row: Record<string, any>) {
+    const blockers = [];
+    if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") blockers.push({ blocker_type: "no_approved_qc", severity: "critical", message: "Approved QC review is required." });
+    if (row.production_record_status !== undefined && row.production_record_status !== "approved") blockers.push({ blocker_type: "no_approved_production", severity: "critical", message: "Approved production is required." });
+    if (Number(row.billable_quantity ?? 0) <= 0) blockers.push({ blocker_type: "no_billable_quantity", severity: "critical", message: "Billable quantity is required." });
+    if (Number(row.billable_quantity ?? 0) > Number(row.approved_quantity ?? 0) && !this.hasOverride(row.override_reasons, "billable_quantity_override_reason")) blockers.push({ blocker_type: "billable_exceeds_approved_without_override", severity: "critical", message: "Billable quantity exceeds approved quantity." });
+    if (["rejected", "correction_required", "disputed"].includes(String(row.customer_acceptance_status))) blockers.push({ blocker_type: row.customer_acceptance_status === "rejected" ? "customer_rejected" : row.customer_acceptance_status === "correction_required" ? "correction_required" : "hard_stop_dispute", severity: "high", message: "Customer acceptance blocks settlement readiness." });
+    if (["rejected", "correction_required", "disputed"].includes(String(row.prime_acceptance_status))) blockers.push({ blocker_type: row.prime_acceptance_status === "rejected" ? "prime_rejected" : row.prime_acceptance_status === "correction_required" ? "correction_required" : "hard_stop_dispute", severity: "high", message: "Prime acceptance blocks settlement readiness." });
+    if (row.status === "voided") blockers.push({ blocker_type: "voided_billable_item", severity: "critical", message: "Voided Billable item is view-only." });
+    if (row.status === "archived" || row.archived_at) blockers.push({ blocker_type: "archived_source_record", severity: "critical", message: "Archived Billable item is view-only." });
+    if (row.settlement_item_id) blockers.push({ blocker_type: "settlement_already_created", severity: "critical", message: "Settlement item is already linked." });
+    if (row.status === "held" || row.hold_reason) blockers.push({ blocker_type: "executive_hold", severity: "high", message: "Billable item is held." });
+    if (row.status === "disputed" || row.dispute_reason) blockers.push({ blocker_type: "hard_stop_dispute", severity: "high", message: "Billable item is disputed." });
+    return blockers;
+  }
+
+  private billableRequiredOverrideFields(row: Record<string, any>) {
+    const fields = new Set<string>();
+    for (const warning of this.billableWarnings(row)) {
+      if (warning.required_override_field) fields.add(warning.required_override_field);
+    }
+    return Array.from(fields);
+  }
+
+  private assertBillableOverrides(row: Record<string, any>, overrides: unknown) {
+    const missing = this.billableRequiredOverrideFields(row).filter((field) => !this.hasOverride(overrides, field));
+    if (missing.length) throw new BadRequestException({ message: "Billable warnings require override reasons.", warnings: this.billableWarnings(row), required_override_fields: missing });
+  }
+
+  private billableNextAction(row: Record<string, any>) {
+    if (row.status === "archived") return "view_only";
+    if (row.status === "voided") return "view_voided_item";
+    if (this.billableBlockers(row).length) return "resolve_blockers";
+    if (row.status === "disputed") return "resolve_dispute";
+    if (row.status === "held") return "release_or_review_hold";
+    if (row.readiness_score === undefined || row.readiness_score === null) return "recalculate_readiness";
+    if (!this.billableRateKnown(row)) return "add_rate";
+    if (!this.packageReady(row.billing_package_status)) return "complete_billing_package";
+    if (row.customer_acceptance_status === "pending" || row.prime_acceptance_status === "pending") return "review_acceptance";
+    if (Number(row.readiness_score) >= 85) return "mark_ready_for_settlement";
+    return "continue_billable_review";
+  }
+
+  private async syncBillableSummaries(client: PoolClient, tenantId: string, productionRecordId: string, workOrderId: string, actorUserId: string) {
+    const productionSummary = await client.query(
+      `
+      SELECT COALESCE(sum(billable_quantity) FILTER (WHERE status NOT IN ('voided', 'archived') AND deleted_at IS NULL), 0)::numeric AS billable_quantity,
+        bool_or(status = 'ready_for_settlement') AS ready_for_settlement,
+        bool_or(status IN ('candidate', 'needs_rate', 'needs_documentation', 'needs_customer_acceptance', 'ready_for_settlement')) AS has_active
+      FROM billable_items
+      WHERE tenant_id = $1 AND production_record_id = $2
+      `,
+      [tenantId, productionRecordId],
+    );
+    const productionStatus = productionSummary.rows[0]?.ready_for_settlement ? "billable" : productionSummary.rows[0]?.has_active ? "billable_candidate" : "not_billable";
+    await updateTenantRecord(client, "production_records", tenantId, productionRecordId, {
+      billable_status: productionStatus,
+      billable_quantity: Number(productionSummary.rows[0]?.billable_quantity ?? 0),
+      updated_by: actorUserId,
+    });
+    const workOrderSummary = await client.query(
+      `
+      SELECT COALESCE(sum(billable_quantity) FILTER (WHERE status NOT IN ('voided', 'archived') AND deleted_at IS NULL), 0)::numeric AS billable_quantity,
+        bool_or(status = 'ready_for_settlement') AS ready_for_settlement,
+        bool_or(status IN ('candidate', 'needs_rate', 'needs_documentation', 'needs_customer_acceptance', 'ready_for_settlement')) AS has_active
+      FROM billable_items
+      WHERE tenant_id = $1 AND work_order_id = $2
+      `,
+      [tenantId, workOrderId],
+    );
+    const workOrderBillableStatus = workOrderSummary.rows[0]?.ready_for_settlement ? "billable" : workOrderSummary.rows[0]?.has_active ? "pending_approval" : "not_billable";
+    await updateTenantRecord(client, "work_orders", tenantId, workOrderId, {
+      billable_status: workOrderBillableStatus,
+      billable_quantity: Number(workOrderSummary.rows[0]?.billable_quantity ?? 0),
+      updated_by: actorUserId,
+    });
+  }
+
+  private async billableStatusAction(request: AuthenticatedRequest, id: string, action: string, eventType: string, values: Record<string, unknown>, reason: string) {
+    return this.write(request, action, eventType, "billable_item", async (client) => {
+      const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
+      if (["archived", "voided"].includes(String(before.status))) throw new BadRequestException("archived or voided billable items are view-only");
+      const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, values);
+      if (!after) throw new NotFoundException("billable item not found");
+      await this.syncBillableSummaries(client, request.auth.tenantId, String(after.production_record_id), String(after.work_order_id), request.auth.userId);
+      return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
+    }, reason);
   }
 
   private async listProductionRecordsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {

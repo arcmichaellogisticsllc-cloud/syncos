@@ -61,5 +61,6 @@ npm run project:smoke
 npm run work-order:smoke
 npm run production:smoke
 npm run qc:smoke
+npm run billable:smoke
 
 echo "release validation passed"

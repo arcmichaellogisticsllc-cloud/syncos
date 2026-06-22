@@ -523,6 +523,13 @@ Implementation posture:
 - Keep settlement, invoice, AR, payment, cash, and payroll fully downstream.
 - Enforce tenant scoping, permissions, event creation, audit logging, and system_action creation on every write.
 
+Backend foundation update:
+
+- The approved backend foundation implements first-class `billable_items`.
+- Billable consumes approved `qc_reviews` and approved `production_records`.
+- Billable readiness, warnings, blockers, required override fields, timeline, audit, search, and smoke coverage are defined in `docs/product/billable-backend-contract.md`.
+- Settlement, Settlement Item, Invoice, AR, Payment, Cash, Payroll, and Tax creation remain out of scope.
+
 NO-GO for:
 
 - Billable UI

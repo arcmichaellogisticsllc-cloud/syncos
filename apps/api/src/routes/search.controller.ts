@@ -146,6 +146,16 @@ export class SearchController {
           qr.review_type ILIKE $2 OR qr.review_status ILIKE $2 OR qr.review_notes ILIKE $2 OR qr.rejection_reason ILIKE $2 OR qr.correction_reason ILIKE $2 OR pr.production_type ILIKE $2 OR wo.work_order_name ILIKE $2 OR wo.work_order_number ILIKE $2 OR p.name ILIKE $2
         )
         UNION ALL
+        SELECT 'billable_item' AS object_type, bi.id, concat_ws(' ', wo.work_order_name, p.name, co.name) AS title, bi.status,
+          concat_ws(' ', bi.status, bi.readiness_status, bi.rate_description, bi.hold_reason, bi.dispute_reason, wo.work_order_name, wo.work_order_number, p.name, co.name) AS snippet
+        FROM billable_items bi
+        LEFT JOIN work_orders wo ON wo.tenant_id = bi.tenant_id AND wo.id = bi.work_order_id
+        LEFT JOIN projects p ON p.tenant_id = bi.tenant_id AND p.id = bi.project_id
+        LEFT JOIN organizations co ON co.tenant_id = bi.tenant_id AND co.id = bi.customer_organization_id
+        WHERE bi.tenant_id = $1 AND bi.deleted_at IS NULL AND ($3::boolean OR bi.status <> 'archived') AND (
+          bi.status ILIKE $2 OR bi.readiness_status ILIKE $2 OR bi.rate_description ILIKE $2 OR bi.hold_reason ILIKE $2 OR bi.dispute_reason ILIKE $2 OR wo.work_order_name ILIKE $2 OR wo.work_order_number ILIKE $2 OR p.name ILIKE $2 OR co.name ILIKE $2
+        )
+        UNION ALL
         SELECT 'contract' AS object_type, id, name AS title, status, concat_ws(' ', name, contract_number, contract_type, status) AS snippet
         FROM contracts
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
