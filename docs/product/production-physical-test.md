@@ -1,6 +1,6 @@
 # Production Physical Test
 
-This test is for the future Production Workspace and current backend contract validation.
+This test validates the Production Workspace UI and the current backend contract.
 
 ## Backend Contract Checks
 
@@ -27,16 +27,34 @@ This test is for the future Production Workspace and current backend contract va
 21. Confirm audit is permission protected.
 22. Confirm global search includes production records tenant-safely.
 
-## Future UI Checks
+## UI Checks
 
-When Production Workspace UI is approved, validate:
+1. Open `/production`.
+2. Filter production records by project, Work Order, production type, status, QC status, billable status, date, provider, crew, foreman, submitter, territory, work type, evidence, corrections, archived, and text search.
+3. Create production through `/production/new`.
+4. Confirm no settlement, invoice, AR, payment, cash, payroll, or tax records are created.
+5. Open `/production/:id`.
+6. View the field truth scorecard.
+7. View Work Order context.
+8. View Project context.
+9. View performer context.
+10. View quantity summary.
+11. Add evidence metadata.
+12. Archive evidence metadata with reason.
+13. Submit production.
+14. Start review.
+15. Approve production and confirm approved quantity updates.
+16. Reject production with reason.
+17. Request correction.
+18. Mark corrected.
+19. Mark billable.
+20. Confirm no settlement, invoice, AR, payment, cash, payroll, or tax records are created.
+21. Void with reason.
+22. Archive with reason.
+23. View timeline.
+24. View audit as an authorized user.
+25. Confirm audit is hidden for an unauthorized user.
+26. Confirm QC Workspace is placeholder only.
+27. Confirm Billable Workspace is placeholder only.
 
-- Directory filters and search
-- Production create/edit forms
-- Evidence metadata panel
-- QC action panels
-- Billable boundary messaging
-- Timeline panel
-- Audit permission behavior
-
-No test should pass if Production creates settlement, invoice, payment, payroll, AR, or cash records.
+No test should pass if Production creates settlement, invoice, AR, payment, cash, payroll, or tax records.
