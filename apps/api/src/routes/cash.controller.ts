@@ -14,6 +14,12 @@ const invoicePackageStatuses = new Set(["not_started", "incomplete", "ready", "a
 const acceptanceStatuses = new Set(["not_required", "pending", "accepted", "rejected", "correction_required", "disputed"]);
 const deliveryStatuses = new Set(["not_sent", "queued", "sent", "failed", "acknowledged", "rejected"]);
 const invoiceItemTypes = new Set(["customer_billable", "retainage_hold", "retainage_release", "deduction", "chargeback", "credit", "adjustment", "fee", "tax", "correction"]);
+const cashPaymentMethods = new Set(["ach", "wire", "check", "card", "cash", "lockbox", "portal", "zelle", "other"]);
+const cashSourceTypes = new Set(["manual", "bank_import_later", "processor_import_later", "customer_portal_later", "accounting_import_later"]);
+const cashReceiptStatuses = new Set(["received", "partially_applied", "fully_applied", "unapplied", "overapplied", "voided", "archived"]);
+const cashDepositStatuses = new Set(["not_deposited", "deposited_later", "pending_later", "reconciled_later"]);
+const cashReconciliationStatuses = new Set(["not_reconciled", "pending_later", "reconciled_later", "exception_later"]);
+const paymentApplicationTypes = new Set(["standard_payment", "partial_payment", "overpayment_application", "retainage_payment", "discount", "writeoff_later", "adjustment", "correction"]);
 
 @Controller()
 export class CashController {
@@ -666,6 +672,471 @@ export class CashController {
     });
   }
 
+  @Get("cash-receipts")
+  @RequirePermission("cash_receipt.read")
+  async listCashReceipts(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const values: unknown[] = [request.auth.tenantId];
+      const where = ["cr.tenant_id = $1", "cr.deleted_at IS NULL"];
+      if (query.archived !== "true") where.push("cr.receipt_status <> 'archived'");
+      this.addFilter(where, values, "cr.customer_organization_id", query.customer_organization_id);
+      this.addFilter(where, values, "cr.payment_method", query.payment_method);
+      this.addFilter(where, values, "cr.receipt_status", query.receipt_status);
+      this.addFilter(where, values, "cr.deposit_status", query.deposit_status);
+      this.addFilter(where, values, "cr.reconciliation_status", query.reconciliation_status);
+      this.addFilter(where, values, "cr.source_type", query.source_type);
+      if (query.payment_date_from) this.addDateFilter(where, values, "cr.payment_date", ">=", query.payment_date_from);
+      if (query.payment_date_to) this.addDateFilter(where, values, "cr.payment_date", "<=", query.payment_date_to);
+      if (query.has_unapplied === "true") where.push("cr.unapplied_amount > 0");
+      if (query.has_unapplied === "false") where.push("cr.unapplied_amount = 0");
+      if (query.q?.trim()) {
+        values.push(`%${query.q.trim()}%`);
+        const index = values.length;
+        where.push(`(cr.receipt_number ILIKE $${index} OR cr.payment_reference ILIKE $${index} OR cr.external_transaction_id ILIKE $${index} OR cr.payer_name ILIKE $${index} OR co.name ILIKE $${index})`);
+      }
+      const result = await client.query(
+        `
+        SELECT cr.*, co.name AS customer_organization_name,
+          COALESCE(apps.application_count, 0)::int AS application_count,
+          COALESCE(apps.invoice_count, 0)::int AS invoice_count
+        FROM cash_receipts cr
+        LEFT JOIN organizations co ON co.tenant_id = cr.tenant_id AND co.id = cr.customer_organization_id
+        LEFT JOIN (
+          SELECT tenant_id, cash_receipt_id, count(*) AS application_count, count(DISTINCT invoice_id) AS invoice_count
+          FROM payment_applications
+          WHERE deleted_at IS NULL AND application_status NOT IN ('voided', 'archived')
+          GROUP BY tenant_id, cash_receipt_id
+        ) apps ON apps.tenant_id = cr.tenant_id AND apps.cash_receipt_id = cr.id
+        WHERE ${where.join(" AND ")}
+        ORDER BY ${this.cashReceiptSort(query.sort)}
+        LIMIT 100
+        `,
+        values,
+      );
+      return result.rows.map((row) => this.withCashReceiptGuidance(row));
+    });
+  }
+
+  @Get("cash-receipts/:id")
+  @RequirePermission("cash_receipt.read")
+  async getCashReceipt(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found"));
+  }
+
+  @Get("cash-receipts/:id/detail")
+  @RequirePermission("cash_receipt.read")
+  async getCashReceiptDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const receipt = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+      const applications = await this.listPaymentApplicationsForReceipt(client, request.auth.tenantId, id);
+      const customer = receipt.customer_organization_id ? await this.optionalRecord(client, "organizations", request.auth.tenantId, String(receipt.customer_organization_id)) : null;
+      return {
+        cash_receipt: this.withCashReceiptGuidance({ ...receipt, application_count: applications.length, invoice_count: new Set(applications.map((row) => row.invoice_id)).size }),
+        customer_context: customer ? { id: customer.id, name: customer.name, status: customer.status } : null,
+        payment_applications: applications,
+        applied_invoices: applications.map((row) => ({ invoice_id: row.invoice_id, invoice_number: row.invoice_number, applied_amount: row.applied_amount, balance_amount: row.invoice_balance_amount })),
+        unapplied_summary: { gross_received_amount: receipt.gross_received_amount, applied_amount: receipt.applied_amount, unapplied_amount: receipt.unapplied_amount },
+        boundary_summary: { creates_bank_transaction: false, creates_payroll: false, creates_tax: false, creates_accounting_export: false, creates_ar_record: false },
+        warnings: [],
+        blockers: this.cashReceiptBlockers(receipt),
+        recommended_next_action: this.recommendedCashReceiptAction(receipt),
+        timeline_available: true,
+        audit_allowed: true,
+      };
+    });
+  }
+
+  @Post("cash-receipts")
+  @RequirePermission("cash_receipt.create")
+  async createCashReceipt(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "cash_receipt.create", "cash_receipt.created", "cash_receipt", async (client) => {
+        const gross = this.requirePositive(body.gross_received_amount, "gross_received_amount");
+        const paymentDate = this.requireDate(body.payment_date, "payment_date");
+        const customerId = this.optionalString(body.customer_organization_id);
+        if (customerId) await this.requireRecord(client, "organizations", request.auth.tenantId, customerId, "customer organization not found");
+        const receipt = await insertTenantRecord(client, "cash_receipts", request.auth.tenantId, {
+          receipt_number: await this.nextReceiptNumber(client, request.auth.tenantId),
+          customer_organization_id: customerId ?? null,
+          payer_name: this.optionalString(body.payer_name),
+          payment_date: paymentDate,
+          received_at: new Date(),
+          payment_method: this.allowed(body.payment_method, "payment_method", cashPaymentMethods),
+          payment_reference: this.optionalString(body.payment_reference),
+          external_transaction_id: this.optionalString(body.external_transaction_id),
+          gross_received_amount: gross,
+          applied_amount: 0,
+          unapplied_amount: gross,
+          currency: this.optionalString(body.currency) ?? "USD",
+          receipt_status: "unapplied",
+          deposit_status: "not_deposited",
+          reconciliation_status: "not_reconciled",
+          source_type: this.allowed(body.source_type ?? "manual", "source_type", cashSourceTypes),
+          notes: this.optionalString(body.notes),
+          evidence_reference: this.optionalString(body.evidence_reference),
+          override_reasons: this.objectValue(body.override_reasons),
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
+        });
+        return { entityType: "cash_receipt", entityId: receipt.id, afterState: receipt };
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Patch("cash-receipts/:id")
+  @RequirePermission("cash_receipt.update")
+  async updateCashReceipt(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "cash_receipt.update", "cash_receipt.updated", "cash_receipt", async (client) => {
+        const before = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+        if (["voided", "archived"].includes(String(before.receipt_status))) throw new BadRequestException("cash receipt cannot be edited in its current status");
+        const values: Record<string, unknown> = pick(body, ["payer_name", "payment_reference", "external_transaction_id", "evidence_reference", "notes", "override_reasons"]);
+        const activeApplications = await this.activePaymentApplicationCount(client, request.auth.tenantId, id);
+        if (body.customer_organization_id !== undefined) {
+          if (activeApplications > 0) throw new BadRequestException("customer cannot be changed after applications exist");
+          const customerId = this.optionalString(body.customer_organization_id);
+          if (customerId) await this.requireRecord(client, "organizations", request.auth.tenantId, customerId, "customer organization not found");
+          values.customer_organization_id = customerId ?? null;
+        }
+        if (body.payment_method !== undefined) values.payment_method = this.allowed(body.payment_method, "payment_method", cashPaymentMethods);
+        if (body.payment_date !== undefined) values.payment_date = this.requireDate(body.payment_date, "payment_date");
+        if (body.gross_received_amount !== undefined) {
+          const gross = this.requirePositive(body.gross_received_amount, "gross_received_amount");
+          const applied = Number(before.applied_amount ?? 0);
+          if (gross < applied) throw new BadRequestException("gross_received_amount cannot be below applied_amount");
+          values.gross_received_amount = gross;
+          values.unapplied_amount = this.roundMoney(gross - applied);
+          values.receipt_status = this.receiptStatus(gross, applied);
+        }
+        values.updated_by = request.auth.userId;
+        const after = await updateTenantRecord(client, "cash_receipts", request.auth.tenantId, id, values);
+        if (!after) throw new NotFoundException("cash receipt not found");
+        return { entityType: "cash_receipt", entityId: id, beforeState: before, afterState: after };
+      }, body.reason);
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("cash-receipts/:id/apply")
+  @RequirePermission("cash_receipt.apply")
+  async applyCashReceipt(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "payment_application.create", "payment_application.created", "payment_application", async (client) => {
+        const receipt = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+        if (["voided", "archived"].includes(String(receipt.receipt_status))) throw new BadRequestException("cash receipt cannot be applied in its current status");
+        const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, this.requiredId(body.invoice_id, "invoice_id"), "invoice not found");
+        if (["voided", "archived"].includes(String(invoice.status))) throw new BadRequestException("invoice cannot receive payment in its current status");
+        const override = !!body.override_reasons;
+        if (invoice.cash_application_status !== "ready_for_cash_application" && !override) throw new BadRequestException("invoice must be ready for cash application");
+        if (invoice.status === "disputed" && !override) throw new BadRequestException("disputed invoice requires override");
+        if (receipt.customer_organization_id && (invoice.customer_organization_id ?? invoice.organization_id) !== receipt.customer_organization_id && !override) throw new BadRequestException("receipt customer must match invoice customer");
+        const original = Number(invoice.original_amount || invoice.total_amount || 0);
+        const balance = Number(invoice.balance_amount ?? original);
+        if (original <= 0 || !Number.isFinite(balance)) throw new BadRequestException("invoice receivable state is not locked");
+        const requestedAmount = this.requirePositive(body.applied_amount, "applied_amount");
+        const receiptUnapplied = Number(receipt.unapplied_amount ?? 0);
+        if (requestedAmount > receiptUnapplied && !override) throw new BadRequestException("applied_amount cannot exceed receipt unapplied amount");
+        if (requestedAmount > balance) throw new BadRequestException("overpayment remains unapplied by default");
+        const applicationDate = body.application_date === undefined ? new Date().toISOString().slice(0, 10) : this.requireDate(body.application_date, "application_date");
+        const applicationType = this.allowed(body.application_type ?? (requestedAmount < balance ? "partial_payment" : "standard_payment"), "application_type", paymentApplicationTypes);
+        const customerId = String(invoice.customer_organization_id ?? invoice.organization_id);
+        const application = await insertTenantRecord(client, "payment_applications", request.auth.tenantId, {
+          cash_receipt_id: receipt.id,
+          invoice_id: invoice.id,
+          customer_organization_id: customerId,
+          applied_amount: requestedAmount,
+          application_date: applicationDate,
+          application_status: requestedAmount < balance ? "partially_applied" : "applied",
+          application_type: applicationType,
+          note: this.optionalString(body.note),
+          writeoff_amount: body.writeoff_amount === undefined ? null : this.requireNonNegative(body.writeoff_amount, "writeoff_amount"),
+          discount_amount: body.discount_amount === undefined ? null : this.requireNonNegative(body.discount_amount, "discount_amount"),
+          adjustment_amount: body.adjustment_amount === undefined ? null : Number(body.adjustment_amount),
+          override_reasons: this.objectValue(body.override_reasons),
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
+        });
+        const nextReceipt = await this.recalculateCashReceipt(client, request.auth.tenantId, String(receipt.id), request.auth.userId);
+        const beforeInvoice = invoice;
+        const afterInvoice = await this.applyAmountToInvoice(client, request.auth.tenantId, invoice, requestedAmount, applicationDate, request.auth.userId);
+        return {
+          entityType: "payment_application",
+          entityId: application.id,
+          beforeState: { cash_receipt: receipt, invoice: beforeInvoice },
+          afterState: application,
+          additionalEvents: [
+            this.additionalEvent("cash_receipt.apply", "cash_receipt", receipt.id, "cash_receipt.applied", nextReceipt, receipt),
+            this.additionalEvent("invoice.cash_application.update", "invoice", invoice.id, "invoice.payment_applied", afterInvoice, beforeInvoice),
+            this.additionalEvent("invoice.cash_application.update", "invoice", invoice.id, "invoice.balance_updated", afterInvoice, beforeInvoice),
+          ],
+        };
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("cash-receipts/:id/void")
+  @RequirePermission("cash_receipt.void")
+  async voidCashReceipt(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "cash_receipt.void", "cash_receipt.voided", "cash_receipt", async (client) => {
+      const voidReason = requireString(body.void_reason, "void_reason is required");
+      const before = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+      if (await this.activePaymentApplicationCount(client, request.auth.tenantId, id)) throw new BadRequestException("cash receipt cannot be voided with active applications");
+      const after = await updateTenantRecord(client, "cash_receipts", request.auth.tenantId, id, {
+        receipt_status: "voided",
+        voided_by: request.auth.userId,
+        voided_at: new Date(),
+        void_reason: voidReason,
+        void_note: this.optionalString(body.void_note),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("cash receipt not found");
+      return { entityType: "cash_receipt", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Post("cash-receipts/:id/archive")
+  @RequirePermission("cash_receipt.archive")
+  async archiveCashReceipt(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "cash_receipt.archive", "cash_receipt.archived", "cash_receipt", async (client) => {
+      const archiveReason = requireString(body.archive_reason, "archive_reason is required");
+      const before = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+      const after = await updateTenantRecord(client, "cash_receipts", request.auth.tenantId, id, {
+        receipt_status: "archived",
+        archived_by: request.auth.userId,
+        archived_at: new Date(),
+        archive_reason: archiveReason,
+        archive_note: this.optionalString(body.archive_note),
+        deleted_at: new Date(),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("cash receipt not found");
+      return { entityType: "cash_receipt", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Get("payment-applications")
+  @RequirePermission("payment_application.read")
+  async listPaymentApplications(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const values: unknown[] = [request.auth.tenantId];
+      const where = ["pa.tenant_id = $1", "pa.deleted_at IS NULL"];
+      if (query.archived !== "true") where.push("pa.application_status <> 'archived'");
+      this.addFilter(where, values, "pa.cash_receipt_id", query.cash_receipt_id);
+      this.addFilter(where, values, "pa.invoice_id", query.invoice_id);
+      this.addFilter(where, values, "pa.customer_organization_id", query.customer_organization_id);
+      this.addFilter(where, values, "pa.application_status", query.application_status);
+      this.addFilter(where, values, "pa.application_type", query.application_type);
+      if (query.application_date_from) this.addDateFilter(where, values, "pa.application_date", ">=", query.application_date_from);
+      if (query.application_date_to) this.addDateFilter(where, values, "pa.application_date", "<=", query.application_date_to);
+      if (query.q?.trim()) {
+        values.push(`%${query.q.trim()}%`);
+        const index = values.length;
+        where.push(`(cr.receipt_number ILIKE $${index} OR cr.payment_reference ILIKE $${index} OR i.invoice_number ILIKE $${index} OR co.name ILIKE $${index})`);
+      }
+      const result = await client.query(
+        `
+        SELECT pa.*, cr.receipt_number, cr.payment_reference, i.invoice_number, i.balance_amount AS invoice_balance_amount, co.name AS customer_organization_name
+        FROM payment_applications pa
+        JOIN cash_receipts cr ON cr.tenant_id = pa.tenant_id AND cr.id = pa.cash_receipt_id
+        JOIN invoices i ON i.tenant_id = pa.tenant_id AND i.id = pa.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = pa.tenant_id AND co.id = pa.customer_organization_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY pa.application_date DESC, pa.updated_at DESC
+        LIMIT 100
+        `,
+        values,
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("payment-applications/:id")
+  @RequirePermission("payment_application.read")
+  async getPaymentApplication(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found"));
+  }
+
+  @Get("payment-applications/:id/detail")
+  @RequirePermission("payment_application.read")
+  async getPaymentApplicationDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const application = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
+      const receipt = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, String(application.cash_receipt_id), "cash receipt not found");
+      const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, String(application.invoice_id), "invoice not found");
+      const customer = await this.optionalRecord(client, "organizations", request.auth.tenantId, String(application.customer_organization_id));
+      return {
+        application,
+        cash_receipt_context: { id: receipt.id, receipt_number: receipt.receipt_number, payment_reference: receipt.payment_reference },
+        invoice_context: { id: invoice.id, invoice_number: invoice.invoice_number, paid_amount: invoice.paid_amount, balance_amount: invoice.balance_amount },
+        customer_context: customer ? { id: customer.id, name: customer.name } : null,
+        before_after_invoice_balance: application.override_reasons,
+        audit_allowed: true,
+      };
+    });
+  }
+
+  @Post("payment-applications/:id/void")
+  @RequirePermission("payment_application.void")
+  async voidPaymentApplication(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "payment_application.void", "payment_application.voided", "payment_application", async (client) => {
+      const voidReason = requireString(body.void_reason, "void_reason is required");
+      const before = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
+      if (["voided", "archived"].includes(String(before.application_status))) throw new BadRequestException("payment application is already inactive");
+      const receipt = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, String(before.cash_receipt_id), "cash receipt not found");
+      const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, String(before.invoice_id), "invoice not found");
+      if (["voided", "archived"].includes(String(receipt.receipt_status))) throw new BadRequestException("cash receipt cannot reverse applications in its current status");
+      if (["voided", "archived"].includes(String(invoice.status))) throw new BadRequestException("invoice cannot be updated in its current status");
+      const after = await updateTenantRecord(client, "payment_applications", request.auth.tenantId, id, {
+        application_status: "voided",
+        voided_by: request.auth.userId,
+        voided_at: new Date(),
+        void_reason: voidReason,
+        void_note: this.optionalString(body.void_note),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("payment application not found");
+      const nextReceipt = await this.recalculateCashReceipt(client, request.auth.tenantId, String(before.cash_receipt_id), request.auth.userId);
+      const nextInvoice = await this.reverseAmountFromInvoice(client, request.auth.tenantId, invoice, Number(before.applied_amount), request.auth.userId);
+      return {
+        entityType: "payment_application",
+        entityId: id,
+        beforeState: before,
+        afterState: after,
+        additionalEvents: [
+          this.additionalEvent("cash_receipt.update", "cash_receipt", receipt.id, "cash_receipt.updated", nextReceipt, receipt),
+          this.additionalEvent("invoice.cash_application.update", "invoice", invoice.id, "invoice.payment_application_voided", nextInvoice, invoice),
+          this.additionalEvent("invoice.cash_application.update", "invoice", invoice.id, "invoice.balance_updated", nextInvoice, invoice),
+        ],
+      };
+    });
+  }
+
+  @Post("payment-applications/:id/archive")
+  @RequirePermission("payment_application.archive")
+  async archivePaymentApplication(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "payment_application.archive", "payment_application.archived", "payment_application", async (client) => {
+      const archiveReason = requireString(body.archive_reason, "archive_reason is required");
+      const before = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
+      const after = await updateTenantRecord(client, "payment_applications", request.auth.tenantId, id, {
+        application_status: "archived",
+        archived_by: request.auth.userId,
+        archived_at: new Date(),
+        archive_reason: archiveReason,
+        archive_note: this.optionalString(body.archive_note),
+        deleted_at: new Date(),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("payment application not found");
+      return { entityType: "payment_application", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Get("cash-receipts/:id/timeline")
+  @RequirePermission("cash_receipt.timeline.read")
+  async cashReceiptTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+      const result = await client.query(
+        `
+        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1
+          AND (
+            (e.aggregate_type = 'cash_receipt' AND e.aggregate_id = $2)
+            OR (e.aggregate_type = 'payment_application' AND e.aggregate_id IN (SELECT id FROM payment_applications WHERE tenant_id = $1 AND cash_receipt_id = $2))
+            OR (e.aggregate_type = 'invoice' AND e.aggregate_id IN (SELECT invoice_id FROM payment_applications WHERE tenant_id = $1 AND cash_receipt_id = $2))
+          )
+        ORDER BY e.occurred_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("payment-applications/:id/timeline")
+  @RequirePermission("payment_application.timeline.read")
+  async paymentApplicationTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const application = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
+      const result = await client.query(
+        `
+        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1
+          AND (
+            (e.aggregate_type = 'payment_application' AND e.aggregate_id = $2)
+            OR (e.aggregate_type = 'cash_receipt' AND e.aggregate_id = $3)
+            OR (e.aggregate_type = 'invoice' AND e.aggregate_id = $4)
+          )
+        ORDER BY e.occurred_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, application.cash_receipt_id, application.invoice_id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("cash-receipts/:id/audit-summary")
+  @RequirePermission("cash_receipt.audit.read")
+  async cashReceiptAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
+      const result = await client.query(
+        `
+        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+        FROM audit_logs
+        WHERE tenant_id = $1
+          AND (
+            (entity_type = 'cash_receipt' AND entity_id = $2)
+            OR (entity_type = 'payment_application' AND entity_id IN (SELECT id FROM payment_applications WHERE tenant_id = $1 AND cash_receipt_id = $2))
+            OR (entity_type = 'invoice' AND entity_id IN (SELECT invoice_id FROM payment_applications WHERE tenant_id = $1 AND cash_receipt_id = $2))
+          )
+        ORDER BY created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("payment-applications/:id/audit-summary")
+  @RequirePermission("payment_application.audit.read")
+  async paymentApplicationAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const application = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
+      const result = await client.query(
+        `
+        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+        FROM audit_logs
+        WHERE tenant_id = $1
+          AND (
+            (entity_type = 'payment_application' AND entity_id = $2)
+            OR (entity_type = 'cash_receipt' AND entity_id = $3)
+            OR (entity_type = 'invoice' AND entity_id = $4)
+          )
+        ORDER BY created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, application.cash_receipt_id, application.invoice_id],
+      );
+      return result.rows;
+    });
+  }
+
   @Get("ar-records")
   @RequirePermission("ar.read")
   async listArRecords(@Req() request: AuthenticatedRequest) {
@@ -993,6 +1464,189 @@ export class CashController {
     if (count === 0) throw new BadRequestException("invoice requires at least one item");
   }
 
+  private cashReceiptSort(sort?: string) {
+    switch (sort) {
+      case "payment_date_asc":
+        return "cr.payment_date ASC NULLS LAST, cr.updated_at DESC";
+      case "amount_desc":
+        return "cr.gross_received_amount DESC, cr.updated_at DESC";
+      case "unapplied_desc":
+        return "cr.unapplied_amount DESC, cr.updated_at DESC";
+      case "receipt_number":
+        return "cr.receipt_number ASC, cr.updated_at DESC";
+      case "payment_date_desc":
+        return "cr.payment_date DESC NULLS LAST, cr.updated_at DESC";
+      case "updated_desc":
+      default:
+        return "cr.updated_at DESC";
+    }
+  }
+
+  private withCashReceiptGuidance(row: Record<string, unknown>) {
+    const blockers = this.cashReceiptBlockers(row);
+    return {
+      ...row,
+      warnings: [],
+      blockers,
+      required_override_fields: [],
+      recommended_next_action: this.recommendedCashReceiptAction(row),
+    };
+  }
+
+  private cashReceiptBlockers(row: Record<string, unknown>) {
+    const blockers: string[] = [];
+    if (row.receipt_status === "voided") blockers.push("voided_receipt");
+    if (row.receipt_status === "archived") blockers.push("archived_receipt");
+    return blockers;
+  }
+
+  private recommendedCashReceiptAction(row: Record<string, unknown>) {
+    if (row.receipt_status === "archived") return "view_only";
+    if (row.receipt_status === "voided") return "view_voided_receipt";
+    if (Number(row.unapplied_amount ?? 0) > 0) return "apply_unapplied_cash";
+    if (row.receipt_status === "fully_applied") return "view_fully_applied_receipt";
+    return "review_receipt";
+  }
+
+  private async listPaymentApplicationsForReceipt(client: PoolClient, tenantId: string, receiptId: string) {
+    const result = await client.query(
+      `
+      SELECT pa.*, cr.receipt_number, i.invoice_number, i.balance_amount AS invoice_balance_amount, co.name AS customer_organization_name
+      FROM payment_applications pa
+      JOIN cash_receipts cr ON cr.tenant_id = pa.tenant_id AND cr.id = pa.cash_receipt_id
+      JOIN invoices i ON i.tenant_id = pa.tenant_id AND i.id = pa.invoice_id
+      LEFT JOIN organizations co ON co.tenant_id = pa.tenant_id AND co.id = pa.customer_organization_id
+      WHERE pa.tenant_id = $1
+        AND pa.cash_receipt_id = $2
+        AND pa.deleted_at IS NULL
+      ORDER BY pa.application_date DESC, pa.created_at DESC
+      `,
+      [tenantId, receiptId],
+    );
+    return result.rows;
+  }
+
+  private async activePaymentApplicationCount(client: PoolClient, tenantId: string, receiptId: string) {
+    const result = await client.query(
+      `
+      SELECT count(*)::int AS count
+      FROM payment_applications
+      WHERE tenant_id = $1
+        AND cash_receipt_id = $2
+        AND deleted_at IS NULL
+        AND application_status NOT IN ('voided', 'archived')
+      `,
+      [tenantId, receiptId],
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  private async nextReceiptNumber(client: PoolClient, tenantId: string) {
+    const result = await client.query("SELECT count(*)::int + 1 AS next FROM cash_receipts WHERE tenant_id = $1", [tenantId]);
+    return `RCPT-${String(result.rows[0]?.next ?? 1).padStart(6, "0")}`;
+  }
+
+  private requireDate(value: unknown, field: string) {
+    const parsed = requireString(value, `${field} is required`);
+    const date = new Date(parsed);
+    if (!Number.isFinite(date.getTime())) throw new BadRequestException(`${field} must be valid`);
+    return parsed.slice(0, 10);
+  }
+
+  private receiptStatus(gross: number, applied: number) {
+    if (applied <= 0) return "unapplied";
+    if (applied < gross) return "partially_applied";
+    if (applied === gross) return "fully_applied";
+    return "overapplied";
+  }
+
+  private async recalculateCashReceipt(client: PoolClient, tenantId: string, receiptId: string, userId: string) {
+    const receipt = await this.requireRecord(client, "cash_receipts", tenantId, receiptId, "cash receipt not found");
+    const totals = await client.query(
+      `
+      SELECT COALESCE(sum(applied_amount), 0)::numeric AS applied_amount
+      FROM payment_applications
+      WHERE tenant_id = $1
+        AND cash_receipt_id = $2
+        AND deleted_at IS NULL
+        AND application_status NOT IN ('voided', 'archived')
+      `,
+      [tenantId, receiptId],
+    );
+    const applied = this.roundMoney(Number(totals.rows[0]?.applied_amount ?? 0));
+    const gross = Number(receipt.gross_received_amount);
+    const after = await updateTenantRecord(client, "cash_receipts", tenantId, receiptId, {
+      applied_amount: applied,
+      unapplied_amount: this.roundMoney(Math.max(0, gross - applied)),
+      receipt_status: this.receiptStatus(gross, applied),
+      updated_by: userId,
+    });
+    if (!after) throw new NotFoundException("cash receipt not found");
+    return after;
+  }
+
+  private async applyAmountToInvoice(client: PoolClient, tenantId: string, invoice: Record<string, unknown>, amount: number, applicationDate: string, userId: string) {
+    const original = Number(invoice.original_amount || invoice.total_amount || 0);
+    const paid = this.roundMoney(Number(invoice.paid_amount ?? 0) + amount);
+    const receivable = this.calculateReceivableState(invoice.due_date, original, paid, String(invoice.status));
+    const after = await updateTenantRecord(client, "invoices", tenantId, String(invoice.id), {
+      paid_amount: paid,
+      balance_amount: receivable.balance_amount,
+      payment_status: receivable.payment_status,
+      collection_status: receivable.collection_status,
+      cash_application_status: this.cashApplicationStatus(receivable.balance_amount, paid),
+      aging_days: receivable.aging_days,
+      last_payment_at: applicationDate,
+      last_payment_amount: amount,
+      updated_by: userId,
+    });
+    if (!after) throw new NotFoundException("invoice not found");
+    return after;
+  }
+
+  private async reverseAmountFromInvoice(client: PoolClient, tenantId: string, invoice: Record<string, unknown>, amount: number, userId: string) {
+    const original = Number(invoice.original_amount || invoice.total_amount || 0);
+    const paid = this.roundMoney(Math.max(0, Number(invoice.paid_amount ?? 0) - amount));
+    const receivable = this.calculateReceivableState(invoice.due_date, original, paid, String(invoice.status));
+    const lastPayment = await this.recalculateLastPayment(client, tenantId, String(invoice.id));
+    const after = await updateTenantRecord(client, "invoices", tenantId, String(invoice.id), {
+      paid_amount: paid,
+      balance_amount: receivable.balance_amount,
+      payment_status: receivable.payment_status,
+      collection_status: receivable.collection_status,
+      cash_application_status: this.cashApplicationStatus(receivable.balance_amount, paid),
+      aging_days: receivable.aging_days,
+      last_payment_at: lastPayment.last_payment_at,
+      last_payment_amount: lastPayment.last_payment_amount,
+      updated_by: userId,
+    });
+    if (!after) throw new NotFoundException("invoice not found");
+    return after;
+  }
+
+  private cashApplicationStatus(balance: number, paid: number) {
+    if (paid <= 0) return "ready_for_cash_application";
+    if (balance <= 0) return "fully_applied_later";
+    return "partially_applied_later";
+  }
+
+  private async recalculateLastPayment(client: PoolClient, tenantId: string, invoiceId: string) {
+    const result = await client.query(
+      `
+      SELECT application_date AS last_payment_at, applied_amount AS last_payment_amount
+      FROM payment_applications
+      WHERE tenant_id = $1
+        AND invoice_id = $2
+        AND deleted_at IS NULL
+        AND application_status NOT IN ('voided', 'archived')
+      ORDER BY application_date DESC, created_at DESC
+      LIMIT 1
+      `,
+      [tenantId, invoiceId],
+    );
+    return result.rows[0] ?? { last_payment_at: null, last_payment_amount: null };
+  }
+
   private async requireSettlementItemForInvoice(client: PoolClient, tenantId: string, id: unknown) {
     const settlementItemId = this.requiredId(id, "settlement_item_id");
     const result = await client.query(
@@ -1221,6 +1875,23 @@ export class CashController {
     const record = await findTenantRecordById(client, table, tenantId, id);
     if (!record) throw new NotFoundException(message);
     return record;
+  }
+
+  private optionalRecord(client: PoolClient, table: string, tenantId: string, id: string) {
+    return findTenantRecordById(client, table, tenantId, id);
+  }
+
+  private additionalEvent(action: string, aggregateType: string, entityId: unknown, eventType: string, afterState: Record<string, unknown>, beforeState?: Record<string, unknown>) {
+    return {
+      action,
+      aggregateType,
+      entityType: aggregateType,
+      entityId: String(entityId),
+      eventType,
+      beforeState,
+      afterState,
+      systemActions: [{ actionType: `${eventType}.processed`, payload: { action } }],
+    };
   }
 
   private async requireRoleAuthority(client: PoolClient, tenantId: string, userId: string, roles: Set<string>, message: string) {

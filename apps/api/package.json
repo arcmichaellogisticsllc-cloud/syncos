@@ -40,6 +40,7 @@
     "smoke:billable": "node scripts/billable-smoke.js",
     "smoke:settlement": "node scripts/settlement-smoke.js",
     "smoke:invoice": "node scripts/invoice-smoke.js",
+    "smoke:cash-application": "node scripts/cash-application-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

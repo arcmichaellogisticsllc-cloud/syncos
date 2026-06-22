@@ -216,6 +216,24 @@ export class SearchController {
           ii.item_type ILIKE $2 OR ii.status ILIKE $2 OR ii.description ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2 OR p.name ILIKE $2 OR s.settlement_number ILIKE $2
         )
         UNION ALL
+        SELECT 'cash_receipt' AS object_type, cr.id, cr.receipt_number AS title, cr.receipt_status AS status,
+          concat_ws(' ', cr.receipt_number, cr.payment_reference, cr.external_transaction_id, cr.payer_name, cr.receipt_status, co.name) AS snippet
+        FROM cash_receipts cr
+        LEFT JOIN organizations co ON co.tenant_id = cr.tenant_id AND co.id = cr.customer_organization_id
+        WHERE cr.tenant_id = $1 AND cr.deleted_at IS NULL AND ($3::boolean OR cr.receipt_status <> 'archived') AND (
+          cr.receipt_number ILIKE $2 OR cr.payment_reference ILIKE $2 OR cr.external_transaction_id ILIKE $2 OR cr.payer_name ILIKE $2 OR cr.receipt_status ILIKE $2 OR co.name ILIKE $2
+        )
+        UNION ALL
+        SELECT 'payment_application' AS object_type, pa.id, concat_ws(' ', cr.receipt_number, i.invoice_number) AS title, pa.application_status AS status,
+          concat_ws(' ', pa.application_type, pa.application_status, cr.receipt_number, cr.payment_reference, i.invoice_number, co.name) AS snippet
+        FROM payment_applications pa
+        JOIN cash_receipts cr ON cr.tenant_id = pa.tenant_id AND cr.id = pa.cash_receipt_id
+        JOIN invoices i ON i.tenant_id = pa.tenant_id AND i.id = pa.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = pa.tenant_id AND co.id = pa.customer_organization_id
+        WHERE pa.tenant_id = $1 AND pa.deleted_at IS NULL AND ($3::boolean OR pa.application_status <> 'archived') AND (
+          pa.application_type ILIKE $2 OR pa.application_status ILIKE $2 OR cr.receipt_number ILIKE $2 OR cr.payment_reference ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)

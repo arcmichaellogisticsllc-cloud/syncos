@@ -233,7 +233,6 @@ async function assertNoDownstream(client, tenantId, before, label) {
 async function assertNoForbiddenTables(client) {
   const result = await client.query(`
     SELECT
-      to_regclass('public.cash_receipts') AS cash_receipts,
       to_regclass('public.payroll_records') AS payroll_records,
       to_regclass('public.bank_transactions') AS bank_transactions,
       to_regclass('public.accounting_exports') AS accounting_exports

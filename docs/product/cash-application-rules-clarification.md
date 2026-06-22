@@ -20,6 +20,17 @@ Invoice owns receivable state. Cash Application updates invoice receivable state
 
 Cash Application is not invoice creation, settlement approval, contractor payment, payroll, tax accounting, bank reconciliation, accounting export, or customer portal payment processing.
 
+## Backend Foundation Implementation Note
+
+The Cash Application Backend Contract Foundation implements the recommended Option D hybrid model:
+
+- invoices retain receivable summary fields
+- `cash_receipts` store money received
+- `payment_applications` allocate receipts to invoices
+- invoice paid/balance/payment/collection state changes only through payment applications
+
+Cash receipt creation alone does not update invoice balances. Overpayment remains unapplied cash by default. Legacy `ar_records` and `payments` are not used by the new Cash Application contract.
+
 ## 1. Current Backend Inventory
 
 Inspection scope:
