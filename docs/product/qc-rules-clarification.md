@@ -66,6 +66,16 @@ Current QC is implemented as **Option A: QC actions directly on `production_reco
 
 Recommendation: use **Option C: Hybrid model** in the next coding sprint, pending product confirmation. Keep summary fields on `production_records`, but add first-class `qc_reviews` to store every review decision.
 
+## Backend Foundation Implementation Note
+
+The QC Backend Contract Foundation implements the approved hybrid model:
+
+- `qc_reviews` is a first-class backend object.
+- Production records retain QC summary fields.
+- Approved, rejected, and correction-required QC reviews synchronize production summary fields through backend write-action handling.
+- Self approval is blocked by default for non-System Admin reviewers unless an explicit override reason is supplied.
+- QC creates billable candidate quantity only and does not create settlement, invoice, payment, AR, cash, payroll, or other finance records.
+
 ## 2. QC Definition
 
 QC is a controlled review process that validates production claimed against Work Order requirements, evidence, location, quantity, customer requirements, and documentation standards.

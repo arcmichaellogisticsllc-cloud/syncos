@@ -35,6 +35,12 @@ const approveAuthorityRoles = new Set(["QC Manager", "Operations Manager"]);
 const billableAuthorityRoles = new Set(["Billing Manager", "QC Manager"]);
 const stopWorkIssueAuthorityRoles = new Set(["Safety Manager", "QC Manager", "Executive"]);
 const stopWorkReleaseAuthorityRoles = new Set(["Safety Manager", "Executive"]);
+const qcReviewTypes = new Set(["internal_qc", "safety_qc", "compliance_qc", "customer_qc", "prime_qc", "billing_qc", "final_acceptance"]);
+const qcReviewStatuses = new Set(["pending", "in_review", "approved", "rejected", "correction_required", "corrected", "voided", "archived"]);
+const qcFindingStatuses = new Set(["pending", "sufficient", "insufficient", "not_required"]);
+const qcLocationStatuses = new Set(["pending", "valid", "invalid", "not_required"]);
+const qcAcceptanceStatuses = new Set(["not_required", "pending", "accepted", "rejected", "correction_required"]);
+const qcArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "voided", "other"]);
 
 @Controller()
 export class ProductionController {
@@ -764,6 +770,306 @@ export class ProductionController {
     return this.withClient((client) => this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found"));
   }
 
+  @Get("qc-reviews")
+  @RequirePermission("qc_review.read")
+  async listQcReviews(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient((client) => this.listQcReviewsEnriched(client, request.auth.tenantId, query));
+  }
+
+  @Get("qc-reviews/:id/detail")
+  @RequirePermission("qc_review.read")
+  async getQcReviewDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.qcReviewDetail(client, request.auth.tenantId, id));
+  }
+
+  @Get("qc-reviews/:id/timeline")
+  @RequirePermission("qc_review.timeline.read")
+  async getQcReviewTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+      const result = await client.query(
+        `
+        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+          e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN users u ON u.id = e.actor_user_id
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1
+          AND e.aggregate_type = 'qc_review'
+          AND e.aggregate_id = $2
+        ORDER BY e.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("qc-reviews/:id/audit-summary")
+  @RequirePermission("qc_review.audit.read")
+  async getQcReviewAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+      const result = await client.query(
+        `
+        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
+          al.entity_type AS object_type, al.entity_id AS object_id, al.before_state AS before_json,
+          al.after_state AS after_json, al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
+        FROM audit_logs al
+        LEFT JOIN users u ON u.id = al.actor_user_id
+        WHERE al.tenant_id = $1
+          AND al.entity_type = 'qc_review'
+          AND al.entity_id = $2
+        ORDER BY al.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("qc-reviews/:id")
+  @RequirePermission("qc_review.read")
+  async getQcReview(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.qcReviewRow(client, request.auth.tenantId, id));
+  }
+
+  @Post("qc-reviews")
+  @RequirePermission("qc_review.create")
+  async createQcReview(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    try {
+      const reviewType = requireAllowed(body.review_type ?? "internal_qc", qcReviewTypes, "review_type");
+      return await this.write(request, "qc_review.create", "qc_review.created", "qc_review", async (client) => {
+        const productionRecord = await this.requireRecord(client, "production_records", request.auth.tenantId, this.requiredId(body.production_record_id, "production_record_id"), "production record not found");
+        const workOrder = await this.requireRecord(client, "work_orders", request.auth.tenantId, String(productionRecord.work_order_id), "work order not found");
+        const project = await this.requireRecord(client, "projects", request.auth.tenantId, String(productionRecord.project_id), "project not found");
+        if (body.reviewer_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.reviewer_user_id);
+        if (body.correction_owner_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.correction_owner_user_id);
+        if (body.source_qc_review_id) await this.requireRecord(client, "qc_reviews", request.auth.tenantId, this.requiredId(body.source_qc_review_id, "source_qc_review_id"), "source qc review not found");
+        const review = await insertTenantRecord(client, "qc_reviews", request.auth.tenantId, {
+          production_record_id: productionRecord.id,
+          work_order_id: workOrder.id,
+          project_id: project.id,
+          review_type: reviewType,
+          review_status: "pending",
+          reviewer_user_id: body.reviewer_user_id ?? request.auth.userId,
+          claimed_quantity: Number(productionRecord.claimed_quantity ?? productionRecord.quantity_submitted ?? productionRecord.quantity ?? 0),
+          unit: productionRecord.unit ?? productionRecord.unit_type ?? workOrder.unit,
+          evidence_status: this.optionalAllowed(body.evidence_status, qcFindingStatuses, "evidence_status") ?? "pending",
+          location_status: this.optionalAllowed(body.location_status, qcLocationStatuses, "location_status") ?? "pending",
+          documentation_status: this.optionalAllowed(body.documentation_status, qcFindingStatuses, "documentation_status") ?? "pending",
+          production_status: this.optionalAllowed(body.production_status, qcLocationStatuses, "production_status") ?? "pending",
+          customer_acceptance_status: this.optionalAllowed(body.customer_acceptance_status, qcAcceptanceStatuses, "customer_acceptance_status") ?? "not_required",
+          prime_acceptance_status: this.optionalAllowed(body.prime_acceptance_status, qcAcceptanceStatuses, "prime_acceptance_status") ?? "not_required",
+          review_notes: body.review_notes,
+          hard_stop: Boolean(body.hard_stop),
+          override_reasons: this.jsonObject(body.override_reasons),
+          source_qc_review_id: body.source_qc_review_id,
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
+        });
+        return { entityType: "qc_review", entityId: review.id, afterState: await this.qcReviewDetail(client, request.auth.tenantId, review.id) };
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("qc-reviews/:id/start-review")
+  @RequirePermission("qc_review.start")
+  async startQcReviewRecord(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.write(request, "qc_review.start", "qc_review.started", "qc_review", async (client) => {
+      await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcReviewAuthorityRoles, "QC Manager or Project Manager authority is required");
+      const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+      if (before.review_status !== "pending" && before.review_status !== "corrected") throw new BadRequestException("qc review must be pending or corrected");
+      const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+        review_status: "in_review",
+        reviewer_user_id: request.auth.userId,
+        reviewed_at: new Date(),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("qc review not found");
+      return { entityType: "qc_review", entityId: id, beforeState: before, afterState: await this.qcReviewDetail(client, request.auth.tenantId, id) };
+    });
+  }
+
+  @Post("qc-reviews/:id/approve")
+  @RequirePermission("qc_review.approve")
+  async approveQcReview(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      const approvalNote = this.requiredText(body.approval_note ?? body.review_notes, "approval_note is required");
+      const approvedQuantity = this.requireNonNegative(body.approved_quantity, "approved_quantity");
+      return await this.write(request, "qc_review.approve", "qc_review.approved", "qc_review", async (client) => {
+        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, approveAuthorityRoles, "QC Manager or Operations Manager authority is required");
+        const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+        if (before.hard_stop) throw new BadRequestException("hard stop qc reviews cannot be approved");
+        const productionRecord = await this.requireRecord(client, "production_records", request.auth.tenantId, String(before.production_record_id), "production record not found");
+        await this.assertNoSelfApproval(client, request.auth.tenantId, request.auth.userId, productionRecord, body.override_reasons);
+        const claimedQuantity = Number(before.claimed_quantity ?? productionRecord.claimed_quantity ?? productionRecord.quantity_submitted ?? productionRecord.quantity ?? 0);
+        if (approvedQuantity > claimedQuantity && !this.hasOverride(body.override_reasons, "admin_override_reason")) throw new BadRequestException({ message: "approved_quantity cannot exceed claimed_quantity", required_override_fields: ["admin_override_reason"] });
+        const rejectedQuantity = body.rejected_quantity === undefined ? Math.max(0, claimedQuantity - approvedQuantity) : this.requireNonNegative(body.rejected_quantity, "rejected_quantity");
+        const correctionRequiredQuantity = body.correction_required_quantity === undefined ? undefined : this.requireNonNegative(body.correction_required_quantity, "correction_required_quantity");
+        if (correctionRequiredQuantity !== undefined && correctionRequiredQuantity > rejectedQuantity) throw new BadRequestException("correction_required_quantity cannot exceed rejected_quantity");
+        const billableCandidateQuantity = body.billable_candidate_quantity === undefined ? approvedQuantity : this.requireNonNegative(body.billable_candidate_quantity, "billable_candidate_quantity");
+        if (billableCandidateQuantity > approvedQuantity && !this.hasOverride(body.override_reasons, "override_reason")) throw new BadRequestException({ message: "billable_candidate_quantity cannot exceed approved_quantity", required_override_fields: ["override_reason"] });
+        const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+          review_status: "approved",
+          reviewer_user_id: request.auth.userId,
+          reviewed_at: new Date(),
+          approved_quantity: approvedQuantity,
+          rejected_quantity: rejectedQuantity,
+          correction_required_quantity: correctionRequiredQuantity,
+          billable_candidate_quantity: billableCandidateQuantity,
+          evidence_status: this.optionalAllowed(body.evidence_status, qcFindingStatuses, "evidence_status") ?? before.evidence_status,
+          location_status: this.optionalAllowed(body.location_status, qcLocationStatuses, "location_status") ?? before.location_status,
+          documentation_status: this.optionalAllowed(body.documentation_status, qcFindingStatuses, "documentation_status") ?? before.documentation_status,
+          production_status: this.optionalAllowed(body.production_status, qcLocationStatuses, "production_status") ?? before.production_status,
+          customer_acceptance_status: this.optionalAllowed(body.customer_acceptance_status, qcAcceptanceStatuses, "customer_acceptance_status") ?? before.customer_acceptance_status,
+          prime_acceptance_status: this.optionalAllowed(body.prime_acceptance_status, qcAcceptanceStatuses, "prime_acceptance_status") ?? before.prime_acceptance_status,
+          review_notes: approvalNote,
+          override_reasons: this.jsonObject(body.override_reasons ?? before.override_reasons),
+          updated_by: request.auth.userId,
+        });
+        if (!after) throw new NotFoundException("qc review not found");
+        await this.syncProductionFromApprovedQcReview(client, request.auth.tenantId, after, productionRecord, request.auth.userId);
+        return { entityType: "qc_review", entityId: id, beforeState: before, afterState: await this.qcReviewDetail(client, request.auth.tenantId, id) };
+      }, approvalNote);
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("qc-reviews/:id/reject")
+  @RequirePermission("qc_review.reject")
+  async rejectQcReview(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      const reason = requireString(body.rejection_reason ?? body.reason, "rejection_reason is required");
+      return await this.write(request, "qc_review.reject", "qc_review.rejected", "qc_review", async (client) => {
+        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcReviewAuthorityRoles, "QC Manager or Project Manager authority is required");
+        const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+        const productionRecord = await this.requireRecord(client, "production_records", request.auth.tenantId, String(before.production_record_id), "production record not found");
+        const claimedQuantity = Number(before.claimed_quantity ?? productionRecord.claimed_quantity ?? productionRecord.quantity_submitted ?? productionRecord.quantity ?? 0);
+        const rejectedQuantity = body.rejected_quantity === undefined ? claimedQuantity : this.requireNonNegative(body.rejected_quantity, "rejected_quantity");
+        if (rejectedQuantity > claimedQuantity && !this.hasOverride(body.override_reasons, "admin_override_reason")) throw new BadRequestException({ message: "rejected_quantity cannot exceed claimed_quantity", required_override_fields: ["admin_override_reason"] });
+        const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+          review_status: "rejected",
+          reviewer_user_id: request.auth.userId,
+          reviewed_at: new Date(),
+          approved_quantity: 0,
+          rejected_quantity: rejectedQuantity,
+          rejection_reason: reason,
+          rejection_note: body.rejection_note,
+          override_reasons: this.jsonObject(body.override_reasons ?? before.override_reasons),
+          updated_by: request.auth.userId,
+        });
+        if (!after) throw new NotFoundException("qc review not found");
+        await this.syncProductionFromRejectedQcReview(client, request.auth.tenantId, after, productionRecord, request.auth.userId);
+        return { entityType: "qc_review", entityId: id, beforeState: before, afterState: await this.qcReviewDetail(client, request.auth.tenantId, id) };
+      }, reason);
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("qc-reviews/:id/request-correction")
+  @RequirePermission("qc_review.request_correction")
+  async requestQcCorrection(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      const reason = requireString(body.correction_reason ?? body.reason, "correction_reason is required");
+      return await this.write(request, "qc_review.request_correction", "qc_review.correction_requested", "qc_review", async (client) => {
+        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, correctionAuthorityRoles, "Project Manager or Operations Manager authority is required");
+        const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+        if (body.correction_owner_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.correction_owner_user_id);
+        const rejectedQuantity = Number(before.rejected_quantity ?? before.claimed_quantity ?? 0);
+        const correctionRequiredQuantity = body.correction_required_quantity === undefined ? rejectedQuantity : this.requireNonNegative(body.correction_required_quantity, "correction_required_quantity");
+        if (correctionRequiredQuantity > rejectedQuantity && rejectedQuantity > 0) throw new BadRequestException("correction_required_quantity cannot exceed rejected_quantity");
+        const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+          review_status: "correction_required",
+          reviewer_user_id: request.auth.userId,
+          reviewed_at: new Date(),
+          correction_reason: reason,
+          correction_note: body.correction_note,
+          correction_due_date: body.correction_due_date,
+          correction_owner_user_id: body.correction_owner_user_id,
+          correction_required_quantity: correctionRequiredQuantity,
+          updated_by: request.auth.userId,
+        });
+        if (!after) throw new NotFoundException("qc review not found");
+        await this.syncProductionFromCorrectionQcReview(client, request.auth.tenantId, after, request.auth.userId);
+        return { entityType: "qc_review", entityId: id, beforeState: before, afterState: await this.qcReviewDetail(client, request.auth.tenantId, id) };
+      }, reason);
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("qc-reviews/:id/mark-corrected")
+  @RequirePermission("qc_review.mark_corrected")
+  async markQcCorrected(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const note = this.requiredText(body.correction_note ?? body.review_notes, "correction_note is required");
+    return this.write(request, "qc_review.mark_corrected", "qc_review.corrected", "qc_review", async (client) => {
+      await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcReviewAuthorityRoles, "QC Manager or Project Manager authority is required");
+      const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+      if (before.review_status !== "correction_required") throw new BadRequestException("qc review must be correction_required");
+      const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+        review_status: "corrected",
+        correction_note: note,
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("qc review not found");
+      return { entityType: "qc_review", entityId: id, beforeState: before, afterState: await this.qcReviewDetail(client, request.auth.tenantId, id) };
+    }, note);
+  }
+
+  @Post("qc-reviews/:id/void")
+  @RequirePermission("qc_review.void")
+  async voidQcReview(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const reason = this.requiredText(body.void_reason ?? body.reason, "void_reason is required");
+    return this.write(request, "qc_review.void", "qc_review.voided", "qc_review", async (client) => {
+      const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+      if (before.review_status === "archived") throw new BadRequestException("archived qc reviews are view-only");
+      const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+        review_status: "voided",
+        review_notes: body.review_notes ?? before.review_notes,
+        override_reasons: this.jsonObject({ ...(typeof before.override_reasons === "object" && before.override_reasons ? before.override_reasons : {}), void_reason: reason }),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("qc review not found");
+      return { entityType: "qc_review", entityId: id, beforeState: before, afterState: await this.qcReviewDetail(client, request.auth.tenantId, id) };
+    }, reason);
+  }
+
+  @Post("qc-reviews/:id/archive")
+  @RequirePermission("qc_review.archive")
+  async archiveQcReview(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      const archiveReason = requireAllowed(body.archive_reason, qcArchiveReasons, "archive_reason");
+      return await this.write(request, "qc_review.archive", "qc_review.archived", "qc_review", async (client) => {
+        const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
+        const after = await updateTenantRecord(client, "qc_reviews", request.auth.tenantId, id, {
+          review_status: "archived",
+          archived_by: request.auth.userId,
+          archived_at: new Date(),
+          archive_reason: archiveReason,
+          archive_note: body.archive_note,
+          deleted_at: new Date(),
+          updated_by: request.auth.userId,
+        });
+        if (!after) throw new NotFoundException("qc review not found");
+        return { entityType: "qc_review", entityId: id, beforeState: before, afterState: after };
+      }, archiveReason);
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
   @Get("production-records")
   @RequirePermission("production_record.read")
   async listProductionRecords(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
@@ -900,6 +1206,7 @@ export class ProductionController {
           ended_at: body.ended_at,
           submitted_at: status === "submitted" ? new Date() : body.submitted_at,
           parent_production_record_id: body.parent_production_record_id,
+          source_qc_review_id: body.source_qc_review_id,
           correction_due_date: body.correction_due_date,
           correction_owner_user_id: body.correction_owner_user_id,
           created_by: request.auth.userId,
@@ -1365,6 +1672,184 @@ export class ProductionController {
       await this.recalculateWorkOrderProductionRollups(client, request.auth.tenantId, id, request.auth.userId);
       return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
     });
+  }
+
+  private async listQcReviewsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+    const conditions = ["qr.tenant_id = $1", "qr.deleted_at IS NULL"];
+    const params: unknown[] = [tenantId];
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      conditions.push(sql.replace("?", `$${params.length}`));
+    };
+    if (query.archived !== "true") conditions.push("qr.review_status <> 'archived'");
+    if (query.id) add("qr.id = ?", query.id);
+    if (query.production_record_id) add("qr.production_record_id = ?", query.production_record_id);
+    if (query.work_order_id) add("qr.work_order_id = ?", query.work_order_id);
+    if (query.project_id) add("qr.project_id = ?", query.project_id);
+    if (query.review_type) add("qr.review_type = ?", query.review_type);
+    if (query.review_status) add("qr.review_status = ?", query.review_status);
+    if (query.reviewer_user_id) add("qr.reviewer_user_id = ?", query.reviewer_user_id);
+    if (query.q) {
+      params.push(`%${query.q}%`);
+      conditions.push(`(qr.review_notes ILIKE $${params.length} OR qr.rejection_reason ILIKE $${params.length} OR qr.correction_reason ILIKE $${params.length} OR wo.work_order_name ILIKE $${params.length} OR wo.work_order_number ILIKE $${params.length} OR p.name ILIKE $${params.length} OR pr.description ILIKE $${params.length})`);
+    }
+    const orderBy = query.sort === "reviewed_at_desc" ? "qr.reviewed_at DESC NULLS LAST, qr.updated_at DESC" : query.sort === "status" ? "qr.review_status ASC, qr.updated_at DESC" : "qr.updated_at DESC";
+    const result = await client.query(
+      `
+      SELECT qr.*, pr.production_type, pr.status AS production_record_status, pr.qc_status AS production_qc_status,
+        pr.billable_status AS production_billable_status, wo.work_order_name, wo.work_order_number, wo.status AS work_order_status,
+        p.name AS project_name, p.status AS project_status, u.display_name AS reviewer_name,
+        cu.display_name AS correction_owner_name
+      FROM qc_reviews qr
+      JOIN production_records pr ON pr.tenant_id = qr.tenant_id AND pr.id = qr.production_record_id
+      JOIN work_orders wo ON wo.tenant_id = qr.tenant_id AND wo.id = qr.work_order_id
+      JOIN projects p ON p.tenant_id = qr.tenant_id AND p.id = qr.project_id
+      LEFT JOIN users u ON u.id = qr.reviewer_user_id
+      LEFT JOIN users cu ON cu.id = qr.correction_owner_user_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY ${orderBy}
+      LIMIT 200
+      `,
+      params,
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      warnings: this.qcReviewWarnings(row),
+      blockers: this.qcReviewBlockers(row),
+      recommended_next_action: this.recommendedQcAction(row),
+    }));
+  }
+
+  private async qcReviewRow(client: PoolClient, tenantId: string, id: string) {
+    const rows = await this.listQcReviewsEnriched(client, tenantId, { id });
+    const direct = rows.find((row) => row.id === id);
+    if (direct) return direct;
+    const review = await this.requireRecord(client, "qc_reviews", tenantId, id, "qc review not found");
+    return review;
+  }
+
+  private async qcReviewDetail(client: PoolClient, tenantId: string, id: string) {
+    const review = await this.qcReviewRow(client, tenantId, id);
+    const productionRecord = await this.productionRecordDetail(client, tenantId, String(review.production_record_id));
+    const timelineAvailable = true;
+    return {
+      qc_review: review,
+      production_record: productionRecord.production_record,
+      work_order_context: productionRecord.work_order_context,
+      project_context: productionRecord.project_context,
+      performer_context: productionRecord.performer_context,
+      quantity_summary: {
+        claimed_quantity: review.claimed_quantity,
+        approved_quantity: review.approved_quantity,
+        rejected_quantity: review.rejected_quantity,
+        correction_required_quantity: review.correction_required_quantity,
+        billable_candidate_quantity: review.billable_candidate_quantity,
+        unit: review.unit,
+      },
+      findings: {
+        evidence_status: review.evidence_status,
+        location_status: review.location_status,
+        documentation_status: review.documentation_status,
+        production_status: review.production_status,
+      },
+      acceptance: {
+        customer_acceptance_status: review.customer_acceptance_status,
+        prime_acceptance_status: review.prime_acceptance_status,
+      },
+      correction_context: {
+        correction_reason: review.correction_reason,
+        correction_note: review.correction_note,
+        correction_due_date: review.correction_due_date,
+        correction_owner_user_id: review.correction_owner_user_id,
+        correction_owner_name: review.correction_owner_name,
+      },
+      warnings: this.qcReviewWarnings(review),
+      blockers: this.qcReviewBlockers(review),
+      recommended_next_action: this.recommendedQcAction(review),
+      timeline_available: timelineAvailable,
+      audit_allowed: true,
+    };
+  }
+
+  private qcReviewWarnings(row: Record<string, any>) {
+    const warnings = [];
+    if (row.evidence_status === "pending") warnings.push({ warning_type: "evidence_pending", severity: "medium", message: "Evidence review is pending." });
+    if (row.location_status === "pending") warnings.push({ warning_type: "location_pending", severity: "medium", message: "Location review is pending." });
+    if (row.documentation_status === "pending") warnings.push({ warning_type: "documentation_pending", severity: "medium", message: "Documentation review is pending." });
+    if (row.customer_acceptance_status === "pending") warnings.push({ warning_type: "customer_acceptance_pending", severity: "medium", message: "Customer acceptance is pending." });
+    if (row.prime_acceptance_status === "pending") warnings.push({ warning_type: "prime_acceptance_pending", severity: "medium", message: "Prime acceptance is pending." });
+    return warnings;
+  }
+
+  private qcReviewBlockers(row: Record<string, any>) {
+    const blockers = [];
+    if (row.review_status === "archived" || row.archived_at) blockers.push({ blocker_type: "archived_review", severity: "critical", message: "Archived QC reviews are view-only." });
+    if (row.review_status === "voided") blockers.push({ blocker_type: "voided_review", severity: "high", message: "Voided QC reviews cannot be approved." });
+    if (row.hard_stop) blockers.push({ blocker_type: "hard_stop", severity: "critical", message: "Hard stop QC review blocks approval." });
+    if (["insufficient", "invalid"].includes(String(row.evidence_status))) blockers.push({ blocker_type: "evidence_blocker", severity: "high", message: "Evidence is insufficient." });
+    if (row.location_status === "invalid") blockers.push({ blocker_type: "location_blocker", severity: "high", message: "Location is invalid." });
+    if (row.production_status === "invalid") blockers.push({ blocker_type: "production_blocker", severity: "high", message: "Production claim is invalid." });
+    return blockers;
+  }
+
+  private recommendedQcAction(row: Record<string, any>) {
+    if (row.review_status === "archived") return "view_only";
+    if (row.review_status === "voided") return "view_voided_review";
+    if (row.review_status === "pending") return "start_review";
+    if (row.review_status === "in_review") return "approve_reject_or_request_correction";
+    if (row.review_status === "correction_required") return "await_correction";
+    if (row.review_status === "corrected") return "restart_review";
+    if (row.review_status === "approved" && Number(row.billable_candidate_quantity ?? 0) > 0) return "ready_for_billable_review";
+    if (row.review_status === "approved") return "review_billable_candidate";
+    if (row.review_status === "rejected") return "review_rejection";
+    return "review_qc";
+  }
+
+  private async syncProductionFromApprovedQcReview(client: PoolClient, tenantId: string, review: Record<string, any>, productionRecord: Record<string, any>, actorUserId: string) {
+    const after = await updateTenantRecord(client, "production_records", tenantId, String(review.production_record_id), {
+      status: "approved",
+      qc_status: "approved",
+      approved_quantity: review.approved_quantity,
+      rejected_quantity: review.rejected_quantity,
+      billable_quantity: review.billable_candidate_quantity,
+      billable_status: Number(review.billable_candidate_quantity ?? 0) > 0 ? "billable_candidate" : "not_billable",
+      approved_by: actorUserId,
+      approved_at: new Date(),
+      updated_by: actorUserId,
+    });
+    if (!after) throw new NotFoundException("production record not found");
+    await this.recalculateWorkOrderProductionRollups(client, tenantId, String(productionRecord.work_order_id), actorUserId);
+  }
+
+  private async syncProductionFromRejectedQcReview(client: PoolClient, tenantId: string, review: Record<string, any>, productionRecord: Record<string, any>, actorUserId: string) {
+    const after = await updateTenantRecord(client, "production_records", tenantId, String(review.production_record_id), {
+      status: "rejected",
+      qc_status: "rejected",
+      approved_quantity: 0,
+      rejected_quantity: review.rejected_quantity,
+      rejection_reason: review.rejection_reason,
+      rejection_note: review.rejection_note,
+      rejected_by: actorUserId,
+      rejected_at: new Date(),
+      updated_by: actorUserId,
+    });
+    if (!after) throw new NotFoundException("production record not found");
+    await this.recalculateWorkOrderProductionRollups(client, tenantId, String(productionRecord.work_order_id), actorUserId);
+  }
+
+  private async syncProductionFromCorrectionQcReview(client: PoolClient, tenantId: string, review: Record<string, any>, actorUserId: string) {
+    const after = await updateTenantRecord(client, "production_records", tenantId, String(review.production_record_id), {
+      status: "correction_required",
+      qc_status: "corrections_required",
+      correction_reason: review.correction_reason,
+      correction_note: review.correction_note,
+      correction_due_date: review.correction_due_date,
+      correction_owner_user_id: review.correction_owner_user_id,
+      correction_required_at: new Date(),
+      correction_required_by: actorUserId,
+      updated_by: actorUserId,
+    });
+    if (!after) throw new NotFoundException("production record not found");
   }
 
   private async listProductionRecordsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
@@ -1879,6 +2364,7 @@ export class ProductionController {
     if (body.submitted_by_user_id) await this.requireTenantUser(client, tenantId, body.submitted_by_user_id);
     if (body.foreman_contact_id) await this.requireRecord(client, "contacts", tenantId, this.requiredId(body.foreman_contact_id, "foreman_contact_id"), "foreman contact not found");
     if (body.parent_production_record_id) await this.requireRecord(client, "production_records", tenantId, this.requiredId(body.parent_production_record_id, "parent_production_record_id"), "parent production record not found");
+    if (body.source_qc_review_id) await this.requireRecord(client, "qc_reviews", tenantId, this.requiredId(body.source_qc_review_id, "source_qc_review_id"), "source qc review not found");
     if (body.correction_owner_user_id) await this.requireTenantUser(client, tenantId, body.correction_owner_user_id);
     return { project, workOrder };
   }
@@ -2387,6 +2873,40 @@ export class ProductionController {
     if (value === undefined || value === null) return {};
     if (typeof value !== "object" || Array.isArray(value)) throw new Error("metadata must be an object");
     return value;
+  }
+
+  private jsonObject(value: unknown) {
+    if (value === undefined || value === null) return {};
+    if (typeof value !== "object" || Array.isArray(value)) throw new BadRequestException("override_reasons must be an object");
+    return value;
+  }
+
+  private optionalAllowed(value: unknown, allowed: Set<string>, field: string) {
+    if (value === undefined || value === null || value === "") return undefined;
+    return requireAllowed(value, allowed, field);
+  }
+
+  private async assertNoSelfApproval(client: PoolClient, tenantId: string, actorUserId: string, productionRecord: Record<string, unknown>, overrides: unknown) {
+    const submittedBy = productionRecord.submitted_by ?? productionRecord.submitted_by_user_id;
+    if (!submittedBy || submittedBy !== actorUserId) return;
+    if (this.hasOverride(overrides, "self_approval_override_reason") || this.hasOverride(overrides, "admin_override_reason")) return;
+    const systemAdmin = await client.query(
+      `
+      SELECT 1
+      FROM tenant_users tu
+      JOIN user_roles ur ON ur.tenant_user_id = tu.id
+      JOIN roles r ON r.id = ur.role_id
+      WHERE tu.tenant_id = $1
+        AND tu.user_id = $2
+        AND tu.status = 'active'
+        AND r.name = 'System Admin'
+        AND r.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [tenantId, actorUserId],
+    );
+    if (systemAdmin.rows[0]) return;
+    throw new ForbiddenException("Reviewer cannot approve production they submitted without override");
   }
 
   private requiredText(value: unknown, message: string) {

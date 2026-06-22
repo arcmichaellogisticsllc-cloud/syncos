@@ -136,6 +136,16 @@ export class SearchController {
           pr.production_type ILIKE $2 OR pr.description ILIKE $2 OR pr.production_notes ILIKE $2 OR pr.location_summary ILIKE $2 OR pr.route_name ILIKE $2 OR pr.node_id ILIKE $2 OR pr.segment_id ILIKE $2 OR wo.work_order_name ILIKE $2 OR wo.work_order_number ILIKE $2 OR p.name ILIKE $2 OR pr.unit_type ILIKE $2 OR pr.status ILIKE $2 OR pr.billable_status ILIKE $2 OR pr.stop_work_status ILIKE $2 OR pr.correction_reason ILIKE $2 OR pr.rejection_reason ILIKE $2
         )
         UNION ALL
+        SELECT 'qc_review' AS object_type, qr.id, concat_ws(' ', qr.review_type, wo.work_order_name, p.name) AS title, qr.review_status AS status,
+          concat_ws(' ', qr.review_type, qr.review_status, qr.review_notes, qr.rejection_reason, qr.correction_reason, pr.production_type, wo.work_order_name, wo.work_order_number, p.name) AS snippet
+        FROM qc_reviews qr
+        LEFT JOIN production_records pr ON pr.tenant_id = qr.tenant_id AND pr.id = qr.production_record_id
+        LEFT JOIN work_orders wo ON wo.tenant_id = qr.tenant_id AND wo.id = qr.work_order_id
+        LEFT JOIN projects p ON p.tenant_id = qr.tenant_id AND p.id = qr.project_id
+        WHERE qr.tenant_id = $1 AND qr.deleted_at IS NULL AND ($3::boolean OR qr.review_status <> 'archived') AND (
+          qr.review_type ILIKE $2 OR qr.review_status ILIKE $2 OR qr.review_notes ILIKE $2 OR qr.rejection_reason ILIKE $2 OR qr.correction_reason ILIKE $2 OR pr.production_type ILIKE $2 OR wo.work_order_name ILIKE $2 OR wo.work_order_number ILIKE $2 OR p.name ILIKE $2
+        )
+        UNION ALL
         SELECT 'contract' AS object_type, id, name AS title, status, concat_ws(' ', name, contract_number, contract_type, status) AS snippet
         FROM contracts
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
