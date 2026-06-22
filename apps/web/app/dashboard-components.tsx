@@ -11,6 +11,7 @@ const navItems = [
   ["/qc", "QC"],
   ["/billable", "Billable"],
   ["/settlements", "Settlements"],
+  ["/invoices", "Invoices"],
   ["/executive", "Executive"],
   ["/growth", "Growth"],
   ["/operations", "Operations"],
