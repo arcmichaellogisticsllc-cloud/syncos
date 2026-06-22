@@ -172,9 +172,28 @@ export class SearchController {
           code ILIKE $2 OR description ILIKE $2 OR unit_type ILIKE $2 OR status ILIKE $2
         )
         UNION ALL
-        SELECT 'settlement' AS object_type, id, status AS title, status, concat_ws(' ', status, dispute_reason) AS snippet
-        FROM settlements
-        WHERE tenant_id = $1 AND deleted_at IS NULL AND (status ILIKE $2 OR dispute_reason ILIKE $2)
+        SELECT 'settlement' AS object_type, s.id, coalesce(s.settlement_number, s.status) AS title, s.status,
+          concat_ws(' ', s.settlement_number, s.settlement_type, s.status, s.hold_reason, s.dispute_reason, co.name, cp.name, p.name, wo.work_order_name) AS snippet
+        FROM settlements s
+        LEFT JOIN organizations co ON co.tenant_id = s.tenant_id AND co.id = s.customer_organization_id
+        LEFT JOIN capacity_providers cp ON cp.tenant_id = s.tenant_id AND cp.id = s.capacity_provider_id
+        LEFT JOIN projects p ON p.tenant_id = s.tenant_id AND p.id = s.project_id
+        LEFT JOIN work_orders wo ON wo.tenant_id = s.tenant_id AND wo.id = s.work_order_id
+        WHERE s.tenant_id = $1 AND s.deleted_at IS NULL AND ($3::boolean OR s.status <> 'archived') AND (
+          s.settlement_number ILIKE $2 OR s.settlement_type ILIKE $2 OR s.status ILIKE $2 OR s.hold_reason ILIKE $2 OR s.dispute_reason ILIKE $2 OR co.name ILIKE $2 OR cp.name ILIKE $2 OR p.name ILIKE $2 OR wo.work_order_name ILIKE $2
+        )
+        UNION ALL
+        SELECT 'settlement_item' AS object_type, si.id, concat_ws(' ', si.item_type, s.settlement_number) AS title, si.status,
+          concat_ws(' ', si.item_type, si.status, si.hold_reason, si.dispute_reason, s.settlement_number, co.name, cp.name, p.name, wo.work_order_name) AS snippet
+        FROM settlement_items si
+        LEFT JOIN settlements s ON s.tenant_id = si.tenant_id AND s.id = si.settlement_id
+        LEFT JOIN organizations co ON co.tenant_id = si.tenant_id AND co.id = si.customer_organization_id
+        LEFT JOIN capacity_providers cp ON cp.tenant_id = si.tenant_id AND cp.id = si.capacity_provider_id
+        LEFT JOIN projects p ON p.tenant_id = si.tenant_id AND p.id = si.project_id
+        LEFT JOIN work_orders wo ON wo.tenant_id = si.tenant_id AND wo.id = si.work_order_id
+        WHERE si.tenant_id = $1 AND si.deleted_at IS NULL AND ($3::boolean OR si.status <> 'archived') AND (
+          si.item_type ILIKE $2 OR si.status ILIKE $2 OR si.hold_reason ILIKE $2 OR si.dispute_reason ILIKE $2 OR s.settlement_number ILIKE $2 OR co.name ILIKE $2 OR cp.name ILIKE $2 OR p.name ILIKE $2 OR wo.work_order_name ILIKE $2
+        )
         UNION ALL
         SELECT 'invoice' AS object_type, id, invoice_number AS title, status, concat_ws(' ', invoice_number, status) AS snippet
         FROM invoices

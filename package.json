@@ -42,6 +42,7 @@
     "production:smoke": "npm run smoke:production -w @syncos/api",
     "qc:smoke": "npm run smoke:qc -w @syncos/api",
     "billable:smoke": "npm run smoke:billable -w @syncos/api",
+    "settlement:smoke": "npm run smoke:settlement -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {

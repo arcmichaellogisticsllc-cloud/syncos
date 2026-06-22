@@ -2,6 +2,8 @@
 
 Current validated commit: `eeb27214c8e35ea54942f43864136a6eda78f457`
 
+Implementation follow-up: Settlement Backend Contract Foundation began from validated commit `8224025370a9bc71c0f400d17b5ddb0cd348412a`.
+
 This is a rules clarification document only. It does not create backend objects, migrations, routes, UI, settlement records, settlement items, invoices, payments, payroll, AR, cash, or tax records.
 
 ## 1. Current Backend Inventory
@@ -60,6 +62,13 @@ Inventory classification:
 Special focus conclusion:
 
 Existing settlement support is not sufficient for the post-Billable architecture. It is legacy and production-driven: `settlement_items` are created from billable `production_records`, while the approved chain now requires `Billable Item -> Settlement Item -> Invoice Item -> AR -> Cash`. Settlement Backend Contract Foundation is required before Settlement UI.
+
+Backend foundation implementation note:
+
+- Legacy production-record settlement routes remain for compatibility.
+- New settlement contract routes consume `ready_for_settlement` `billable_items`.
+- Settlement can mark invoice-ready or payable-ready state only.
+- Settlement does not create invoices, invoice items, AR, payments, cash, payroll, ACH, card payouts, bank transactions, or tax records.
 
 ## 2. Settlement Definition
 

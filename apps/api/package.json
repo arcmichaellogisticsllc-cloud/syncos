@@ -38,6 +38,7 @@
     "smoke:production": "node scripts/production-smoke.js",
     "smoke:qc": "node scripts/qc-smoke.js",
     "smoke:billable": "node scripts/billable-smoke.js",
+    "smoke:settlement": "node scripts/settlement-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
