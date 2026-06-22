@@ -35,6 +35,7 @@
     "smoke:project-handoff": "node scripts/project-handoff-smoke.js",
     "smoke:project": "node scripts/project-smoke.js",
     "smoke:work-order": "node scripts/work-order-smoke.js",
+    "smoke:production": "node scripts/production-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

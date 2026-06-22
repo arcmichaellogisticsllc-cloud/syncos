@@ -111,12 +111,14 @@ async function main() {
     work_order_id: workOrder.id,
     capacity_provider_id: base.providerId,
     crew_id: base.crewId,
+    production_type: "completion_submission",
     production_date: "2026-08-01",
+    status: "draft",
     quantity_submitted: 10,
     unit_type: "feet",
+    description: "Completion production smoke.",
   });
-  await expectWrite(client, productionBefore, "production_record.created", "production record create");
-  await expectStatus("production submit blocked if work order not in_progress", "POST", `/production-records/${draft.id}/submit`, `Bearer ${token}`, 400, {});
+  await expectWrite(client, productionBefore, "production.created", "production record create");
 
   const started = await expectStatus("start work order", "POST", `/work-orders/${workOrder.id}/start`, `Bearer ${token}`, 201, {});
   if (started.status !== "in_progress") throw new Error("work order not in_progress");
@@ -134,7 +136,7 @@ async function main() {
     description: `Evidence Updated ${marker}`,
   });
   const archiveEvidenceBefore = await counts(client);
-  const archivedEvidence = await expectStatus("archive production evidence", "POST", `/production-evidence/${evidence.id}/archive`, `Bearer ${token}`, 201, {});
+  const archivedEvidence = await expectStatus("archive production evidence", "POST", `/production-evidence/${evidence.id}/archive`, `Bearer ${token}`, 201, { archive_reason: "other" });
   await expectWrite(client, archiveEvidenceBefore, "production_evidence.archived", "evidence archive");
   if (archivedEvidence.status !== "archived") throw new Error("evidence not archived");
   const activeEvidence = await expectStatus("create active production evidence", "POST", `/production-records/${draft.id}/evidence`, `Bearer ${token}`, 201, {
@@ -291,7 +293,7 @@ async function counts(client) {
   const eventTypes = [
     "project.created",
     "work_order.created",
-    "production_record.created",
+    "production.created",
     "production_evidence.created",
     "production_evidence.updated",
     "production_evidence.archived",

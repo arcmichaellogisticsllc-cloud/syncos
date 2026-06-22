@@ -59,5 +59,6 @@ npm run coverage:smoke
 npm run project-handoff:smoke
 npm run project:smoke
 npm run work-order:smoke
+npm run production:smoke
 
 echo "release validation passed"

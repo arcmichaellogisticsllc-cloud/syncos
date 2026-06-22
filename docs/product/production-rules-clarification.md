@@ -738,3 +738,7 @@ GO for Production Backend Contract Foundation.
 NO-GO for Production Workspace UI, Foreman UI, expanded QC UI, billing automation, settlement automation, invoice automation, payment automation, payroll, or AI review until Production backend rules are hardened and validated.
 
 The existing Production backend is a working operational primitive, but it is not yet backend-truthful enough to serve as the field-truth layer for the approved execution chain. The next sprint should harden Production before any field-facing experience is built.
+
+## Implementation Note
+
+The Production Backend Contract Foundation sprint hardens the existing `production_records` and `production_evidence` objects rather than introducing a replacement business object. It preserves legacy `production_record.*` compatibility where needed, adds the `production.*` contract surface, and keeps the finance boundary explicit: Production may update auditable production and Work Order rollup state, but it must not create settlement, invoice, payment, payroll, AR, or cash records.

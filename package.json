@@ -39,6 +39,7 @@
     "project-handoff:smoke": "npm run smoke:project-handoff -w @syncos/api",
     "project:smoke": "npm run smoke:project -w @syncos/api",
     "work-order:smoke": "npm run smoke:work-order -w @syncos/api",
+    "production:smoke": "npm run smoke:production -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {

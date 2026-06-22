@@ -127,10 +127,13 @@ export class SearchController {
           work_order_name ILIKE $2 OR title ILIKE $2 OR work_order_number ILIKE $2 OR customer_work_order_number ILIKE $2 OR prime_work_order_number ILIKE $2 OR scope_summary ILIKE $2 OR location_summary ILIKE $2 OR work_type ILIKE $2 OR unit ILIKE $2 OR status ILIKE $2
         )
         UNION ALL
-        SELECT 'production_record' AS object_type, id, unit_type AS title, status, concat_ws(' ', unit_type, status, billable_status, stop_work_status, correction_reason, rejection_reason) AS snippet
-        FROM production_records
-        WHERE tenant_id = $1 AND deleted_at IS NULL AND (
-          unit_type ILIKE $2 OR status ILIKE $2 OR billable_status ILIKE $2 OR stop_work_status ILIKE $2 OR correction_reason ILIKE $2 OR rejection_reason ILIKE $2
+        SELECT 'production_record' AS object_type, pr.id, concat_ws(' ', pr.production_type, wo.work_order_name, p.name) AS title, pr.status,
+          concat_ws(' ', pr.production_type, pr.description, pr.production_notes, pr.location_summary, pr.route_name, pr.node_id, pr.segment_id, wo.work_order_name, wo.work_order_number, p.name, pr.unit_type, pr.status, pr.billable_status, pr.stop_work_status, pr.correction_reason, pr.rejection_reason) AS snippet
+        FROM production_records pr
+        LEFT JOIN work_orders wo ON wo.tenant_id = pr.tenant_id AND wo.id = pr.work_order_id
+        LEFT JOIN projects p ON p.tenant_id = pr.tenant_id AND p.id = pr.project_id
+        WHERE pr.tenant_id = $1 AND pr.deleted_at IS NULL AND ($3::boolean OR pr.status <> 'archived') AND (
+          pr.production_type ILIKE $2 OR pr.description ILIKE $2 OR pr.production_notes ILIKE $2 OR pr.location_summary ILIKE $2 OR pr.route_name ILIKE $2 OR pr.node_id ILIKE $2 OR pr.segment_id ILIKE $2 OR wo.work_order_name ILIKE $2 OR wo.work_order_number ILIKE $2 OR p.name ILIKE $2 OR pr.unit_type ILIKE $2 OR pr.status ILIKE $2 OR pr.billable_status ILIKE $2 OR pr.stop_work_status ILIKE $2 OR pr.correction_reason ILIKE $2 OR pr.rejection_reason ILIKE $2
         )
         UNION ALL
         SELECT 'contract' AS object_type, id, name AS title, status, concat_ws(' ', name, contract_number, contract_type, status) AS snippet

@@ -94,11 +94,10 @@ async function main() {
     approved_quantity: 7,
   });
   if (approved.status !== "approved" || Number(approved.approved_quantity) !== 7) throw new Error("approved fields not set");
-  await expectWrite(client, approveBefore, "production_record.approved", "approve");
+  await expectWrite(client, approveBefore, "production.approved", "approve");
 
-  await expectStatus("mark billable requires rate code", "POST", `/production-records/${submitted.id}/mark-billable`, `Bearer ${token}`, 400, {});
-  await expectStatus("rate code unit must match production unit_type", "POST", `/production-records/${submitted.id}/mark-billable`, `Bearer ${token}`, 400, {
-    rate_code_id: base.mismatchedRateCodeId,
+  await expectStatus("billable quantity cannot exceed approved", "POST", `/production-records/${submitted.id}/mark-billable`, `Bearer ${token}`, 400, {
+    billable_quantity: 9,
   });
 
   const stopped = await createAcceptedProduction(client, tenantId, base, marker, 10, 8);
@@ -129,7 +128,7 @@ async function main() {
     rate_code_id: base.rateCodeId,
   });
   if (billable.status !== "billable" || billable.billable_status !== "billable") throw new Error("billable status not set");
-  await expectWrite(client, billableBefore, "production_record.billable", "billable");
+  await expectWrite(client, billableBefore, "production.marked_billable", "billable");
 
   const rejectTarget = await createSubmittedProduction(client, tenantId, base, marker, 12);
   await expectStatus("rejection reason required", "POST", `/production-records/${rejectTarget.id}/reject`, `Bearer ${token}`, 400, {});
@@ -151,7 +150,7 @@ async function main() {
     reason: `Correction ${marker}`,
   });
   if (correction.status !== "correction_required" || !correction.correction_required_at) throw new Error("correction fields not set");
-  await expectWrite(client, correctionBefore, "production_record.correction_required", "correction required");
+  await expectWrite(client, correctionBefore, "production.correction_requested", "correction required");
   await expectStatus("clear correction blocked without new evidence", "POST", `/production-records/${correctionTarget.id}/clear-correction`, `Bearer ${token}`, 400, {});
   await expectStatus("create updated correction evidence", "POST", `/production-records/${correctionTarget.id}/evidence`, `Bearer ${token}`, 201, {
     evidence_type: "photo",
@@ -349,12 +348,12 @@ async function counts(client) {
     "production_record.qc_review_started",
     "production_record.accepted",
     "production_record.rejected",
-    "production_record.approved",
-    "production_record.billable",
+    "production.approved",
+    "production.marked_billable",
     "production_record.correction_cleared",
     "production_record.stop_work_issued",
     "production_record.stop_work_released",
-    "production_record.correction_required",
+    "production.correction_requested",
   ];
   const result = await client.query(
     `
