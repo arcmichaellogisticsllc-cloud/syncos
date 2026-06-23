@@ -1,39 +1,41 @@
 # Payroll Physical Test
 
-Validate Payroll Backend Contract Foundation.
+Validate Payroll Workspace UI against the hardened Payroll backend.
 
-1. Create payroll run.
-2. Confirm payroll run number is tenant-unique.
-3. Confirm invalid payroll run type is rejected.
-4. Confirm invalid payroll cycle is rejected.
-5. Confirm invalid payroll period is rejected.
-6. Add payroll item for valid worker.
-7. Confirm worker/source traceability is preserved.
-8. Confirm unknown worker classification blocks readiness unless override is supplied.
-9. Confirm approved-time item requires hours.
-10. Confirm production-based item requires production/work order/project/quantity unless override is supplied.
-11. Confirm manual item requires manual reason.
-12. Confirm reimbursement item requires amount and note/evidence unless override is supplied.
-13. Confirm deduction item requires amount and reason.
-14. Confirm duplicate worker/source item is blocked unless override is supplied.
-15. Confirm totals recalculate after item add/update/void/archive.
-16. Submit review.
-17. Start review.
-18. Approve payroll run.
-19. Confirm approval creates no payment, ACH, card payout, check, bank transaction, payroll provider submission, tax filing, W2, 1099, benefits, garnishment, accounting export, worker portal, or bank reconciliation record.
+1. Open Payroll Queue.
+2. Filter payroll runs.
+3. Create payroll run.
+4. Add payroll item.
+5. Confirm no payment, payroll-provider, bank, tax, W2, 1099, benefit, garnishment, accounting, or worker portal records are created.
+6. View payroll detail.
+7. View payroll items.
+8. View worker summary.
+9. View crew context.
+10. View project/production context.
+11. View payroll period/cycle.
+12. View financial summary.
+13. View earnings.
+14. View reimbursements.
+15. View deductions.
+16. View compliance/tax readiness.
+17. Submit review.
+18. Start review.
+19. Approve.
 20. Mark payroll ready.
-21. Confirm Payroll Ready creates no payment or provider submission.
-22. Place hold.
-23. Release hold.
-24. Open dispute.
-25. Resolve dispute.
-26. Reject payroll run.
+21. Confirm no payment created.
+22. Confirm no tax filing created.
+23. Place hold.
+24. Release hold.
+25. Dispute.
+26. Resolve dispute.
 27. Void payroll item.
 28. Archive payroll item.
-29. Void payroll run.
-30. Archive payroll run.
-31. View list and detail read models.
+29. Reject payroll run.
+30. Void payroll run.
+31. Archive payroll run.
 32. View timeline.
 33. View audit as authorized user.
-34. Confirm audit is hidden for unauthorized user.
-35. Confirm global search returns payroll runs and payroll items.
+34. Confirm audit hidden for unauthorized user.
+35. Confirm Payment placeholder only.
+36. Confirm Payroll Provider placeholder only.
+37. Confirm Tax/Accounting placeholder only.
