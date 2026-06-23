@@ -1,29 +1,44 @@
 # Collections Physical Test
 
-Backend validation checklist:
+Use this checklist to validate the Collections Workspace UI against the hardened backend.
 
-1. Create an invoice with an open balance.
-2. Create a collection case from that invoice.
-3. Confirm invoice `paid_amount` and `balance_amount` do not change.
-4. Confirm duplicate active case is blocked unless override is supplied.
-5. Confirm paid, voided, and archived invoices are blocked by default.
-6. Assign a collection owner.
-7. Add an internal note action.
-8. Add a promise-to-pay action.
-9. Confirm promise does not change invoice balance.
-10. Add a dispute action.
-11. Confirm dispute updates collection status only.
-12. Resolve the dispute.
-13. Add an escalation action.
-14. Add a write-off review action and confirm it is flag-only.
-15. Complete a collection action.
-16. Cancel a collection action with reason.
-17. Close a case with unresolved balance only with allowed reason or override.
-18. Archive a collection action with reason.
-19. Archive a collection case with reason.
-20. View case list/detail and action list/detail.
-21. View collection timeline.
-22. View audit as authorized user.
-23. Confirm audit is blocked for unauthorized user.
-24. Search for the collection case.
-25. Confirm no cash receipt, payment application, payroll, bank, legal, tax, accounting export, write-off execution, email/SMS, or collections agency records are created.
+1. Open `/collections`.
+2. Confirm the Collections navigation item is visible.
+3. Filter cases by status, priority, risk, aging bucket, owner, dispute status, escalation status, write-off review status, promise, archive state, and search text.
+4. Use quick filters for open, in progress, promise to pay, disputed, escalated, awaiting payment, resolved, closed, 90+, due today, overdue follow-up, write-off candidate, and critical risk.
+5. Create a collection case from an open invoice at `/collections/new`.
+6. Confirm creating a case does not change invoice `paid_amount` or `balance_amount`.
+7. Confirm creating a case does not create a cash receipt or payment application.
+8. Open the Collection Case Detail page.
+9. Confirm the collections scorecard is visible.
+10. Confirm invoice context is visible and read-only.
+11. Confirm customer context is visible.
+12. Confirm cash application context is visible and read-only.
+13. Assign an owner.
+14. Edit backend-supported case fields.
+15. Add an internal note action.
+16. Add a promise-to-pay action.
+17. Confirm promise-to-pay does not change invoice balance.
+18. Add a dispute action.
+19. Confirm invoice collection status changes only if the backend supports that controlled update.
+20. Add an escalation action.
+21. Add a write-off review action.
+22. Confirm write-off review does not execute accounting write-off, tax write-off, GL entry, or export.
+23. Complete an action.
+24. Cancel an action with a reason.
+25. Close a case with a reason.
+26. Archive a case with a reason.
+27. Open `/collection-actions`.
+28. Filter collection actions by case, invoice, customer, action type, action status, actor, dates, archive state, and search text.
+29. Open a Collection Action Detail page.
+30. Archive an action with a reason.
+31. View the collection case timeline.
+32. View the collection action timeline.
+33. View case audit as an authorized user.
+34. View action audit as an authorized user.
+35. Confirm audit details are hidden for an unauthorized user.
+36. Confirm the Cash Application placeholder is informational only and has no cash receipt or payment application creation control.
+37. Confirm the Legal placeholder is informational only and triggers no legal filing or collections agency workflow.
+38. Confirm the Accounting/Tax placeholder is informational only and triggers no tax, GL, accounting export, or write-off execution.
+39. Confirm no email/SMS sending occurs from collection actions.
+40. Confirm no payroll, contractor payment, bank transaction, bank reconciliation, ACH, card payout, legal, tax, accounting export, cash receipt, payment application, automated dunning, write-off execution, or collections agency records are created.
