@@ -234,7 +234,6 @@ async function assertNoForbiddenTables(client) {
   const result = await client.query(`
     SELECT
       to_regclass('public.payroll_records') AS payroll_records,
-      to_regclass('public.bank_transactions') AS bank_transactions,
       to_regclass('public.accounting_exports') AS accounting_exports
   `);
   for (const [key, value] of Object.entries(result.rows[0])) {

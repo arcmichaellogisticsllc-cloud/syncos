@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/c
 import { APP_GUARD } from "@nestjs/core";
 import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
 import { AuthController } from "../routes/auth.controller";
+import { BankReconciliationController } from "../routes/bank-reconciliation.controller";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
 import { ContractorPayablesController } from "../routes/contractor-payables.controller";
@@ -38,6 +39,7 @@ import { DatabaseModule } from "./database.module";
   controllers: [
     HealthController,
     AuthController,
+    BankReconciliationController,
     SecurityTestController,
     TestObjectsController,
     TerritoriesController,

@@ -313,6 +313,31 @@ export class SearchController {
           pi2.source_type ILIKE $2 OR pi2.payee_type ILIKE $2 OR pi2.status ILIKE $2 OR pi2.execution_status ILIKE $2 OR pi2.execution_reference ILIKE $2 OR pi2.failure_reason ILIKE $2 OR pi2.payee_name ILIKE $2 OR pb.payment_batch_number ILIKE $2 OR cp.payable_number ILIKE $2 OR pr.payroll_run_number ILIKE $2
         )
         UNION ALL
+        SELECT 'bank_account' AS object_type, ba.id, ba.account_name AS title, ba.status,
+          concat_ws(' ', ba.account_name, ba.account_type, ba.institution_name, ba.masked_account_number, ba.status) AS snippet
+        FROM bank_accounts ba
+        WHERE ba.tenant_id = $1 AND ba.deleted_at IS NULL AND ($3::boolean OR ba.status <> 'archived') AND (
+          ba.account_name ILIKE $2 OR ba.account_type ILIKE $2 OR ba.institution_name ILIKE $2 OR ba.masked_account_number ILIKE $2 OR ba.status ILIKE $2
+        )
+        UNION ALL
+        SELECT 'bank_transaction' AS object_type, bt.id, bt.description AS title, bt.reconciliation_status AS status,
+          concat_ws(' ', bt.description, bt.bank_reference, bt.external_transaction_id, bt.transaction_type, bt.reconciliation_status, bt.cleared_status, bt.exception_reason, ba.account_name) AS snippet
+        FROM bank_transactions bt
+        JOIN bank_accounts ba ON ba.tenant_id = bt.tenant_id AND ba.id = bt.bank_account_id
+        WHERE bt.tenant_id = $1 AND bt.deleted_at IS NULL AND ($3::boolean OR bt.reconciliation_status <> 'archived') AND (
+          bt.description ILIKE $2 OR bt.bank_reference ILIKE $2 OR bt.external_transaction_id ILIKE $2 OR bt.transaction_type ILIKE $2 OR bt.reconciliation_status ILIKE $2 OR bt.cleared_status ILIKE $2 OR bt.exception_reason ILIKE $2 OR ba.account_name ILIKE $2
+        )
+        UNION ALL
+        SELECT 'reconciliation_match' AS object_type, rm.id, concat_ws(' ', rm.match_type, rm.match_confidence) AS title, rm.match_status AS status,
+          concat_ws(' ', rm.match_type, rm.matched_object_type, rm.match_status, rm.match_confidence, rm.match_reason, bt.description, bt.bank_reference, pb.payment_batch_number, cr.receipt_number) AS snippet
+        FROM reconciliation_matches rm
+        JOIN bank_transactions bt ON bt.tenant_id = rm.tenant_id AND bt.id = rm.bank_transaction_id
+        LEFT JOIN payment_batches pb ON pb.tenant_id = rm.tenant_id AND pb.id = rm.payment_batch_id
+        LEFT JOIN cash_receipts cr ON cr.tenant_id = rm.tenant_id AND cr.id = rm.cash_receipt_id
+        WHERE rm.tenant_id = $1 AND rm.deleted_at IS NULL AND ($3::boolean OR rm.match_status <> 'archived') AND (
+          rm.match_type ILIKE $2 OR rm.matched_object_type ILIKE $2 OR rm.match_status ILIKE $2 OR rm.match_confidence ILIKE $2 OR rm.match_reason ILIKE $2 OR bt.description ILIKE $2 OR bt.bank_reference ILIKE $2 OR pb.payment_batch_number ILIKE $2 OR cr.receipt_number ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)

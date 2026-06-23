@@ -789,3 +789,38 @@ Recommended implementation path:
 - Defer bank feeds, statement import, processor settlement, accounting export, treasury forecasting, reversals, automatic matching, tax, and cash receipt creation from bank imports.
 
 NO-GO for UI, migrations, or backend coding until product confirms matching cardinality, source status update rules, deposit status semantics, and approver roles.
+
+## 29. Backend Foundation Follow-Up
+
+The approved follow-up sprint may implement the Hybrid Option D backend foundation only:
+
+- `bank_accounts`
+- `bank_transactions`
+- `reconciliation_matches`
+- manual bank account creation
+- manual bank transaction creation
+- match to payment batch
+- match to payment item
+- match to cash receipt
+- optional context-only match to payment application
+- match review, approval, rejection, void, and archive
+- transaction ignore/archive
+- exception open/resolve
+- timeline/audit
+- search
+- smoke validation
+
+Still prohibited in the backend foundation:
+
+- bank feed integration
+- bank statement import
+- payment processor settlement import
+- accounting export
+- GL entries
+- tax filing
+- treasury forecasting
+- payment execution creation from bank reconciliation
+- cash receipt creation from bank reconciliation
+- payment application creation from bank reconciliation
+- invoice balance updates from bank reconciliation
+- ACH, wire, card payout, check, payroll provider submission, bank transfer, or money movement

@@ -45,6 +45,7 @@
     "smoke:contractor-payable": "node scripts/contractor-payable-smoke.js",
     "smoke:payroll": "node scripts/payroll-smoke.js",
     "smoke:payment-execution": "node scripts/payment-execution-smoke.js",
+    "smoke:bank-reconciliation": "node scripts/bank-reconciliation-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
