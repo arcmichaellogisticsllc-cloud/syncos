@@ -4,6 +4,7 @@ import { CorrelationMiddleware } from "../instrumentation/correlation.middleware
 import { AuthController } from "../routes/auth.controller";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
+import { ContractorPayablesController } from "../routes/contractor-payables.controller";
 import { ConstraintsController } from "../routes/constraints.controller";
 import { DashboardsController } from "../routes/dashboards.controller";
 import { HealthController } from "../routes/health.controller";
@@ -50,6 +51,7 @@ import { DatabaseModule } from "./database.module";
     ProductionController,
     SettlementsController,
     CashController,
+    ContractorPayablesController,
     ConstraintsController,
     DashboardsController,
     WorkflowsController,

@@ -917,3 +917,25 @@ NO-GO:
 - vendor payable expansion beyond explicitly approved scope
 
 The recommended implementation is first-class `contractor_payables` and `contractor_payable_items` sourced from payable-ready settlement items, with Contractor Payable stopping at payment readiness and creating no money movement.
+
+## 31. Backend Foundation Status
+
+The Contractor Payable Backend Contract Foundation implements the Hybrid Option D recommendation:
+
+- Settlement items preserve payable source values.
+- `contractor_payables` and `contractor_payable_items` provide the payable approval and payment-readiness layer.
+- Payment readiness remains a handoff state only.
+
+Implemented documentation:
+
+- `docs/product/contractor-payable-backend-contract.md`
+- `docs/product/contractor-payable-workspace-product-contract.md`
+- `docs/product/contractor-payable-physical-test.md`
+
+Implemented validation:
+
+- `npm run contractor-payable:smoke`
+
+Boundary reaffirmation:
+
+Contractor Payable approval and payment readiness do not create payment, payroll, ACH/card payout, bank transaction, bank reconciliation, tax, accounting export, contractor portal, vendor portal, or cash movement records.

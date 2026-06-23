@@ -42,6 +42,7 @@
     "smoke:invoice": "node scripts/invoice-smoke.js",
     "smoke:cash-application": "node scripts/cash-application-smoke.js",
     "smoke:collections": "node scripts/collections-smoke.js",
+    "smoke:contractor-payable": "node scripts/contractor-payable-smoke.js",
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {

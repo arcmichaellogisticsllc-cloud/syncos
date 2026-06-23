@@ -253,6 +253,29 @@ export class SearchController {
           ca.action_type ILIKE $2 OR ca.action_status ILIKE $2 OR ca.note ILIKE $2 OR ca.dispute_reason ILIKE $2 OR ca.escalation_reason ILIKE $2 OR ca.outcome ILIKE $2 OR cc.case_number ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2
         )
         UNION ALL
+        SELECT 'contractor_payable' AS object_type, cp.id, cp.payable_number AS title, cp.status,
+          concat_ws(' ', cp.payable_number, cp.payable_type, cp.payable_party_type, cp.status, cp.payment_readiness_status, cp.payment_status, cp.hold_reason, cp.dispute_reason, provider.name, crew.name, project.name, settlement.settlement_number) AS snippet
+        FROM contractor_payables cp
+        LEFT JOIN capacity_providers provider ON provider.tenant_id = cp.tenant_id AND provider.id = cp.capacity_provider_id
+        LEFT JOIN crews crew ON crew.tenant_id = cp.tenant_id AND crew.id = cp.crew_id
+        LEFT JOIN projects project ON project.tenant_id = cp.tenant_id AND project.id = cp.project_id
+        LEFT JOIN settlements settlement ON settlement.tenant_id = cp.tenant_id AND settlement.id = cp.settlement_id
+        WHERE cp.tenant_id = $1 AND cp.deleted_at IS NULL AND ($3::boolean OR cp.status <> 'archived') AND (
+          cp.payable_number ILIKE $2 OR cp.payable_type ILIKE $2 OR cp.payable_party_type ILIKE $2 OR cp.status ILIKE $2 OR cp.payment_readiness_status ILIKE $2 OR cp.payment_status ILIKE $2 OR cp.hold_reason ILIKE $2 OR cp.dispute_reason ILIKE $2 OR provider.name ILIKE $2 OR crew.name ILIKE $2 OR project.name ILIKE $2 OR settlement.settlement_number ILIKE $2
+        )
+        UNION ALL
+        SELECT 'contractor_payable_item' AS object_type, cpi.id, concat_ws(' ', cpi.item_type, cp.payable_number) AS title, cpi.status,
+          concat_ws(' ', cpi.item_type, cpi.status, cpi.description, cp.payable_number, provider.name, crew.name, project.name, settlement.settlement_number) AS snippet
+        FROM contractor_payable_items cpi
+        JOIN contractor_payables cp ON cp.tenant_id = cpi.tenant_id AND cp.id = cpi.contractor_payable_id
+        LEFT JOIN capacity_providers provider ON provider.tenant_id = cpi.tenant_id AND provider.id = cpi.capacity_provider_id
+        LEFT JOIN crews crew ON crew.tenant_id = cpi.tenant_id AND crew.id = cpi.crew_id
+        LEFT JOIN projects project ON project.tenant_id = cpi.tenant_id AND project.id = cpi.project_id
+        LEFT JOIN settlements settlement ON settlement.tenant_id = cpi.tenant_id AND settlement.id = cpi.settlement_id
+        WHERE cpi.tenant_id = $1 AND cpi.deleted_at IS NULL AND ($3::boolean OR cpi.status <> 'archived') AND (
+          cpi.item_type ILIKE $2 OR cpi.status ILIKE $2 OR cpi.description ILIKE $2 OR cp.payable_number ILIKE $2 OR provider.name ILIKE $2 OR crew.name ILIKE $2 OR project.name ILIKE $2 OR settlement.settlement_number ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)
