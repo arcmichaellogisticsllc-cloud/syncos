@@ -67,5 +67,6 @@ npm run invoice:smoke
 npm run cash-application:smoke
 npm run collections:smoke
 npm run contractor-payable:smoke
+npm run payroll:smoke
 
 echo "release validation passed"

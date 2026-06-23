@@ -4,6 +4,8 @@ Current validated commit: `020097d4bd9250ece346baef1c5712044aca7a31`
 
 This is a rules clarification document only. It does not create backend objects, migrations, routes, UI, or application behavior.
 
+Implementation update: the subsequent Payroll Backend Contract Foundation implements Hybrid Option D with first-class `payroll_runs` and `payroll_items`, while preserving the rule that Payroll stops at readiness and does not create payment, provider submission, tax, accounting, bank, benefits, garnishment, or portal records.
+
 The approved SyncOS revenue chain remains:
 
 Billable -> Settlement -> Invoice -> Cash Receipt -> Payment Application -> Invoice Balance -> Collections

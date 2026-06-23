@@ -15,6 +15,7 @@ import { LearningController } from "../routes/learning.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
+import { PayrollController } from "../routes/payroll.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -48,6 +49,7 @@ import { DatabaseModule } from "./database.module";
     CoveragePlansController,
     ProjectHandoffsController,
     CapacityController,
+    PayrollController,
     ProductionController,
     SettlementsController,
     CashController,

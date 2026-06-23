@@ -276,6 +276,26 @@ export class SearchController {
           cpi.item_type ILIKE $2 OR cpi.status ILIKE $2 OR cpi.description ILIKE $2 OR cp.payable_number ILIKE $2 OR provider.name ILIKE $2 OR crew.name ILIKE $2 OR project.name ILIKE $2 OR settlement.settlement_number ILIKE $2
         )
         UNION ALL
+        SELECT 'payroll_run' AS object_type, pr.id, pr.payroll_run_number AS title, pr.status,
+          concat_ws(' ', pr.payroll_run_number, pr.payroll_run_type, pr.status, pr.payroll_readiness_status, pr.payroll_cycle, pr.hold_reason, pr.dispute_reason, project.name, crew.name) AS snippet
+        FROM payroll_runs pr
+        LEFT JOIN projects project ON project.tenant_id = pr.tenant_id AND project.id = pr.project_id
+        LEFT JOIN crews crew ON crew.tenant_id = pr.tenant_id AND crew.id = pr.crew_id
+        WHERE pr.tenant_id = $1 AND pr.deleted_at IS NULL AND ($3::boolean OR pr.status <> 'archived') AND (
+          pr.payroll_run_number ILIKE $2 OR pr.payroll_run_type ILIKE $2 OR pr.status ILIKE $2 OR pr.payroll_readiness_status ILIKE $2 OR pr.payroll_cycle ILIKE $2 OR pr.hold_reason ILIKE $2 OR pr.dispute_reason ILIKE $2 OR project.name ILIKE $2 OR crew.name ILIKE $2
+        )
+        UNION ALL
+        SELECT 'payroll_item' AS object_type, pi.id, concat_ws(' ', pi.earning_type, pr.payroll_run_number) AS title, pi.status,
+          concat_ws(' ', pi.source_type, pi.earning_type, pi.status, pi.worker_classification, pi.description, pr.payroll_run_number, w.first_name, w.last_name, project.name, crew.name) AS snippet
+        FROM payroll_items pi
+        JOIN payroll_runs pr ON pr.tenant_id = pi.tenant_id AND pr.id = pi.payroll_run_id
+        JOIN workers w ON w.tenant_id = pi.tenant_id AND w.id = pi.worker_id
+        LEFT JOIN projects project ON project.tenant_id = pi.tenant_id AND project.id = pi.project_id
+        LEFT JOIN crews crew ON crew.tenant_id = pi.tenant_id AND crew.id = pi.crew_id
+        WHERE pi.tenant_id = $1 AND pi.deleted_at IS NULL AND ($3::boolean OR pi.status <> 'archived') AND (
+          pi.source_type ILIKE $2 OR pi.earning_type ILIKE $2 OR pi.status ILIKE $2 OR pi.worker_classification ILIKE $2 OR pi.description ILIKE $2 OR pr.payroll_run_number ILIKE $2 OR w.first_name ILIKE $2 OR w.last_name ILIKE $2 OR project.name ILIKE $2 OR crew.name ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)
