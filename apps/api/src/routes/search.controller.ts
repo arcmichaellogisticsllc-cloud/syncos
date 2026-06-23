@@ -234,6 +234,25 @@ export class SearchController {
           pa.application_type ILIKE $2 OR pa.application_status ILIKE $2 OR cr.receipt_number ILIKE $2 OR cr.payment_reference ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2
         )
         UNION ALL
+        SELECT 'collection_case' AS object_type, cc.id, cc.case_number AS title, cc.case_status AS status,
+          concat_ws(' ', cc.case_number, cc.case_status, cc.collection_priority, cc.risk_level, cc.aging_bucket, cc.notes, i.invoice_number, co.name) AS snippet
+        FROM collection_cases cc
+        JOIN invoices i ON i.tenant_id = cc.tenant_id AND i.id = cc.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = cc.tenant_id AND co.id = cc.customer_organization_id
+        WHERE cc.tenant_id = $1 AND ($3::boolean OR (cc.deleted_at IS NULL AND cc.case_status <> 'archived')) AND (
+          cc.case_number ILIKE $2 OR cc.case_status ILIKE $2 OR cc.collection_priority ILIKE $2 OR cc.risk_level ILIKE $2 OR cc.aging_bucket ILIKE $2 OR cc.notes ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2
+        )
+        UNION ALL
+        SELECT 'collection_action' AS object_type, ca.id, concat_ws(' ', ca.action_type, cc.case_number) AS title, ca.action_status AS status,
+          concat_ws(' ', ca.action_type, ca.action_status, ca.note, ca.dispute_reason, ca.escalation_reason, ca.outcome, cc.case_number, i.invoice_number, co.name) AS snippet
+        FROM collection_actions ca
+        JOIN collection_cases cc ON cc.tenant_id = ca.tenant_id AND cc.id = ca.collection_case_id
+        JOIN invoices i ON i.tenant_id = ca.tenant_id AND i.id = ca.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = ca.tenant_id AND co.id = ca.customer_organization_id
+        WHERE ca.tenant_id = $1 AND ($3::boolean OR (ca.deleted_at IS NULL AND ca.action_status <> 'archived')) AND (
+          ca.action_type ILIKE $2 OR ca.action_status ILIKE $2 OR ca.note ILIKE $2 OR ca.dispute_reason ILIKE $2 OR ca.escalation_reason ILIKE $2 OR ca.outcome ILIKE $2 OR cc.case_number ILIKE $2 OR i.invoice_number ILIKE $2 OR co.name ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)

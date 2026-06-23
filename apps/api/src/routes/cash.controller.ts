@@ -20,6 +20,30 @@ const cashReceiptStatuses = new Set(["received", "partially_applied", "fully_app
 const cashDepositStatuses = new Set(["not_deposited", "deposited_later", "pending_later", "reconciled_later"]);
 const cashReconciliationStatuses = new Set(["not_reconciled", "pending_later", "reconciled_later", "exception_later"]);
 const paymentApplicationTypes = new Set(["standard_payment", "partial_payment", "overpayment_application", "retainage_payment", "discount", "writeoff_later", "adjustment", "correction"]);
+const collectionCaseStatuses = new Set(["open", "in_progress", "promise_to_pay", "disputed", "escalated", "awaiting_payment", "resolved", "closed", "archived"]);
+const collectionPriorities = new Set(["low", "medium", "high", "urgent"]);
+const collectionRiskLevels = new Set(["low", "medium", "high", "critical"]);
+const collectionActionTypes = new Set([
+  "call",
+  "email",
+  "text",
+  "portal_message",
+  "internal_note",
+  "promise_to_pay",
+  "dispute_opened",
+  "dispute_updated",
+  "dispute_resolved",
+  "payment_reminder",
+  "follow_up_scheduled",
+  "escalation_requested",
+  "escalation_approved",
+  "writeoff_review_requested",
+  "case_closed",
+]);
+const collectionActionStatuses = new Set(["planned", "completed", "failed", "cancelled", "archived"]);
+const collectionContactMethods = new Set(["phone", "email", "sms", "portal", "in_person", "internal"]);
+const collectionOutcomes = new Set(["no_response", "left_message", "contacted", "promise_received", "payment_received_later", "dispute_reported", "wrong_contact", "follow_up_needed", "escalated", "resolved"]);
+const collectionCloseReasons = new Set(["paid", "resolved", "duplicate", "opened_in_error", "transferred", "unresolved_close", "future_writeoff_review"]);
 
 @Controller()
 export class CashController {
@@ -667,6 +691,578 @@ export class CashController {
         LIMIT 100
         `,
         [request.auth.tenantId, id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("collection-cases")
+  @RequirePermission("collection_case.read")
+  async listCollectionCases(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const values: unknown[] = [request.auth.tenantId];
+      const where = ["cc.tenant_id = $1"];
+      if (query.archived !== "true") where.push("cc.deleted_at IS NULL", "cc.case_status <> 'archived'");
+      this.addFilter(where, values, "cc.case_status", query.case_status);
+      this.addFilter(where, values, "cc.collection_priority", query.collection_priority);
+      this.addFilter(where, values, "cc.risk_level", query.risk_level);
+      this.addFilter(where, values, "cc.aging_bucket", query.aging_bucket);
+      this.addFilter(where, values, "cc.customer_organization_id", query.customer_organization_id);
+      this.addFilter(where, values, "cc.invoice_id", query.invoice_id);
+      this.addFilter(where, values, "cc.assigned_owner_user_id", query.assigned_owner_user_id);
+      this.addFilter(where, values, "cc.dispute_status", query.dispute_status);
+      this.addFilter(where, values, "cc.escalation_status", query.escalation_status);
+      this.addFilter(where, values, "cc.writeoff_review_status", query.writeoff_review_status);
+      if (query.next_action_due_from) this.addDateFilter(where, values, "cc.next_action_due_at", ">=", query.next_action_due_from);
+      if (query.next_action_due_to) this.addDateFilter(where, values, "cc.next_action_due_at", "<=", query.next_action_due_to);
+      if (query.has_promise === "true") where.push("cc.promise_to_pay_date IS NOT NULL");
+      if (query.has_promise === "false") where.push("cc.promise_to_pay_date IS NULL");
+      if (query.overdue_promise === "true") where.push("cc.promise_to_pay_date < current_date AND cc.case_status = 'promise_to_pay'");
+      if (query.q?.trim()) {
+        values.push(`%${query.q.trim()}%`);
+        const index = values.length;
+        where.push(`(cc.case_number ILIKE $${index} OR i.invoice_number ILIKE $${index} OR co.name ILIKE $${index} OR cc.notes ILIKE $${index} OR latest.dispute_reason ILIKE $${index} OR latest.escalation_reason ILIKE $${index} OR latest.outcome ILIKE $${index})`);
+      }
+      const result = await client.query(
+        `
+        SELECT cc.*,
+          i.invoice_number,
+          i.balance_amount AS invoice_balance_amount,
+          i.aging_days AS invoice_aging_days,
+          co.name AS customer_organization_name,
+          u.display_name AS assigned_owner_name,
+          COALESCE(actions.action_count, 0)::int AS action_count,
+          latest.action_type AS latest_action_type,
+          latest.action_date AS latest_action_at
+        FROM collection_cases cc
+        JOIN invoices i ON i.tenant_id = cc.tenant_id AND i.id = cc.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = cc.tenant_id AND co.id = cc.customer_organization_id
+        LEFT JOIN users u ON u.id = cc.assigned_owner_user_id
+        LEFT JOIN (
+          SELECT tenant_id, collection_case_id, count(*) AS action_count
+          FROM collection_actions
+          WHERE deleted_at IS NULL AND action_status <> 'archived'
+          GROUP BY tenant_id, collection_case_id
+        ) actions ON actions.tenant_id = cc.tenant_id AND actions.collection_case_id = cc.id
+        LEFT JOIN LATERAL (
+          SELECT action_type, action_date, dispute_reason, escalation_reason, outcome
+          FROM collection_actions ca
+          WHERE ca.tenant_id = cc.tenant_id AND ca.collection_case_id = cc.id AND ca.deleted_at IS NULL
+          ORDER BY ca.created_at DESC
+          LIMIT 1
+        ) latest ON true
+        WHERE ${where.join(" AND ")}
+        ORDER BY ${this.collectionCaseSort(query.sort)}
+        LIMIT 100
+        `,
+        values,
+      );
+      return result.rows.map((row) => this.withCollectionCaseGuidance(this.withDynamicCollectionCase(row)));
+    });
+  }
+
+  @Get("collection-cases/:id")
+  @RequirePermission("collection_case.read")
+  async getCollectionCase(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.requireRecord(client, "collection_cases", request.auth.tenantId, id, "collection case not found"));
+  }
+
+  @Get("collection-cases/:id/detail")
+  @RequirePermission("collection_case.read")
+  async getCollectionCaseDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const collectionCase = await this.requireCollectionCaseContext(client, request.auth.tenantId, id);
+      const actions = await this.listCollectionActionsForCase(client, request.auth.tenantId, id);
+      const cash = await this.collectionCashContext(client, request.auth.tenantId, String(collectionCase.customer_organization_id), String(collectionCase.invoice_id));
+      const guided = this.withCollectionCaseGuidance(this.withDynamicCollectionCase({ ...collectionCase, action_count: actions.length }));
+      return {
+        collection_case: guided,
+        invoice_context: {
+          id: collectionCase.invoice_id,
+          invoice_number: collectionCase.invoice_number,
+          original_amount: collectionCase.original_amount,
+          paid_amount: collectionCase.paid_amount,
+          balance_amount: collectionCase.invoice_balance_amount,
+          aging_days: collectionCase.invoice_aging_days,
+          payment_status: collectionCase.payment_status,
+          collection_status: collectionCase.collection_status,
+          cash_application_status: collectionCase.cash_application_status,
+        },
+        customer_context: { id: collectionCase.customer_organization_id, name: collectionCase.customer_organization_name },
+        cash_application_context: cash,
+        collection_actions: actions,
+        promise_summary: { promise_to_pay_date: collectionCase.promise_to_pay_date, promise_to_pay_amount: collectionCase.promise_to_pay_amount },
+        dispute_summary: { dispute_status: collectionCase.dispute_status },
+        escalation_summary: { escalation_status: collectionCase.escalation_status },
+        aging_priority_summary: { aging_bucket: guided["aging_bucket"], collection_priority: guided["collection_priority"], risk_level: guided["risk_level"] },
+        writeoff_review_summary: { writeoff_review_status: collectionCase.writeoff_review_status, executes_writeoff: false },
+        boundary_summary: { creates_cash_receipt: false, creates_payment_application: false, updates_invoice_balance: false, creates_legal_filing: false, creates_tax_record: false, creates_accounting_export: false },
+        warnings: guided.warnings,
+        blockers: guided.blockers,
+        recommended_next_action: guided.recommended_next_action,
+        timeline_available: true,
+        audit_allowed: true,
+      };
+    });
+  }
+
+  @Post("collection-cases")
+  @RequirePermission("collection_case.create")
+  async createCollectionCase(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "collection_case.create", "collection_case.created", "collection_case", async (client) => {
+        const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, this.requiredId(body.invoice_id, "invoice_id"), "invoice not found");
+        const override = !!body.override_reasons;
+        if (["voided", "archived"].includes(String(invoice.status))) throw new BadRequestException("voided or archived invoices cannot enter collections");
+        if (String(invoice.payment_status) === "paid" && !override) throw new BadRequestException("paid invoices cannot enter collections without override");
+        if (Number(invoice.balance_amount ?? 0) <= 0 && !override) throw new BadRequestException("invoice balance must be open for collections");
+        await this.ensureNoActiveCollectionCase(client, request.auth.tenantId, String(invoice.id), override);
+        const customerId = String(invoice.customer_organization_id ?? invoice.organization_id ?? "");
+        if (!customerId) throw new BadRequestException("customer organization is required");
+        await this.requireRecord(client, "organizations", request.auth.tenantId, customerId, "customer organization not found");
+        const ownerId = this.optionalString(body.assigned_owner_user_id);
+        if (ownerId) await this.requireTenantUser(client, request.auth.tenantId, ownerId);
+        const agingBucket = this.collectionAgingBucket(invoice);
+        const disputeStatus = String(invoice.status) === "disputed" || String(invoice.collection_status) === "disputed" ? "open" : "none";
+        const priority = body.collection_priority === undefined ? this.collectionPriority(agingBucket, Number(invoice.balance_amount ?? 0), disputeStatus) : this.allowed(body.collection_priority, "collection_priority", collectionPriorities);
+        const risk = this.collectionRisk(agingBucket, disputeStatus);
+        const collectionCase = await insertTenantRecord(client, "collection_cases", request.auth.tenantId, {
+          invoice_id: invoice.id,
+          customer_organization_id: customerId,
+          case_number: await this.nextCollectionCaseNumber(client, request.auth.tenantId),
+          case_status: "open",
+          collection_priority: priority,
+          risk_level: risk,
+          aging_bucket: agingBucket,
+          dispute_status: disputeStatus,
+          escalation_status: "none",
+          writeoff_review_status: "not_ready",
+          assigned_owner_user_id: ownerId ?? null,
+          opened_at: new Date(),
+          balance_at_open: Number(invoice.balance_amount ?? 0),
+          current_balance: Number(invoice.balance_amount ?? 0),
+          original_invoice_amount: Number(invoice.original_amount ?? invoice.total_amount ?? 0),
+          last_payment_at: invoice.last_payment_at ?? null,
+          last_payment_amount: invoice.last_payment_amount ?? null,
+          notes: this.optionalString(body.notes),
+          override_reasons: this.objectValue(body.override_reasons),
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
+        });
+        return {
+          entityType: "collection_case",
+          entityId: collectionCase.id,
+          afterState: collectionCase,
+          additionalEvents: [this.additionalEvent("collection_case.create", "invoice", invoice.id, "invoice.collection_case_opened", { ...invoice, collection_case_id: collectionCase.id }, invoice)],
+        };
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Patch("collection-cases/:id")
+  @RequirePermission("collection_case.update")
+  async updateCollectionCase(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_case.update", "collection_case.updated", "collection_case", async (client) => {
+      const before = await this.requireRecord(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
+      if (before.case_status === "archived") throw new BadRequestException("archived collection cases are view-only");
+      const values = pick(body, ["next_action_type", "next_action_due_at", "notes", "override_reasons"]);
+      if (body.assigned_owner_user_id !== undefined) {
+        const ownerId = this.optionalString(body.assigned_owner_user_id);
+        if (ownerId) await this.requireTenantUser(client, request.auth.tenantId, ownerId);
+        values.assigned_owner_user_id = ownerId ?? null;
+      }
+      if (body.collection_priority !== undefined) values.collection_priority = this.allowed(body.collection_priority, "collection_priority", collectionPriorities);
+      if (body.risk_level !== undefined) values.risk_level = this.allowed(body.risk_level, "risk_level", collectionRiskLevels);
+      values.updated_by = request.auth.userId;
+      const after = await updateTenantRecord(client, "collection_cases", request.auth.tenantId, id, values);
+      if (!after) throw new NotFoundException("collection case not found");
+      return { entityType: "collection_case", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Post("collection-cases/:id/assign-owner")
+  @RequirePermission("collection_case.assign_owner")
+  async assignCollectionOwner(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_case.assign_owner", "collection_case.owner_assigned", "collection_case", async (client) => {
+      const ownerId = this.optionalString(body.assigned_owner_user_id);
+      if (!ownerId) throw new BadRequestException("assigned_owner_user_id is required");
+      await this.requireTenantUser(client, request.auth.tenantId, ownerId);
+      const before = await this.requireRecord(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
+      if (before.case_status === "archived") throw new BadRequestException("archived collection cases are view-only");
+      const after = await updateTenantRecord(client, "collection_cases", request.auth.tenantId, id, { assigned_owner_user_id: ownerId, updated_by: request.auth.userId });
+      if (!after) throw new NotFoundException("collection case not found");
+      return { entityType: "collection_case", entityId: id, beforeState: before, afterState: after };
+    }, body.assignment_note);
+  }
+
+  @Post("collection-cases/:id/actions")
+  @RequirePermission("collection_action.create")
+  async createCollectionAction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    try {
+      return await this.write(request, "collection_action.create", "collection_action.created", "collection_action", async (client) => {
+        const collectionCase = await this.requireRecord(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
+        if (collectionCase.case_status === "archived") throw new BadRequestException("archived collection cases are view-only");
+        const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, String(collectionCase.invoice_id), "invoice not found");
+        const actionType = this.allowed(body.action_type, "action_type", collectionActionTypes);
+        this.validateCollectionActionBody(actionType, body, Number(invoice.balance_amount ?? 0));
+        const actionStatus = this.allowed(body.action_status ?? "planned", "action_status", collectionActionStatuses);
+        const action = await insertTenantRecord(client, "collection_actions", request.auth.tenantId, {
+          collection_case_id: collectionCase.id,
+          invoice_id: collectionCase.invoice_id,
+          customer_organization_id: collectionCase.customer_organization_id,
+          action_type: actionType,
+          action_status: actionStatus,
+          action_date: body.action_date === undefined ? new Date().toISOString().slice(0, 10) : this.requireDate(body.action_date, "action_date"),
+          due_at: body.due_at ?? null,
+          completed_at: actionStatus === "completed" ? new Date() : null,
+          actor_user_id: request.auth.userId,
+          contact_id: this.optionalString(body.contact_id),
+          contact_method: body.contact_method === undefined ? null : this.allowed(body.contact_method, "contact_method", collectionContactMethods),
+          outcome: body.outcome === undefined ? null : this.allowed(body.outcome, "outcome", collectionOutcomes),
+          note: this.optionalString(body.note),
+          promise_to_pay_date: body.promise_to_pay_date === undefined ? null : this.requireDate(body.promise_to_pay_date, "promise_to_pay_date"),
+          promise_to_pay_amount: body.promise_to_pay_amount === undefined ? null : this.requireNonNegative(body.promise_to_pay_amount, "promise_to_pay_amount"),
+          dispute_reason: this.optionalString(body.dispute_reason),
+          escalation_reason: this.optionalString(body.escalation_reason),
+          follow_up_required: Boolean(body.follow_up_required),
+          follow_up_due_at: body.follow_up_due_at ?? null,
+          evidence_reference: this.optionalString(body.evidence_reference),
+          override_reasons: this.objectValue(body.override_reasons),
+          created_by: request.auth.userId,
+          updated_by: request.auth.userId,
+        });
+        const summary = await this.applyCollectionActionSummary(client, request.auth.tenantId, collectionCase, invoice, action, request.auth.userId);
+        return {
+          entityType: "collection_action",
+          entityId: action.id,
+          beforeState: collectionCase,
+          afterState: action,
+          additionalEvents: summary.additionalEvents,
+        };
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  @Post("collection-actions/:id/complete")
+  @RequirePermission("collection_action.complete")
+  async completeCollectionAction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_action.complete", "collection_action.completed", "collection_action", async (client) => {
+      const before = await this.requireRecord(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
+      if (["archived", "cancelled"].includes(String(before.action_status))) throw new BadRequestException("collection action cannot be completed in its current status");
+      const values: Record<string, unknown> = {
+        action_status: "completed",
+        completed_at: new Date(),
+        updated_by: request.auth.userId,
+      };
+      if (body.outcome !== undefined) values.outcome = this.allowed(body.outcome, "outcome", collectionOutcomes);
+      if (body.note !== undefined) values.note = this.optionalString(body.note);
+      if (body.follow_up_required !== undefined) values.follow_up_required = Boolean(body.follow_up_required);
+      if (body.follow_up_due_at !== undefined) values.follow_up_due_at = body.follow_up_due_at;
+      const after = await updateTenantRecord(client, "collection_actions", request.auth.tenantId, id, values);
+      if (!after) throw new NotFoundException("collection action not found");
+      if (body.follow_up_due_at) {
+        const beforeCase = await this.requireRecord(client, "collection_cases", request.auth.tenantId, String(before.collection_case_id), "collection case not found");
+        const afterCase = await updateTenantRecord(client, "collection_cases", request.auth.tenantId, String(before.collection_case_id), {
+          next_action_type: "follow_up_scheduled",
+          next_action_due_at: body.follow_up_due_at,
+          updated_by: request.auth.userId,
+        });
+        if (!afterCase) throw new NotFoundException("collection case not found");
+        return {
+          entityType: "collection_action",
+          entityId: id,
+          beforeState: before,
+          afterState: after,
+          additionalEvents: [this.additionalEvent("collection_case.update", "collection_case", before.collection_case_id, "collection_case.updated", afterCase, beforeCase)],
+        };
+      }
+      return { entityType: "collection_action", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Post("collection-actions/:id/cancel")
+  @RequirePermission("collection_action.cancel")
+  async cancelCollectionAction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_action.cancel", "collection_action.cancelled", "collection_action", async (client) => {
+      const cancelReason = this.optionalString(body.cancel_reason);
+      if (!cancelReason) throw new BadRequestException("cancel_reason is required");
+      const before = await this.requireRecord(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
+      if (before.action_status === "completed" && !body.override_reasons) throw new BadRequestException("completed action requires override to cancel");
+      const after = await updateTenantRecord(client, "collection_actions", request.auth.tenantId, id, {
+        action_status: "cancelled",
+        note: this.optionalString(body.cancel_note) ?? cancelReason,
+        override_reasons: this.objectValue(body.override_reasons),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("collection action not found");
+      return { entityType: "collection_action", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Post("collection-cases/:id/recalculate")
+  @RequirePermission("collection_case.update")
+  async recalculateCollectionCase(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.write(request, "collection_case.update", "collection_case.recalculated", "collection_case", async (client) => {
+      const before = await this.requireCollectionCaseContext(client, request.auth.tenantId, id);
+      const after = await this.refreshCollectionCaseFromInvoice(client, request.auth.tenantId, before, request.auth.userId);
+      return { entityType: "collection_case", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Post("collection-cases/:id/close")
+  @RequirePermission("collection_case.close")
+  async closeCollectionCase(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_case.close", "collection_case.closed", "collection_case", async (client) => {
+      if (!this.optionalString(body.close_reason)) throw new BadRequestException("close_reason is required");
+      const closeReason = this.allowed(body.close_reason, "close_reason", collectionCloseReasons);
+      const before = await this.requireCollectionCaseContext(client, request.auth.tenantId, id);
+      if (before.case_status === "archived") throw new BadRequestException("archived collection cases are view-only");
+      if (Number(before.invoice_balance_amount ?? before.current_balance ?? 0) > 0 && !body.override_reasons && !["unresolved_close", "future_writeoff_review"].includes(closeReason)) {
+        throw new BadRequestException("closing an unresolved balance requires override");
+      }
+      const status = ["paid", "resolved"].includes(closeReason) ? "resolved" : "closed";
+      const after = await updateTenantRecord(client, "collection_cases", request.auth.tenantId, id, {
+        case_status: status,
+        closed_at: new Date(),
+        close_reason: closeReason,
+        close_note: this.optionalString(body.close_note),
+        override_reasons: this.objectValue(body.override_reasons),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("collection case not found");
+      return {
+        entityType: "collection_case",
+        entityId: id,
+        beforeState: before,
+        afterState: after,
+        additionalEvents: [this.additionalEvent("collection_case.close", "invoice", before.invoice_id, "invoice.collection_case_closed", { ...before, collection_case_status: status }, before)],
+      };
+    });
+  }
+
+  @Post("collection-cases/:id/archive")
+  @RequirePermission("collection_case.archive")
+  async archiveCollectionCase(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_case.archive", "collection_case.archived", "collection_case", async (client) => {
+      const archiveReason = this.optionalString(body.archive_reason);
+      if (!archiveReason) throw new BadRequestException("archive_reason is required");
+      const before = await this.requireRecord(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
+      const after = await updateTenantRecord(client, "collection_cases", request.auth.tenantId, id, {
+        case_status: "archived",
+        archived_by: request.auth.userId,
+        archived_at: new Date(),
+        archive_reason: archiveReason,
+        archive_note: this.optionalString(body.archive_note),
+        deleted_at: new Date(),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("collection case not found");
+      return { entityType: "collection_case", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Get("collection-actions")
+  @RequirePermission("collection_action.read")
+  async listCollectionActions(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const values: unknown[] = [request.auth.tenantId];
+      const where = ["ca.tenant_id = $1"];
+      if (query.archived !== "true") where.push("ca.deleted_at IS NULL", "ca.action_status <> 'archived'");
+      this.addFilter(where, values, "ca.collection_case_id", query.collection_case_id);
+      this.addFilter(where, values, "ca.invoice_id", query.invoice_id);
+      this.addFilter(where, values, "ca.customer_organization_id", query.customer_organization_id);
+      this.addFilter(where, values, "ca.action_type", query.action_type);
+      this.addFilter(where, values, "ca.action_status", query.action_status);
+      this.addFilter(where, values, "ca.actor_user_id", query.actor_user_id);
+      if (query.action_date_from) this.addDateFilter(where, values, "ca.action_date", ">=", query.action_date_from);
+      if (query.action_date_to) this.addDateFilter(where, values, "ca.action_date", "<=", query.action_date_to);
+      if (query.due_at_from) this.addDateFilter(where, values, "ca.due_at", ">=", query.due_at_from);
+      if (query.due_at_to) this.addDateFilter(where, values, "ca.due_at", "<=", query.due_at_to);
+      if (query.follow_up_due_from) this.addDateFilter(where, values, "ca.follow_up_due_at", ">=", query.follow_up_due_from);
+      if (query.follow_up_due_to) this.addDateFilter(where, values, "ca.follow_up_due_at", "<=", query.follow_up_due_to);
+      if (query.q?.trim()) {
+        values.push(`%${query.q.trim()}%`);
+        const index = values.length;
+        where.push(`(cc.case_number ILIKE $${index} OR i.invoice_number ILIKE $${index} OR co.name ILIKE $${index} OR ca.note ILIKE $${index} OR ca.dispute_reason ILIKE $${index} OR ca.escalation_reason ILIKE $${index} OR ca.outcome ILIKE $${index})`);
+      }
+      const result = await client.query(
+        `
+        SELECT ca.*, cc.case_number, i.invoice_number, co.name AS customer_organization_name, u.display_name AS actor_name
+        FROM collection_actions ca
+        JOIN collection_cases cc ON cc.tenant_id = ca.tenant_id AND cc.id = ca.collection_case_id
+        JOIN invoices i ON i.tenant_id = ca.tenant_id AND i.id = ca.invoice_id
+        LEFT JOIN organizations co ON co.tenant_id = ca.tenant_id AND co.id = ca.customer_organization_id
+        LEFT JOIN users u ON u.id = ca.actor_user_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY ${this.collectionActionSort(query.sort)}
+        LIMIT 100
+        `,
+        values,
+      );
+      return result.rows.map((row) => this.withCollectionActionGuidance(row));
+    });
+  }
+
+  @Get("collection-actions/:id")
+  @RequirePermission("collection_action.read")
+  async getCollectionAction(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient((client) => this.requireRecord(client, "collection_actions", request.auth.tenantId, id, "collection action not found"));
+  }
+
+  @Get("collection-actions/:id/detail")
+  @RequirePermission("collection_action.read")
+  async getCollectionActionDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const action = await this.requireCollectionActionContext(client, request.auth.tenantId, id);
+      return {
+        action: this.withCollectionActionGuidance(action),
+        case_context: { id: action.collection_case_id, case_number: action.case_number, case_status: action.case_status },
+        invoice_context: { id: action.invoice_id, invoice_number: action.invoice_number, balance_amount: action.invoice_balance_amount, collection_status: action.collection_status },
+        customer_context: { id: action.customer_organization_id, name: action.customer_organization_name },
+        actor_context: { id: action.actor_user_id, name: action.actor_name },
+        boundary_summary: { creates_cash_receipt: false, creates_payment_application: false, updates_invoice_balance: false, sends_message: false },
+        audit_allowed: true,
+      };
+    });
+  }
+
+  @Patch("collection-actions/:id")
+  @RequirePermission("collection_action.update")
+  async updateCollectionAction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_action.update", "collection_action.updated", "collection_action", async (client) => {
+      const before = await this.requireRecord(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
+      if (before.action_status === "archived") throw new BadRequestException("archived collection actions are view-only");
+      const values = pick(body, ["due_at", "note", "follow_up_required", "follow_up_due_at", "evidence_reference", "override_reasons"]);
+      if (body.action_status !== undefined) values.action_status = this.allowed(body.action_status, "action_status", collectionActionStatuses);
+      if (body.contact_method !== undefined) values.contact_method = this.allowed(body.contact_method, "contact_method", collectionContactMethods);
+      if (body.outcome !== undefined) values.outcome = this.allowed(body.outcome, "outcome", collectionOutcomes);
+      values.updated_by = request.auth.userId;
+      const after = await updateTenantRecord(client, "collection_actions", request.auth.tenantId, id, values);
+      if (!after) throw new NotFoundException("collection action not found");
+      return { entityType: "collection_action", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Post("collection-actions/:id/archive")
+  @RequirePermission("collection_action.archive")
+  async archiveCollectionAction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.write(request, "collection_action.archive", "collection_action.archived", "collection_action", async (client) => {
+      const archiveReason = this.optionalString(body.archive_reason);
+      if (!archiveReason) throw new BadRequestException("archive_reason is required");
+      const before = await this.requireRecord(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
+      const after = await updateTenantRecord(client, "collection_actions", request.auth.tenantId, id, {
+        action_status: "archived",
+        archived_by: request.auth.userId,
+        archived_at: new Date(),
+        archive_reason: archiveReason,
+        archive_note: this.optionalString(body.archive_note),
+        deleted_at: new Date(),
+        updated_by: request.auth.userId,
+      });
+      if (!after) throw new NotFoundException("collection action not found");
+      return { entityType: "collection_action", entityId: id, beforeState: before, afterState: after };
+    });
+  }
+
+  @Get("collection-cases/:id/timeline")
+  @RequirePermission("collection_case.timeline.read")
+  async collectionCaseTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const collectionCase = await this.requireRecordIncludingArchived(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
+      const result = await client.query(
+        `
+        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1
+          AND (
+            (e.aggregate_type = 'collection_case' AND e.aggregate_id = $2)
+            OR (e.aggregate_type = 'collection_action' AND e.aggregate_id IN (SELECT id FROM collection_actions WHERE tenant_id = $1 AND collection_case_id = $2))
+            OR (e.aggregate_type = 'invoice' AND e.aggregate_id = $3)
+          )
+        ORDER BY e.occurred_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, collectionCase.invoice_id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("collection-actions/:id/timeline")
+  @RequirePermission("collection_action.timeline.read")
+  async collectionActionTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const action = await this.requireRecordIncludingArchived(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
+      const result = await client.query(
+        `
+        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+        FROM events e
+        LEFT JOIN event_payloads ep ON ep.event_id = e.id
+        WHERE e.tenant_id = $1
+          AND (
+            (e.aggregate_type = 'collection_action' AND e.aggregate_id = $2)
+            OR (e.aggregate_type = 'collection_case' AND e.aggregate_id = $3)
+            OR (e.aggregate_type = 'invoice' AND e.aggregate_id = $4)
+          )
+        ORDER BY e.occurred_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, action.collection_case_id, action.invoice_id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("collection-cases/:id/audit-summary")
+  @RequirePermission("collection_case.audit.read")
+  async collectionCaseAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const collectionCase = await this.requireRecordIncludingArchived(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
+      const result = await client.query(
+        `
+        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+        FROM audit_logs
+        WHERE tenant_id = $1
+          AND (
+            (entity_type = 'collection_case' AND entity_id = $2)
+            OR (entity_type = 'collection_action' AND entity_id IN (SELECT id FROM collection_actions WHERE tenant_id = $1 AND collection_case_id = $2))
+            OR (entity_type = 'invoice' AND entity_id = $3)
+          )
+        ORDER BY created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, collectionCase.invoice_id],
+      );
+      return result.rows;
+    });
+  }
+
+  @Get("collection-actions/:id/audit-summary")
+  @RequirePermission("collection_action.audit.read")
+  async collectionActionAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async (client) => {
+      const action = await this.requireRecordIncludingArchived(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
+      const result = await client.query(
+        `
+        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+        FROM audit_logs
+        WHERE tenant_id = $1
+          AND (
+            (entity_type = 'collection_action' AND entity_id = $2)
+            OR (entity_type = 'collection_case' AND entity_id = $3)
+            OR (entity_type = 'invoice' AND entity_id = $4)
+          )
+        ORDER BY created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId, id, action.collection_case_id, action.invoice_id],
       );
       return result.rows;
     });
@@ -1464,6 +2060,299 @@ export class CashController {
     if (count === 0) throw new BadRequestException("invoice requires at least one item");
   }
 
+  private collectionCaseSort(sort?: string) {
+    switch (sort) {
+      case "aging_desc":
+        return "i.aging_days DESC, cc.updated_at DESC";
+      case "balance_desc":
+        return "i.balance_amount DESC, cc.updated_at DESC";
+      case "priority_desc":
+        return "CASE cc.collection_priority WHEN 'urgent' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC, cc.updated_at DESC";
+      case "next_action_due_asc":
+        return "cc.next_action_due_at ASC NULLS LAST, cc.updated_at DESC";
+      case "opened_desc":
+        return "cc.opened_at DESC, cc.updated_at DESC";
+      case "case_number":
+        return "cc.case_number ASC, cc.updated_at DESC";
+      case "updated_desc":
+      default:
+        return "cc.updated_at DESC";
+    }
+  }
+
+  private collectionActionSort(sort?: string) {
+    switch (sort) {
+      case "due_asc":
+        return "ca.due_at ASC NULLS LAST, ca.updated_at DESC";
+      case "follow_up_due_asc":
+        return "ca.follow_up_due_at ASC NULLS LAST, ca.updated_at DESC";
+      case "action_date_asc":
+        return "ca.action_date ASC, ca.updated_at DESC";
+      case "updated_desc":
+        return "ca.updated_at DESC";
+      case "action_date_desc":
+      default:
+        return "ca.action_date DESC, ca.updated_at DESC";
+    }
+  }
+
+  private withDynamicCollectionCase(row: Record<string, unknown>) {
+    const currentBalance = row.invoice_balance_amount ?? row.current_balance;
+    const agingBucket = this.collectionAgingBucket({ aging_days: row.invoice_aging_days ?? row.aging_days, due_date: row.due_date });
+    return { ...row, current_balance: currentBalance, aging_bucket: agingBucket };
+  }
+
+  private withCollectionCaseGuidance(row: Record<string, unknown>): Record<string, unknown> & { warnings: string[]; blockers: string[]; required_override_fields: string[]; recommended_next_action: string } {
+    const warnings: string[] = [];
+    const blockers: string[] = [];
+    if (row.case_status === "archived") blockers.push("archived_collection_case");
+    if (Number(row.current_balance ?? 0) <= 0 && !["resolved", "closed", "archived"].includes(String(row.case_status))) warnings.push("invoice_balance_resolved");
+    if (row.dispute_status === "open" || row.dispute_status === "under_review") warnings.push("dispute_open");
+    if (row.escalation_status && row.escalation_status !== "none") warnings.push("escalated");
+    if (row.promise_to_pay_date && this.daysBetween(row.promise_to_pay_date, new Date().toISOString().slice(0, 10)) > 0) warnings.push("promise_missed");
+    return {
+      ...row,
+      warnings,
+      blockers,
+      required_override_fields: [],
+      recommended_next_action: this.recommendedCollectionCaseAction(row),
+    };
+  }
+
+  private recommendedCollectionCaseAction(row: Record<string, unknown>) {
+    if (row.case_status === "archived") return "view_only";
+    if (["closed", "resolved"].includes(String(row.case_status))) return "view_closed_case";
+    if (Number(row.current_balance ?? 0) <= 0) return "close_case";
+    if (["open", "under_review"].includes(String(row.dispute_status))) return "resolve_dispute";
+    if (row.promise_to_pay_date) {
+      const diff = this.daysBetween(row.promise_to_pay_date, new Date().toISOString().slice(0, 10));
+      if (diff <= 0) return "wait_for_promise_date";
+      return "follow_up_on_missed_promise";
+    }
+    if (row.next_action_due_at && this.daysBetween(row.next_action_due_at, new Date().toISOString().slice(0, 10)) >= 0) return "complete_next_action";
+    if (row.escalation_status && row.escalation_status !== "none") return "review_escalation";
+    return "schedule_follow_up";
+  }
+
+  private withCollectionActionGuidance(row: Record<string, unknown>) {
+    return {
+      ...row,
+      warnings: row.action_type === "payment_reminder" ? ["manual_reminder_only"] : [],
+      blockers: row.action_status === "archived" ? ["archived_collection_action"] : [],
+      recommended_next_action: this.recommendedCollectionAction(row),
+    };
+  }
+
+  private recommendedCollectionAction(row: Record<string, unknown>) {
+    if (row.action_status === "archived") return "view_only";
+    if (row.action_status === "planned") return "complete_or_cancel_action";
+    if (row.action_status === "completed") return "view_completed_action";
+    return "review_action";
+  }
+
+  private async nextCollectionCaseNumber(client: PoolClient, tenantId: string) {
+    const result = await client.query("SELECT count(*)::int + 1 AS next FROM collection_cases WHERE tenant_id = $1", [tenantId]);
+    return `COLL-${String(result.rows[0]?.next ?? 1).padStart(6, "0")}`;
+  }
+
+  private collectionAgingBucket(invoice: Record<string, unknown>) {
+    const agingDays = Number(invoice.aging_days ?? this.daysPastDue(invoice.due_date));
+    if (agingDays <= 0) return "current";
+    if (agingDays <= 30) return "1_30";
+    if (agingDays <= 60) return "31_60";
+    if (agingDays <= 90) return "61_90";
+    return "90_plus";
+  }
+
+  private collectionPriority(agingBucket: string, balance: number, disputeStatus: string) {
+    const base: Record<string, string> = { current: "low", "1_30": "medium", "31_60": "high", "61_90": "high", "90_plus": "urgent" };
+    let priority = base[agingBucket] ?? "low";
+    if (balance >= 10000 && priority === "low") priority = "medium";
+    if (balance >= 25000 && priority === "medium") priority = "high";
+    if (disputeStatus !== "none" && priority === "low") priority = "medium";
+    return priority;
+  }
+
+  private collectionRisk(agingBucket: string, disputeStatus: string) {
+    const base: Record<string, string> = { current: "low", "1_30": "medium", "31_60": "high", "61_90": "high", "90_plus": "critical" };
+    const risk = base[agingBucket] ?? "low";
+    if (disputeStatus === "none") return risk;
+    if (risk === "low") return "medium";
+    if (risk === "medium") return "high";
+    return risk;
+  }
+
+  private async ensureNoActiveCollectionCase(client: PoolClient, tenantId: string, invoiceId: string, override: boolean) {
+    if (override) return;
+    const result = await client.query(
+      `
+      SELECT 1
+      FROM collection_cases
+      WHERE tenant_id = $1
+        AND invoice_id = $2
+        AND deleted_at IS NULL
+        AND case_status NOT IN ('closed', 'resolved', 'archived')
+      LIMIT 1
+      `,
+      [tenantId, invoiceId],
+    );
+    if (result.rows[0]) throw new BadRequestException("active collection case already exists for invoice");
+  }
+
+  private async requireTenantUser(client: PoolClient, tenantId: string, userId: string) {
+    const result = await client.query("SELECT 1 FROM tenant_users WHERE tenant_id = $1 AND user_id = $2 AND deleted_at IS NULL AND status = 'active' LIMIT 1", [tenantId, userId]);
+    if (!result.rows[0]) throw new BadRequestException("assigned owner must belong to tenant");
+  }
+
+  private validateCollectionActionBody(actionType: string, body: Record<string, unknown>, invoiceBalance: number) {
+    if (actionType === "promise_to_pay") {
+      const promiseDate = this.requireDate(body.promise_to_pay_date, "promise_to_pay_date");
+      const amount = this.requirePositive(body.promise_to_pay_amount, "promise_to_pay_amount");
+      if (this.daysBetween(new Date().toISOString().slice(0, 10), promiseDate) < 0 && !body.override_reasons) throw new BadRequestException("promise_to_pay_date must be today or future");
+      if (amount > invoiceBalance && !body.override_reasons) throw new BadRequestException("promise_to_pay_amount cannot exceed invoice balance without override");
+    }
+    if (actionType === "dispute_opened") requireString(body.dispute_reason, "dispute_reason is required");
+    if (actionType === "dispute_updated" && !body.dispute_reason && !body.note) throw new BadRequestException("dispute update requires dispute_reason or note");
+    if (actionType === "dispute_resolved") requireString(body.note, "note is required");
+    if (actionType === "escalation_requested") requireString(body.escalation_reason, "escalation_reason is required");
+    if (actionType === "writeoff_review_requested") requireString(body.note, "note is required");
+    if (actionType === "payment_reminder" && !body.note && !body.due_at) throw new BadRequestException("payment reminder requires note or due_at");
+    if (actionType === "follow_up_scheduled" && !body.follow_up_due_at) throw new BadRequestException("follow_up_due_at is required");
+  }
+
+  private async applyCollectionActionSummary(client: PoolClient, tenantId: string, collectionCase: Record<string, unknown>, invoice: Record<string, unknown>, action: Record<string, unknown>, userId: string) {
+    const caseValues: Record<string, unknown> = { updated_by: userId };
+    const additionalEvents: NonNullable<WriteActionResult<Record<string, unknown>>["additionalEvents"]> = [];
+    const actionType = String(action.action_type);
+    if (actionType === "promise_to_pay") {
+      caseValues.case_status = "promise_to_pay";
+      caseValues.promise_to_pay_date = action.promise_to_pay_date;
+      caseValues.promise_to_pay_amount = action.promise_to_pay_amount;
+      caseValues.next_action_type = "follow_up_scheduled";
+      caseValues.next_action_due_at = action.promise_to_pay_date;
+      additionalEvents.push(this.additionalEvent("collection_action.create", "invoice", invoice.id, "invoice.promise_to_pay_recorded", { ...invoice, promise_to_pay_date: action.promise_to_pay_date, promise_to_pay_amount: action.promise_to_pay_amount }, invoice));
+    } else if (actionType === "dispute_opened") {
+      caseValues.case_status = "disputed";
+      caseValues.dispute_status = "open";
+      const afterInvoice = await updateTenantRecord(client, "invoices", tenantId, String(invoice.id), { collection_status: "disputed", updated_by: userId });
+      if (!afterInvoice) throw new NotFoundException("invoice not found");
+      additionalEvents.push(this.additionalEvent("collection_action.create", "invoice", invoice.id, "invoice.dispute_opened", afterInvoice, invoice));
+      additionalEvents.push(this.additionalEvent("collection_action.create", "invoice", invoice.id, "invoice.collection_status_changed", afterInvoice, invoice));
+    } else if (actionType === "dispute_updated") {
+      caseValues.case_status = "disputed";
+      caseValues.dispute_status = "under_review";
+    } else if (actionType === "dispute_resolved") {
+      caseValues.dispute_status = "resolved";
+      caseValues.case_status = Number(invoice.balance_amount ?? 0) > 0 ? "in_progress" : "resolved";
+      const nextStatus = this.calculateReceivableState(invoice.due_date, Number(invoice.original_amount || invoice.total_amount || 0), Number(invoice.paid_amount ?? 0), String(invoice.status)).collection_status;
+      const afterInvoice = await updateTenantRecord(client, "invoices", tenantId, String(invoice.id), { collection_status: nextStatus, updated_by: userId });
+      if (!afterInvoice) throw new NotFoundException("invoice not found");
+      additionalEvents.push(this.additionalEvent("collection_action.create", "invoice", invoice.id, "invoice.dispute_resolved", afterInvoice, invoice));
+      additionalEvents.push(this.additionalEvent("collection_action.create", "invoice", invoice.id, "invoice.collection_status_changed", afterInvoice, invoice));
+    } else if (actionType === "escalation_requested") {
+      caseValues.case_status = "escalated";
+      caseValues.escalation_status = "internal_escalation";
+      additionalEvents.push(this.additionalEvent("collection_action.create", "collection_case", collectionCase.id, "collection_case.escalated", { ...collectionCase, ...caseValues }, collectionCase));
+    } else if (actionType === "escalation_approved") {
+      caseValues.case_status = "escalated";
+      caseValues.escalation_status = "executive_escalation";
+    } else if (actionType === "writeoff_review_requested") {
+      caseValues.writeoff_review_status = "candidate";
+    } else if (actionType === "follow_up_scheduled") {
+      caseValues.next_action_type = "follow_up_scheduled";
+      caseValues.next_action_due_at = action.follow_up_due_at;
+    } else if (action.follow_up_required && action.follow_up_due_at) {
+      caseValues.next_action_type = "follow_up_scheduled";
+      caseValues.next_action_due_at = action.follow_up_due_at;
+    }
+    const afterCase = await updateTenantRecord(client, "collection_cases", tenantId, String(collectionCase.id), caseValues);
+    if (!afterCase) throw new NotFoundException("collection case not found");
+    additionalEvents.push(this.additionalEvent("collection_case.update", "collection_case", collectionCase.id, "collection_case.updated", afterCase, collectionCase));
+    return { additionalEvents };
+  }
+
+  private async refreshCollectionCaseFromInvoice(client: PoolClient, tenantId: string, collectionCase: Record<string, unknown>, userId: string) {
+    const invoice = await this.requireRecord(client, "invoices", tenantId, String(collectionCase.invoice_id), "invoice not found");
+    const agingBucket = this.collectionAgingBucket(invoice);
+    const disputeStatus = String(invoice.status) === "disputed" || String(invoice.collection_status) === "disputed" ? "open" : String(collectionCase.dispute_status ?? "none");
+    const after = await updateTenantRecord(client, "collection_cases", tenantId, String(collectionCase.id), {
+      current_balance: Number(invoice.balance_amount ?? 0),
+      original_invoice_amount: Number(invoice.original_amount ?? invoice.total_amount ?? 0),
+      last_payment_at: invoice.last_payment_at ?? null,
+      last_payment_amount: invoice.last_payment_amount ?? null,
+      aging_bucket: agingBucket,
+      collection_priority: this.collectionPriority(agingBucket, Number(invoice.balance_amount ?? 0), disputeStatus),
+      risk_level: this.collectionRisk(agingBucket, disputeStatus),
+      updated_by: userId,
+    });
+    if (!after) throw new NotFoundException("collection case not found");
+    return after;
+  }
+
+  private async requireCollectionCaseContext(client: PoolClient, tenantId: string, id: string) {
+    const result = await client.query(
+      `
+      SELECT cc.*, i.invoice_number, i.original_amount, i.paid_amount, i.balance_amount AS invoice_balance_amount,
+        i.aging_days AS invoice_aging_days, i.payment_status, i.collection_status, i.cash_application_status,
+        i.due_date, co.name AS customer_organization_name
+      FROM collection_cases cc
+      JOIN invoices i ON i.tenant_id = cc.tenant_id AND i.id = cc.invoice_id
+      LEFT JOIN organizations co ON co.tenant_id = cc.tenant_id AND co.id = cc.customer_organization_id
+      WHERE cc.tenant_id = $1 AND cc.id = $2 AND cc.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [tenantId, id],
+    );
+    if (!result.rows[0]) throw new NotFoundException("collection case not found");
+    return result.rows[0];
+  }
+
+  private async requireCollectionActionContext(client: PoolClient, tenantId: string, id: string) {
+    const result = await client.query(
+      `
+      SELECT ca.*, cc.case_number, cc.case_status, i.invoice_number, i.balance_amount AS invoice_balance_amount,
+        i.collection_status, co.name AS customer_organization_name, u.display_name AS actor_name
+      FROM collection_actions ca
+      JOIN collection_cases cc ON cc.tenant_id = ca.tenant_id AND cc.id = ca.collection_case_id
+      JOIN invoices i ON i.tenant_id = ca.tenant_id AND i.id = ca.invoice_id
+      LEFT JOIN organizations co ON co.tenant_id = ca.tenant_id AND co.id = ca.customer_organization_id
+      LEFT JOIN users u ON u.id = ca.actor_user_id
+      WHERE ca.tenant_id = $1 AND ca.id = $2 AND ca.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [tenantId, id],
+    );
+    if (!result.rows[0]) throw new NotFoundException("collection action not found");
+    return result.rows[0];
+  }
+
+  private async listCollectionActionsForCase(client: PoolClient, tenantId: string, caseId: string) {
+    const result = await client.query(
+      `
+      SELECT ca.*, u.display_name AS actor_name
+      FROM collection_actions ca
+      LEFT JOIN users u ON u.id = ca.actor_user_id
+      WHERE ca.tenant_id = $1 AND ca.collection_case_id = $2 AND ca.deleted_at IS NULL
+      ORDER BY ca.action_date DESC, ca.created_at DESC
+      `,
+      [tenantId, caseId],
+    );
+    return result.rows.map((row) => this.withCollectionActionGuidance(row));
+  }
+
+  private async collectionCashContext(client: PoolClient, tenantId: string, customerId: string, invoiceId: string) {
+    const result = await client.query(
+      `
+      SELECT
+        (SELECT count(*)::int FROM payment_applications WHERE tenant_id = $1 AND invoice_id = $2 AND deleted_at IS NULL AND application_status NOT IN ('voided', 'archived')) AS payment_application_count,
+        (SELECT COALESCE(sum(applied_amount), 0)::numeric FROM payment_applications WHERE tenant_id = $1 AND invoice_id = $2 AND deleted_at IS NULL AND application_status NOT IN ('voided', 'archived')) AS applied_payment_total,
+        (SELECT COALESCE(sum(unapplied_amount), 0)::numeric FROM cash_receipts WHERE tenant_id = $1 AND customer_organization_id = $3 AND deleted_at IS NULL AND receipt_status NOT IN ('voided', 'archived')) AS customer_unapplied_cash
+      `,
+      [tenantId, invoiceId, customerId],
+    );
+    return result.rows[0] ?? { payment_application_count: 0, applied_payment_total: 0, customer_unapplied_cash: 0 };
+  }
+
   private cashReceiptSort(sort?: string) {
     switch (sort) {
       case "payment_date_asc":
@@ -1873,6 +2762,13 @@ export class CashController {
 
   private async requireRecord(client: PoolClient, table: string, tenantId: string, id: string, message: string) {
     const record = await findTenantRecordById(client, table, tenantId, id);
+    if (!record) throw new NotFoundException(message);
+    return record;
+  }
+
+  private async requireRecordIncludingArchived(client: PoolClient, table: string, tenantId: string, id: string, message: string) {
+    const result = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1 AND id = $2 LIMIT 1`, [tenantId, id]);
+    const record = result.rows[0];
     if (!record) throw new NotFoundException(message);
     return record;
   }

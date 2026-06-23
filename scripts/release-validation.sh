@@ -65,5 +65,6 @@ npm run billable:smoke
 npm run settlement:smoke
 npm run invoice:smoke
 npm run cash-application:smoke
+npm run collections:smoke
 
 echo "release validation passed"

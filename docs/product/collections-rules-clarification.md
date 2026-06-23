@@ -4,6 +4,8 @@ Current validated commit: `0f6c16ae247a4877b7aacf99491e36e77d9650ee`
 
 This is a rules clarification document only. It does not implement code, migrations, routes, UI, or business logic.
 
+Implementation update: the subsequent Collections Backend Contract Foundation implements Hybrid Option D with first-class `collection_cases` and `collection_actions`, while preserving the rule that Collections does not create money movement and does not reduce invoice balances.
+
 ## 1. Current Backend Inventory
 
 | Area | Classification | Current state |

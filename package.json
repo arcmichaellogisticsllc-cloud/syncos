@@ -45,6 +45,7 @@
     "settlement:smoke": "npm run smoke:settlement -w @syncos/api",
     "invoice:smoke": "npm run smoke:invoice -w @syncos/api",
     "cash-application:smoke": "npm run smoke:cash-application -w @syncos/api",
+    "collections:smoke": "npm run smoke:collections -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {
