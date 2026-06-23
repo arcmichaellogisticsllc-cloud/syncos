@@ -4,6 +4,10 @@ Current validated commit: `6983a88a055723bc64dd61eb541cd9970f95ca93`
 
 This is a rules clarification document only. No code, migrations, routes, UI, or backend objects are implemented in this sprint.
 
+## Backend Foundation Follow-Up
+
+The subsequent backend foundation sprint implements the clarified Hybrid Option D model with `payment_batches` and `payment_items`. The implementation remains status-only for execution outcomes and preserves the boundaries documented here: no ACH/card/wire/check integration, no payroll provider submission, no bank transaction, no tax filing, no accounting export, no bank reconciliation, no treasury workflow, and no portal payout.
+
 ## 1. Current Backend Inventory
 
 | Area | Current state | Classification | Notes |

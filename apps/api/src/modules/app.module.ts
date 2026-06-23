@@ -16,6 +16,7 @@ import { OpportunityCandidatesController } from "../routes/opportunity-candidate
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { PayrollController } from "../routes/payroll.controller";
+import { PaymentExecutionController } from "../routes/payment-execution.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -50,6 +51,7 @@ import { DatabaseModule } from "./database.module";
     ProjectHandoffsController,
     CapacityController,
     PayrollController,
+    PaymentExecutionController,
     ProductionController,
     SettlementsController,
     CashController,

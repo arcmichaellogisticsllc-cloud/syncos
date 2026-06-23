@@ -296,6 +296,23 @@ export class SearchController {
           pi.source_type ILIKE $2 OR pi.earning_type ILIKE $2 OR pi.status ILIKE $2 OR pi.worker_classification ILIKE $2 OR pi.description ILIKE $2 OR pr.payroll_run_number ILIKE $2 OR w.first_name ILIKE $2 OR w.last_name ILIKE $2 OR project.name ILIKE $2 OR crew.name ILIKE $2
         )
         UNION ALL
+        SELECT 'payment_batch' AS object_type, pb.id, pb.payment_batch_number AS title, pb.status,
+          concat_ws(' ', pb.payment_batch_number, pb.batch_type, pb.payment_method, pb.status, pb.approval_status, pb.execution_status, pb.execution_reference, pb.failure_reason, pb.notes) AS snippet
+        FROM payment_batches pb
+        WHERE pb.tenant_id = $1 AND pb.deleted_at IS NULL AND ($3::boolean OR pb.status <> 'archived') AND (
+          pb.payment_batch_number ILIKE $2 OR pb.batch_type ILIKE $2 OR pb.payment_method ILIKE $2 OR pb.status ILIKE $2 OR pb.approval_status ILIKE $2 OR pb.execution_status ILIKE $2 OR pb.execution_reference ILIKE $2 OR pb.failure_reason ILIKE $2 OR pb.notes ILIKE $2
+        )
+        UNION ALL
+        SELECT 'payment_item' AS object_type, pi2.id, concat_ws(' ', pi2.source_type, pi2.payee_name, pb.payment_batch_number) AS title, pi2.status,
+          concat_ws(' ', pi2.source_type, pi2.payee_type, pi2.status, pi2.execution_status, pi2.execution_reference, pi2.failure_reason, pi2.payee_name, pb.payment_batch_number, cp.payable_number, pr.payroll_run_number) AS snippet
+        FROM payment_items pi2
+        JOIN payment_batches pb ON pb.tenant_id = pi2.tenant_id AND pb.id = pi2.payment_batch_id
+        LEFT JOIN contractor_payables cp ON cp.tenant_id = pi2.tenant_id AND cp.id = pi2.contractor_payable_id
+        LEFT JOIN payroll_runs pr ON pr.tenant_id = pi2.tenant_id AND pr.id = pi2.payroll_run_id
+        WHERE pi2.tenant_id = $1 AND pi2.deleted_at IS NULL AND ($3::boolean OR pi2.status <> 'archived') AND (
+          pi2.source_type ILIKE $2 OR pi2.payee_type ILIKE $2 OR pi2.status ILIKE $2 OR pi2.execution_status ILIKE $2 OR pi2.execution_reference ILIKE $2 OR pi2.failure_reason ILIKE $2 OR pi2.payee_name ILIKE $2 OR pb.payment_batch_number ILIKE $2 OR cp.payable_number ILIKE $2 OR pr.payroll_run_number ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)

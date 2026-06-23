@@ -22,6 +22,7 @@ const coverage = [
   ["Sprint 11 KPIs", "apps/api/src/routes/kpis.controller.ts", "kpi.calculate"],
   ["Sprint 12 dashboards", "apps/api/src/routes/dashboards.controller.ts", "dashboard.executive.read"],
   ["Sprint 13 learning", "apps/api/src/routes/learning.controller.ts", "learning_score.recalculate"],
+  ["Payment execution", "apps/api/src/routes/payment-execution.controller.ts", "payment_batch.approve"],
 ];
 
 test("regression route and permission coverage exists for completed sprints", () => {
@@ -42,6 +43,7 @@ test("all sprint smoke commands are wired", () => {
   assert.equal(typeof packageJson.scripts["organization:smoke"], "string");
   assert.equal(typeof packageJson.scripts["contact:smoke"], "string");
   assert.equal(typeof packageJson.scripts["relationship:smoke"], "string");
+  assert.equal(typeof packageJson.scripts["payment-execution:smoke"], "string");
   assert.equal(typeof packageJson.scripts.test, "string");
 });
 
