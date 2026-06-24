@@ -17,6 +17,7 @@ const navItems = [
   ["/contractor-payables", "Contractor Payables"],
   ["/payroll", "Payroll"],
   ["/payments", "Payments"],
+  ["/bank-reconciliation", "Bank Reconciliation"],
   ["/executive", "Executive"],
   ["/growth", "Growth"],
   ["/operations", "Operations"],
