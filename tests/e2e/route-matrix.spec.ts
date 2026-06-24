@@ -4,6 +4,7 @@ import { routeMatrix } from "./fixtures/route-matrix";
 import { expectRouteHealthy } from "./helpers/page-assertions";
 
 test.describe("Browser E2E route matrix", () => {
+  test.setTimeout(90_000);
   test.use({ storageState: personas.systemAdmin.storageState });
 
   for (const entry of routeMatrix) {

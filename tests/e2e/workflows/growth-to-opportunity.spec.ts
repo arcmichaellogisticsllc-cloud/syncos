@@ -9,12 +9,16 @@ const records = JSON.parse(fs.readFileSync(path.join(process.cwd(), "tests/e2e/f
 test.describe("Critical skeleton: Growth to Opportunity", () => {
   test.use({ storageState: personas.growthOperator.storageState });
 
-  test("opens Cedar Ridge growth records in order", async ({ page }) => {
-    await expectRouteHealthy(page, records.signal.route, "Signal");
-    await expectRouteHealthy(page, records.organization.route, "Organization");
-    await expectRouteHealthy(page, records.contact.route, "Contact");
-    await expectRouteHealthy(page, records.relationshipMap.route, "Relationship");
-    await expectRouteHealthy(page, records.opportunityCandidate.route, "Candidate");
-    await expectRouteHealthy(page, records.opportunity.route, "Opportunity");
-  });
+  for (const step of [
+    ["Signal", records.signal.route, "Signal"],
+    ["Organization", records.organization.route, "Organization"],
+    ["Contact", records.contact.route, "Contact"],
+    ["Relationship Map", records.relationshipMap.route, "Relationship"],
+    ["Opportunity Candidate", records.opportunityCandidate.route, "Candidate"],
+    ["Opportunity", records.opportunity.route, "Opportunity"],
+  ] as const) {
+    test(`opens Cedar Ridge ${step[0]} record`, async ({ page }) => {
+      await expectRouteHealthy(page, step[1], step[2]);
+    });
+  }
 });

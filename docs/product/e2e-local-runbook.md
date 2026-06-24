@@ -43,10 +43,8 @@ DATABASE_URL=postgres:///syncos_e2e_demo AUTH_JWT_SECRET=e2e-secret-for-local-te
 In another terminal:
 
 ```bash
-WEB_BASE_URL=http://localhost:3138 NEXT_PUBLIC_API_BASE_URL=http://localhost:3137 PORT=3138 npm run dev -w @syncos/web
+WEB_BASE_URL=http://localhost:3138 SYNCOS_API_BASE_URL=http://localhost:3137 PORT=3138 npm run dev -w @syncos/web
 ```
-
-If the web app uses a different API base environment variable in a future sprint, update this runbook with the actual supported variable.
 
 ## Run Browser E2E
 
@@ -64,6 +62,17 @@ Full foundation suite:
 
 ```bash
 DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e
+```
+
+Expanded certification groups:
+
+```bash
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:hydration
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:personas
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:lifecycle
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:boundaries
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:timeline-audit
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:certification
 ```
 
 Debug:
@@ -84,7 +93,7 @@ These paths are gitignored.
 ## Known Limitations
 
 * This is a foundation suite, not full E2E certification.
-* No deep modal certification is implemented yet.
+* High-risk modal opening/required-field certification is implemented for representative payment, bank reconciliation, and accounting export actions.
 * No browser test is wired into `release:validate` yet.
 * Auth uses seeded users and runtime JWT storage state. No production login behavior was added.
-* Boundary assertions are table-count smoke checks; full before/after action certification remains future scope.
+* Boundary assertions include expanded page-inspection and source-snapshot checks. Full before/after action certification for every lifecycle modal remains future scope.

@@ -1,6 +1,6 @@
 # Browser E2E Test Harness
 
-Status: foundation implemented.
+Status: foundation implemented with certification expansion in progress.
 
 Current validated commit at sprint start: `df030878aa898103de585cf51acd8bf1a7af9106`.
 
@@ -12,7 +12,7 @@ Current validated commit at sprint start: `df030878aa898103de585cf51acd8bf1a7af9
 | API package scripts | API build/start and all smoke scripts through Accounting Export exist. | Supported | Smokes use HMAC JWTs from `AUTH_JWT_SECRET`. |
 | Web package scripts | Next build/typecheck/dev exist. | Supported | No production UI routes were added for E2E. |
 | Existing test dependencies | Node test runner existed; `@playwright/test` was added as dev dependency. | Supported | Browser binaries are not committed. |
-| Existing tests directory | Regression tests existed; `tests/e2e` now contains Playwright foundation tests. | Supported | Full modal certification remains future scope. |
+| Existing tests directory | Regression tests existed; `tests/e2e` now contains Playwright foundation and expanded certification-readiness tests. | Supported | Full modal matrix certification remains future scope. |
 | Release validation | Builds API/worker/web, runs db verify and all domain smokes. | Supported | Browser E2E remains a separate CI-ready command. |
 | Database seed | Baseline Jackson Telcom seed existed; `seed:e2e-demo` now adds ARC/Cedar Ridge tenant data after `db:verify`. | Supported | No migrations were added. |
 | Permission seed | Global permissions and roles are seeded by baseline seed. | Supported | E2E seed creates tenant-scoped persona roles from existing permission keys. |
@@ -61,6 +61,13 @@ Environment:
 * `tests/e2e/workflows/cost-labor-payment.spec.ts`
 * `tests/e2e/workflows/bank-reconciliation.spec.ts`
 * `tests/e2e/workflows/accounting-export.spec.ts`
+* `tests/e2e/detail-hydration/checkpoint-details.spec.ts`
+* `tests/e2e/personas/minimum-personas.spec.ts`
+* `tests/e2e/lifecycle/high-risk-modals.spec.ts`
+* `tests/e2e/boundaries/downstream-creation.spec.ts`
+* `tests/e2e/boundaries/source-mutation.spec.ts`
+* `tests/e2e/boundaries/boundary-copy.spec.ts`
+* `tests/e2e/timeline-audit/representative-events.spec.ts`
 
 ## Implemented Boundary Helpers
 
@@ -74,6 +81,19 @@ Current boundary smoke verifies:
 
 Full action-level boundary certification remains future scope.
 
+## Expanded Test Groups
+
+Package scripts:
+
+* `npm run e2e:hydration`
+* `npm run e2e:personas`
+* `npm run e2e:lifecycle`
+* `npm run e2e:boundaries`
+* `npm run e2e:timeline-audit`
+* `npm run e2e:certification`
+
+These groups increase certification readiness but do not make SyncOS fully E2E-certified. Full certification still requires every required lifecycle modal, persona, audit path, timeline path, and forbidden downstream assertion in the product matrix.
+
 ## Current Limitations
 
-The initial route matrix asserts HTTP success, absence of runtime/404 failures, visible app shell content, and stable route/domain text. Some existing detail workspaces still show a session prompt or "not found or no access" message until their local workspace session controls are applied. The foundation does not add production login behavior or rewrite those workspaces. Full seeded detail hydration is therefore a follow-up certification requirement, not silently treated as completed.
+The expanded suite now includes seeded detail hydration checks. Any detail route that does not render seeded labels or deterministic IDs is treated as a real E2E gap, not a route-load pass. Full action submission coverage for every modal remains incomplete and is tracked in the certification gap backlog.
