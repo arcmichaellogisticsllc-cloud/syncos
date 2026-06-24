@@ -1,32 +1,57 @@
 # Accounting Export Workspace Product Contract
 
-No Accounting Export UI is implemented in this backend foundation sprint.
+Accounting Export Workspace exposes the hardened Accounting Export backend as an operator control surface for export preparation only.
 
-Future workspace scope may expose:
+## Routes
 
-- export batch queue
-- export batch detail
-- export item management
-- source context
-- mapping status review
-- export status review
-- generate/review/approval actions
-- manual submitted/accepted/failed status actions
-- timeline and audit views
+- `/accounting-exports`
+- `/accounting-exports/new`
+- `/accounting-exports/:id`
+- `/accounting-exports/:id/edit`
+- `/accounting-export-items/:id`
 
-The future UI must use backend routes only and must not direct-query the database.
+No QuickBooks, Sage, NetSuite, ERP, GL, tax, accounting close, payment, bank transaction, or external accounting provider routes are added.
 
-Future UI must not:
+## Queue
 
-- integrate QuickBooks, Sage, NetSuite, or ERP APIs
-- post GL entries
-- create journals
-- file taxes
-- generate W2s or 1099s
-- close periods
-- create payments
-- create bank transactions
-- mutate source financial facts
-- provide file downloads unless a later backend contract explicitly supports them
+The queue shows export batch number, export type, target system, export format, status, approval status, export status, period, item count, debit/credit/total amounts, currency, generated file reference, external batch reference, submitted/accepted/rejected dates, error count, retry count, recommended next action, and updated date.
 
-Placeholders should make clear that accounting-system submission, GL posting, accounting close, tax filing, and file downloads are future workflows.
+Filters include export type, target system, export format, status, approval status, export status, period range, submitted/accepted date range, error flags, archive state, text search, and sort controls.
+
+## Forms
+
+Create requires export type, target system, and export format. Period, currency, notes, and override reasons are optional.
+
+Edit allows backend-supported preparation fields only: period, target system, export format, currency, notes, and override reasons.
+
+## Item Management
+
+Operators can add supported source objects as export items, edit mapping fields, open item detail, and archive export items. Item actions call only Accounting Export backend routes.
+
+## Source Context
+
+Source context is displayed through safe summaries, IDs, and links where existing routes are available. Source records are not mutated by Accounting Export.
+
+## Mapping
+
+The workspace surfaces unmapped, mapped, mapping warning, mapping error, and override mapped states. Mapping edits prepare export data only and do not create external accounting records.
+
+## Target / Format
+
+Target system and export format are status labels. QuickBooks, Sage, NetSuite, ERP APIs, API payload generation, IIF generation, and file downloads remain future scope unless a later backend contract exposes safe metadata-only behavior.
+
+## Lifecycle
+
+Generate is status-only. Submit review, start review, approve, reject, mark submitted, mark accepted, mark failed, cancel, and archive use hardened backend routes. Mark submitted and accepted are manual/status-only references.
+
+## Placeholders
+
+The workspace includes placeholders for future QuickBooks, ERP, GL, Tax, Accounting Close, and File Download workflows.
+
+## Permissions
+
+UI actions are hidden or disabled using `accounting_export_batch.*` and `accounting_export_item.*` permissions. Backend permissions remain authoritative.
+
+## Boundaries
+
+The workspace does not call QuickBooks, Sage, NetSuite, or ERP APIs; does not post GL entries; does not create journals, tax filings, W2s, 1099s, payments, bank transactions, accounting-close records, external records, file downloads, or source mutations.
