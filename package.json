@@ -50,6 +50,7 @@
     "payroll:smoke": "npm run smoke:payroll -w @syncos/api",
     "payment-execution:smoke": "npm run smoke:payment-execution -w @syncos/api",
     "bank-reconciliation:smoke": "npm run smoke:bank-reconciliation -w @syncos/api",
+    "accounting-export:smoke": "npm run smoke:accounting-export -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {

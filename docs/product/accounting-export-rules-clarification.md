@@ -886,3 +886,11 @@ Only non-mutating checks are required for this clarification:
 - `git diff --check`
 
 No code, migrations, routes, or UI were created by this clarification.
+
+## 32. Backend Foundation Follow-Up
+
+The approved next backend foundation is documented in `docs/product/accounting-export-backend-contract.md`.
+
+The backend foundation remains bounded to Accounting Export batches/items, source-object intake, mapping/export status, manual/status-only submission and acceptance, timeline, audit, search, and smoke validation.
+
+QuickBooks, Sage, NetSuite, ERP APIs, GL posting, journal creation, tax filing, W2/1099 generation, accounting close, payment creation, bank transaction creation, source financial fact mutation, and file download generation remain out of scope unless a later product contract explicitly approves them.

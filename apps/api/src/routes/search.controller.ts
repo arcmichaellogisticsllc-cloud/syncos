@@ -338,6 +338,21 @@ export class SearchController {
           rm.match_type ILIKE $2 OR rm.matched_object_type ILIKE $2 OR rm.match_status ILIKE $2 OR rm.match_confidence ILIKE $2 OR rm.match_reason ILIKE $2 OR bt.description ILIKE $2 OR bt.bank_reference ILIKE $2 OR pb.payment_batch_number ILIKE $2 OR cr.receipt_number ILIKE $2
         )
         UNION ALL
+        SELECT 'accounting_export_batch' AS object_type, aeb.id, aeb.export_batch_number AS title, aeb.status,
+          concat_ws(' ', aeb.export_batch_number, aeb.export_type, aeb.target_system, aeb.export_format, aeb.status, aeb.approval_status, aeb.export_status, aeb.external_batch_reference, aeb.failure_reason, aeb.notes) AS snippet
+        FROM accounting_export_batches aeb
+        WHERE aeb.tenant_id = $1 AND aeb.deleted_at IS NULL AND ($3::boolean OR aeb.status <> 'archived') AND (
+          aeb.export_batch_number ILIKE $2 OR aeb.export_type ILIKE $2 OR aeb.target_system ILIKE $2 OR aeb.export_format ILIKE $2 OR aeb.status ILIKE $2 OR aeb.approval_status ILIKE $2 OR aeb.export_status ILIKE $2 OR aeb.external_batch_reference ILIKE $2 OR aeb.failure_reason ILIKE $2 OR aeb.notes ILIKE $2
+        )
+        UNION ALL
+        SELECT 'accounting_export_item' AS object_type, aei.id, concat_ws(' ', aei.export_item_type, aeb.export_batch_number) AS title, aei.export_status AS status,
+          concat_ws(' ', aei.source_object_type, aei.export_item_type, aei.export_status, aei.mapping_status, aei.target_account_code, aei.target_account_name, aei.target_entity_reference, aei.external_reference, aei.error_message, aeb.export_batch_number) AS snippet
+        FROM accounting_export_items aei
+        JOIN accounting_export_batches aeb ON aeb.tenant_id = aei.tenant_id AND aeb.id = aei.accounting_export_batch_id
+        WHERE aei.tenant_id = $1 AND aei.deleted_at IS NULL AND ($3::boolean OR aei.export_status <> 'archived') AND (
+          aei.source_object_type ILIKE $2 OR aei.export_item_type ILIKE $2 OR aei.export_status ILIKE $2 OR aei.mapping_status ILIKE $2 OR aei.target_account_code ILIKE $2 OR aei.target_account_name ILIKE $2 OR aei.target_entity_reference ILIKE $2 OR aei.external_reference ILIKE $2 OR aei.error_message ILIKE $2 OR aeb.export_batch_number ILIKE $2
+        )
+        UNION ALL
         SELECT 'payment' AS object_type, id, payment_reference AS title, status, concat_ws(' ', payment_reference, status) AS snippet
         FROM payments
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (payment_reference ILIKE $2 OR status ILIKE $2)
