@@ -5,3 +5,7 @@ dist/
 .DS_Store
 npm-debug.log*
 *.tsbuildinfo
+playwright-report/
+test-results/
+tests/e2e/.auth/
+tests/e2e/artifacts/

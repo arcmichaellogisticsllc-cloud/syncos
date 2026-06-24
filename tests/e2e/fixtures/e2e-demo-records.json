@@ -1,0 +1,284 @@
+{
+  "tenant": {
+    "id": "8b4ceb5b-5614-5b83-bfc4-16c793832202",
+    "name": "ARC SyncOS Demo Tenant"
+  },
+  "personas": {
+    "system-admin": {
+      "userId": "703dc310-056a-575d-9906-c8c74d0d5a00",
+      "email": "e2e.system.admin@syncos.test",
+      "roleName": "System Admin"
+    },
+    "growth-operator": {
+      "userId": "99988bf6-f28d-59df-a903-ae048a1f13e9",
+      "email": "e2e.growth.operator@syncos.test",
+      "roleName": "Growth Operator"
+    },
+    "ops-manager": {
+      "userId": "1884589c-b345-5645-b0b8-936430e709e7",
+      "email": "e2e.ops.manager@syncos.test",
+      "roleName": "Operations / Project Manager"
+    },
+    "field-supervisor": {
+      "userId": "463ed2e1-c9aa-5435-8bef-b84a011ea326",
+      "email": "e2e.field.supervisor@syncos.test",
+      "roleName": "Field Supervisor"
+    },
+    "qc-reviewer": {
+      "userId": "700a3144-6b78-5d65-9a37-2975e782670b",
+      "email": "e2e.qc.reviewer@syncos.test",
+      "roleName": "QC Reviewer"
+    },
+    "finance-user": {
+      "userId": "9ca126b7-bbd8-5463-a7f7-8aa8e1649219",
+      "email": "e2e.finance.user@syncos.test",
+      "roleName": "Billing / Finance User"
+    },
+    "collections-specialist": {
+      "userId": "81ed3b02-9c14-5143-b94d-5547066da01e",
+      "email": "e2e.collections.specialist@syncos.test",
+      "roleName": "Collections Specialist"
+    },
+    "payables-payroll-admin": {
+      "userId": "18a93111-69c2-5188-9181-36fc45c2d19e",
+      "email": "e2e.payables.payroll.admin@syncos.test",
+      "roleName": "Payables / Payroll Admin"
+    },
+    "accounting-manager": {
+      "userId": "3643bcf5-02b2-5171-a53d-55fd294a4398",
+      "email": "e2e.accounting.manager@syncos.test",
+      "roleName": "Accounting Manager"
+    },
+    "read-only-auditor": {
+      "userId": "093e7fa7-8ada-5c5d-9596-4489e588c105",
+      "email": "e2e.readonly.auditor@syncos.test",
+      "roleName": "Read-Only Auditor"
+    }
+  },
+  "records": {
+    "signal": {
+      "objectType": "Signal",
+      "id": "a0d4da94-a197-538f-ba6c-371154494228",
+      "name": "Cedar Ridge Fiber Expansion RFP Discovered",
+      "route": "/intelligence/signals/a0d4da94-a197-538f-ba6c-371154494228",
+      "routePattern": "/intelligence/signals/:id",
+      "recommendedPersona": "growth-operator"
+    },
+    "organization": {
+      "objectType": "Organization",
+      "id": "432e658f-4058-51e2-bd24-f0b644f431a5",
+      "name": "Cedar Ridge Utility Authority",
+      "route": "/intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5",
+      "routePattern": "/intelligence/organizations/:id",
+      "recommendedPersona": "growth-operator"
+    },
+    "contact": {
+      "objectType": "Contact",
+      "id": "44210d51-0251-5c85-a581-5149f269f21a",
+      "name": "Dana Lewis",
+      "route": "/intelligence/contacts/44210d51-0251-5c85-a581-5149f269f21a",
+      "routePattern": "/intelligence/contacts/:id",
+      "recommendedPersona": "growth-operator"
+    },
+    "relationshipMap": {
+      "objectType": "Relationship Map",
+      "id": "b7edc55d-4170-508a-8867-088de5d63bb7",
+      "name": "Cedar Ridge Access Map",
+      "route": "/intelligence/relationship-maps/b7edc55d-4170-508a-8867-088de5d63bb7",
+      "routePattern": "/intelligence/relationship-maps/:id",
+      "recommendedPersona": "growth-operator"
+    },
+    "opportunityCandidate": {
+      "objectType": "Opportunity Candidate",
+      "id": "6ac46226-5759-5192-98d2-47dbaea00b12",
+      "name": "Cedar Ridge Phase 1 Candidate",
+      "route": "/opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12",
+      "routePattern": "/opportunities/candidates/:id",
+      "recommendedPersona": "growth-operator"
+    },
+    "opportunity": {
+      "objectType": "Opportunity",
+      "id": "4cd11c9f-64e0-519e-9a00-248720684e97",
+      "name": "Cedar Ridge Phase 1 Fiber Build",
+      "route": "/opportunities/4cd11c9f-64e0-519e-9a00-248720684e97",
+      "routePattern": "/opportunities/:id",
+      "recommendedPersona": "growth-operator"
+    },
+    "coveragePlan": {
+      "objectType": "Coverage Plan",
+      "id": "6c2adb9e-689f-5924-87d2-7fa46c416165",
+      "name": "Cedar Ridge Phase 1 Coverage Plan",
+      "route": "/opportunities/coverage/6c2adb9e-689f-5924-87d2-7fa46c416165",
+      "routePattern": "/opportunities/coverage/:id",
+      "recommendedPersona": "ops-manager"
+    },
+    "projectHandoff": {
+      "objectType": "Project Handoff",
+      "id": "77972369-3fd1-50d8-98bc-8c84343c4e72",
+      "name": "Cedar Ridge Phase 1 Handoff",
+      "route": "/project-handoffs/77972369-3fd1-50d8-98bc-8c84343c4e72",
+      "routePattern": "/project-handoffs/:id",
+      "recommendedPersona": "ops-manager"
+    },
+    "project": {
+      "objectType": "Project",
+      "id": "3e8fdeb8-dece-5285-833d-db832a5180fd",
+      "name": "Cedar Ridge Phase 1 Fiber Build",
+      "route": "/projects/3e8fdeb8-dece-5285-833d-db832a5180fd",
+      "routePattern": "/projects/:id",
+      "recommendedPersona": "ops-manager"
+    },
+    "workOrder": {
+      "objectType": "Work Order",
+      "id": "6059ac12-783a-5172-a229-0213f1569b13",
+      "name": "WO-CR-001 Underground Fiber Segment A",
+      "route": "/work-orders/6059ac12-783a-5172-a229-0213f1569b13",
+      "routePattern": "/work-orders/:id",
+      "recommendedPersona": "ops-manager"
+    },
+    "productionRecord": {
+      "objectType": "Production Record",
+      "id": "d07f0f37-b932-50c0-a3c2-f007b62be454",
+      "name": "PRD-CR-001 Daily Production Segment A",
+      "route": "/production/d07f0f37-b932-50c0-a3c2-f007b62be454",
+      "routePattern": "/production/:id",
+      "recommendedPersona": "field-supervisor"
+    },
+    "qcReview": {
+      "objectType": "QC Review",
+      "id": "6d64587a-51d3-5b2b-b7c2-10eacd7b7789",
+      "name": "QC-CR-001 Internal QC Segment A",
+      "route": "/qc/6d64587a-51d3-5b2b-b7c2-10eacd7b7789",
+      "routePattern": "/qc/:id",
+      "recommendedPersona": "qc-reviewer"
+    },
+    "billableItem": {
+      "objectType": "Billable Item",
+      "id": "c8ec8491-f179-579d-b19e-7428149abf97",
+      "name": "BILL-CR-001 Segment A Billable",
+      "route": "/billable/c8ec8491-f179-579d-b19e-7428149abf97",
+      "routePattern": "/billable/:id",
+      "recommendedPersona": "finance-user"
+    },
+    "settlement": {
+      "objectType": "Settlement",
+      "id": "0899699c-1cb9-5955-b337-cdfb99e94538",
+      "name": "SET-CR-001 Cedar Ridge Settlement",
+      "route": "/settlements/0899699c-1cb9-5955-b337-cdfb99e94538",
+      "routePattern": "/settlements/:id",
+      "recommendedPersona": "finance-user"
+    },
+    "invoice": {
+      "objectType": "Invoice",
+      "id": "c8c9233d-8c96-55d9-a920-04dd928234ef",
+      "name": "INV-CR-001 Cedar Ridge Invoice",
+      "route": "/invoices/c8c9233d-8c96-55d9-a920-04dd928234ef",
+      "routePattern": "/invoices/:id",
+      "recommendedPersona": "finance-user"
+    },
+    "cashReceipt": {
+      "objectType": "Cash Receipt",
+      "id": "9602b2c7-be2a-5abe-bb15-24dba6ef722f",
+      "name": "RCPT-CR-001 Cedar Ridge Partial Payment",
+      "route": "/cash/receipts/9602b2c7-be2a-5abe-bb15-24dba6ef722f",
+      "routePattern": "/cash/receipts/:id",
+      "recommendedPersona": "finance-user"
+    },
+    "paymentApplication": {
+      "objectType": "Payment Application",
+      "id": "15a8aea5-78eb-5183-82d8-35820df26cc3",
+      "name": "PAYAPP-CR-001 Cedar Ridge Partial Application",
+      "route": "/payment-applications/15a8aea5-78eb-5183-82d8-35820df26cc3",
+      "routePattern": "/payment-applications/:id",
+      "recommendedPersona": "finance-user"
+    },
+    "collectionCase": {
+      "objectType": "Collection Case",
+      "id": "eea202fc-fbf1-53e0-a1ee-c0c62fe22cf0",
+      "name": "COLL-CR-001 Cedar Ridge Balance Follow-Up",
+      "route": "/collections/eea202fc-fbf1-53e0-a1ee-c0c62fe22cf0",
+      "routePattern": "/collections/:id",
+      "recommendedPersona": "collections-specialist"
+    },
+    "collectionAction": {
+      "objectType": "Collection Action",
+      "id": "4f84f07c-4653-5a25-92b6-ff1bfcf04c0e",
+      "name": "COLL-CR-001 Payment Reminder",
+      "route": "/collection-actions/4f84f07c-4653-5a25-92b6-ff1bfcf04c0e",
+      "routePattern": "/collection-actions/:id",
+      "recommendedPersona": "collections-specialist"
+    },
+    "contractorPayable": {
+      "objectType": "Contractor Payable",
+      "id": "0532f1ae-3ea9-5722-a17d-1ef59c055c60",
+      "name": "CPAY-CR-001 Blue Splice Payable",
+      "route": "/contractor-payables/0532f1ae-3ea9-5722-a17d-1ef59c055c60",
+      "routePattern": "/contractor-payables/:id",
+      "recommendedPersona": "payables-payroll-admin"
+    },
+    "payrollRun": {
+      "objectType": "Payroll Run",
+      "id": "9a5e24b3-f800-5af8-9ae3-ca1f5d42bfb6",
+      "name": "PR-CR-001 Weekly Payroll",
+      "route": "/payroll/9a5e24b3-f800-5af8-9ae3-ca1f5d42bfb6",
+      "routePattern": "/payroll/:id",
+      "recommendedPersona": "payables-payroll-admin"
+    },
+    "paymentBatch": {
+      "objectType": "Payment Batch",
+      "id": "7123d00c-09b2-5bce-bc4a-ccffe41f0639",
+      "name": "PB-CR-001 Payment Batch",
+      "route": "/payments/7123d00c-09b2-5bce-bc4a-ccffe41f0639",
+      "routePattern": "/payments/:id",
+      "recommendedPersona": "payables-payroll-admin"
+    },
+    "paymentItem": {
+      "objectType": "Payment Item",
+      "id": "6a46faba-f5a3-521e-aac6-4a334c104f9e",
+      "name": "PB-CR-001 Contractor Payment Item",
+      "route": "/payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e",
+      "routePattern": "/payment-items/:id",
+      "recommendedPersona": "payables-payroll-admin"
+    },
+    "bankAccount": {
+      "objectType": "Bank Account",
+      "id": "46166eca-ccc1-5390-b5da-05c5d36d613f",
+      "name": "ARC Operating Account",
+      "route": "/bank-reconciliation/accounts/46166eca-ccc1-5390-b5da-05c5d36d613f",
+      "routePattern": "/bank-reconciliation/accounts/:id",
+      "recommendedPersona": "accounting-manager"
+    },
+    "bankTransaction": {
+      "objectType": "Bank Transaction",
+      "id": "157b1af5-9bb3-5ad9-9305-1d12b7b364dd",
+      "name": "BTX-CR-001 Manual Bank Clearing",
+      "route": "/bank-reconciliation/transactions/157b1af5-9bb3-5ad9-9305-1d12b7b364dd",
+      "routePattern": "/bank-reconciliation/transactions/:id",
+      "recommendedPersona": "accounting-manager"
+    },
+    "reconciliationMatch": {
+      "objectType": "Reconciliation Match",
+      "id": "e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e",
+      "name": "RM-CR-001 Bank Match",
+      "route": "/reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e",
+      "routePattern": "/reconciliation-matches/:id",
+      "recommendedPersona": "accounting-manager"
+    },
+    "accountingExportBatch": {
+      "objectType": "Accounting Export Batch",
+      "id": "b82c2439-08d3-5f49-8bf0-5b5538884df6",
+      "name": "AEX-CR-001 Accounting Export",
+      "route": "/accounting-exports/b82c2439-08d3-5f49-8bf0-5b5538884df6",
+      "routePattern": "/accounting-exports/:id",
+      "recommendedPersona": "accounting-manager"
+    },
+    "accountingExportItem": {
+      "objectType": "Accounting Export Item",
+      "id": "012a13a5-3f55-5523-a45c-d5f79a5367e0",
+      "name": "AEX-CR-001 Invoice Export Item",
+      "route": "/accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0",
+      "routePattern": "/accounting-export-items/:id",
+      "recommendedPersona": "accounting-manager"
+    }
+  }
+}

@@ -13,7 +13,16 @@
     "test": "node --test tests/*.test.js",
     "db:migrate": "npm run migrate -w @syncos/database",
     "db:seed": "npm run seed -w @syncos/database",
+    "seed:e2e-demo": "node packages/database/scripts/seed-e2e-demo.js",
     "db:verify": "npm run verify:migrations -w @syncos/database",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:debug": "playwright test --debug",
+    "e2e:ui": "playwright test --ui",
+    "e2e:route-matrix": "playwright test tests/e2e/route-matrix.spec.ts",
+    "e2e:critical": "playwright test tests/e2e/workflows",
+    "e2e:report": "playwright show-report",
+    "e2e:seed-smoke": "node tests/e2e/validate-seed.js",
     "security:smoke": "npm run smoke:security -w @syncos/api",
     "sprint1:smoke": "npm run smoke:sprint1 -w @syncos/api",
     "sprint2:smoke": "npm run smoke:sprint2 -w @syncos/api",
@@ -54,6 +63,7 @@
     "release:validate": "bash scripts/release-validation.sh"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "typescript": "^5.5.4"
   }
 }
