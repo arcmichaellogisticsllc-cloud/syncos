@@ -65,6 +65,90 @@ const ids = Object.freeze({
   accountingExportItemBank: uuid("accounting-export-item:bank"),
 });
 
+const actionIds = Object.freeze({
+  // Production action state records
+  prodDraft: uuid("action-production-draft"),
+  prodSubmitted: uuid("action-production-submitted"),
+  prodUnderReview: uuid("action-production-under-review"),
+  prodCorrectionRequested: uuid("action-production-correction-requested"),
+  prodApprovedNotMarked: uuid("action-production-approved-not-marked"),
+  prodVoid: uuid("action-production-void"),
+  // QC action state records
+  qcPending: uuid("action-qc-pending"),
+  qcInReview: uuid("action-qc-in-review"),
+  qcCorrectionRequested: uuid("action-qc-correction-requested"),
+  qcVoid: uuid("action-qc-void"),
+  // Billable action state records
+  billableDraft: uuid("action-billable-draft"),
+  billableOnHold: uuid("action-billable-on-hold"),
+  billableDisputed: uuid("action-billable-disputed"),
+  billableVoid: uuid("action-billable-void"),
+  // Settlement action state records
+  settlementDraft: uuid("action-settlement-draft"),
+  settlementItemDraft: uuid("action-settlement-item-draft"),
+  settlementUnderReview: uuid("action-settlement-under-review"),
+  settlementApproved: uuid("action-settlement-approved"),
+  settlementDisputed: uuid("action-settlement-disputed"),
+  settlementVoid: uuid("action-settlement-void"),
+  // Invoice action state records
+  invoiceDraft: uuid("action-invoice-draft"),
+  invoiceItemDraft: uuid("action-invoice-item-draft"),
+  invoiceUnderReview: uuid("action-invoice-under-review"),
+  invoiceApproved: uuid("action-invoice-approved"),
+  invoiceDisputed: uuid("action-invoice-disputed"),
+  invoiceVoid: uuid("action-invoice-void"),
+  // Cash Application action state records
+  cashReceiptUnapplied: uuid("action-cash-receipt-unapplied"),
+  cashReceiptVoidTarget: uuid("action-cash-receipt-void-target"),
+  cashReceiptVoid: uuid("action-cash-receipt-void"),
+  paymentApplicationApplied: uuid("action-payment-application-applied"),
+  paymentApplicationVoid: uuid("action-payment-application-void"),
+  // Collections action state records
+  collectionCaseOpen: uuid("action-collection-case-open"),
+  collectionCaseClosed: uuid("action-collection-case-closed"),
+  collectionActionPlanned: uuid("action-collection-action-planned"),
+  collectionActionCompleted: uuid("action-collection-action-completed"),
+  // Contractor Payable action state records
+  cpayDraft: uuid("action-cpay-draft"),
+  cpayItemDraft: uuid("action-cpay-item-draft"),
+  cpayUnderReview: uuid("action-cpay-under-review"),
+  cpayApproved: uuid("action-cpay-approved"),
+  cpayDisputed: uuid("action-cpay-disputed"),
+  cpayVoid: uuid("action-cpay-void"),
+  // Payroll action state records
+  payrollDraft: uuid("action-payroll-draft"),
+  payrollItemDraft: uuid("action-payroll-item-draft"),
+  payrollUnderReview: uuid("action-payroll-under-review"),
+  payrollApproved: uuid("action-payroll-approved"),
+  payrollDisputed: uuid("action-payroll-disputed"),
+  payrollVoid: uuid("action-payroll-void"),
+  // Payment Batch action state records
+  paymentBatchDraft: uuid("action-payment-batch-draft"),
+  paymentBatchUnderReview: uuid("action-payment-batch-under-review"),
+  paymentBatchApproved: uuid("action-payment-batch-approved"),
+  paymentBatchScheduled: uuid("action-payment-batch-scheduled"),
+  paymentBatchExecutionSubmitted: uuid("action-payment-batch-execution-submitted"),
+  paymentBatchVoidTarget: uuid("action-payment-batch-void-target"),
+  paymentBatchVoid: uuid("action-payment-batch-void"),
+  paymentItemDraft: uuid("action-payment-item-draft"),
+  // Bank Reconciliation action state records
+  bankAccountArchivable: uuid("action-bank-account-archivable"),
+  bankTxnUnmatchedDebit: uuid("action-bank-txn-unmatched-debit"),
+  bankTxnUnmatchedCredit: uuid("action-bank-txn-unmatched-credit"),
+  bankTxnExceptionNone: uuid("action-bank-txn-exception-none"),
+  bankTxnExceptionOpen: uuid("action-bank-txn-exception-open"),
+  bankTxnIgnorable: uuid("action-bank-txn-ignorable"),
+  reconMatchProposed: uuid("action-recon-match-proposed"),
+  // Accounting Export action state records
+  aexDraft: uuid("action-aex-draft"),
+  aexItemDraft: uuid("action-aex-item-draft"),
+  aexGenerated: uuid("action-aex-generated"),
+  aexUnderReview: uuid("action-aex-under-review"),
+  aexSubmitted: uuid("action-aex-submitted"),
+  aexCancelable: uuid("action-aex-cancelable"),
+  aexVoid: uuid("action-aex-void"),
+});
+
 const personas = [
   ["system-admin", "System Admin", "e2e.system.admin@syncos.test", "E2E System Admin", ["*"]],
   ["growth-operator", "Growth Operator", "e2e.growth.operator@syncos.test", "E2E Growth Operator", ["signal.", "signal_evidence.", "signal_entity.", "organization.", "contact.", "relationship_map.", "relationship_path.", "opportunity_candidate.", "candidate_signal.", "opportunity.read", "opportunity.create", "opportunity.update", "opportunity.submit_review"]],
@@ -89,6 +173,7 @@ async function main() {
     await seedTenant(client);
     await seedPersonas(client);
     await seedCanonicalRecords(client);
+    await seedActionStateRecords(client);
     await client.query("COMMIT");
     writeManifest();
     console.log("E2E Cedar Ridge demo seed completed");
@@ -204,6 +289,115 @@ async function seedCanonicalRecords(client) {
   await client.query("UPDATE payroll_items SET payment_item_id = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3", [ids.payrollPaymentItem, ids.payrollItem, ids.tenant]);
 }
 
+async function seedActionStateRecords(client) {
+  const admin = uuid("persona-user:system-admin");
+  const t = ids.tenant;
+
+  // ── Production action state records ──────────────────────────────────────
+  const prodBase = { tenant_id: t, project_id: ids.project, work_order_id: ids.workOrder, capacity_provider_id: ids.provider, crew_id: ids.crew, foreman_user_id: admin, production_date: "2026-02-01", quantity_submitted: 800, unit_type: "feet", quantity: 800, unit: "feet", rate_code_id: ids.rateCode, created_by: admin, updated_by: admin };
+  await upsert(client, "production_records", { ...prodBase, id: actionIds.prodDraft, review_notes: "E2E Action Production Submittable", status: "draft", billable_status: "not_marked" });
+  await upsert(client, "production_records", { ...prodBase, id: actionIds.prodSubmitted, review_notes: "E2E Action Production Review Startable", status: "submitted", submitted_by_user_id: admin, billable_status: "not_marked" });
+  await upsert(client, "production_records", { ...prodBase, id: actionIds.prodUnderReview, review_notes: "E2E Action Production Approvable", status: "under_review", submitted_by_user_id: admin, billable_status: "not_marked" });
+  await upsert(client, "production_records", { ...prodBase, id: actionIds.prodCorrectionRequested, review_notes: "E2E Action Production Correctable", status: "correction_requested", submitted_by_user_id: admin, billable_status: "not_marked" });
+  await upsert(client, "production_records", { ...prodBase, id: actionIds.prodApprovedNotMarked, review_notes: "E2E Action Production Billable Markable", status: "approved", accepted_quantity: 800, accepted_by: admin, accepted_at: "2026-02-01T18:00:00Z", approved_quantity: 800, approved_by: admin, approved_at: "2026-02-01T19:00:00Z", billable_status: "not_marked" });
+  await upsert(client, "production_records", { ...prodBase, id: actionIds.prodVoid, review_notes: "E2E Action Production Archivable", status: "void", submitted_by_user_id: admin, billable_status: "void" });
+
+  // ── QC action state records ───────────────────────────────────────────────
+  const qcBase = { tenant_id: t, production_record_id: ids.productionRecord, work_order_id: ids.workOrder, project_id: ids.project, review_type: "internal_qc", claimed_quantity: 800, unit: "feet", evidence_status: "sufficient", location_status: "valid", documentation_status: "sufficient", production_status: "valid", created_by: admin, updated_by: admin };
+  await upsert(client, "qc_reviews", { ...qcBase, id: actionIds.qcPending, review_notes: "E2E Action QC Startable", review_status: "pending" });
+  await upsert(client, "qc_reviews", { ...qcBase, id: actionIds.qcInReview, review_notes: "E2E Action QC Approvable", review_status: "in_review", reviewer_user_id: admin });
+  await upsert(client, "qc_reviews", { ...qcBase, id: actionIds.qcCorrectionRequested, review_notes: "E2E Action QC Correctable", review_status: "correction_requested", reviewer_user_id: admin });
+  await upsert(client, "qc_reviews", { ...qcBase, id: actionIds.qcVoid, review_notes: "E2E Action QC Archivable", review_status: "void" });
+
+  // ── Billable action state records ─────────────────────────────────────────
+  const billBase = { tenant_id: t, project_id: ids.project, work_order_id: ids.workOrder, production_record_id: ids.productionRecord, qc_review_id: ids.qcReview, customer_organization_id: ids.orgCustomer, capacity_provider_id: ids.provider, crew_id: ids.crew, approved_quantity: 800, billable_quantity: 800, held_quantity: 0, unit: "feet", rate_code_id: ids.rateCode, unit_rate: 10, rate_source: "contract_rate", rate_confidence: "confirmed", estimated_billable_amount: 8000, net_billable_amount: 8000, customer_acceptance_status: "accepted", billing_package_status: "ready", documentation_status: "ready", created_by: admin, updated_by: admin };
+  await upsert(client, "billable_items", { ...billBase, id: actionIds.billableDraft, rate_description: "E2E Action Billable Recalculatable", status: "draft", readiness_status: "draft", readiness_score: 40, readiness_band: "not_ready" });
+  await upsert(client, "billable_items", { ...billBase, id: actionIds.billableOnHold, rate_description: "E2E Action Billable Releasable", status: "on_hold", readiness_status: "on_hold", readiness_score: 60, readiness_band: "ready_with_warnings" });
+  await upsert(client, "billable_items", { ...billBase, id: actionIds.billableDisputed, rate_description: "E2E Action Billable Dispute Resolvable", status: "disputed", readiness_status: "disputed", readiness_score: 20, readiness_band: "not_ready" });
+  await upsert(client, "billable_items", { ...billBase, id: actionIds.billableVoid, rate_description: "E2E Action Billable Archivable", status: "void", readiness_status: "void", readiness_score: 0, readiness_band: "not_ready" });
+
+  // ── Settlement action state records ───────────────────────────────────────
+  const setBase = { tenant_id: t, contract_id: ids.contract, customer_organization_id: ids.orgCustomer, capacity_provider_id: ids.provider, billing_period_start: "2026-02-01", billing_period_end: "2026-02-07", gross_amount: 8000, net_amount: 8000, total_amount: 8000, settlement_type: "customer_billable", project_id: ids.project, settlement_period_start: "2026-02-01", settlement_period_end: "2026-02-07", gross_billable_amount: 8000, contractor_payable_amount: 5600, net_settlement_amount: 8000, estimated_margin_amount: 2400, estimated_margin_percent: 30, created_by: admin, updated_by: admin };
+  await upsert(client, "settlements", { ...setBase, id: actionIds.settlementDraft, settlement_number: "SET-ACT-001", settlement_name: "E2E Action Settlement Draft", status: "draft", readiness_status: "draft", readiness_score: 40, readiness_band: "not_ready", invoice_ready: false, payable_ready: false });
+  await upsert(client, "settlement_items", { id: actionIds.settlementItemDraft, tenant_id: t, settlement_id: actionIds.settlementDraft, production_record_id: ids.productionRecord, rate_code_id: ids.rateCode, quantity: 800, unit_rate: 10, gross_amount: 8000, amount: 8000, description: "E2E Action Settlement Item Draft", status: "draft", project_id: ids.project, work_order_id: ids.workOrder, qc_review_id: ids.qcReview, customer_organization_id: ids.orgCustomer, capacity_provider_id: ids.provider, crew_id: ids.crew, item_type: "customer_billable", unit: "feet", net_amount: 8000, contractor_rate: 7, contractor_payable_amount: 5600, margin_amount: 2400, margin_percent: 30, billing_package_status: "ready", documentation_status: "ready", customer_acceptance_status: "accepted", created_by: admin, updated_by: admin });
+  await upsert(client, "settlements", { ...setBase, id: actionIds.settlementUnderReview, settlement_number: "SET-ACT-002", settlement_name: "E2E Action Settlement Approvable", status: "under_review", readiness_status: "ready_for_approval", readiness_score: 88, readiness_band: "ready_for_approval", invoice_ready: false, payable_ready: false });
+  await upsert(client, "settlements", { ...setBase, id: actionIds.settlementApproved, settlement_number: "SET-ACT-003", settlement_name: "E2E Action Settlement Invoice Ready Markable", status: "approved", readiness_status: "ready_for_approval", readiness_score: 95, readiness_band: "ready_for_approval", invoice_ready: false, payable_ready: false, approved_by: admin, approved_at: "2026-02-05T12:00:00Z" });
+  await upsert(client, "settlements", { ...setBase, id: actionIds.settlementDisputed, settlement_number: "SET-ACT-004", settlement_name: "E2E Action Settlement Dispute Resolvable", status: "disputed", readiness_status: "disputed", readiness_score: 20, readiness_band: "not_ready", invoice_ready: false, payable_ready: false });
+  await upsert(client, "settlements", { ...setBase, id: actionIds.settlementVoid, settlement_number: "SET-ACT-005", settlement_name: "E2E Action Settlement Archivable", status: "void", readiness_status: "void", readiness_score: 0, readiness_band: "not_ready", invoice_ready: false, payable_ready: false });
+
+  // ── Invoice action state records ──────────────────────────────────────────
+  const invBase = { tenant_id: t, organization_id: ids.orgCustomer, customer_organization_id: ids.orgCustomer, project_id: ids.project, invoice_type: "standard", payment_terms: "net_30", currency: "USD", billing_period_start: "2026-02-01", billing_period_end: "2026-02-07", subtotal_amount: 8000, total_amount: 8000, original_amount: 8000, invoice_amount: 8000, paid_amount: 0, balance_amount: 8000, payment_status: "unpaid", created_by: admin, updated_by: admin };
+  await upsert(client, "invoices", { ...invBase, id: actionIds.invoiceDraft, settlement_id: actionIds.settlementApproved, invoice_number: "INV-ACT-001", invoice_date: "2026-02-05", due_date: "2026-03-07", status: "draft", approval_status: "pending", delivery_status: "not_sent", cash_application_status: "not_applied", collection_status: "none" });
+  await upsert(client, "invoice_items", { id: actionIds.invoiceItemDraft, tenant_id: t, invoice_id: actionIds.invoiceDraft, settlement_id: actionIds.settlementApproved, billable_item_id: ids.billableItem, qc_review_id: ids.qcReview, production_record_id: ids.productionRecord, work_order_id: ids.workOrder, project_id: ids.project, customer_organization_id: ids.orgCustomer, item_type: "customer_billable", status: "invoiced", description: "E2E Action Invoice Item Draft", quantity: 800, unit: "feet", unit_rate: 10, gross_amount: 8000, net_amount: 8000, created_by: admin, updated_by: admin });
+  await upsert(client, "invoices", { ...invBase, id: actionIds.invoiceUnderReview, settlement_id: actionIds.settlementApproved, invoice_number: "INV-ACT-002", invoice_date: "2026-02-05", due_date: "2026-03-07", status: "under_review", approval_status: "under_review", delivery_status: "not_sent", cash_application_status: "not_applied", collection_status: "none" });
+  await upsert(client, "invoices", { ...invBase, id: actionIds.invoiceApproved, settlement_id: actionIds.settlementApproved, invoice_number: "INV-ACT-003", invoice_date: "2026-02-05", due_date: "2026-03-07", status: "approved", approval_status: "approved", delivery_status: "not_sent", cash_application_status: "not_applied", collection_status: "none", approved_by: admin, approved_at: "2026-02-05T14:00:00Z" });
+  await upsert(client, "invoices", { ...invBase, id: actionIds.invoiceDisputed, settlement_id: actionIds.settlementApproved, invoice_number: "INV-ACT-004", invoice_date: "2026-02-05", due_date: "2026-03-07", status: "disputed", approval_status: "approved", delivery_status: "sent", cash_application_status: "not_applied", collection_status: "none", approved_by: admin, approved_at: "2026-02-05T14:00:00Z", sent_by: admin, sent_at: "2026-02-05T15:00:00Z" });
+  await upsert(client, "invoices", { ...invBase, id: actionIds.invoiceVoid, settlement_id: actionIds.settlementApproved, invoice_number: "INV-ACT-005", invoice_date: "2026-02-05", due_date: "2026-03-07", status: "void", approval_status: "void", delivery_status: "not_sent", cash_application_status: "not_applied", collection_status: "none" });
+
+  // ── Cash Application action state records ─────────────────────────────────
+  const crBase = { tenant_id: t, customer_organization_id: ids.orgCustomer, payer_name: "Cedar Ridge Utility Authority", payment_date: "2026-02-10", payment_method: "ach", currency: "USD", source_type: "manual", created_by: admin, updated_by: admin };
+  await upsert(client, "cash_receipts", { ...crBase, id: actionIds.cashReceiptUnapplied, receipt_number: "RCPT-ACT-001", notes: "E2E Action Cash Receipt Apply Ready", payment_reference: "ACH-ACT-001", external_transaction_id: "EXT-ACT-001", gross_received_amount: 3000, applied_amount: 0, unapplied_amount: 3000, receipt_status: "received", deposit_status: "deposited_later", reconciliation_status: "unreconciled" });
+  await upsert(client, "cash_receipts", { ...crBase, id: actionIds.cashReceiptVoidTarget, receipt_number: "RCPT-ACT-002", notes: "E2E Action Cash Receipt Voidable", payment_reference: "ACH-ACT-002", external_transaction_id: "EXT-ACT-002", gross_received_amount: 1000, applied_amount: 0, unapplied_amount: 1000, receipt_status: "received", deposit_status: "deposited_later", reconciliation_status: "unreconciled" });
+  await upsert(client, "cash_receipts", { ...crBase, id: actionIds.cashReceiptVoid, receipt_number: "RCPT-ACT-003", notes: "E2E Action Cash Receipt Archivable", payment_reference: "ACH-ACT-003", external_transaction_id: "EXT-ACT-003", gross_received_amount: 500, applied_amount: 0, unapplied_amount: 0, receipt_status: "void", deposit_status: "void", reconciliation_status: "void" });
+  await upsert(client, "payment_applications", { id: actionIds.paymentApplicationApplied, tenant_id: t, cash_receipt_id: actionIds.cashReceiptUnapplied, invoice_id: actionIds.invoiceApproved, customer_organization_id: ids.orgCustomer, applied_amount: 1000, application_date: "2026-02-10", application_status: "applied", application_type: "partial_payment", note: "E2E Action Payment Application Voidable", created_by: admin, updated_by: admin });
+  await upsert(client, "payment_applications", { id: actionIds.paymentApplicationVoid, tenant_id: t, cash_receipt_id: actionIds.cashReceiptVoidTarget, invoice_id: actionIds.invoiceApproved, customer_organization_id: ids.orgCustomer, applied_amount: 500, application_date: "2026-02-10", application_status: "void", application_type: "partial_payment", note: "E2E Action Payment Application Archivable", created_by: admin, updated_by: admin });
+
+  // ── Collections action state records ──────────────────────────────────────
+  await upsert(client, "collection_cases", { id: actionIds.collectionCaseOpen, tenant_id: t, invoice_id: actionIds.invoiceApproved, customer_organization_id: ids.orgCustomer, case_number: "COLL-ACT-001", case_status: "open", collection_priority: "medium", risk_level: "medium", aging_bucket: "1_30", dispute_status: "none", escalation_status: "none", writeoff_review_status: "not_ready", assigned_owner_user_id: admin, balance_at_open: 8000, current_balance: 8000, original_invoice_amount: 8000, last_payment_amount: 0, next_action_type: "payment_reminder", notes: "E2E Action Collection Case Assignable", created_by: admin, updated_by: admin });
+  await upsert(client, "collection_cases", { id: actionIds.collectionCaseClosed, tenant_id: t, invoice_id: actionIds.invoiceDisputed, customer_organization_id: ids.orgCustomer, case_number: "COLL-ACT-002", case_status: "closed", collection_priority: "low", risk_level: "low", aging_bucket: "1_30", dispute_status: "none", escalation_status: "none", writeoff_review_status: "not_ready", assigned_owner_user_id: admin, balance_at_open: 2000, current_balance: 2000, original_invoice_amount: 8000, last_payment_amount: 0, notes: "E2E Action Collection Case Archivable", created_by: admin, updated_by: admin });
+  await upsert(client, "collection_actions", { id: actionIds.collectionActionPlanned, tenant_id: t, collection_case_id: actionIds.collectionCaseOpen, invoice_id: actionIds.invoiceApproved, customer_organization_id: ids.orgCustomer, action_type: "payment_reminder", action_status: "planned", action_date: "2026-02-12", actor_user_id: admin, contact_id: ids.contactDana, contact_method: "email", note: "E2E Action Collection Action Completable", created_by: admin, updated_by: admin });
+  await upsert(client, "collection_actions", { id: actionIds.collectionActionCompleted, tenant_id: t, collection_case_id: actionIds.collectionCaseOpen, invoice_id: actionIds.invoiceApproved, customer_organization_id: ids.orgCustomer, action_type: "internal_note", action_status: "completed", action_date: "2026-02-11", actor_user_id: admin, note: "E2E Action Collection Action Cancelable", completed_at: "2026-02-11T15:00:00Z", created_by: admin, updated_by: admin });
+
+  // ── Contractor Payable action state records ────────────────────────────────
+  const cpBase = { tenant_id: t, payable_type: "subcontractor", payable_party_type: "capacity_provider", capacity_provider_id: ids.provider, crew_id: ids.crew, vendor_organization_id: ids.orgProvider, project_id: ids.project, settlement_id: ids.settlement, pay_cycle_start: "2026-02-01", pay_cycle_end: "2026-02-07", due_date: "2026-02-28", gross_payable_amount: 5600, net_payable_amount: 5600, compliance_status: "ready", tax_document_status: "ready", created_by: admin, updated_by: admin };
+  await upsert(client, "contractor_payables", { ...cpBase, id: actionIds.cpayDraft, payable_number: "CPAY-ACT-001", status: "draft", approval_status: "pending", payment_readiness_status: "not_ready", payment_status: "not_paid", payable_description: "E2E Action Contractor Payable Add Item Ready" });
+  await upsert(client, "contractor_payable_items", { id: actionIds.cpayItemDraft, tenant_id: t, contractor_payable_id: actionIds.cpayDraft, settlement_id: ids.settlement, billable_item_id: ids.billableItem, qc_review_id: ids.qcReview, production_record_id: ids.productionRecord, work_order_id: ids.workOrder, project_id: ids.project, capacity_provider_id: ids.provider, crew_id: ids.crew, item_type: "subcontractor_production", status: "draft", description: "E2E Action Contractor Payable Item Editable", quantity: 800, unit: "feet", contractor_rate: 7, gross_payable_amount: 5600, net_payable_amount: 5600, compliance_status: "ready", tax_document_status: "ready", created_by: admin, updated_by: admin });
+  await upsert(client, "contractor_payables", { ...cpBase, id: actionIds.cpayUnderReview, payable_number: "CPAY-ACT-002", status: "under_review", approval_status: "under_review", payment_readiness_status: "not_ready", payment_status: "not_paid", payable_description: "E2E Action Contractor Payable Approvable" });
+  await upsert(client, "contractor_payables", { ...cpBase, id: actionIds.cpayApproved, payable_number: "CPAY-ACT-003", status: "approved", approval_status: "approved", payment_readiness_status: "not_ready", payment_status: "not_paid", payable_description: "E2E Action Contractor Payable Payment Ready Markable", approved_by: admin, approved_at: "2026-02-06T12:00:00Z" });
+  await upsert(client, "contractor_payables", { ...cpBase, id: actionIds.cpayDisputed, payable_number: "CPAY-ACT-004", status: "disputed", approval_status: "pending", payment_readiness_status: "not_ready", payment_status: "not_paid", payable_description: "E2E Action Contractor Payable Dispute Resolvable" });
+  await upsert(client, "contractor_payables", { ...cpBase, id: actionIds.cpayVoid, payable_number: "CPAY-ACT-005", status: "void", approval_status: "void", payment_readiness_status: "void", payment_status: "void", payable_description: "E2E Action Contractor Payable Archivable" });
+
+  // ── Payroll action state records ───────────────────────────────────────────
+  const prBase = { tenant_id: t, payroll_run_type: "regular", payroll_cycle: "weekly", payroll_period_start: "2026-02-01", payroll_period_end: "2026-02-07", pay_date: "2026-02-14", territory_id: ids.territoryNorth, project_id: ids.project, crew_id: ids.crew, gross_pay_amount: 960, net_pay_amount: 960, item_count: 1, worker_count: 1, compliance_status: "ready", tax_document_status: "ready", created_by: admin, updated_by: admin };
+  await upsert(client, "payroll_runs", { ...prBase, id: actionIds.payrollDraft, payroll_run_number: "PR-ACT-001", status: "draft", approval_status: "pending", payroll_readiness_status: "not_ready", payroll_run_name: "E2E Action Payroll Add Item Ready" });
+  await upsert(client, "payroll_items", { id: actionIds.payrollItemDraft, tenant_id: t, payroll_run_id: actionIds.payrollDraft, worker_id: ids.worker, crew_id: ids.crew, project_id: ids.project, work_order_id: ids.workOrder, production_record_id: ids.productionRecord, source_type: "manual", earning_type: "regular", status: "draft", worker_classification: "w2_employee", work_date: "2026-02-03", hours_regular: 32, rate_regular: 30, gross_pay_amount: 960, net_pay_amount: 960, compliance_status: "ready", tax_document_status: "ready", description: "E2E Action Payroll Item Editable", created_by: admin, updated_by: admin });
+  await upsert(client, "payroll_runs", { ...prBase, id: actionIds.payrollUnderReview, payroll_run_number: "PR-ACT-002", status: "under_review", approval_status: "under_review", payroll_readiness_status: "not_ready", payroll_run_name: "E2E Action Payroll Approvable" });
+  await upsert(client, "payroll_runs", { ...prBase, id: actionIds.payrollApproved, payroll_run_number: "PR-ACT-003", status: "approved", approval_status: "approved", payroll_readiness_status: "not_ready", payroll_run_name: "E2E Action Payroll Ready Markable", approved_by: admin, approved_at: "2026-02-07T12:00:00Z" });
+  await upsert(client, "payroll_runs", { ...prBase, id: actionIds.payrollDisputed, payroll_run_number: "PR-ACT-004", status: "disputed", approval_status: "pending", payroll_readiness_status: "not_ready", payroll_run_name: "E2E Action Payroll Dispute Resolvable" });
+  await upsert(client, "payroll_runs", { ...prBase, id: actionIds.payrollVoid, payroll_run_number: "PR-ACT-005", status: "void", approval_status: "void", payroll_readiness_status: "void", payroll_run_name: "E2E Action Payroll Archivable" });
+
+  // ── Payment Batch action state records ────────────────────────────────────
+  const pbBase = { tenant_id: t, payment_method: "manual", item_count: 0, total_payment_amount: 0, currency: "USD", created_by: admin, updated_by: admin };
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchDraft, payment_batch_number: "PB-ACT-001", batch_type: "mixed_later", status: "draft", approval_status: "pending", execution_status: "not_submitted", notes: "E2E Action Payment Batch Add Contractor Payable Ready" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchUnderReview, payment_batch_number: "PB-ACT-002", batch_type: "mixed_later", status: "under_review", approval_status: "under_review", execution_status: "not_submitted", notes: "E2E Action Payment Batch Approvable" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchApproved, payment_batch_number: "PB-ACT-003", batch_type: "mixed_later", status: "approved", approval_status: "approved", execution_status: "not_submitted", notes: "E2E Action Payment Batch Schedulable", approved_by: admin, approved_at: "2026-02-08T12:00:00Z" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchScheduled, payment_batch_number: "PB-ACT-004", batch_type: "mixed_later", status: "scheduled", approval_status: "approved", execution_status: "not_submitted", scheduled_payment_date: "2026-02-15", notes: "E2E Action Payment Batch Submit Execution Ready", approved_by: admin, approved_at: "2026-02-08T12:00:00Z" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchExecutionSubmitted, payment_batch_number: "PB-ACT-005", batch_type: "mixed_later", status: "execution_submitted", approval_status: "approved", execution_status: "pending", scheduled_payment_date: "2026-02-15", submitted_at: "2026-02-15T09:00:00Z", submitted_by: admin, notes: "E2E Action Payment Batch Executable", approved_by: admin, approved_at: "2026-02-08T12:00:00Z" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchVoidTarget, payment_batch_number: "PB-ACT-006", batch_type: "mixed_later", status: "draft", approval_status: "pending", execution_status: "not_submitted", notes: "E2E Action Payment Batch Voidable" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchVoid, payment_batch_number: "PB-ACT-007", batch_type: "mixed_later", status: "void", approval_status: "void", execution_status: "void", notes: "E2E Action Payment Batch Archivable" });
+  await upsert(client, "payment_items", { id: actionIds.paymentItemDraft, tenant_id: t, payment_batch_id: actionIds.paymentBatchDraft, source_type: "contractor_payable", contractor_payable_id: ids.contractorPayable, payee_type: "capacity_provider", capacity_provider_id: ids.provider, payee_name: "Blue Splice Fiber Services", payment_method: "manual", payment_amount: 2000, currency: "USD", payment_date: "2026-02-15", execution_status: "not_submitted", status: "draft", notes: "E2E Action Payment Item Editable", created_by: admin, updated_by: admin });
+
+  // ── Bank Reconciliation action state records ───────────────────────────────
+  await upsert(client, "bank_accounts", { id: actionIds.bankAccountArchivable, tenant_id: t, account_name: "E2E Action Bank Account Archivable", account_type: "operating", institution_name: "ARC Demo Bank Secondary", masked_account_number: "****5678", routing_last4: "1111", currency: "USD", status: "inactive", opening_balance: 0, notes: "Action state bank account for archive test.", created_by: admin, updated_by: admin });
+  const btBase = { tenant_id: t, bank_account_id: ids.bankAccount, payment_method: "manual", cleared_status: "cleared", source_type: "manual", created_by: admin, updated_by: admin };
+  await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnUnmatchedDebit, transaction_date: "2026-02-10", posted_date: "2026-02-11", direction: "debit", amount: 5600, currency: "USD", description: "E2E Action Bank Transaction Match Payment Batch Ready", bank_reference: "BANK-ACT-001", external_transaction_id: "BTX-ACT-001", transaction_type: "payment_out", reconciliation_status: "unreconciled", exception_status: "none" });
+  await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnUnmatchedCredit, transaction_date: "2026-02-12", posted_date: "2026-02-13", direction: "credit", amount: 3000, currency: "USD", description: "E2E Action Bank Transaction Match Cash Receipt Ready", bank_reference: "BANK-ACT-002", external_transaction_id: "BTX-ACT-002", transaction_type: "payment_in", reconciliation_status: "unreconciled", exception_status: "none" });
+  await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnExceptionNone, transaction_date: "2026-02-14", posted_date: "2026-02-15", direction: "debit", amount: 200, currency: "USD", description: "E2E Action Bank Transaction Exception Openable", bank_reference: "BANK-ACT-003", external_transaction_id: "BTX-ACT-003", transaction_type: "payment_out", reconciliation_status: "unreconciled", exception_status: "none" });
+  await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnExceptionOpen, transaction_date: "2026-02-14", posted_date: "2026-02-15", direction: "debit", amount: 150, currency: "USD", description: "E2E Action Bank Transaction Exception Resolvable", bank_reference: "BANK-ACT-004", external_transaction_id: "BTX-ACT-004", transaction_type: "payment_out", reconciliation_status: "unreconciled", exception_status: "open", exception_reason: "Amount mismatch" });
+  await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnIgnorable, transaction_date: "2026-02-14", posted_date: "2026-02-15", direction: "credit", amount: 50, currency: "USD", description: "E2E Action Bank Transaction Ignorable", bank_reference: "BANK-ACT-005", external_transaction_id: "BTX-ACT-005", transaction_type: "fee", reconciliation_status: "unreconciled", exception_status: "none" });
+  await upsert(client, "reconciliation_matches", { id: actionIds.reconMatchProposed, tenant_id: t, bank_transaction_id: actionIds.bankTxnUnmatchedDebit, match_type: "payment_batch", matched_object_type: "payment_batch", matched_object_id: ids.paymentBatch, payment_batch_id: ids.paymentBatch, matched_amount: 5600, match_confidence: "high", match_status: "proposed", match_reason: "E2E Action Reconciliation Match Reviewable", variance_amount: 0, notes: "Action state proposed reconciliation match.", created_by: admin, updated_by: admin });
+
+  // ── Accounting Export action state records ────────────────────────────────
+  const aexBase = { tenant_id: t, target_system: "manual_export", export_format: "manual_summary", period_start: "2026-02-01", period_end: "2026-02-28", item_count: 0, total_debit_amount: 0, total_credit_amount: 0, total_amount: 0, currency: "USD", error_count: 0, retry_count: 0, created_by: admin, updated_by: admin };
+  await upsert(client, "accounting_export_batches", { ...aexBase, id: actionIds.aexDraft, export_batch_number: "AEX-ACT-001", export_type: "mixed_later", status: "draft", approval_status: "pending", export_status: "pending", notes: "E2E Action Accounting Export Add Item Ready" });
+  await upsert(client, "accounting_export_items", { id: actionIds.aexItemDraft, tenant_id: t, accounting_export_batch_id: actionIds.aexDraft, source_object_type: "invoice", source_object_id: ids.invoice, invoice_id: ids.invoice, export_item_type: "receivable", export_status: "pending", mapping_status: "mapped", target_account_code: "1200", target_account_name: "Accounts Receivable", target_entity_reference: "Cedar Ridge Utility Authority", debit_amount: 8000, amount: 8000, currency: "USD", memo: "E2E Action Accounting Export Item Editable", transaction_date: "2026-02-05", created_by: admin, updated_by: admin });
+  await upsert(client, "accounting_export_batches", { ...aexBase, id: actionIds.aexGenerated, export_batch_number: "AEX-ACT-002", export_type: "mixed_later", status: "draft", approval_status: "pending", export_status: "generated", generated_file_reference: "metadata-only:AEX-ACT-002", notes: "E2E Action Accounting Export Mark Submitted Ready" });
+  await upsert(client, "accounting_export_batches", { ...aexBase, id: actionIds.aexUnderReview, export_batch_number: "AEX-ACT-003", export_type: "mixed_later", status: "under_review", approval_status: "under_review", export_status: "generated", generated_file_reference: "metadata-only:AEX-ACT-003", notes: "E2E Action Accounting Export Approvable" });
+  await upsert(client, "accounting_export_batches", { ...aexBase, id: actionIds.aexSubmitted, export_batch_number: "AEX-ACT-004", export_type: "mixed_later", status: "submitted", approval_status: "approved", export_status: "submitted", generated_file_reference: "metadata-only:AEX-ACT-004", approved_by: admin, approved_at: "2026-02-20T12:00:00Z", notes: "E2E Action Accounting Export Mark Accepted Ready" });
+  await upsert(client, "accounting_export_batches", { ...aexBase, id: actionIds.aexCancelable, export_batch_number: "AEX-ACT-005", export_type: "mixed_later", status: "draft", approval_status: "pending", export_status: "pending", notes: "E2E Action Accounting Export Cancelable" });
+  await upsert(client, "accounting_export_batches", { ...aexBase, id: actionIds.aexVoid, export_batch_number: "AEX-ACT-006", export_type: "mixed_later", status: "void", approval_status: "void", export_status: "void", notes: "E2E Action Accounting Export Archivable" });
+}
+
 async function upsert(client, table, row) {
   const entries = Object.entries(row).filter(([, value]) => value !== undefined);
   const columns = entries.map(([key]) => key);
@@ -262,6 +456,89 @@ function writeManifest() {
       reconciliationMatch: route("Reconciliation Match", ids.reconciliationMatch, "RM-CR-001 Bank Match", "/reconciliation-matches/:id", "accounting-manager"),
       accountingExportBatch: route("Accounting Export Batch", ids.accountingExportBatch, "AEX-CR-001 Accounting Export", "/accounting-exports/:id", "accounting-manager"),
       accountingExportItem: route("Accounting Export Item", ids.accountingExportItemInvoice, "AEX-CR-001 Invoice Export Item", "/accounting-export-items/:id", "accounting-manager"),
+    },
+    actionStates: {
+      // Production
+      prodDraft: actionIds.prodDraft,
+      prodSubmitted: actionIds.prodSubmitted,
+      prodUnderReview: actionIds.prodUnderReview,
+      prodCorrectionRequested: actionIds.prodCorrectionRequested,
+      prodApprovedNotMarked: actionIds.prodApprovedNotMarked,
+      prodVoid: actionIds.prodVoid,
+      // QC
+      qcPending: actionIds.qcPending,
+      qcInReview: actionIds.qcInReview,
+      qcCorrectionRequested: actionIds.qcCorrectionRequested,
+      qcVoid: actionIds.qcVoid,
+      // Billable
+      billableDraft: actionIds.billableDraft,
+      billableOnHold: actionIds.billableOnHold,
+      billableDisputed: actionIds.billableDisputed,
+      billableVoid: actionIds.billableVoid,
+      // Settlement
+      settlementDraft: actionIds.settlementDraft,
+      settlementItemDraft: actionIds.settlementItemDraft,
+      settlementUnderReview: actionIds.settlementUnderReview,
+      settlementApproved: actionIds.settlementApproved,
+      settlementDisputed: actionIds.settlementDisputed,
+      settlementVoid: actionIds.settlementVoid,
+      // Invoice
+      invoiceDraft: actionIds.invoiceDraft,
+      invoiceItemDraft: actionIds.invoiceItemDraft,
+      invoiceUnderReview: actionIds.invoiceUnderReview,
+      invoiceApproved: actionIds.invoiceApproved,
+      invoiceDisputed: actionIds.invoiceDisputed,
+      invoiceVoid: actionIds.invoiceVoid,
+      // Cash Application
+      cashReceiptUnapplied: actionIds.cashReceiptUnapplied,
+      cashReceiptVoidTarget: actionIds.cashReceiptVoidTarget,
+      cashReceiptVoid: actionIds.cashReceiptVoid,
+      paymentApplicationApplied: actionIds.paymentApplicationApplied,
+      paymentApplicationVoid: actionIds.paymentApplicationVoid,
+      // Collections
+      collectionCaseOpen: actionIds.collectionCaseOpen,
+      collectionCaseClosed: actionIds.collectionCaseClosed,
+      collectionActionPlanned: actionIds.collectionActionPlanned,
+      collectionActionCompleted: actionIds.collectionActionCompleted,
+      // Contractor Payable
+      cpayDraft: actionIds.cpayDraft,
+      cpayItemDraft: actionIds.cpayItemDraft,
+      cpayUnderReview: actionIds.cpayUnderReview,
+      cpayApproved: actionIds.cpayApproved,
+      cpayDisputed: actionIds.cpayDisputed,
+      cpayVoid: actionIds.cpayVoid,
+      // Payroll
+      payrollDraft: actionIds.payrollDraft,
+      payrollItemDraft: actionIds.payrollItemDraft,
+      payrollUnderReview: actionIds.payrollUnderReview,
+      payrollApproved: actionIds.payrollApproved,
+      payrollDisputed: actionIds.payrollDisputed,
+      payrollVoid: actionIds.payrollVoid,
+      // Payment Batch
+      paymentBatchDraft: actionIds.paymentBatchDraft,
+      paymentBatchUnderReview: actionIds.paymentBatchUnderReview,
+      paymentBatchApproved: actionIds.paymentBatchApproved,
+      paymentBatchScheduled: actionIds.paymentBatchScheduled,
+      paymentBatchExecutionSubmitted: actionIds.paymentBatchExecutionSubmitted,
+      paymentBatchVoidTarget: actionIds.paymentBatchVoidTarget,
+      paymentBatchVoid: actionIds.paymentBatchVoid,
+      paymentItemDraft: actionIds.paymentItemDraft,
+      // Bank Reconciliation
+      bankAccountArchivable: actionIds.bankAccountArchivable,
+      bankTxnUnmatchedDebit: actionIds.bankTxnUnmatchedDebit,
+      bankTxnUnmatchedCredit: actionIds.bankTxnUnmatchedCredit,
+      bankTxnExceptionNone: actionIds.bankTxnExceptionNone,
+      bankTxnExceptionOpen: actionIds.bankTxnExceptionOpen,
+      bankTxnIgnorable: actionIds.bankTxnIgnorable,
+      reconMatchProposed: actionIds.reconMatchProposed,
+      // Accounting Export
+      aexDraft: actionIds.aexDraft,
+      aexItemDraft: actionIds.aexItemDraft,
+      aexGenerated: actionIds.aexGenerated,
+      aexUnderReview: actionIds.aexUnderReview,
+      aexSubmitted: actionIds.aexSubmitted,
+      aexCancelable: actionIds.aexCancelable,
+      aexVoid: actionIds.aexVoid,
     },
   };
   const out = path.join(__dirname, "../../../tests/e2e/fixtures/e2e-demo-records.json");

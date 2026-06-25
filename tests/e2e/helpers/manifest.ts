@@ -14,6 +14,7 @@ export type E2EManifest = {
   tenant: { id: string; name: string };
   personas: Record<string, { userId: string; email: string; roleName: string }>;
   records: Record<string, ManifestRecord>;
+  actionStates: Record<string, string>;
 };
 
 export function readE2EManifest(): E2EManifest {
