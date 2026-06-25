@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const apiBaseUrl = process.env.SYNCOS_API_BASE_URL ?? "http://localhost:3100";
+const apiBaseUrl = process.env.SYNCOS_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100";
 
 async function proxy(request: NextRequest, context: { params: { path: string[] } }) {
   const target = new URL(`${apiBaseUrl}/${context.params.path.join("/")}`);

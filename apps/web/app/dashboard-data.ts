@@ -1,6 +1,6 @@
 export type DashboardData = Record<string, unknown>;
 
-const apiBaseUrl = process.env.SYNCOS_API_BASE_URL ?? "http://localhost:3100";
+const apiBaseUrl = process.env.SYNCOS_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100";
 const apiToken = process.env.SYNCOS_DASHBOARD_TOKEN;
 
 export async function getDashboardData(kind: string): Promise<DashboardData | null> {
