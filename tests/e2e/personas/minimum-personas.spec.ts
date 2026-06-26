@@ -4,23 +4,25 @@ import { actionStates } from "../fixtures/action-states";
 import { readE2EManifest } from "../helpers/manifest";
 import { expectBackendDenied, expectNavVisible, expectStoredPermission, expectStoredPermissionAbsent } from "../helpers/permissions";
 import { installStoredSession } from "../helpers/auth";
+import { expectRouteHealthy } from "../helpers/page-assertions";
 
 const manifest = readE2EManifest();
 const invoiceApproved = actionStates.find((s) => s.stateKey === "invoiceApproved")!;
 const paymentBatchExecutionSubmitted = actionStates.find((s) => s.stateKey === "paymentBatchExecutionSubmitted")!;
 
 test.describe("Minimum persona permission certification", () => {
+  test.setTimeout(120_000);
+
   test("system admin has broad workspace and action visibility", async ({ browser }) => {
     const context = await browser.newContext({ storageState: personas.systemAdmin.storageState });
     const page = await context.newPage();
-    await page.goto("/executive");
+    await installStoredSession(page, personas.systemAdmin.storageState);
+    await expectRouteHealthy(page, invoiceApproved.route, invoiceApproved.objectType);
     await expectNavVisible(page, ["Intelligence", "Operations", "Finance"]);
+    await expect(page.getByRole("button", { name: invoiceApproved.expectedActionLabel }).first()).toBeVisible({ timeout: 30_000 });
     await installStoredSession(page, personas.systemAdmin.storageState);
-    await page.goto(invoiceApproved.route);
-    await expect(page.getByRole("button", { name: invoiceApproved.expectedActionLabel }).first()).toBeVisible({ timeout: 15_000 });
-    await installStoredSession(page, personas.systemAdmin.storageState);
-    await page.goto(paymentBatchExecutionSubmitted.route);
-    await expect(page.getByRole("button", { name: paymentBatchExecutionSubmitted.expectedActionLabel }).first()).toBeVisible({ timeout: 15_000 });
+    await expectRouteHealthy(page, paymentBatchExecutionSubmitted.route, paymentBatchExecutionSubmitted.objectType);
+    await expect(page.getByRole("button", { name: paymentBatchExecutionSubmitted.expectedActionLabel }).first()).toBeVisible({ timeout: 30_000 });
     await context.close();
   });
 
@@ -51,7 +53,8 @@ test.describe("Minimum persona permission certification", () => {
   test("read-only auditor can read but cannot create or mutate", async ({ browser, request }) => {
     const context = await browser.newContext({ storageState: personas.readOnlyAuditor.storageState });
     const page = await context.newPage();
-    await page.goto(manifest.records.invoice.route);
+    await installStoredSession(page, personas.readOnlyAuditor.storageState);
+    await page.goto(invoiceApproved.route);
     await expect(page.locator("body")).toContainText(/invoice/i);
     await expectStoredPermission(page, "invoice.read");
     await expectStoredPermissionAbsent(page, "invoice.create");

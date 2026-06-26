@@ -1,12 +1,10 @@
-import { readE2EManifest } from "../helpers/manifest";
-
-const records = readE2EManifest().records;
+import { actionStatesByKey } from "./action-states";
 
 export const modalMatrix = [
   {
     domain: "Payment Execution",
-    route: records.paymentBatch.route,
-    expectedText: "PB-CR-001",
+    route: actionStatesByKey.paymentBatchExecutionSubmitted.route,
+    expectedText: "PB-ACT-005",
     action: /Mark Executed/i,
     title: /Mark Executed/i,
     requiredFields: [/Execution Reference/i, /Execution Note/i],
@@ -14,8 +12,8 @@ export const modalMatrix = [
   },
   {
     domain: "Bank Reconciliation",
-    route: records.bankTransaction.route,
-    expectedText: "BTX-CR-001",
+    route: actionStatesByKey.bankTxnExceptionNone.route,
+    expectedText: "BTX-ACT-003",
     action: /Open Exception/i,
     title: /Open Exception/i,
     requiredFields: [/Exception Reason/i],
@@ -23,8 +21,8 @@ export const modalMatrix = [
   },
   {
     domain: "Accounting Export",
-    route: records.accountingExportBatch.route,
-    expectedText: "AEX-CR-001",
+    route: actionStatesByKey.aexDraft.route,
+    expectedText: "AEX-ACT-001",
     action: /Generate/i,
     title: /generate/i,
     requiredFields: [/Generate Note/i],
@@ -32,8 +30,8 @@ export const modalMatrix = [
   },
   {
     domain: "Accounting Export",
-    route: records.accountingExportBatch.route,
-    expectedText: "AEX-CR-001",
+    route: actionStatesByKey.aexGenerated.route,
+    expectedText: "AEX-ACT-002",
     action: /Mark Submitted/i,
     title: /mark submitted/i,
     requiredFields: [/External Batch Reference|Submit Note/i],
