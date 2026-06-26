@@ -822,6 +822,7 @@ export const actionStates: ActionState[] = [
     requiredFields: [/Void Reason/i],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
     submitCertificationStatus: "not-certified",
+    notes: "DEFERRAL: intended action is Schedule, but /Schedule/i matches both the Schedule action button and the Schedule tab button (strict mode). Testing Void instead as a proxy boundary check. Schedule modal boundary must be certified separately once the tab button is disambiguated.",
   },
   {
     stateKey: "paymentBatchScheduled",
@@ -867,6 +868,7 @@ export const actionStates: ActionState[] = [
     requiredFields: [],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
     submitCertificationStatus: "not-certified",
+    notes: "DEFERRAL: intended action is Void, but /Void/i produced an unknown runtime failure on this record during E2E hardening. Testing Recalculate Totals as a proxy boundary check. Void modal boundary must be certified separately once the root cause is identified.",
   },
   {
     stateKey: "paymentBatchVoid",
@@ -914,6 +916,7 @@ export const actionStates: ActionState[] = [
     requiredFields: [/Exception Reason/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
     submitCertificationStatus: "not-certified",
+    notes: "DEFERRAL: intended action is Match Payment Batch, but /Match/i matches 6 elements (3 action buttons + 3 tab buttons with identical text). Testing Open Exception as a proxy boundary check. Match modal boundary must be certified separately once the tab buttons are disambiguated.",
   },
   {
     stateKey: "bankTxnUnmatchedCredit",
@@ -929,6 +932,7 @@ export const actionStates: ActionState[] = [
     requiredFields: [/Exception Reason/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
     submitCertificationStatus: "not-certified",
+    notes: "DEFERRAL: intended action is Match Cash Receipt, but /Match/i matches 6 elements (3 action buttons + 3 tab buttons with identical text). Testing Open Exception as a proxy boundary check. Match modal boundary must be certified separately once the tab buttons are disambiguated.",
   },
   {
     stateKey: "bankTxnExceptionNone",
@@ -1036,6 +1040,7 @@ export const actionStates: ActionState[] = [
     requiredFields: [/Rejection Reason/i],
     forbiddenTables: AEX_FORBIDDEN,
     submitCertificationStatus: "not-certified",
+    notes: "DEFERRAL: intended action is Mark Submitted, but /Mark Submitted/i produced an element-not-found failure on this record (export_status=generated, status=draft). Testing Reject as a proxy boundary check. Mark Submitted modal boundary must be certified separately once the root cause is identified.",
   },
   {
     stateKey: "aexUnderReview",
