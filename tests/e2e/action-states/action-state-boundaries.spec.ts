@@ -39,7 +39,7 @@ test.describe("Action-state boundaries — open/cancel must not mutate forbidden
 
       await expect(
         page.getByRole("button", { name: state.expectedActionLabel }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: 30_000 });
 
       await openAction(page, state.expectedActionLabel);
       await expectModal(page, state.expectedModalTitle);

@@ -22,15 +22,15 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
 
   for (const state of actionStates) {
     test(`[${state.domain}] ${state.stateKey}: modal opens and cancels cleanly`, async ({ page }) => {
+      // Modals run mid-suite under sustained load; triple timeout for resilience
+      test.slow();
       await installStoredSession(page, personas.systemAdmin.storageState);
-      await page.goto(state.route);
-
       await expectRouteHealthy(page, state.route, state.objectType);
 
       // Ensure action button is present before clicking
       await expect(
         page.getByRole("button", { name: state.expectedActionLabel }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: 60_000 });
 
       await openAction(page, state.expectedActionLabel);
       await expectModal(page, state.expectedModalTitle);

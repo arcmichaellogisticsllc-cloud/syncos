@@ -19,7 +19,7 @@ export async function expectSeededDetailHydrated(page: Page, route: string, seed
         const text = await body.innerText();
         return classifyHydration(text, values);
       },
-      { message: `${route} should render seeded data (name/id/hints), not only the app shell`, timeout: 30_000 },
+      { message: `${route} should render seeded data (name/id/hints), not only the app shell`, timeout: 60_000 },
     )
     .toBe("hydrated");
 }

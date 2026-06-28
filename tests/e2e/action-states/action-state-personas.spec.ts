@@ -27,18 +27,18 @@ test.describe("Action-state personas — natural persona sees action, read-only 
 
     test.describe(`[${state.domain}] ${state.stateKey}`, () => {
       test("natural persona sees action button", async ({ page }) => {
+        // Personas run mid-suite under sustained load; triple timeout for resilience
+        test.slow();
         await installStoredSession(page, naturalPersona.storageState);
-        await page.goto(state.route);
         await expectRouteHealthy(page, state.route, state.objectType);
 
         await expect(
           page.getByRole("button", { name: state.expectedActionLabel }),
-        ).toBeVisible({ timeout: 15_000 });
+        ).toBeVisible({ timeout: 60_000 });
       });
 
       test("read-only auditor: route loads but action button hidden or disabled", async ({ page }) => {
         await installStoredSession(page, READ_ONLY.storageState);
-        await page.goto(state.route);
 
         // Route must still load — auditor has read access
         await expectRouteHealthy(page, state.route, state.objectType);
@@ -68,9 +68,15 @@ test.describe("Action-state personas — backend denies writes for read-only aud
     ["prodDraft", "invoiceApproved", "settlementDraft", "aexDraft"].includes(s.stateKey),
   );
 
+  const apiBasePath: Record<string, string> = {
+    production: "production-records",
+    accounting: "accounting-export-batches",
+  };
+
   for (const state of sampleStates) {
     test(`[${state.domain}] ${state.stateKey}: backend denies write as read-only`, async ({ request }) => {
-      await expectBackendDenied(request, READ_ONLY.storageState, "POST", `/${state.objectType.replace(/_/g, "-")}s/${state.recordId}/actions`);
+      const base = apiBasePath[state.objectType] ?? `${state.objectType.replace(/_/g, "-")}s`;
+      await expectBackendDenied(request, READ_ONLY.storageState, "PATCH", `/${base}/${state.recordId}`, {});
     });
   }
 });

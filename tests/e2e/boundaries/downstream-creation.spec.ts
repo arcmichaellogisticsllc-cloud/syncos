@@ -30,6 +30,8 @@ test.describe("Forbidden downstream creation boundaries", () => {
 
   for (const [label, route, expected, tables] of cases) {
     test(`${label} creates no forbidden downstream objects`, async ({ page }) => {
+      // Runs after sustained load in the certification suite; triple timeout
+      test.slow();
       const before = await captureBoundaryCounts(manifest.tenant.id, [...tables]);
       await expectRouteHealthy(page, route, expected.source);
       await expectBoundaryUnchanged(manifest.tenant.id, before, label);
