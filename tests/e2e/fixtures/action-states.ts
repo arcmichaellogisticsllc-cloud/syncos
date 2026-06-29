@@ -49,7 +49,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [/Submission Note|Submit Note/i],
     forbiddenTables: PROD_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "prodSubmitted",
@@ -64,7 +64,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: PROD_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "prodUnderReview",
@@ -79,7 +79,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [/Approved Quantity|Approval Note/i],
     forbiddenTables: PROD_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "prodCorrectionRequested",
@@ -94,7 +94,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [/Correction Note/i],
     forbiddenTables: PROD_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "prodApprovedNotMarked",
@@ -109,7 +109,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: PROD_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "prodVoid",
@@ -124,7 +124,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: PROD_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── QC ──────────────────────────────────────────────────────────────────────
@@ -141,7 +141,7 @@ export const actionStates: ActionState[] = [
     persona: "qc-reviewer",
     requiredFields: [],
     forbiddenTables: QC_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "qcInReview",
@@ -156,7 +156,7 @@ export const actionStates: ActionState[] = [
     persona: "qc-reviewer",
     requiredFields: [/Review Note|Approval Note/i],
     forbiddenTables: QC_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "qcCorrectionRequested",
@@ -171,7 +171,7 @@ export const actionStates: ActionState[] = [
     persona: "field-supervisor",
     requiredFields: [/Correction Note/i],
     forbiddenTables: QC_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "qcVoid",
@@ -186,7 +186,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: QC_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Billable ─────────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [],
     forbiddenTables: BILLABLE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "billableOnHold",
@@ -218,7 +218,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Release Note|Hold Reason/i],
     forbiddenTables: BILLABLE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "billableDisputed",
@@ -233,7 +233,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: BILLABLE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "billableVoid",
@@ -248,7 +248,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: BILLABLE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Settlement ───────────────────────────────────────────────────────────────
@@ -265,7 +265,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "settlementItemDraft",
@@ -280,7 +280,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
     notes: "Item tested from parent settlement draft route; no dedicated item route.",
   },
   {
@@ -296,7 +296,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Rejection Reason/i],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "settlementApproved",
@@ -311,7 +311,8 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Ready Note/i],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Seeded settlementApproved has billable items in 'blocked' status. API rejects Mark Invoice Ready when any item is not ready for settlement.",
   },
   {
     stateKey: "settlementDisputed",
@@ -326,7 +327,8 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Seeded settlementDisputed violates settlements_contract_status_check DB constraint on Resolve Dispute; contract status is incompatible with dispute resolution.",
   },
   {
     stateKey: "settlementVoid",
@@ -341,7 +343,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Invoice ──────────────────────────────────────────────────────────────────
@@ -358,7 +360,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [],
     forbiddenTables: INVOICE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "invoiceItemDraft",
@@ -389,7 +391,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Rejection Reason/i],
     forbiddenTables: INVOICE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "invoiceApproved",
@@ -404,7 +406,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Sent Note|Delivery Note/i],
     forbiddenTables: INVOICE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "invoiceDisputed",
@@ -419,7 +421,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: INVOICE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "invoiceVoid",
@@ -434,7 +436,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: INVOICE_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Cash / Payment Application ───────────────────────────────────────────────
@@ -451,7 +453,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Invoice|Applied Amount/i],
     forbiddenTables: CASH_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "cashReceiptVoidTarget",
@@ -466,7 +468,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Void Reason|Void Note/i],
     forbiddenTables: CASH_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "cashReceiptVoid",
@@ -481,7 +483,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: CASH_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "paymentApplicationApplied",
@@ -496,7 +498,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Void Reason|Void Note/i],
     forbiddenTables: CASH_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "paymentApplicationVoid",
@@ -511,7 +513,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: CASH_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Collections ──────────────────────────────────────────────────────────────
@@ -528,7 +530,7 @@ export const actionStates: ActionState[] = [
     persona: "collections-specialist",
     requiredFields: [/Assignment Note/i],
     forbiddenTables: COLLECTIONS_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "collectionCaseClosed",
@@ -543,7 +545,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: COLLECTIONS_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "collectionActionPlanned",
@@ -558,7 +560,7 @@ export const actionStates: ActionState[] = [
     persona: "collections-specialist",
     requiredFields: [/Completion Note|Outcome/i],
     forbiddenTables: COLLECTIONS_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "collectionActionCompleted",
@@ -573,7 +575,7 @@ export const actionStates: ActionState[] = [
     persona: "collections-specialist",
     requiredFields: [],
     forbiddenTables: COLLECTIONS_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Contractor Payable ───────────────────────────────────────────────────────
@@ -590,7 +592,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: CPAY_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "cpayItemDraft",
@@ -605,7 +607,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: CPAY_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
     notes: "Item tested from parent contractor payable draft route; no dedicated item route.",
   },
   {
@@ -621,7 +623,8 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Approval Note/i],
     forbiddenTables: CPAY_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Seeded cpayUnderReview has 0 active items. API rejects Approve when contractor payable has no active items.",
   },
   {
     stateKey: "cpayApproved",
@@ -636,7 +639,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: CPAY_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "cpayDisputed",
@@ -651,7 +654,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: CPAY_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "cpayVoid",
@@ -666,7 +669,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: CPAY_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Payroll ──────────────────────────────────────────────────────────────────
@@ -683,7 +686,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: PAYROLL_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "payrollItemDraft",
@@ -698,7 +701,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: PAYROLL_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
     notes: "Item tested from parent payroll draft route; no dedicated item route.",
   },
   {
@@ -714,7 +717,8 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Approval Note/i],
     forbiddenTables: PAYROLL_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Seeded payrollUnderReview has no active items (item is in non-active status). API rejects Approve when payroll run has no active items.",
   },
   {
     stateKey: "payrollApproved",
@@ -729,7 +733,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: PAYROLL_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "payrollDisputed",
@@ -744,7 +748,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: PAYROLL_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "payrollVoid",
@@ -759,7 +763,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: PAYROLL_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Payment Batch / Execution ────────────────────────────────────────────────
@@ -776,7 +780,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "paymentItemDraft",
@@ -806,7 +810,8 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Approval Note/i],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Seeded paymentBatchUnderReview has 0 items. API rejects Approve when payment batch has no active items.",
   },
   {
     stateKey: "paymentBatchApproved",
@@ -821,7 +826,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Scheduled Payment Date/i],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
     notes: "Fixed: /Schedule/i strict-mode was resolved by adding .first() to visibility checks in modals/boundaries specs. Schedule action button is always the first match.",
   },
   {
@@ -837,7 +842,8 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Submit Note|Execution Reference/i],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Seeded paymentBatchScheduled has 0 items and fails the API readiness check for Submit Execution. Also: Match Payment Batch SELECT only loads execution_status=executed_later batches, so this batch cannot be used as a bank match target.",
   },
   {
     stateKey: "paymentBatchExecutionSubmitted",
@@ -852,7 +858,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Execution Reference/i, /Execution Note/i],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "paymentBatchVoidTarget",
@@ -867,7 +873,7 @@ export const actionStates: ActionState[] = [
     persona: "payables-payroll-admin",
     requiredFields: [/Void Reason/i],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
     notes: "Fixed: API only rejects void for executed_later status; draft status is voidable. Original runtime failure was transient.",
   },
   {
@@ -883,7 +889,7 @@ export const actionStates: ActionState[] = [
     persona: "system-admin",
     requiredFields: [],
     forbiddenTables: PAYMENT_EXECUTION_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Bank Reconciliation ──────────────────────────────────────────────────────
@@ -900,7 +906,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "bankTxnUnmatchedDebit",
@@ -915,8 +921,8 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Payment Batch ID/i, /Matched Amount/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
-    notes: "Fixed: strict-mode resolved by adding .first() to visibility checks. Match Payment Batch action button is always first match; tab button is second.",
+    submitCertificationStatus: "blocked",
+    notes: "BLOCKED: Match Payment Batch modal SELECT only loads payment-batches?execution_status=executed_later. The seeded paymentBatchScheduled (status=scheduled) is not in the dropdown, so the required SELECT cannot be filled and browser native validation prevents submit.",
   },
   {
     stateKey: "bankTxnUnmatchedCredit",
@@ -931,7 +937,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Cash Receipt ID/i, /Matched Amount/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
     notes: "Fixed: strict-mode resolved by adding .first() to visibility checks. Match Cash Receipt action button is always first match; tab button is second.",
   },
   {
@@ -947,7 +953,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Exception Reason/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "bankTxnExceptionOpen",
@@ -962,7 +968,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "bankTxnIgnorable",
@@ -977,7 +983,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Ignore Reason/i],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "reconMatchProposed",
@@ -992,7 +998,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [],
     forbiddenTables: BANK_RECON_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 
   // ── Accounting Export ────────────────────────────────────────────────────────
@@ -1009,7 +1015,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [],
     forbiddenTables: AEX_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "aexItemDraft",
@@ -1039,7 +1045,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [],
     forbiddenTables: AEX_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
     notes: "Fixed: Mark Submitted button is always rendered and never disabled for non-archived batches. Prior element-not-found failure was transient.",
   },
   {
@@ -1055,7 +1061,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Approval Note/i],
     forbiddenTables: AEX_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "blocked",
   },
   {
     stateKey: "aexSubmitted",
@@ -1070,7 +1076,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Acceptance Note/i],
     forbiddenTables: AEX_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "aexCancelable",
@@ -1085,7 +1091,7 @@ export const actionStates: ActionState[] = [
     persona: "accounting-manager",
     requiredFields: [/Cancel Reason/i],
     forbiddenTables: AEX_FORBIDDEN,
-    submitCertificationStatus: "not-certified",
+    submitCertificationStatus: "certified",
   },
 ];
 

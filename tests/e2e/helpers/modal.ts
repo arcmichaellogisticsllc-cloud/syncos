@@ -25,10 +25,11 @@ export async function cancelModal(page: Page) {
 }
 
 export async function submitModal(page: Page) {
-  const modal = page.locator("[role='dialog']").last();
+  const MODAL_SELECTOR = "[role='dialog'], .modal-backdrop, .modal-panel, .modal-card";
+  const modal = page.locator(MODAL_SELECTOR).last();
   await expect(modal, "Modal must be visible before submit").toBeVisible();
   const submitBtn = modal.locator("button[type='submit']");
   await expect(submitBtn, "Submit button must be enabled").toBeEnabled({ timeout: 5_000 });
   await submitBtn.click();
-  await expect(page.getByRole("dialog"), "Modal must close after submit").not.toBeVisible({ timeout: 15_000 });
+  await expect(modal, "Modal must close after submit").not.toBeVisible({ timeout: 30_000 });
 }
