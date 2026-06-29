@@ -23,3 +23,12 @@ export async function expectRequiredFields(page: Page, labels: Array<string | Re
 export async function cancelModal(page: Page) {
   await page.getByRole("button", { name: /cancel|close/i }).last().click();
 }
+
+export async function submitModal(page: Page) {
+  const modal = page.locator("[role='dialog']").last();
+  await expect(modal, "Modal must be visible before submit").toBeVisible();
+  const submitBtn = modal.locator("button[type='submit']");
+  await expect(submitBtn, "Submit button must be enabled").toBeEnabled({ timeout: 5_000 });
+  await submitBtn.click();
+  await expect(page.getByRole("dialog"), "Modal must close after submit").not.toBeVisible({ timeout: 15_000 });
+}

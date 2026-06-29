@@ -29,7 +29,7 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
 
       // Ensure action button is present before clicking
       await expect(
-        page.getByRole("button", { name: state.expectedActionLabel }),
+        page.getByRole("button", { name: state.expectedActionLabel }).first(),
       ).toBeVisible({ timeout: 60_000 });
 
       await openAction(page, state.expectedActionLabel);
