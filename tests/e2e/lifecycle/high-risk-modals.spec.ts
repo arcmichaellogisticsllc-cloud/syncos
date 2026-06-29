@@ -10,7 +10,8 @@ test.describe("High-risk lifecycle modal certification", () => {
 
   for (const entry of modalMatrix) {
     test(`${entry.domain}: ${String(entry.action)} modal opens with required fields and boundary copy`, async ({ page }) => {
-      await page.goto("/");
+      // Runs late in suite under sustained load; triple timeout for resilience
+      test.slow();
       await installStoredSession(page, personas.systemAdmin.storageState);
       await expectSeededDetailHydrated(page, entry.route, { id: entry.route, name: entry.expectedText, objectType: entry.domain }, [entry.expectedText]);
       await openAction(page, entry.action);

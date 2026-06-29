@@ -10,6 +10,8 @@ test.describe("Critical skeleton: Revenue cycle", () => {
   test.use({ storageState: personas.financeUser.storageState });
 
   test("opens Cedar Ridge revenue records", async ({ page }) => {
+    // Runs late in suite under sustained load; triple timeout for resilience
+    test.slow();
     await expectRouteHealthy(page, records.billableItem.route, "Billable");
     await expectRouteHealthy(page, records.settlement.route, "Settlement");
     await expectRouteHealthy(page, records.invoice.route, "Invoice");

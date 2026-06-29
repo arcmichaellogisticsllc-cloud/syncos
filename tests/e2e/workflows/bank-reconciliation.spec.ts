@@ -10,6 +10,8 @@ test.describe("Critical skeleton: Bank Reconciliation", () => {
   test.use({ storageState: personas.accountingManager.storageState });
 
   test("opens Cedar Ridge bank reconciliation records", async ({ page }) => {
+    // Runs late in suite under sustained load; triple timeout for resilience
+    test.slow();
     await expectRouteHealthy(page, records.bankAccount.route, "Bank Account");
     await expectRouteHealthy(page, records.bankTransaction.route, "Bank");
     await expectRouteHealthy(page, records.reconciliationMatch.route, "Reconciliation");

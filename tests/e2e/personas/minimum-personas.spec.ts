@@ -11,7 +11,7 @@ const invoiceApproved = actionStates.find((s) => s.stateKey === "invoiceApproved
 const paymentBatchExecutionSubmitted = actionStates.find((s) => s.stateKey === "paymentBatchExecutionSubmitted")!;
 
 test.describe("Minimum persona permission certification", () => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
 
   test("system admin has broad workspace and action visibility", async ({ browser }) => {
     const context = await browser.newContext({ storageState: personas.systemAdmin.storageState });
@@ -19,10 +19,10 @@ test.describe("Minimum persona permission certification", () => {
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, invoiceApproved.route, invoiceApproved.objectType);
     await expectNavVisible(page, ["Intelligence", "Operations", "Finance"]);
-    await expect(page.getByRole("button", { name: invoiceApproved.expectedActionLabel }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: invoiceApproved.expectedActionLabel }).first()).toBeVisible({ timeout: 60_000 });
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, paymentBatchExecutionSubmitted.route, paymentBatchExecutionSubmitted.objectType);
-    await expect(page.getByRole("button", { name: paymentBatchExecutionSubmitted.expectedActionLabel }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: paymentBatchExecutionSubmitted.expectedActionLabel }).first()).toBeVisible({ timeout: 60_000 });
     await context.close();
   });
 

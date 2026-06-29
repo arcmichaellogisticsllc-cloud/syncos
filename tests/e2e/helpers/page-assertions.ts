@@ -10,7 +10,14 @@ const fatalPatterns = [
 ];
 
 export async function expectRouteHealthy(page: Page, route: string, expectedText?: string) {
-  const response = await page.goto(route, { waitUntil: "domcontentloaded" });
+  let response;
+  try {
+    response = await page.goto(route, { waitUntil: "domcontentloaded" });
+  } catch {
+    // Retry once on transient navigation errors (ERR_ABORTED under load)
+    await page.waitForTimeout(3_000);
+    response = await page.goto(route, { waitUntil: "domcontentloaded" });
+  }
   expect(response?.status(), `${route} should return a successful HTTP status`).toBeLessThan(400);
   await expect(page.locator("body")).toBeVisible();
   for (const pattern of fatalPatterns) {

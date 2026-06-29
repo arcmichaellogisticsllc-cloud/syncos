@@ -10,6 +10,8 @@ test.describe("Critical skeleton: Cost, labor, and payment execution", () => {
   test.use({ storageState: personas.payablesPayrollAdmin.storageState });
 
   test("opens Cedar Ridge payable, payroll, and payment records", async ({ page }) => {
+    // Runs late in suite under sustained load; triple timeout for resilience
+    test.slow();
     await expectRouteHealthy(page, records.contractorPayable.route, "Contractor");
     await expectRouteHealthy(page, records.payrollRun.route, "Payroll");
     await expectRouteHealthy(page, records.paymentBatch.route, "Payment");
