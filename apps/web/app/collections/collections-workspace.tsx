@@ -705,6 +705,7 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
 }
 
 function SessionPanel({ session }: { session: Session }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   const [token, setToken] = useState(session.token);
   const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
   return (

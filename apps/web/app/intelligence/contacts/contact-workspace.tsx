@@ -1014,6 +1014,7 @@ function Checklist({ items }: { items: Array<[string, boolean]> }) {
 }
 
 function SessionPanel({ session }: { session: ReturnType<typeof useSession>[0] }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   return (
     <details className="workspace-panel">
       <summary>Session</summary>

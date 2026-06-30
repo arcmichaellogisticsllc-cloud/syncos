@@ -612,6 +612,7 @@ function EvidenceTable({ rows, session, onArchive }: { rows: SyncRecord[]; sessi
 }
 
 function SessionPanel({ session }: { session: Session }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test production actions.</p></div><button type="button" onClick={session.applyDefaults}>Use production defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 

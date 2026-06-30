@@ -920,6 +920,7 @@ async function qualifyOrganization(id: string, reload: () => Promise<void>, setE
 }
 
 function SessionPanel({ session }: { session: ReturnType<typeof useWorkspaceSession> }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   return (
     <section className="panel workspace-panel">
       <div className="section-toolbar">

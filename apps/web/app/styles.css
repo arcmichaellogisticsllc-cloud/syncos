@@ -41,9 +41,20 @@ a {
   padding: 0 24px;
 }
 
+.brand-block {
+  display: grid;
+  gap: 2px;
+  min-width: 210px;
+}
+
 .brand {
   font-size: 18px;
   font-weight: 700;
+}
+
+.brand-subtitle {
+  color: #aab6c8;
+  font-size: 12px;
 }
 
 .nav {
@@ -52,7 +63,8 @@ a {
   gap: 8px;
 }
 
-.nav a {
+.nav a,
+.nav-disabled {
   border-radius: 6px;
   color: #d9e2ef;
   font-size: 14px;
@@ -61,6 +73,24 @@ a {
 
 .nav a:hover {
   background: #253044;
+}
+
+.nav a span {
+  display: block;
+  font-weight: 700;
+}
+
+.nav a small {
+  color: #aab6c8;
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.nav-disabled {
+  border: 1px solid #334155;
+  color: #8794a8;
+  cursor: not-allowed;
 }
 
 .content {
@@ -249,6 +279,30 @@ a {
   font-size: 26px;
 }
 
+.summary-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.priority-grid .summary-card {
+  min-height: 118px;
+}
+
+.operator-hero {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.operator-hero h2 {
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+
+.login-required-card {
+  max-width: 760px;
+}
+
 .section-toolbar {
   align-items: center;
   display: flex;
@@ -261,6 +315,7 @@ a {
 }
 
 .quick-filter-row,
+.queue-tabs,
 .row-actions,
 .action-bar,
 .badge-row,
@@ -276,6 +331,32 @@ a {
 
 .section-toolbar > .form-actions {
   justify-content: flex-end;
+}
+
+.queue-tabs {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.queue-tabs button {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.filter-drawer {
+  border: 1px solid #edf1f5;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.filter-drawer summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.filter-drawer[open] summary {
+  margin-bottom: 10px;
 }
 
 button,
@@ -636,7 +717,8 @@ th {
   .workspace-layout,
   .signal-header,
   .organization-header,
-  .organization-layout {
+  .organization-layout,
+  .operator-hero {
     grid-template-columns: 1fr;
   }
 

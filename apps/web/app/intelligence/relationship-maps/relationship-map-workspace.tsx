@@ -968,6 +968,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   return (
     <section className="workspace-panel">
       <div className="section-toolbar">

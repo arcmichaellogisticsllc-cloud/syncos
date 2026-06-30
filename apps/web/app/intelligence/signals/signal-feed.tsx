@@ -58,6 +58,7 @@ export function SignalFeed() {
   const [token, setToken] = useState("");
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [showCreate, setShowCreate] = useState(false);
+  const [authMissing, setAuthMissing] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -73,6 +74,16 @@ export function SignalFeed() {
   async function load() {
     setLoading(true);
     setError("");
+    const nextToken = readToken();
+    if (!nextToken) {
+      setAuthMissing(true);
+      setSignals([]);
+      setOrganizations([]);
+      setTerritories([]);
+      setLoading(false);
+      return;
+    }
+    setAuthMissing(false);
     try {
       const [signalRows, orgRows, territoryRows, effective] = await Promise.all([
         syncosFetch<SyncRecord[]>(`/signals${queryString(filters)}`),
@@ -95,16 +106,28 @@ export function SignalFeed() {
   }
 
   const summary = useMemo(() => {
+    const readyForCandidate = signals.filter((signal) => {
+      const confidence = numberValue(signal.confidence_score ?? signal.confidence, 0);
+      const evidence = numberValue(signal.active_evidence_count, 0);
+      return signal.status === "verified" && confidence >= 60 && evidence > 0 && Boolean(signal.primary_organization_id) && !signal.converted;
+    }).length;
     return {
       total: signals.length,
       verified: signals.filter((signal) => signal.status === "verified").length,
       highConfidence: signals.filter((signal) => numberValue(signal.confidence_score ?? signal.confidence, 0) >= 80).length,
+      highConfidenceUnassigned: signals.filter((signal) => numberValue(signal.confidence_score ?? signal.confidence, 0) >= 80 && !signal.owner_user_id).length,
       needsReview: signals.filter((signal) => ["discovered", "categorized", "scored"].includes(String(signal.status))).length,
       withoutOrganization: signals.filter((signal) => !signal.primary_organization_id).length,
+      missingEvidence: signals.filter((signal) => numberValue(signal.active_evidence_count, 0) === 0).length,
       withoutOwner: signals.filter((signal) => !signal.owner_user_id).length,
+      readyForCandidate,
       converted: signals.filter((signal) => Boolean(signal.converted)).length,
       archived: signals.filter((signal) => signal.status === "archived" || signal.archived_at).length,
     };
+  }, [signals]);
+
+  const nextReviewSignal = useMemo(() => {
+    return signals.find((signal) => ["discovered", "categorized", "scored"].includes(String(signal.status))) ?? signals[0];
   }, [signals]);
 
   function persistSession() {
@@ -114,57 +137,75 @@ export function SignalFeed() {
   }
 
   return (
-    <IntelligenceShell title="Signal Feed" purpose="Review market intelligence and move verified signals toward candidate readiness.">
+    <IntelligenceShell title="Signal Feed" purpose="Review market intelligence and move qualified signals toward opportunity candidates.">
       <SessionPanel token={token} setToken={setToken} permissions={permissions} setPermissions={setPermissions} save={persistSession} />
-      {error ? <div className="error-banner">{error}</div> : null}
-      <div className="summary-grid">
-        <SummaryCard label="Total Signals" value={summary.total} onClick={() => setFilters(initialFilters)} />
-        <SummaryCard label="Verified Signals" value={summary.verified} onClick={() => setFilters({ ...initialFilters, status: "verified" })} />
-        <SummaryCard label="High Confidence" value={summary.highConfidence} onClick={() => setFilters({ ...initialFilters, confidenceMin: "80" })} />
-        <SummaryCard label="Needs Review" value={summary.needsReview} onClick={() => setFilters({ ...initialFilters, status: "discovered" })} />
-        <SummaryCard label="Without Organization" value={summary.withoutOrganization} onClick={() => setFilters({ ...initialFilters, organization: "false" })} />
-        <SummaryCard label="Without Owner" value={summary.withoutOwner} onClick={() => setFilters({ ...initialFilters, ownerUserId: "unassigned" })} disabled />
-        <SummaryCard label="Converted to Candidates" value={summary.converted} onClick={() => setFilters({ ...initialFilters, converted: "true" })} />
-        <SummaryCard label="Archived" value={summary.archived} onClick={() => setFilters({ ...initialFilters, archived: "true" })} />
-      </div>
+      {authMissing ? <LoginRequiredCard /> : null}
+      {!authMissing && error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!authMissing ? (
+        <>
+          <section className="panel workspace-panel operator-hero">
+            <div>
+              <h2>Today&apos;s signal work</h2>
+              <p className="muted">Start with reviewable signals, then clear missing owner, evidence, and organization blockers before a signal can become candidate-ready.</p>
+            </div>
+            <div className="form-actions">
+              <button className="primary-button" type="button" disabled={!hasPermission(permissions, "signal.create")} title={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)}>
+                Create Signal
+              </button>
+              <button type="button" disabled={!nextReviewSignal} title={!nextReviewSignal ? "No signals are available for review." : "Open the highest-priority signal in the current queue."} onClick={() => nextReviewSignal && (window.location.href = `/intelligence/signals/${nextReviewSignal.id}`)}>
+                Review Next Signal
+              </button>
+            </div>
+          </section>
 
-      <section className="panel workspace-panel">
+          <div className="summary-grid priority-grid" aria-label="Today's Priorities">
+            <SummaryCard label="Needs Review" value={summary.needsReview} helper="New or scored intelligence that needs a decision." onClick={() => setQuickFilter("Needs Review", setFilters)} />
+            <SummaryCard label="High Confidence Unassigned" value={summary.highConfidenceUnassigned} helper="Strong signals that still need an owner." onClick={() => setQuickFilter("High Confidence Unassigned", setFilters)} />
+            <SummaryCard label="Missing Organization" value={summary.withoutOrganization} helper="Signals blocked from candidate readiness." onClick={() => setQuickFilter("Missing Organization", setFilters)} />
+            <SummaryCard label="Missing Evidence" value={summary.missingEvidence} helper="Signals that cannot be verified yet." onClick={() => setQuickFilter("Missing Evidence", setFilters)} />
+            <SummaryCard label="Ready for Candidate" value={summary.readyForCandidate} helper="Verified signals with evidence and organization context." onClick={() => setQuickFilter("Ready for Candidate", setFilters)} />
+          </div>
+        </>
+      ) : null}
+
+      {!authMissing ? <section className="panel workspace-panel">
         <div className="section-toolbar">
           <div>
-            <h2>Filters</h2>
-            <p className="muted">Filters run against the tenant-scoped signal feed API.</p>
+            <h2>Queue</h2>
+            <p className="muted">Queues drive the page. Filters are secondary when the operator needs a narrower search.</p>
           </div>
-          <button className="primary-button" type="button" disabled={!hasPermission(permissions, "signal.create")} onClick={() => setShowCreate(true)}>
-            Create Signal
-          </button>
+          <span className="badge">{signals.length} Signals shown</span>
         </div>
-        <div className="quick-filter-row">
-          {["Needs Review", "High Confidence", "Missing Organization", "Missing Evidence", "Unassigned", "Ready for Candidate", "Recently Discovered", "Verified Signals", "Archived Signals"].map((label) => (
+        <div className="queue-tabs" role="tablist" aria-label="Signal queues">
+          {["Needs Review", "Verified Signals", "Ready for Candidate", "Missing Evidence", "Archived Signals"].map((label) => (
             <button key={label} type="button" onClick={() => setQuickFilter(label, setFilters)}>
               {label}
             </button>
           ))}
         </div>
-        <div className="filter-grid">
-          <input value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Search by title" />
-          <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={["", "discovered", "categorized", "scored", "investigated", "verified", "consumed", "archived"]} label="Status" />
-          <Select value={filters.category} onChange={(category) => setFilters({ ...filters, category })} options={["", ...signalCategories]} label="Category" />
-          <Select value={filters.type} onChange={(type) => setFilters({ ...filters, type })} options={["", ...signalTypes]} label="Type" />
-          <input value={filters.source} onChange={(event) => setFilters({ ...filters, source: event.target.value })} placeholder="Source" />
-          <Select value={filters.sourceType} onChange={(sourceType) => setFilters({ ...filters, sourceType })} options={["", ...sourceTypes]} label="Source type" />
-          <input value={filters.confidenceMin} onChange={(event) => setFilters({ ...filters, confidenceMin: event.target.value })} placeholder="Min confidence" type="number" min="0" max="100" />
-          <input value={filters.confidenceMax} onChange={(event) => setFilters({ ...filters, confidenceMax: event.target.value })} placeholder="Max confidence" type="number" min="0" max="100" />
-          <Select value={filters.trustLevel} onChange={(trustLevel) => setFilters({ ...filters, trustLevel })} options={["", ...trustLevels]} label="Trust level" />
-          <Select value={filters.evidence} onChange={(evidence) => setFilters({ ...filters, evidence })} options={["", "true", "false"]} label="Evidence" />
-          <Select value={filters.organization} onChange={(organization) => setFilters({ ...filters, organization })} options={["", "true", "false"]} label="Organization" />
-          <Select value={filters.converted} onChange={(converted) => setFilters({ ...filters, converted })} options={["", "true", "false"]} label="Candidate" />
-          <button type="button" onClick={() => setFilters(initialFilters)}>
-            Clear filters
-          </button>
-        </div>
-      </section>
+        <details className="filter-drawer">
+          <summary>Filters</summary>
+          <div className="filter-grid">
+            <input value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Search by title" />
+            <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={["", "discovered", "categorized", "scored", "investigated", "verified", "consumed", "archived"]} label="Status" />
+            <Select value={filters.category} onChange={(category) => setFilters({ ...filters, category })} options={["", ...signalCategories]} label="Category" />
+            <Select value={filters.type} onChange={(type) => setFilters({ ...filters, type })} options={["", ...signalTypes]} label="Type" />
+            <input value={filters.source} onChange={(event) => setFilters({ ...filters, source: event.target.value })} placeholder="Source" />
+            <Select value={filters.sourceType} onChange={(sourceType) => setFilters({ ...filters, sourceType })} options={["", ...sourceTypes]} label="Source type" />
+            <input value={filters.confidenceMin} onChange={(event) => setFilters({ ...filters, confidenceMin: event.target.value })} placeholder="Min confidence" type="number" min="0" max="100" />
+            <input value={filters.confidenceMax} onChange={(event) => setFilters({ ...filters, confidenceMax: event.target.value })} placeholder="Max confidence" type="number" min="0" max="100" />
+            <Select value={filters.trustLevel} onChange={(trustLevel) => setFilters({ ...filters, trustLevel })} options={["", ...trustLevels]} label="Trust level" />
+            <Select value={filters.evidence} onChange={(evidence) => setFilters({ ...filters, evidence })} options={["", "true", "false"]} label="Evidence" />
+            <Select value={filters.organization} onChange={(organization) => setFilters({ ...filters, organization })} options={["", "true", "false"]} label="Organization" />
+            <Select value={filters.converted} onChange={(converted) => setFilters({ ...filters, converted })} options={["", "true", "false"]} label="Candidate" />
+            <button type="button" onClick={() => setFilters(initialFilters)}>
+              Clear filters
+            </button>
+          </div>
+        </details>
+      </section> : null}
 
-      <section className="panel workspace-panel">
+      {!authMissing ? <section className="panel workspace-panel">
         <div className="section-toolbar">
           <h2>Signals</h2>
           <span className="badge">{signals.length} shown</span>
@@ -179,7 +220,7 @@ export function SignalFeed() {
           </div>
         ) : null}
         {signals.length > 0 ? <SignalTable signals={signals} permissions={permissions} reload={load} /> : null}
-      </section>
+      </section> : null}
 
       {showCreate ? <CreateSignalModal organizations={organizations} territories={territories} onClose={() => setShowCreate(false)} onCreated={(signal) => (window.location.href = `/intelligence/signals/${signal.id}`)} /> : null}
     </IntelligenceShell>
@@ -341,6 +382,7 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
 }
 
 function SessionPanel({ token, setToken, permissions, setPermissions, save }: { token: string; setToken: (value: string) => void; permissions: string[]; setPermissions: (value: string[]) => void; save: () => void }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   return (
     <section className="panel workspace-panel">
       <div className="section-toolbar">
@@ -358,8 +400,26 @@ function SessionPanel({ token, setToken, permissions, setPermissions, save }: { 
   );
 }
 
-function SummaryCard({ label, value, onClick, disabled }: { label: string; value: number; onClick?: () => void; disabled?: boolean }) {
-  return <button className="summary-card" disabled={disabled} type="button" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function LoginRequiredCard() {
+  return (
+    <section className="panel workspace-panel login-required-card">
+      <div>
+        <h2>Login required</h2>
+        <p className="muted">Sign in to review market intelligence and manage signal queues.</p>
+      </div>
+      <div className="warning-box">Developer token controls are hidden from the operator experience. Local E2E sessions still load silently from the authenticated browser session.</div>
+    </section>
+  );
+}
+
+function SummaryCard({ label, value, helper, onClick, disabled }: { label: string; value: number; helper?: string; onClick?: () => void; disabled?: boolean }) {
+  return (
+    <button className="summary-card" disabled={disabled} type="button" onClick={onClick}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {helper ? <small>{helper}</small> : null}
+    </button>
+  );
 }
 
 function Select({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: string[]; label: string }) {
@@ -386,7 +446,7 @@ function SelectInput({ name, options, required, defaultValue }: { name: string; 
 function setQuickFilter(label: string, setFilters: (filters: Filters) => void) {
   const normalized = label.toLowerCase().replace(/\s+/g, "_");
   if (normalized === "needs_review") setFilters({ ...initialFilters, status: "discovered" });
-  else if (normalized === "high_confidence") setFilters({ ...initialFilters, confidenceMin: "80" });
+  else if (normalized === "high_confidence" || normalized === "high_confidence_unassigned") setFilters({ ...initialFilters, confidenceMin: "80", ownerUserId: "unassigned" });
   else if (normalized === "missing_organization") setFilters({ ...initialFilters, organization: "false" });
   else if (normalized === "missing_evidence") setFilters({ ...initialFilters, evidence: "false" });
   else if (normalized === "unassigned") setFilters({ ...initialFilters, ownerUserId: "unassigned" });

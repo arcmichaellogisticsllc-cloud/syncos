@@ -1074,6 +1074,7 @@ function RecordModal({ title, children, onClose, onSubmit, error: externalError 
 }
 
 function SessionPanel({ token, permissions, setToken, setPermissions }: { token: string; permissions: string[]; setToken: (token: string) => void; setPermissions: (permissions: string[]) => void }) {
+  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
   const [nextToken, setNextToken] = useState(token);
   const [nextPermissions, setNextPermissions] = useState(permissions.join(", "));
   useEffect(() => {

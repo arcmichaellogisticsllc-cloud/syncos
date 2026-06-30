@@ -3,43 +3,28 @@ import type { ReactNode } from "react";
 import { formatValue, type DashboardData, valueAt } from "./dashboard-data";
 
 const navItems = [
-  ["/intelligence/signals", "Intelligence"],
-  ["/opportunities/candidates", "Opportunity"],
-  ["/projects", "Projects"],
-  ["/work-orders", "Work Orders"],
-  ["/production", "Production"],
-  ["/qc", "QC"],
-  ["/billable", "Billable"],
-  ["/settlements", "Settlements"],
-  ["/invoices", "Invoices"],
-  ["/cash", "Cash Application"],
-  ["/collections", "Collections"],
-  ["/contractor-payables", "Contractor Payables"],
-  ["/payroll", "Payroll"],
-  ["/payments", "Payments"],
-  ["/bank-reconciliation", "Bank Reconciliation"],
-  ["/accounting-exports", "Accounting Exports"],
-  ["/executive", "Executive"],
-  ["/growth", "Growth"],
-  ["/operations", "Operations"],
-  ["/finance", "Finance"],
-  ["/constraints-center", "Constraints"],
-  ["/recommendations-center", "Recommendations"],
-  ["/workflows-center", "Workflows"],
-  ["/kpis-center", "KPIs"],
+  ["/", "Command Center", "Daily Priorities", "Today's work and blockers"],
+  ["/intelligence/signals", "Growth", "Intelligence", "Find and qualify work"],
+  ["/work-orders", "Operations", "Projects", "Plan and execute work"],
+  ["/billable", "Finance", "Accounting", "Bill, collect, pay, reconcile"],
 ];
 
 export function CommandShell({ title, purpose, children }: { title: string; purpose: string; children: ReactNode }) {
   return (
     <main className="shell">
       <header className="topbar">
-        <div className="brand">SyncOS</div>
-        <nav className="nav">
-          {navItems.map(([href, label]) => (
-            <Link href={href} key={href}>
-              {label}
+        <div className="brand-block">
+          <div className="brand">SyncOS</div>
+          <div className="brand-subtitle">Telecom operations command center</div>
+        </div>
+        <nav className="nav" aria-label="Workspace navigation">
+          {navItems.map(([href, label, scope, description]) => (
+            <Link href={href} key={href} title={description}>
+              <span>{label}</span>
+              <small>{scope}</small>
             </Link>
           ))}
+          <span className="nav-disabled" title="Admin workspace is planned but not implemented yet">Admin</span>
         </nav>
       </header>
       <section className="content">
