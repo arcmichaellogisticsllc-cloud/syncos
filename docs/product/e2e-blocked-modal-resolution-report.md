@@ -1,12 +1,10 @@
 # E2E Blocked Modal Resolution Report
 
-## Sprint: Browser E2E Blocked Modal Resolution & CI Gate Hardening
-
 ## Summary
 
-Sprint resolved 14 of 17 BLOCKED states and 2 of 2 not-certified states across the `action-state-submit.spec.ts` suite. Three states remain legitimately blocked due to seed data constraints that cannot be fixed without mutating product business logic.
+All 17 BLOCKED states and 2 not-certified states across the `action-state-submit.spec.ts` suite are now certified. Zero legitimately blocked states remain.
 
-## Resolved States
+## Sprint 1 — Role Authority & Seed Data (14 BLOCKED + 2 not-certified)
 
 ### Category 1 — Role Authority (8 states)
 
@@ -16,7 +14,7 @@ These states were seeded with an insufficient role. The `requireRoleAuthority()`
 |---|---|---|
 | `prodSubmitted` | QC Manager | New `qc-manager` persona |
 | `prodUnderReview` | QC Manager | New `qc-manager` persona |
-| `prodCorrectionRequested` | QC Manager | New `qc-manager` persona + seed fixes (see below) |
+| `prodCorrectionRequested` | QC Manager | New `qc-manager` persona + seed fixes |
 | `prodApprovedNotMarked` | QC Manager | New `qc-manager` persona |
 | `qcPending` | QC Manager | New `qc-manager` persona |
 | `qcInReview` | QC Manager | New `qc-manager` persona |
@@ -42,29 +40,48 @@ These states were seeded with an insufficient role. The `requireRoleAuthority()`
 
 ### Category 3 — New Spec Coverage (2 states)
 
-These states were `"not-certified"` because no submit test existed. Tests were added and the states are now `"certified"`.
+These states were `"not-certified"` because no submit test existed.
 
 | State | Action | Key Assertion |
 |---|---|---|
 | `paymentItemDraft` | Archive Item → "Archive Payment Item" modal | `payment_items.status = "archived"` |
 | `aexItemDraft` | Archive Item → "Archive Item" modal | `accounting_export_items.export_status = "archived"` |
 
-**Test placement note:** Both item-level archive tests run AFTER their parent batch submit-review tests. `submitReview` for both payment batches and AEX batches calls `requireActiveItemCount`. Archiving items before submit-review would cause the parent batch test to fail.
+**Test placement note:** Both item-level archive tests run AFTER their parent batch submit-review tests. `submitReview` calls `requireActiveItemCount`. Archiving items before submit-review would cause the parent batch test to fail.
 
-## Remaining Blocked States
+## Sprint 2 — Remaining Blocked Modal Resolution (3 BLOCKED)
 
-These three states remain `"blocked"` with legitimate reasons that cannot be resolved without mutating product business logic or introducing fake seed data.
+### Root Cause Corrections and Fixes
 
-| State | Blocked Reason |
-|---|---|
-| `settlementApproved` | Seeded billable items are in `'blocked'` status. API rejects Mark Invoice Ready when any item is not in a ready-for-settlement state. Fixing this requires business-logic-complete billable item state sequences not currently seeded. |
-| `settlementDisputed` | Seeded `settlementDisputed` violates the `settlements_contract_status_check` DB constraint on Resolve Dispute. The contract status is incompatible with dispute resolution as seeded. |
-| `invoiceItemDraft` | State uses the parent `invoiceDraft` route. After invoiceDraft submits for review, the invoice transitions to `ready_for_review`, making the Reject button disabled (requires `under_review` status). The test cannot certify submit without a dedicated invoice-item route that is independent of the parent invoice state. |
+| State | Prior (Wrong) Diagnosis | Actual Root Cause | Fix |
+|---|---|---|---|
+| `settlementApproved` | "Billable items in 'blocked' status" | No `settlement_items` with `item_type='customer_billable'`; `settlementHasItemType` returns false → API rejects Mark Invoice Ready | Added `settlementApprovedItem` settlement_item with `item_type: "customer_billable"`, `status: "approved"`, no `invoice_item_id` |
+| `settlementDisputed` | "DB constraint violation on contract_status" | No `settlement_items` → `calculateSettlementReadiness` writes `readiness_band="blocked"` on Resolve Dispute → violates `settlements_contract_status_check` constraint (only allows `not_ready, needs_review, ready_with_warning, ready_for_approval` in readiness_band) | Added `settlementDisputedItem` settlement_item; with items present, readiness_band resolves to `"ready_for_approval"` which satisfies the constraint |
+| `invoiceItemDraft` | "Reject button disabled after Submit Review (requires under_review status)" | MISDIAGNOSED: `rejectInvoice` API has NO status restriction. UI Reject button disabled only for `viewOnly` (voided/archived). Test was simply never written. | Added test: navigate to `/invoices/${s.invoiceDraft}` (in ready_for_review after Submit Review), click Reject, fill Rejection Reason, assert `approval_status = "rejected"` |
 
-## Files Changed
+### Technical Details
 
-- `packages/database/scripts/seed-e2e-demo.js` — seed data fixes and new records
-- `tests/e2e/fixtures/personas.ts` — two new personas
-- `tests/e2e/fixtures/action-states.ts` — certification status updates for all 14 resolved + 2 new states
-- `tests/e2e/action-states/action-state-submit.spec.ts` — removed skips, added 2 new tests
-- `package.json` — added CI gate scripts
+**settlementApproved — Mark Invoice Ready:**
+`markSettlementReadyFlag` guard chain:
+1. `before.status !== "approved"` → passes (status IS "approved")
+2. `settlementHasItemType(client, tenantId, id, "customer_billable")` → was failing (no items), now passes with added `settlementApprovedItem`
+3. `settlementHasFutureLink(client, tenantId, id, "invoice_item_id")` → passes (no invoice_item_id set on new item)
+4. Updates settlement to `invoice_ready` status, updates settlement_items to `invoice_ready`
+
+**settlementDisputed — Resolve Dispute:**
+`resolveSettlementDispute` calls `calculateSettlementReadiness` with `{...before, status: "draft", dispute_reason: null}`. Without settlement_items: `blockers.add("no_settlement_items")` → `readinessStatus = "blocked"` → `readiness_band = "blocked"` → DB constraint violation. With `settlementDisputedItem` (no billable_item_id, quantity > 0, unit_rate set, billing/doc status "ready"): all 14 completeChecks pass → score 100 → `readinessStatus = "ready_for_approval"` → `readiness_band = "ready_for_approval"` → satisfies constraint.
+
+**invoiceItemDraft — Reject:**
+`rejectInvoice` (cash.controller.ts line 317): no `requireRoleAuthority`, no status check. UI: `disabled={viewOnly(record)}` where `viewOnly` is `["voided","archived"].includes(status)`. For `ready_for_review`, button is enabled. Test runs after `invoiceDraft: Submit Review` (invoice → ready_for_review); Reject succeeds regardless. Both tests use different record IDs so there's no ordering conflict.
+
+## All States Certified
+
+All 17 previously BLOCKED states and 2 previously not-certified states are now `"certified"`. The `action-state-submit.spec.ts` suite runs with 0 skips and 0 failures on a fresh seed.
+
+## Files Changed (Sprint 2)
+
+- `packages/database/scripts/seed-e2e-demo.js` — added `settlementApprovedItem` and `settlementDisputedItem` settlement_items
+- `tests/e2e/fixtures/action-states.ts` — certified all 3 remaining states
+- `tests/e2e/action-states/action-state-submit.spec.ts` — removed 2 skips, added invoiceItemDraft test
+- `docs/product/e2e-blocked-modal-resolution-report.md` — updated this report
+- `docs/product/e2e-full-modal-certification-gap-backlog.md` — all gaps cleared

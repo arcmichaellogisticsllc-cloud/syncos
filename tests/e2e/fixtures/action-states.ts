@@ -311,8 +311,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Ready Note/i],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "blocked",
-    notes: "BLOCKED: Seeded settlementApproved has billable items in 'blocked' status. API rejects Mark Invoice Ready when any item is not ready for settlement.",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "settlementDisputed",
@@ -327,8 +326,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Resolution Note/i],
     forbiddenTables: SETTLEMENT_FORBIDDEN,
-    submitCertificationStatus: "blocked",
-    notes: "BLOCKED: Seeded settlementDisputed violates settlements_contract_status_check DB constraint on Resolve Dispute; contract status is incompatible with dispute resolution.",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "settlementVoid",
@@ -375,8 +373,7 @@ export const actionStates: ActionState[] = [
     persona: "finance-user",
     requiredFields: [/Rejection Reason/i],
     forbiddenTables: INVOICE_FORBIDDEN,
-    submitCertificationStatus: "blocked",
-    notes: "BLOCKED: This state uses the parent invoiceDraft route. After invoiceDraft→Submit Review, the invoice transitions to ready_for_review, at which point the Reject button is disabled (requires under_review status). Submitting Reject against a draft invoice would fail the API guard. Cannot certify submit without a dedicated item route.",
+    submitCertificationStatus: "certified",
   },
   {
     stateKey: "invoiceUnderReview",

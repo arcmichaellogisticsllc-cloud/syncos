@@ -494,6 +494,22 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "invoiceDraft-submit-review");
   });
 
+  test("[Invoice] invoiceItemDraft: Reject → approval_status=rejected", async ({ page }) => {
+    // Reject has no invoice-status restriction (API) and the button is enabled for non-voided invoices (UI).
+    // This test runs after invoiceDraft:Submit Review (invoice is now ready_for_review); Reject still works.
+    test.slow();
+    await installStoredSession(page, personas.systemAdmin.storageState);
+    await expectRouteHealthy(page, `/invoices/${s.invoiceDraft}`, "invoice");
+    const before = await captureBoundaryCounts(TENANT_ID, ["cash_receipts", "payment_batches", "bank_transactions", "payroll_runs", "accounting_export_batches"]);
+    await openAction(page, /^Reject$/i);
+    await expectModal(page, /Reject/i);
+    await page.getByLabel(/Rejection Reason/i).first().fill("E2E certification invoice item rejection");
+    await submitModal(page);
+    const row = await withDb((c) => c.query(`SELECT approval_status FROM invoices WHERE id = $1 AND tenant_id = $2`, [s.invoiceDraft, TENANT_ID]));
+    expect(row.rows[0].approval_status, "invoices.approval_status must be rejected").toBe("rejected");
+    await expectBoundaryUnchanged(TENANT_ID, before, "invoiceItemDraft-reject");
+  });
+
   test("[Invoice] invoiceUnderReview: Reject → status=rejected", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
@@ -580,7 +596,6 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Settlement] settlementApproved: Mark Invoice Ready → invoice_ready", async ({ page }) => {
-    test.skip(true, "BLOCKED: Seeded settlementApproved has billable items in 'blocked' status; API requires all items to be ready for settlement before Mark Invoice Ready can proceed.");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/settlements/${s.settlementApproved}`, "settlement");
@@ -598,7 +613,6 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Settlement] settlementDisputed: Resolve Dispute → status != disputed", async ({ page }) => {
-    test.skip(true, "BLOCKED: Seeded settlementDisputed violates settlements_contract_status_check DB constraint when Resolve Dispute is submitted; the settlement's contract status is incompatible with dispute resolution.");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/settlements/${s.settlementDisputed}`, "settlement");

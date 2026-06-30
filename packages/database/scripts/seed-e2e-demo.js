@@ -88,7 +88,9 @@ const actionIds = Object.freeze({
   settlementItemDraft: uuid("action-settlement-item-draft"),
   settlementUnderReview: uuid("action-settlement-under-review"),
   settlementApproved: uuid("action-settlement-approved"),
+  settlementApprovedItem: uuid("action-settlement-approved-item"),
   settlementDisputed: uuid("action-settlement-disputed"),
+  settlementDisputedItem: uuid("action-settlement-disputed-item"),
   settlementVoid: uuid("action-settlement-void"),
   // Invoice action state records
   invoiceDraft: uuid("action-invoice-draft"),
@@ -332,7 +334,9 @@ async function seedActionStateRecords(client) {
   await upsert(client, "settlement_items", { id: actionIds.settlementItemDraft, tenant_id: t, settlement_id: actionIds.settlementDraft, production_record_id: ids.productionRecord, rate_code_id: ids.rateCode, quantity: 800, unit_rate: 10, gross_amount: 8000, amount: 8000, description: "E2E Action Settlement Item Draft", status: "draft", project_id: ids.project, work_order_id: ids.workOrder, qc_review_id: ids.qcReview, customer_organization_id: ids.orgCustomer, capacity_provider_id: ids.provider, crew_id: ids.crew, item_type: "customer_billable", unit: "feet", net_amount: 8000, contractor_rate: 7, contractor_payable_amount: 5600, margin_amount: 2400, margin_percent: 30, billing_package_status: "ready", documentation_status: "ready", customer_acceptance_status: "accepted", created_by: admin, updated_by: admin });
   await upsert(client, "settlements", { ...setBase, id: actionIds.settlementUnderReview, settlement_number: "SET-ACT-002", status: "under_review", readiness_status: "ready_for_approval", readiness_score: 88, readiness_band: "ready_for_approval", invoice_ready: false, payable_ready: false });
   await upsert(client, "settlements", { ...setBase, id: actionIds.settlementApproved, settlement_number: "SET-ACT-003", status: "approved", readiness_status: "ready_for_approval", readiness_score: 95, readiness_band: "ready_for_approval", invoice_ready: false, payable_ready: false, approved_by: admin, approved_at: "2026-02-05T12:00:00Z" });
+  await upsert(client, "settlement_items", { id: actionIds.settlementApprovedItem, tenant_id: t, settlement_id: actionIds.settlementApproved, item_type: "customer_billable", status: "approved", quantity: 800, unit_rate: 10, gross_amount: 8000, amount: 8000, net_amount: 8000, description: "E2E Action Settlement Approved Item", billing_package_status: "ready", documentation_status: "ready", customer_acceptance_status: "not_required", created_by: admin, updated_by: admin });
   await upsert(client, "settlements", { ...setBase, id: actionIds.settlementDisputed, settlement_number: "SET-ACT-004", status: "disputed", readiness_status: "blocked", readiness_score: 20, readiness_band: "not_ready", invoice_ready: false, payable_ready: false });
+  await upsert(client, "settlement_items", { id: actionIds.settlementDisputedItem, tenant_id: t, settlement_id: actionIds.settlementDisputed, item_type: "customer_billable", status: "disputed", quantity: 800, unit_rate: 10, gross_amount: 8000, amount: 8000, net_amount: 8000, description: "E2E Action Settlement Disputed Item", billing_package_status: "ready", documentation_status: "ready", customer_acceptance_status: "not_required", created_by: admin, updated_by: admin });
   await upsert(client, "settlements", { ...setBase, id: actionIds.settlementVoid, settlement_number: "SET-ACT-005", status: "voided", readiness_status: "not_ready", readiness_score: 0, readiness_band: "not_ready", invoice_ready: false, payable_ready: false });
 
   // ── Invoice action state records ──────────────────────────────────────────
