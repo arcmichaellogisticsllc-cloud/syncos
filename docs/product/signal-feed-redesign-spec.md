@@ -6,16 +6,17 @@ The current Signal Feed screenshot shows Safari pointed at the local app and, in
 
 ## Current Problems
 
-- Developer Operator Session is visible.
-- Sign-in token warning appears in main content.
+- Developer Operator Session is hidden in normal operator mode as of Phase 1A.
+- Sign-in token warning was replaced with production-safe login-required copy in Phase 1B.
 - Zero metrics have no explanation.
 - Filters dominate the page.
-- No priority queue is visible.
-- No recommended actions are prominent.
-- No operator workflow is obvious.
-- Create button lacks context.
+- Priority queue cards and queue tabs exist as the first page-template pilot.
+- Recommended actions are prominent for Create Signal and Review Next Signal.
+- Operator workflow is present but still needs selected-row context and bulk actions.
+- Create button has context and modal boundary copy.
 - The page does not explain what makes a signal actionable.
 - Advanced filters are always competing with the work list.
+- Row actions previously used browser prompt/alert; Phase 1B replaces the feed actions with operator modals.
 
 ## Page Purpose
 
@@ -215,7 +216,46 @@ For local dev/test, token controls may exist behind an explicit dev-only environ
 - Submit label: Create Signal.
 - Success: closes modal and navigates to signal detail.
 - Error: remains open with alert role.
+- Optional evidence failure: operator is told the signal was created but evidence could not be attached; no silent failure is allowed.
 - Boundary: does not create candidate, opportunity, project, work order, invoice, or financial record.
+
+### Categorize Signal
+
+- Purpose: classify a signal for routing and review.
+- Required fields: signal category, signal type.
+- Submit label: Categorize Signal.
+- Success: closes modal and refreshes the queue.
+- Error: remains open with alert role.
+- Boundary: updates the signal only; does not create candidates, opportunities, projects, invoices, payments, or accounting records.
+
+### Score Signal
+
+- Purpose: set confidence so operators can prioritize review.
+- Required fields: confidence score 0-100.
+- Submit label: Score Signal.
+- Success: closes modal and refreshes the queue.
+- Error: remains open with alert role.
+- Boundary: updates the signal only; does not create downstream records.
+
+### Verify Signal
+
+- Purpose: confirm the signal has enough evidence to trust.
+- Required fields: trust level.
+- Disabled condition: evidence count is zero, with reason "Add evidence before verifying."
+- Submit label: Verify Signal.
+- Success: closes modal and refreshes the queue.
+- Error: remains open with alert role.
+- Boundary: verification does not create candidates, opportunities, projects, invoices, payments, or accounting records.
+
+### Archive Signal
+
+- Purpose: remove an irrelevant or closed signal from the active queue.
+- Required fields: archive reason.
+- Optional fields: archive note.
+- Submit label: Archive Signal.
+- Success: closes danger modal and refreshes the queue.
+- Error: remains open with alert role.
+- Boundary: archive is destructive for the active queue but does not mutate downstream records.
 
 ### Assign Owners
 
@@ -244,15 +284,40 @@ Existing coverage:
 
 New coverage needed:
 
-- Production-mode Signal Feed does not show Operator Session/token UI.
-- Unauthenticated state shows login-required card.
-- Default queue is Needs Review.
-- Filter drawer is collapsed by default.
-- Priority cards link to correct queues.
-- Verify disabled reason appears when evidence is missing.
-- Read-only auditor can view but cannot mutate.
-- Create Signal modal follows modal standards.
-- Archive requires danger styling and modal confirmation.
+- Production-mode Signal Feed does not show Operator Session/token UI. Added in Phase 1B.
+- Unauthenticated state shows login-required card with production-safe copy. Added in Phase 1B.
+- Default queue is Needs Review. Added in Phase 1B.
+- Filter drawer is collapsed by default. Added in Phase 1B.
+- Priority cards and queue tabs render and select predictably. Added in Phase 1B.
+- Verify disabled reason appears when evidence is missing. Added in Phase 1B.
+- Read-only auditor can view but cannot mutate. Added in Phase 1B.
+- Create Signal modal follows modal standards. Added in Phase 1B.
+- Categorize, Score, and Archive modals submit and refresh. Added in Phase 1B.
+- Archive requires danger styling and modal confirmation. Added in Phase 1B.
+
+## Phase 1B Status
+
+Complete:
+
+- Production-safe unauthenticated copy.
+- No developer session UI in default Signal Feed.
+- No browser prompt or alert for Signal Feed list actions.
+- Categorize, Score, Verify, and Archive action modals.
+- Active queue tab visual and ARIA state.
+- Visible disabled reasons for missing permissions and missing evidence.
+- Focused E2E coverage for Signal Feed operator hardening.
+
+Remaining gaps before declaring Signal Feed fully operator-ready:
+
+- Detail page still needs the same modal hardening pattern.
+- Assign Owners and Convert Ready Signals remain future actions.
+- Queue counts are based on the loaded result set, not a separate all-queue summary endpoint.
+- Mobile/tablet layout has not had screenshot review.
+- Selected-row context panel and bulk action ergonomics are still future work.
+
+Pilot readiness:
+
+Signal Feed is now ready as the first queue-page template pilot for modal behavior, disabled reasons, collapsed filters, and priority tabs. It is not yet a complete reusable component system.
 
 ## Redesign Acceptance Criteria
 

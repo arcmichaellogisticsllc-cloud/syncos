@@ -49,6 +49,12 @@ const sourceTypes = ["public_source", "relationship_source", "procurement_source
 const trustLevels = ["unverified", "low", "medium", "high", "verified"];
 const workTypes = ["fiber", "coax", "aerial", "underground", "directional_bore", "trenching", "splicing", "drops", "make_ready", "inspection", "restoration", "project_management", "unknown"];
 const evidenceTypes = ["source_url", "document", "screenshot", "email_note", "call_note", "meeting_note", "public_record", "procurement_notice", "permit_record", "funding_notice", "relationship_note", "other"];
+const archiveReasons = ["duplicate", "stale", "false_signal", "out_of_territory", "not_telecom_work", "insufficient_evidence", "no_longer_relevant", "other"];
+const queueTabs = ["Needs Review", "Verified Signals", "Ready for Candidate", "Missing Evidence", "Archived Signals"] as const;
+
+type SignalAction = "categorize" | "score" | "verify" | "archive";
+type QueueTab = (typeof queueTabs)[number];
+type ActionModalState = { action: SignalAction; signal: SyncRecord } | null;
 
 export function SignalFeed() {
   const [signals, setSignals] = useState<SyncRecord[]>([]);
@@ -56,8 +62,10 @@ export function SignalFeed() {
   const [territories, setTerritories] = useState<SyncRecord[]>([]);
   const [permissions, setPermissions] = useState<string[]>(defaultSignalPermissions);
   const [token, setToken] = useState("");
-  const [filters, setFilters] = useState<Filters>(initialFilters);
+  const [activeQueue, setActiveQueue] = useState<string>("Needs Review");
+  const [filters, setFilters] = useState<Filters>(filtersForQueue("Needs Review"));
   const [showCreate, setShowCreate] = useState(false);
+  const [actionModal, setActionModal] = useState<ActionModalState>(null);
   const [authMissing, setAuthMissing] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -136,6 +144,17 @@ export function SignalFeed() {
     void load();
   }
 
+  function applyQueue(label: string) {
+    setActiveQueue(label);
+    setFilters(filtersForQueue(label));
+  }
+
+  async function submitAction(action: SignalAction, signal: SyncRecord, body: Record<string, unknown>) {
+    const id = String(signal.id);
+    await syncosFetch(`/signals/${id}/${action}`, { method: "POST", body });
+    await load();
+  }
+
   return (
     <IntelligenceShell title="Signal Feed" purpose="Review market intelligence and move qualified signals toward opportunity candidates.">
       <SessionPanel token={token} setToken={setToken} permissions={permissions} setPermissions={setPermissions} save={persistSession} />
@@ -149,21 +168,22 @@ export function SignalFeed() {
               <p className="muted">Start with reviewable signals, then clear missing owner, evidence, and organization blockers before a signal can become candidate-ready.</p>
             </div>
             <div className="form-actions">
-              <button className="primary-button" type="button" disabled={!hasPermission(permissions, "signal.create")} title={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)}>
+              <button className="primary-button" type="button" disabled={!hasPermission(permissions, "signal.create")} title={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} aria-describedby={!hasPermission(permissions, "signal.create") ? "create-signal-disabled-reason" : undefined} onClick={() => setShowCreate(true)}>
                 Create Signal
               </button>
               <button type="button" disabled={!nextReviewSignal} title={!nextReviewSignal ? "No signals are available for review." : "Open the highest-priority signal in the current queue."} onClick={() => nextReviewSignal && (window.location.href = `/intelligence/signals/${nextReviewSignal.id}`)}>
                 Review Next Signal
               </button>
+              {!hasPermission(permissions, "signal.create") ? <span id="create-signal-disabled-reason" className="disabled-reason">Your role can review signals but cannot create them.</span> : null}
             </div>
           </section>
 
           <div className="summary-grid priority-grid" aria-label="Today's Priorities">
-            <SummaryCard label="Needs Review" value={summary.needsReview} helper="New or scored intelligence that needs a decision." onClick={() => setQuickFilter("Needs Review", setFilters)} />
-            <SummaryCard label="High Confidence Unassigned" value={summary.highConfidenceUnassigned} helper="Strong signals that still need an owner." onClick={() => setQuickFilter("High Confidence Unassigned", setFilters)} />
-            <SummaryCard label="Missing Organization" value={summary.withoutOrganization} helper="Signals blocked from candidate readiness." onClick={() => setQuickFilter("Missing Organization", setFilters)} />
-            <SummaryCard label="Missing Evidence" value={summary.missingEvidence} helper="Signals that cannot be verified yet." onClick={() => setQuickFilter("Missing Evidence", setFilters)} />
-            <SummaryCard label="Ready for Candidate" value={summary.readyForCandidate} helper="Verified signals with evidence and organization context." onClick={() => setQuickFilter("Ready for Candidate", setFilters)} />
+            <SummaryCard label="Needs Review" value={summary.needsReview} helper="New or scored intelligence that needs a decision." onClick={() => applyQueue("Needs Review")} />
+            <SummaryCard label="High Confidence Unassigned" value={summary.highConfidenceUnassigned} helper="Strong signals that still need an owner." onClick={() => applyQueue("High Confidence Unassigned")} />
+            <SummaryCard label="Missing Organization" value={summary.withoutOrganization} helper="Signals blocked from candidate readiness." onClick={() => applyQueue("Missing Organization")} />
+            <SummaryCard label="Missing Evidence" value={summary.missingEvidence} helper="Signals that cannot be verified yet." onClick={() => applyQueue("Missing Evidence")} />
+            <SummaryCard label="Ready for Candidate" value={summary.readyForCandidate} helper="Verified signals with evidence and organization context." onClick={() => applyQueue("Ready for Candidate")} />
           </div>
         </>
       ) : null}
@@ -177,8 +197,8 @@ export function SignalFeed() {
           <span className="badge">{signals.length} Signals shown</span>
         </div>
         <div className="queue-tabs" role="tablist" aria-label="Signal queues">
-          {["Needs Review", "Verified Signals", "Ready for Candidate", "Missing Evidence", "Archived Signals"].map((label) => (
-            <button key={label} type="button" onClick={() => setQuickFilter(label, setFilters)}>
+          {queueTabs.map((label) => (
+            <button key={label} type="button" role="tab" aria-selected={activeQueue === label} className={activeQueue === label ? "active" : undefined} onClick={() => applyQueue(label)}>
               {label}
             </button>
           ))}
@@ -219,15 +239,16 @@ export function SignalFeed() {
             </button>
           </div>
         ) : null}
-        {signals.length > 0 ? <SignalTable signals={signals} permissions={permissions} reload={load} /> : null}
+        {signals.length > 0 ? <SignalTable signals={signals} permissions={permissions} openAction={(action, signal) => setActionModal({ action, signal })} /> : null}
       </section> : null}
 
       {showCreate ? <CreateSignalModal organizations={organizations} territories={territories} onClose={() => setShowCreate(false)} onCreated={(signal) => (window.location.href = `/intelligence/signals/${signal.id}`)} /> : null}
+      {actionModal ? <SignalActionModal modal={actionModal} onClose={() => setActionModal(null)} onSubmit={submitAction} /> : null}
     </IntelligenceShell>
   );
 }
 
-function SignalTable({ signals, permissions, reload }: { signals: SyncRecord[]; permissions: string[]; reload: () => Promise<void> }) {
+function SignalTable({ signals, permissions, openAction }: { signals: SyncRecord[]; permissions: string[]; openAction: (action: SignalAction, signal: SyncRecord) => void }) {
   return (
     <div className="wide-table">
       <table>
@@ -254,6 +275,13 @@ function SignalTable({ signals, permissions, reload }: { signals: SyncRecord[]; 
           {signals.map((signal) => {
             const id = String(signal.id);
             const activeEvidenceCount = numberValue(signal.active_evidence_count, 0);
+            const archived = signal.status === "archived";
+            const disabledReasons = {
+              categorize: actionDisabledReason("Categorize", permissions, "signal.categorize", archived),
+              score: actionDisabledReason("Score", permissions, "signal.score", archived),
+              verify: !hasPermission(permissions, "signal.verify") ? "Your role can review signals but cannot verify them." : activeEvidenceCount === 0 ? "Add evidence before verifying." : archived ? "Archived signals are view-only." : "",
+              archive: actionDisabledReason("Archive", permissions, "signal.archive", archived),
+            };
             return (
               <tr key={id}>
                 <td>
@@ -277,11 +305,12 @@ function SignalTable({ signals, permissions, reload }: { signals: SyncRecord[]; 
                 <td>
                   <div className="row-actions">
                     <Link href={`/intelligence/signals/${id}`}>Open Detail</Link>
-                    <button type="button" disabled={!hasPermission(permissions, "signal.categorize") || signal.status === "archived"} onClick={() => simpleAction(id, "categorize", reload)}>Categorize</button>
-                    <button type="button" disabled={!hasPermission(permissions, "signal.score") || signal.status === "archived"} onClick={() => simpleAction(id, "score", reload)}>Score</button>
-                    <button type="button" disabled={!hasPermission(permissions, "signal.verify") || activeEvidenceCount === 0 || signal.status === "archived"} onClick={() => simpleAction(id, "verify", reload)}>Verify</button>
-                    <button type="button" disabled={!hasPermission(permissions, "signal.archive") || signal.status === "archived"} onClick={() => archiveSignal(id, reload)}>Archive</button>
+                    <ActionButton label="Categorize" disabledReason={disabledReasons.categorize} onClick={() => openAction("categorize", signal)} />
+                    <ActionButton label="Score" disabledReason={disabledReasons.score} onClick={() => openAction("score", signal)} />
+                    <ActionButton label="Verify" disabledReason={disabledReasons.verify} onClick={() => openAction("verify", signal)} />
+                    <ActionButton label="Archive" disabledReason={disabledReasons.archive} danger onClick={() => openAction("archive", signal)} />
                   </div>
+                  {Object.entries(disabledReasons).map(([key, reason]) => reason ? <span className="disabled-reason" key={key}>{reason}</span> : null)}
                 </td>
               </tr>
             );
@@ -290,6 +319,20 @@ function SignalTable({ signals, permissions, reload }: { signals: SyncRecord[]; 
       </table>
     </div>
   );
+}
+
+function ActionButton({ label, disabledReason, danger, onClick }: { label: string; disabledReason?: string; danger?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={danger ? "danger-button" : undefined} disabled={Boolean(disabledReason)} title={disabledReason || undefined} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+function actionDisabledReason(label: string, permissions: string[], permission: string, archived: boolean) {
+  if (!hasPermission(permissions, permission)) return `Your role can review signals but cannot ${label.toLowerCase()} them.`;
+  if (archived) return "Archived signals are view-only.";
+  return "";
 }
 
 function CreateSignalModal({ organizations, territories, onClose, onCreated }: { organizations: SyncRecord[]; territories: SyncRecord[]; onClose: () => void; onCreated: (signal: SyncRecord) => void }) {
@@ -324,16 +367,20 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
         },
       });
       if (form.get("evidence_summary")) {
-        await syncosFetch(`/signals/${signal.id}/evidence`, {
-          method: "POST",
-          body: {
-            evidence_type: form.get("evidence_type") || "source_url",
-            summary: form.get("evidence_summary"),
-            description: form.get("evidence_summary"),
-            source_url: form.get("evidence_source_url") || undefined,
-            trust_level: form.get("evidence_trust_level") || "unverified",
-          },
-        }).catch(() => undefined);
+        try {
+          await syncosFetch(`/signals/${signal.id}/evidence`, {
+            method: "POST",
+            body: {
+              evidence_type: form.get("evidence_type") || "source_url",
+              summary: form.get("evidence_summary"),
+              description: form.get("evidence_summary"),
+              source_url: form.get("evidence_source_url") || undefined,
+              trust_level: form.get("evidence_trust_level") || "unverified",
+            },
+          });
+        } catch (evidenceError) {
+          throw new Error(`Signal was created, but evidence could not be attached: ${(evidenceError as Error).message}`);
+        }
       }
       onCreated(signal);
     } catch (nextError) {
@@ -345,12 +392,13 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
 
   return (
     <div className="modal-backdrop">
-      <form className="modal-panel" onSubmit={submit}>
+      <form className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-signal-title" onSubmit={submit}>
         <div className="section-toolbar">
-          <h2>Create Signal</h2>
-          <button type="button" onClick={onClose}>Close</button>
+          <h2 id="create-signal-title">Create Signal</h2>
+          <button type="button" disabled={busy} onClick={onClose}>Close</button>
         </div>
-        {error ? <div className="error-banner">{error}</div> : null}
+        <p className="muted">Add market intelligence for review. Creating a signal does not create candidates, opportunities, projects, invoices, payments, or accounting records.</p>
+        {error ? <div className="error-banner" role="alert">{error}</div> : null}
         <div className="form-grid">
           <label>Title<input name="title" required /></label>
           <label>Summary<textarea name="summary" required /></label>
@@ -374,7 +422,68 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
           <label>Evidence trust<SelectInput name="evidence_trust_level" options={trustLevels} defaultValue="unverified" /></label>
         </div>
         <div className="form-actions">
+          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
           <button className="primary-button" disabled={busy} type="submit">{busy ? "Creating..." : "Create Signal"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SignalActionModal({ modal, onClose, onSubmit }: { modal: NonNullable<ActionModalState>; onClose: () => void; onSubmit: (action: SignalAction, signal: SyncRecord, body: Record<string, unknown>) => Promise<void> }) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { action, signal } = modal;
+  const title = actionTitle(action);
+  const signalTitle = textValue(signal.title);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await onSubmit(action, signal, actionBody(action, form));
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className={`modal-panel ${action === "archive" ? "danger-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="signal-action-title" onSubmit={submit}>
+        <div className="section-toolbar">
+          <div>
+            <h2 id="signal-action-title">{title}</h2>
+            <p className="muted">{actionPurpose(action, signalTitle)}</p>
+          </div>
+          <button type="button" disabled={busy} onClick={onClose}>Close</button>
+        </div>
+        <div className={action === "archive" ? "danger-box" : "warning-box"}>This action updates the signal only. It does not create candidates, opportunities, projects, invoices, payments, or accounting records.</div>
+        {error ? <div className="error-banner" role="alert">{error}</div> : null}
+        <div className="form-grid">
+          {action === "categorize" ? (
+            <>
+              <label>Signal category<SelectInput name="signal_category" options={signalCategories} required defaultValue={String(signal.signal_category ?? signal.category ?? "funding")} /></label>
+              <label>Signal type<SelectInput name="signal_type" options={signalTypes} required defaultValue={String(signal.signal_type ?? signal.type ?? "broadband_funding")} /></label>
+            </>
+          ) : null}
+          {action === "score" ? <label>Confidence score<input name="confidence_score" type="number" min="0" max="100" required defaultValue={String(signal.confidence_score ?? signal.confidence ?? 75)} /></label> : null}
+          {action === "verify" ? <label>Trust level<SelectInput name="trust_level" options={trustLevels} required defaultValue="verified" /></label> : null}
+          {action === "archive" ? (
+            <>
+              <label>Archive reason<SelectInput name="archive_reason" options={archiveReasons} required defaultValue="stale" /></label>
+              <label>Archive note<textarea name="archive_note" placeholder="Explain why this signal should leave the active queue." /></label>
+            </>
+          ) : null}
+        </div>
+        <div className="form-actions">
+          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
+          <button className={action === "archive" ? "danger-button" : "primary-button"} disabled={busy} type="submit">{busy ? "Submitting..." : actionSubmitLabel(action)}</button>
         </div>
       </form>
     </div>
@@ -407,7 +516,7 @@ function LoginRequiredCard() {
         <h2>Login required</h2>
         <p className="muted">Sign in to review market intelligence and manage signal queues.</p>
       </div>
-      <div className="warning-box">Developer token controls are hidden from the operator experience. Local E2E sessions still load silently from the authenticated browser session.</div>
+      <div className="warning-box">Authentication is required before this workspace can load.</div>
     </section>
   );
 }
@@ -443,36 +552,52 @@ function SelectInput({ name, options, required, defaultValue }: { name: string; 
   );
 }
 
-function setQuickFilter(label: string, setFilters: (filters: Filters) => void) {
+function filtersForQueue(label: string): Filters {
   const normalized = label.toLowerCase().replace(/\s+/g, "_");
-  if (normalized === "needs_review") setFilters({ ...initialFilters, status: "discovered" });
-  else if (normalized === "high_confidence" || normalized === "high_confidence_unassigned") setFilters({ ...initialFilters, confidenceMin: "80", ownerUserId: "unassigned" });
-  else if (normalized === "missing_organization") setFilters({ ...initialFilters, organization: "false" });
-  else if (normalized === "missing_evidence") setFilters({ ...initialFilters, evidence: "false" });
-  else if (normalized === "unassigned") setFilters({ ...initialFilters, ownerUserId: "unassigned" });
-  else if (normalized === "ready_for_candidate") setFilters({ ...initialFilters, status: "verified", confidenceMin: "60", evidence: "true", organization: "true" });
-  else if (normalized === "recently_discovered") setFilters({ ...initialFilters });
-  else if (normalized === "verified_signals") setFilters({ ...initialFilters, status: "verified" });
-  else if (normalized === "archived_signals") setFilters({ ...initialFilters, archived: "true" });
-  else setFilters(initialFilters);
+  if (normalized === "needs_review") return { ...initialFilters };
+  if (normalized === "high_confidence" || normalized === "high_confidence_unassigned") return { ...initialFilters, confidenceMin: "80", ownerUserId: "unassigned" };
+  if (normalized === "missing_organization") return { ...initialFilters, organization: "false" };
+  if (normalized === "missing_evidence") return { ...initialFilters, evidence: "false" };
+  if (normalized === "unassigned") return { ...initialFilters, ownerUserId: "unassigned" };
+  if (normalized === "ready_for_candidate") return { ...initialFilters, status: "verified", confidenceMin: "60", evidence: "true", organization: "true" };
+  if (normalized === "recently_discovered") return { ...initialFilters };
+  if (normalized === "verified_signals") return { ...initialFilters, status: "verified" };
+  if (normalized === "archived_signals") return { ...initialFilters, archived: "true" };
+  return initialFilters;
 }
 
-async function simpleAction(id: string, action: "categorize" | "score" | "verify", reload: () => Promise<void>) {
-  const body =
-    action === "categorize"
-      ? { signal_category: window.prompt("Signal category", "funding"), signal_type: window.prompt("Signal type", "broadband_funding") }
-      : action === "score"
-        ? { confidence_score: Number(window.prompt("Confidence score 0-100", "75")) }
-        : {};
-  await syncosFetch(`/signals/${id}/${action}`, { method: "POST", body }).catch((error) => window.alert((error as Error).message));
-  await reload();
+function actionBody(action: SignalAction, form: FormData) {
+  if (action === "categorize") {
+    return { signal_category: form.get("signal_category"), signal_type: form.get("signal_type") };
+  }
+  if (action === "score") {
+    return { confidence_score: Number(form.get("confidence_score")) };
+  }
+  if (action === "verify") {
+    return { trust_level: form.get("trust_level") };
+  }
+  return { archive_reason: form.get("archive_reason"), archive_note: form.get("archive_note") || undefined };
 }
 
-async function archiveSignal(id: string, reload: () => Promise<void>) {
-  const reason = window.prompt("Archive reason: duplicate, stale, false_signal, out_of_territory, not_telecom_work, insufficient_evidence, no_longer_relevant, other", "stale");
-  if (!reason) return;
-  await syncosFetch(`/signals/${id}/archive`, { method: "POST", body: { archive_reason: reason } }).catch((error) => window.alert((error as Error).message));
-  await reload();
+function actionTitle(action: SignalAction) {
+  if (action === "categorize") return "Categorize Signal";
+  if (action === "score") return "Score Signal";
+  if (action === "verify") return "Verify Signal";
+  return "Archive Signal";
+}
+
+function actionPurpose(action: SignalAction, signalTitle: string) {
+  if (action === "categorize") return `Classify ${signalTitle} so the queue can route it correctly.`;
+  if (action === "score") return `Set confidence for ${signalTitle} so operators can prioritize review.`;
+  if (action === "verify") return `Confirm ${signalTitle} has enough evidence to be trusted.`;
+  return `Remove ${signalTitle} from the active signal queue with a required reason.`;
+}
+
+function actionSubmitLabel(action: SignalAction) {
+  if (action === "categorize") return "Categorize Signal";
+  if (action === "score") return "Score Signal";
+  if (action === "verify") return "Verify Signal";
+  return "Archive Signal";
 }
 
 function queryString(filters: Filters) {

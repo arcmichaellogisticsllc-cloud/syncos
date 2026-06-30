@@ -18,6 +18,39 @@ Exit criteria:
 - Signal Feed unauthenticated state is product copy, not developer instructions.
 - Existing E2E certification still passes.
 
+Status:
+
+- Phase 1A completed in `7c4678e` for the operator shell and default Signal Feed page.
+- Phase 1B hardens Signal Feed list actions with operator modals and removes browser prompt/alert from the queue page.
+
+## Phase 1B: Signal Feed Action Modal Hardening
+
+Goal: make Signal Feed the first operator-grade queue-page pilot for modal behavior, disabled reasons, and queue tabs.
+
+Scope:
+
+- Replace Signal Feed list-action `window.prompt` and `window.alert` usage with SyncOS modals.
+- Add modals for Categorize Signal, Score Signal, Verify Signal, and Archive Signal.
+- Ensure Archive is styled as destructive and requires a reason.
+- Ensure modal errors remain open with `role="alert"`.
+- Ensure disabled row actions explain permission or readiness blockers.
+- Ensure queue tabs expose active visual and ARIA state.
+- Keep filters collapsed by default.
+- Keep developer session controls hidden in default operator mode.
+
+Exit criteria:
+
+- Signal Feed list actions use modals, not browser-native dialogs.
+- Create Signal modal follows the same close/cancel/error standards.
+- Optional evidence creation failure is visible to the operator.
+- E2E covers production-safe unauthenticated copy, hidden dev controls, queue tabs, modal opening/submission, disabled reasons, and read-only behavior.
+- Release E2E and certification enforcer remain green.
+
+Pilot readiness:
+
+- Signal Feed is ready as the first page-template pilot after Phase 1B.
+- Signal Feed is not yet fully operator-ready until detail-page actions, bulk owner assignment, ready-signal conversion, mobile review, and selected-row context are completed.
+
 ## Phase 2: Navigation Redesign
 
 Goal: replace flat route nav with role/workspace navigation.
@@ -144,4 +177,4 @@ Exit criteria:
 
 ## Recommended Next Sprint
 
-Phase 1 should be next: Remove developer/test UI from operator experience and redesign the Signal Feed as the first page-template pilot. This directly addresses the screenshot problem, removes the highest-trust blocker, and creates the first reusable queue/list pattern without changing business logic.
+After Phase 1B, the next recommended sprint is Signal Detail and Growth action consistency: replace remaining Signal Detail browser-native prompts with the same modal pattern, add read-only page-level role context, and prepare shared queue/action primitives only after the Signal Feed and Signal Detail patterns agree.

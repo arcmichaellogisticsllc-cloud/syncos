@@ -39,6 +39,26 @@
 | OUX-033 | Read-only | Read-only role context not visible enough. | Auditors may not understand why buttons are absent. | Add read-only banner and action-area replacement. | P1 | No | Yes | Yes | Persona UI. |
 | OUX-034 | E2E | Template-level UX assertions not defined. | Redesign could regress operator standards. | Add E2E for nav, queues, disabled reasons, modal semantics. | P1 | No | Yes | Yes | Implementation phases. |
 | OUX-035 | Content | Boundary copy tone varies by domain. | High-risk actions feel inconsistent. | Standard financial boundary copy. | P1 | No | Yes | Yes | Content design pass. |
+| OUX-036 | Signal Feed | Row actions used browser prompt/alert instead of operator modals. | Operators receive browser-native dialogs with weak context, no standards, and poor error handling. | Replace Categorize, Score, Verify, and Archive with SyncOS modals. | P0 | Yes | Yes | Yes | Phase 1B. |
+| OUX-037 | Signal Feed | Action modal coverage was missing. | Regressions could reintroduce developer/browser-native behavior. | Add Signal Feed E2E for login copy, hidden dev UI, queue tabs, disabled reasons, and modals. | P0 | Yes | Yes | Yes | Phase 1B. |
+
+## Phase 1B Status
+
+Completed:
+
+- OUX-001 and OUX-003 are complete for Signal Feed default operator mode.
+- OUX-006 and OUX-020 are complete for the first Signal Feed queue pilot.
+- OUX-010 is partially complete for Signal Feed row actions.
+- OUX-034 is partially complete with focused Signal Feed hardening coverage.
+- OUX-036 and OUX-037 are complete for Signal Feed list actions.
+
+Remaining Signal Feed gaps:
+
+- Signal detail actions still need the same modal hardening pattern.
+- Assign Owners and Convert Ready Signals are not implemented.
+- Queue counts need a future all-queue summary source rather than current loaded results.
+- Mobile/tablet review remains open.
+- Read-only role context should become a shared page-level pattern.
 
 ## Top 10 UX Problems
 
