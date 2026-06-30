@@ -70,6 +70,7 @@ const actionIds = Object.freeze({
   prodDraft: uuid("action-production-draft"),
   prodSubmitted: uuid("action-production-submitted"),
   prodUnderReview: uuid("action-production-under-review"),
+  prodSubmittedEvidence: uuid("action-production-submitted-evidence"),
   prodCorrectionRequested: uuid("action-production-correction-requested"),
   prodApprovedNotMarked: uuid("action-production-approved-not-marked"),
   prodVoid: uuid("action-production-void"),
@@ -140,6 +141,7 @@ const actionIds = Object.freeze({
   bankTxnExceptionNone: uuid("action-bank-txn-exception-none"),
   bankTxnExceptionOpen: uuid("action-bank-txn-exception-open"),
   bankTxnIgnorable: uuid("action-bank-txn-ignorable"),
+  bankTxnReviewTarget: uuid("action-bank-txn-review-target"),
   reconMatchProposed: uuid("action-recon-match-proposed"),
   // Accounting Export action state records
   aexDraft: uuid("action-aex-draft"),
@@ -157,6 +159,32 @@ const actionIds = Object.freeze({
   bankReconPaymentBatch: uuid("action-bank-recon-payment-batch"),
   prodCorrectionEvidence: uuid("action-prod-correction-evidence"),
 });
+
+const softDeleteTables = new Set([
+  "accounting_export_batches",
+  "accounting_export_items",
+  "bank_accounts",
+  "bank_transactions",
+  "billable_items",
+  "cash_receipts",
+  "collection_actions",
+  "collection_cases",
+  "contractor_payable_items",
+  "contractor_payables",
+  "invoices",
+  "invoice_items",
+  "payment_applications",
+  "payment_batches",
+  "payment_items",
+  "payroll_items",
+  "payroll_runs",
+  "production_evidence",
+  "production_records",
+  "qc_reviews",
+  "reconciliation_matches",
+  "settlement_items",
+  "settlements",
+]);
 
 const personas = [
   ["system-admin", "System Admin", "e2e.system.admin@syncos.test", "E2E System Admin", ["*"]],
@@ -184,6 +212,7 @@ async function main() {
     await seedTenant(client);
     await seedPersonas(client);
     await seedCanonicalRecords(client);
+    await cleanupGeneratedActionStateRecords(client);
     await seedActionStateRecords(client);
     await client.query("COMMIT");
     writeManifest();
@@ -232,6 +261,17 @@ async function seedPersonas(client) {
       [ids.tenant, tenantUserId, roleId],
     );
   }
+}
+
+async function cleanupGeneratedActionStateRecords(client) {
+  await client.query(
+    `
+    DELETE FROM reconciliation_matches
+    WHERE tenant_id = $1
+      AND bank_transaction_id = ANY($2::uuid[])
+    `,
+    [ids.tenant, [actionIds.bankTxnUnmatchedDebit, actionIds.bankTxnUnmatchedCredit]],
+  );
 }
 
 async function seedCanonicalRecords(client) {
@@ -308,6 +348,7 @@ async function seedActionStateRecords(client) {
   const prodBase = { tenant_id: t, project_id: ids.project, work_order_id: ids.workOrder, capacity_provider_id: ids.provider, crew_id: ids.crew, foreman_user_id: admin, production_date: "2026-02-01", quantity_submitted: 800, unit_type: "feet", quantity: 800, unit: "feet", rate_code_id: ids.rateCode, created_by: admin, updated_by: admin };
   await upsert(client, "production_records", { ...prodBase, id: actionIds.prodDraft, production_notes: "E2E Action Production Submittable", status: "draft", billable_status: "not_billable" });
   await upsert(client, "production_records", { ...prodBase, id: actionIds.prodSubmitted, production_notes: "E2E Action Production Review Startable", status: "submitted", submitted_by_user_id: admin, billable_status: "not_billable" });
+  await upsert(client, "production_evidence", { id: actionIds.prodSubmittedEvidence, tenant_id: t, production_record_id: actionIds.prodSubmitted, evidence_type: "daily_report", summary: "E2E Action Production Submitted Evidence", description: "Seeded evidence for start-review certification.", status: "active" });
   await upsert(client, "production_records", { ...prodBase, id: actionIds.prodUnderReview, production_notes: "E2E Action Production Approvable", status: "under_review", submitted_by_user_id: admin, billable_status: "not_billable" });
   await upsert(client, "production_records", { ...prodBase, id: actionIds.prodCorrectionRequested, production_notes: "E2E Action Production Correctable", status: "correction_required", submitted_by_user_id: admin, billable_status: "not_billable", correction_required_at: "2026-01-31T12:00:00Z" });
   await upsert(client, "production_evidence", { id: actionIds.prodCorrectionEvidence, tenant_id: t, production_record_id: actionIds.prodCorrectionRequested, evidence_type: "daily_report", summary: "E2E Action Production Correction Evidence", description: "Seeded after correction_required_at for mark-corrected certification.", status: "active" });
@@ -383,9 +424,25 @@ async function seedActionStateRecords(client) {
   await upsert(client, "payroll_runs", { ...prBase, id: actionIds.payrollVoid, payroll_run_number: "PR-ACT-005", status: "voided", approval_status: "withdrawn", payroll_readiness_status: "not_ready" });
 
   // ── Payment Batch action state records ────────────────────────────────────
-  const pbBase = { tenant_id: t, payment_method: "manual", item_count: 0, total_payment_amount: 0, currency: "USD", created_by: admin, updated_by: admin };
+  const pbBase = {
+    tenant_id: t,
+    payment_method: "manual",
+    item_count: 0,
+    total_payment_amount: 0,
+    currency: "USD",
+    scheduled_payment_date: null,
+    submitted_at: null,
+    submitted_by: null,
+    executed_at: null,
+    execution_reference: null,
+    failure_reason: null,
+    approved_by: null,
+    approved_at: null,
+    created_by: admin,
+    updated_by: admin,
+  };
   await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchDraft, payment_batch_number: "PB-ACT-001", batch_type: "mixed_later", status: "draft", approval_status: "pending", execution_status: "not_submitted", notes: "E2E Action Payment Batch Add Contractor Payable Ready" });
-  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchUnderReview, payment_batch_number: "PB-ACT-002", batch_type: "mixed_later", status: "under_review", approval_status: "pending", execution_status: "not_submitted", item_count: 1, notes: "E2E Action Payment Batch Approvable" });
+  await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchUnderReview, payment_batch_number: "PB-ACT-002", batch_type: "mixed_later", status: "under_review", approval_status: "pending", execution_status: "not_submitted", item_count: 1, total_payment_amount: 2000, notes: "E2E Action Payment Batch Approvable" });
   await upsert(client, "payment_items", { id: actionIds.paymentItemUnderReview, tenant_id: t, payment_batch_id: actionIds.paymentBatchUnderReview, source_type: "contractor_payable", contractor_payable_id: ids.contractorPayable, payee_type: "capacity_provider", capacity_provider_id: ids.provider, payee_name: "Blue Splice Fiber Services", payment_method: "manual", payment_amount: 2000, currency: "USD", payment_date: "2026-02-15", execution_status: "not_submitted", status: "draft", notes: "E2E Action Payment Batch Under Review Item", created_by: admin, updated_by: admin });
   await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchApproved, payment_batch_number: "PB-ACT-003", batch_type: "mixed_later", status: "approved", approval_status: "approved", execution_status: "not_submitted", notes: "E2E Action Payment Batch Schedulable", approved_by: admin, approved_at: "2026-02-08T12:00:00Z" });
   await upsert(client, "payment_batches", { ...pbBase, id: actionIds.paymentBatchScheduled, payment_batch_number: "PB-ACT-004", batch_type: "mixed_later", status: "scheduled", approval_status: "approved", execution_status: "ready_for_execution", scheduled_payment_date: "2026-02-15", notes: "E2E Action Payment Batch Submit Execution Ready", approved_by: admin, approved_at: "2026-02-08T12:00:00Z" });
@@ -403,7 +460,8 @@ async function seedActionStateRecords(client) {
   await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnExceptionNone, transaction_date: "2026-02-14", posted_date: "2026-02-15", direction: "debit", amount: 200, currency: "USD", description: "E2E Action Bank Transaction Exception Openable", bank_reference: "BANK-ACT-003", external_transaction_id: "BTX-ACT-003", transaction_type: "payment_out", reconciliation_status: "unreconciled", exception_status: "none" });
   await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnExceptionOpen, transaction_date: "2026-02-14", posted_date: "2026-02-15", direction: "debit", amount: 150, currency: "USD", description: "E2E Action Bank Transaction Exception Resolvable", bank_reference: "BANK-ACT-004", external_transaction_id: "BTX-ACT-004", transaction_type: "payment_out", reconciliation_status: "unreconciled", exception_status: "open", exception_reason: "Amount mismatch" });
   await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnIgnorable, transaction_date: "2026-02-14", posted_date: "2026-02-15", direction: "credit", amount: 50, currency: "USD", description: "E2E Action Bank Transaction Ignorable", bank_reference: "BANK-ACT-005", external_transaction_id: "BTX-ACT-005", transaction_type: "fee", reconciliation_status: "unreconciled", exception_status: "none" });
-  await upsert(client, "reconciliation_matches", { id: actionIds.reconMatchProposed, tenant_id: t, bank_transaction_id: actionIds.bankTxnUnmatchedDebit, match_type: "payment_batch", matched_object_type: "payment_batch", matched_object_id: ids.paymentBatch, payment_batch_id: ids.paymentBatch, matched_amount: 5600, match_confidence: "high", match_status: "proposed", match_reason: "E2E Action Reconciliation Match Reviewable", variance_amount: 0, notes: "Action state proposed reconciliation match.", created_by: admin, updated_by: admin });
+  await upsert(client, "bank_transactions", { ...btBase, id: actionIds.bankTxnReviewTarget, transaction_date: "2026-02-16", posted_date: "2026-02-17", direction: "debit", amount: 5600, currency: "USD", description: "E2E Action Bank Transaction Match Review Target", bank_reference: "BANK-ACT-006", external_transaction_id: "BTX-ACT-006", transaction_type: "payment_out", reconciliation_status: "unreconciled", exception_status: "none" });
+  await upsert(client, "reconciliation_matches", { id: actionIds.reconMatchProposed, tenant_id: t, bank_transaction_id: actionIds.bankTxnReviewTarget, match_type: "payment_batch", matched_object_type: "payment_batch", matched_object_id: ids.paymentBatch, payment_batch_id: ids.paymentBatch, matched_amount: 5600, match_confidence: "high", match_status: "proposed", match_reason: "E2E Action Reconciliation Match Reviewable", variance_amount: 0, notes: "Action state proposed reconciliation match.", created_by: admin, updated_by: admin });
 
   // ── Accounting Export action state records ────────────────────────────────
   const aexBase = { tenant_id: t, target_system: "manual_export", export_format: "manual_summary", period_start: "2026-02-01", period_end: "2026-02-28", item_count: 0, total_debit_amount: 0, total_credit_amount: 0, total_amount: 0, currency: "USD", error_count: 0, retry_count: 0, created_by: admin, updated_by: admin };
@@ -418,7 +476,8 @@ async function seedActionStateRecords(client) {
 }
 
 async function upsert(client, table, row) {
-  const entries = Object.entries(row).filter(([, value]) => value !== undefined);
+  const seededRow = softDeleteTables.has(table) && row.deleted_at === undefined ? { ...row, deleted_at: null } : row;
+  const entries = Object.entries(seededRow).filter(([, value]) => value !== undefined);
   const columns = entries.map(([key]) => key);
   const values = entries.map(([key, value]) => isJsonbField(key) && value !== null ? JSON.stringify(value) : value);
   const placeholders = columns.map((_, index) => `$${index + 1}`);

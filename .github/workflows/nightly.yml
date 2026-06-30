@@ -46,6 +46,8 @@ jobs:
         run: npm run build -w @syncos/web
       - name: Migrate E2E database
         run: npm run db:migrate -w @syncos/database
+      - name: Seed base permissions/catalog
+        run: npm run db:seed
       - name: Seed E2E database
         run: npm run seed:e2e-demo
       - name: Validate seed

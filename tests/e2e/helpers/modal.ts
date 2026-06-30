@@ -1,7 +1,8 @@
 import { expect, type Page } from "@playwright/test";
+import { actionButtonForLabel } from "./action-state-actions";
 
 export async function openAction(page: Page, name: string | RegExp) {
-  const button = page.getByRole("button", { name }).first();
+  const button = await actionButtonForLabel(page, name, { requireEnabled: true });
   await expect(button, `Action should be visible: ${String(name)}`).toBeVisible();
   await expect(button, `Action should be enabled: ${String(name)}`).toBeEnabled();
   await button.click();

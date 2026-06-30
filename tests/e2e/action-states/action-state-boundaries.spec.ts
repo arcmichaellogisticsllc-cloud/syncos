@@ -6,6 +6,7 @@ import { installStoredSession } from "../helpers/auth";
 import { openAction, expectModal, cancelModal } from "../helpers/modal";
 import { expectRouteHealthy } from "../helpers/page-assertions";
 import { countTables } from "../helpers/db";
+import { expectActionButtonVisible } from "../helpers/action-state-actions";
 
 const manifest = readE2EManifest();
 
@@ -37,9 +38,7 @@ test.describe("Action-state boundaries — open/cancel must not mutate forbidden
 
       await expectRouteHealthy(page, state.route, state.objectType);
 
-      await expect(
-        page.getByRole("button", { name: state.expectedActionLabel }).first(),
-      ).toBeVisible({ timeout: 30_000 });
+      await expectActionButtonVisible(page, state, { timeout: 30_000 });
 
       await openAction(page, state.expectedActionLabel);
       await expectModal(page, state.expectedModalTitle);

@@ -1,9 +1,10 @@
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
 import { personas } from "../fixtures/personas";
 import { actionStates } from "../fixtures/action-states";
 import { installStoredSession } from "../helpers/auth";
 import { expectRouteHealthy } from "../helpers/page-assertions";
 import { expectBackendDenied } from "../helpers/permissions";
+import { expectActionButtonAbsentOrDisabled, expectActionButtonVisible } from "../helpers/action-state-actions";
 
 /**
  * Persona-scoped readiness checks:
@@ -32,9 +33,7 @@ test.describe("Action-state personas — natural persona sees action, read-only 
         await installStoredSession(page, naturalPersona.storageState);
         await expectRouteHealthy(page, state.route, state.objectType);
 
-        await expect(
-          page.getByRole("button", { name: state.expectedActionLabel }),
-        ).toBeVisible({ timeout: 60_000 });
+        await expectActionButtonVisible(page, state, { requireEnabled: true, timeout: 60_000 });
       });
 
       test("read-only auditor: route loads but action button hidden or disabled", async ({ page }) => {
@@ -44,12 +43,7 @@ test.describe("Action-state personas — natural persona sees action, read-only 
         await expectRouteHealthy(page, state.route, state.objectType);
 
         // Action button must be absent or disabled for read-only user
-        const actionBtn = page.getByRole("button", { name: state.expectedActionLabel });
-        const count = await actionBtn.count();
-        if (count > 0) {
-          await expect(actionBtn).toBeDisabled({ timeout: 5_000 });
-        }
-        // If count === 0 the button is hidden, which also satisfies the assertion
+        await expectActionButtonAbsentOrDisabled(page, state);
       });
     });
   }

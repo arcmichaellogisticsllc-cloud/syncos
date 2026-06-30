@@ -3,6 +3,7 @@ import { personas } from "../fixtures/personas";
 import { actionStates } from "../fixtures/action-states";
 import { installStoredSession } from "../helpers/auth";
 import { expectRouteHealthy } from "../helpers/page-assertions";
+import { expectActionButtonVisible } from "../helpers/action-state-actions";
 
 /**
  * Verifies that every action-state record:
@@ -32,9 +33,8 @@ test.describe("Action-state readiness — route loads, label hydrates, action vi
           async () => {
             const text = await body.innerText();
             if (text.includes(state.label) || text.includes(state.recordId)) return "hydrated";
-            const actionVisible = await page
-              .getByRole("button", { name: state.expectedActionLabel })
-              .isVisible()
+            const actionVisible = await expectActionButtonVisible(page, state, { timeout: 5_000 })
+              .then(() => true)
               .catch(() => false);
             if (actionVisible) return "hydrated";
             return "pending";
@@ -44,9 +44,7 @@ test.describe("Action-state readiness — route loads, label hydrates, action vi
         .toBe("hydrated");
 
       // The primary action CTA for this state must be present
-      await expect(
-        page.getByRole("button", { name: state.expectedActionLabel }),
-      ).toBeVisible({ timeout: 30_000 });
+      await expectActionButtonVisible(page, state, { timeout: 30_000 });
     });
   }
 });

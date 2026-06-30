@@ -4,6 +4,7 @@ import { actionStates } from "../fixtures/action-states";
 import { installStoredSession } from "../helpers/auth";
 import { openAction, expectModal, expectRequiredFields, cancelModal } from "../helpers/modal";
 import { expectRouteHealthy } from "../helpers/page-assertions";
+import { expectActionButtonVisible } from "../helpers/action-state-actions";
 
 /**
  * For each action state:
@@ -28,9 +29,7 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
       await expectRouteHealthy(page, state.route, state.objectType);
 
       // Ensure action button is present before clicking
-      await expect(
-        page.getByRole("button", { name: state.expectedActionLabel }).first(),
-      ).toBeVisible({ timeout: 60_000 });
+      await expectActionButtonVisible(page, state, { timeout: 60_000 });
 
       await openAction(page, state.expectedActionLabel);
       await expectModal(page, state.expectedModalTitle);

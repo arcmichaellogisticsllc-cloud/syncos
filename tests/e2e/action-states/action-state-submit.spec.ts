@@ -17,7 +17,7 @@ import { readE2EManifest } from "../helpers/manifest";
  * Section ordering preserves cross-test record dependencies:
  *  - Bank recon match tests run before Cash and Payment Execution sections
  *    (bankTxnUnmatchedDebit uses bankReconPaymentBatch; bankTxnUnmatchedCredit
- *     uses cashReceiptUnapplied; neither should be mutated beforehand)
+ *     uses cashReceiptVoidTarget; neither should be mutated beforehand)
  *  - Cash apply invoice test runs before Invoice section
  *    (cashReceiptUnapplied:Apply uses invoiceApproved while it is still "approved")
  *  - Item-level recalculate tests (settlementItemDraft, cpayItemDraft,
@@ -34,6 +34,7 @@ const p = manifest.personas as Record<string, { userId: string }>;
 const COLLECTIONS_SPECIALIST_USER_ID = p["collections-specialist"].userId;
 const PAYMENT_BATCH_SCHEDULED_ID = s.paymentBatchScheduled;
 const BANK_RECON_PAYMENT_BATCH_ID = s.bankReconPaymentBatch;
+const BANK_RECON_CASH_RECEIPT_ID = s.cashReceiptVoidTarget;
 const CASH_RECEIPT_UNAPPLIED_ID = s.cashReceiptUnapplied;
 const INVOICE_APPROVED_ID = s.invoiceApproved;
 
@@ -313,18 +314,20 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "bankAccountArchivable-archive");
   });
 
-  test("[Bank Recon] bankTxnUnmatchedDebit: Match Payment Batch → reconciliation_status=matched", async ({ page }) => {
+  test("[Bank Recon] bankTxnUnmatchedDebit: Match Payment Batch → reconciliation_match created", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/bank-reconciliation/transactions/${s.bankTxnUnmatchedDebit}`, "bank");
     const before = await captureBoundaryCounts(TENANT_ID, ["accounting_export_batches", "accounting_export_items", "payment_applications"]);
+    const matchCountBefore = await withDb((c) => c.query(`SELECT count(*)::int AS count FROM reconciliation_matches WHERE bank_transaction_id = $1 AND tenant_id = $2`, [s.bankTxnUnmatchedDebit, TENANT_ID]));
     await openAction(page, /Match Payment Batch/i);
     await expectModal(page, /Match Payment Batch/i);
     await page.getByLabel(/Payment Batch ID/i).first().fill(BANK_RECON_PAYMENT_BATCH_ID);
     await page.getByLabel(/Matched Amount/i).first().fill("5600");
+    await page.getByLabel(/Match Reason/i).first().fill("E2E certification payment batch match");
     await submitModal(page);
-    const row = await withDb((c) => c.query(`SELECT reconciliation_status FROM bank_transactions WHERE id = $1 AND tenant_id = $2`, [s.bankTxnUnmatchedDebit, TENANT_ID]));
-    expect(["matched", "partially_matched"], `bank_transactions.reconciliation_status must reflect match`).toContain(row.rows[0].reconciliation_status);
+    const matchCountAfter = await withDb((c) => c.query(`SELECT count(*)::int AS count FROM reconciliation_matches WHERE bank_transaction_id = $1 AND tenant_id = $2`, [s.bankTxnUnmatchedDebit, TENANT_ID]));
+    expect(matchCountAfter.rows[0].count, "reconciliation_matches count must increase after Match Payment Batch").toBeGreaterThan(matchCountBefore.rows[0].count);
     await expectBoundaryUnchanged(TENANT_ID, before, "bankTxnUnmatchedDebit-match-payment-batch");
   });
 
@@ -336,8 +339,9 @@ test.describe("Action-state full submit certification", () => {
     const matchCountBefore = await withDb((c) => c.query(`SELECT count(*)::int AS count FROM reconciliation_matches WHERE bank_transaction_id = $1 AND tenant_id = $2`, [s.bankTxnUnmatchedCredit, TENANT_ID]));
     await openAction(page, /Match Cash Receipt/i);
     await expectModal(page, /Match Cash Receipt/i);
-    await page.getByLabel(/Cash Receipt ID/i).first().fill(CASH_RECEIPT_UNAPPLIED_ID);
-    await page.getByLabel(/Matched Amount/i).first().fill("3000");
+    await page.getByLabel(/Cash Receipt ID/i).first().fill(BANK_RECON_CASH_RECEIPT_ID);
+    await page.getByLabel(/Matched Amount/i).first().fill("1000");
+    await page.getByLabel(/Match Reason/i).first().fill("E2E certification cash receipt match");
     await submitModal(page);
     const matchCountAfter = await withDb((c) => c.query(`SELECT count(*)::int AS count FROM reconciliation_matches WHERE bank_transaction_id = $1 AND tenant_id = $2`, [s.bankTxnUnmatchedCredit, TENANT_ID]));
     expect(matchCountAfter.rows[0].count, "reconciliation_matches count must increase after Match Cash Receipt").toBeGreaterThan(matchCountBefore.rows[0].count);

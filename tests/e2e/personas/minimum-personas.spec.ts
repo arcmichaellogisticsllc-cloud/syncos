@@ -5,6 +5,7 @@ import { readE2EManifest } from "../helpers/manifest";
 import { expectBackendDenied, expectNavVisible, expectStoredPermission, expectStoredPermissionAbsent } from "../helpers/permissions";
 import { installStoredSession } from "../helpers/auth";
 import { expectRouteHealthy } from "../helpers/page-assertions";
+import { expectActionButtonVisible } from "../helpers/action-state-actions";
 
 const manifest = readE2EManifest();
 const invoiceApproved = actionStates.find((s) => s.stateKey === "invoiceApproved")!;
@@ -19,10 +20,10 @@ test.describe("Minimum persona permission certification", () => {
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, invoiceApproved.route, invoiceApproved.objectType);
     await expectNavVisible(page, ["Intelligence", "Operations", "Finance"]);
-    await expect(page.getByRole("button", { name: invoiceApproved.expectedActionLabel }).first()).toBeVisible({ timeout: 60_000 });
+    await expectActionButtonVisible(page, invoiceApproved, { timeout: 60_000 });
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, paymentBatchExecutionSubmitted.route, paymentBatchExecutionSubmitted.objectType);
-    await expect(page.getByRole("button", { name: paymentBatchExecutionSubmitted.expectedActionLabel }).first()).toBeVisible({ timeout: 60_000 });
+    await expectActionButtonVisible(page, paymentBatchExecutionSubmitted, { timeout: 60_000 });
     await context.close();
   });
 

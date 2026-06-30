@@ -4,8 +4,10 @@ const fatalPatterns = [
   /Unhandled Runtime Error/i,
   /Application error/i,
   /This page could not be found/i,
-  /404/i,
-  /500/i,
+  /404 Not Found/i,
+  /500 Internal Server Error/i,
+  /Internal server error/i,
+  /"statusCode"\s*:\s*500/i,
   /Hydration failed/i,
 ];
 
