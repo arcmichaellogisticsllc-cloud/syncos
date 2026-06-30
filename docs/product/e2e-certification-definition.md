@@ -47,7 +47,9 @@ Full personas:
 * Operations / Project Manager
 * Field Supervisor
 * QC Reviewer
-* Billing / Finance User
+* QC Manager
+* Billing Manager
+* Finance User
 * Collections Specialist
 * Payables / Payroll Admin
 * Accounting Manager

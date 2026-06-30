@@ -21,7 +21,7 @@ This runbook documents CI-ready Browser E2E commands. It does not add a CI workf
 7. Run seed smoke.
 8. Build API and web.
 9. Start API and web.
-10. Run route matrix, critical skeleton tests, minimum persona tests, and boundary smoke.
+10. Run PR gate suite.
 11. Upload failure screenshots/videos/traces.
 12. Drop database.
 
@@ -38,10 +38,7 @@ npm run build -w @syncos/api
 npm run build -w @syncos/web
 DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} AUTH_JWT_SECRET=e2e-secret-for-ci PORT=3137 npm run start -w @syncos/api
 WEB_BASE_URL=http://localhost:3138 SYNCOS_API_BASE_URL=http://localhost:3137 PORT=3138 npm run dev -w @syncos/web
-DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:route-matrix
-DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:critical
-DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:personas
-DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:boundaries
+DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:ci:pr
 ```
 
 CI must use its own process manager or shell backgrounding to keep API and web running. Do not add broad sleeps; wait for HTTP readiness in the CI workflow when it is created.
@@ -51,24 +48,28 @@ CI must use its own process manager or shell backgrounding to keep API and web r
 Run:
 
 ```bash
-npm run e2e:hydration
-npm run e2e:lifecycle
-npm run e2e:timeline-audit
-npm run e2e:certification
-npm run e2e
+DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:ci:nightly
 ```
 
 Nightly should retain traces/videos for failures and may retain full artifacts for certification review once the suite becomes certification grade.
+
+See `docs/product/e2e-ci-gate-policy.md` for threshold and artifact retention requirements.
 
 ## Release Certification Tier
 
 Before external integrations are started, release certification should include:
 
-* `npm run release:validate`
-* full Browser E2E suite
-* all required personas
-* full action-level boundary assertions
-* artifact upload
+```bash
+npm run release:validate
+DATABASE_URL=postgres:///syncos_e2e_${GITHUB_RUN_ID} API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-ci npm run e2e:ci:release
+```
+
+Required:
+* all required personas pass
+* full action-level boundary assertions pass
+* all artifacts uploaded
+
+See `docs/product/e2e-ci-gate-policy.md` for the full release certification threshold.
 
 ## Artifact Retention
 

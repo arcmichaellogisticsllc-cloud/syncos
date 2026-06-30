@@ -16,12 +16,14 @@ import { readE2EManifest } from "../helpers/manifest";
  *
  * Section ordering preserves cross-test record dependencies:
  *  - Bank recon match tests run before Cash and Payment Execution sections
- *    (bankTxnUnmatchedDebit uses paymentBatchScheduled; bankTxnUnmatchedCredit
+ *    (bankTxnUnmatchedDebit uses bankReconPaymentBatch; bankTxnUnmatchedCredit
  *     uses cashReceiptUnapplied; neither should be mutated beforehand)
  *  - Cash apply invoice test runs before Invoice section
  *    (cashReceiptUnapplied:Apply uses invoiceApproved while it is still "approved")
  *  - Item-level recalculate tests (settlementItemDraft, cpayItemDraft,
  *    payrollItemDraft) run before their parent submit-review tests
+ *  - Item-level archive tests (paymentItemDraft, aexItemDraft) run after their
+ *    parent submit-review tests (submit-review requires active items)
  */
 
 const manifest = readE2EManifest();
@@ -31,6 +33,7 @@ const p = manifest.personas as Record<string, { userId: string }>;
 
 const COLLECTIONS_SPECIALIST_USER_ID = p["collections-specialist"].userId;
 const PAYMENT_BATCH_SCHEDULED_ID = s.paymentBatchScheduled;
+const BANK_RECON_PAYMENT_BATCH_ID = s.bankReconPaymentBatch;
 const CASH_RECEIPT_UNAPPLIED_ID = s.cashReceiptUnapplied;
 const INVOICE_APPROVED_ID = s.invoiceApproved;
 
@@ -114,9 +117,8 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Production] prodSubmitted: Start Review → status=under_review", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'QC Manager' or 'Project Manager' (exact match); e2e seed only has 'QC Reviewer' and 'Operations / Project Manager' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/production/${s.prodSubmitted}`, "production");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "bank_transactions", "accounting_export_batches"]);
     await openAction(page, /Start Review/i);
@@ -128,9 +130,8 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Production] prodUnderReview: Approve → status=approved", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'QC Manager' or 'Operations Manager' (exact match); e2e seed only has 'QC Reviewer' and 'Operations / Project Manager' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/production/${s.prodUnderReview}`, "production");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "bank_transactions", "accounting_export_batches"]);
     await openAction(page, /^Approve$/i);
@@ -146,9 +147,8 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Production] prodCorrectionRequested: Mark Corrected → status=corrected", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'QC Manager' or 'Project Manager' (exact match); e2e seed only has 'QC Reviewer' and 'Operations / Project Manager' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/production/${s.prodCorrectionRequested}`, "production");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "bank_transactions", "accounting_export_batches"]);
     await openAction(page, /Mark Corrected/i);
@@ -161,9 +161,8 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Production] prodApprovedNotMarked: Mark Billable → billable_status=billable", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'Billing Manager' or 'QC Manager' (exact match); e2e seed only has 'Billing / Finance User' and 'QC Reviewer' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/production/${s.prodApprovedNotMarked}`, "production");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "bank_transactions", "accounting_export_batches"]);
     await openAction(page, /Mark Billable/i);
@@ -194,9 +193,8 @@ test.describe("Action-state full submit certification", () => {
   // ── QC ────────────────────────────────────────────────────────────────────────
 
   test("[QC] qcPending: Start Review → review_status=in_review", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'QC Manager' or 'Project Manager' (exact match); e2e seed only has 'QC Reviewer' and 'Operations / Project Manager' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/qc/${s.qcPending}`, "qc");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "accounting_export_batches"]);
     await openAction(page, /Start Review/i);
@@ -208,9 +206,8 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[QC] qcInReview: Approve → review_status=approved", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'QC Manager' or 'Operations Manager' (exact match); e2e seed only has 'QC Reviewer' and 'Operations / Project Manager' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/qc/${s.qcInReview}`, "qc");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "accounting_export_batches"]);
     await openAction(page, /^Approve$/i);
@@ -226,9 +223,8 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[QC] qcCorrectionRequested: Mark Corrected → review_status=corrected", async ({ page }) => {
-    test.skip(true, "BLOCKED: requireRoleAuthority() requires 'QC Manager' or 'Project Manager' (exact match); e2e seed only has 'QC Reviewer' and 'Operations / Project Manager' roles; no e2e persona satisfies this check.");
     test.slow();
-    await installStoredSession(page, personas.systemAdmin.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/qc/${s.qcCorrectionRequested}`, "qc");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "accounting_export_batches"]);
     await openAction(page, /Mark Corrected/i);
@@ -317,15 +313,14 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "bankAccountArchivable-archive");
   });
 
-  test("[Bank Recon] bankTxnUnmatchedDebit: Match Payment Batch → reconciliation_status=matched [deferred-fix]", async ({ page }) => {
-    test.skip(true, "BLOCKED: Match Payment Batch SELECT only loads execution_status=executed_later batches; paymentBatchScheduled (status=scheduled) is not in the dropdown options, causing browser native validation to prevent submit.");
+  test("[Bank Recon] bankTxnUnmatchedDebit: Match Payment Batch → reconciliation_status=matched", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/bank-reconciliation/transactions/${s.bankTxnUnmatchedDebit}`, "bank");
     const before = await captureBoundaryCounts(TENANT_ID, ["accounting_export_batches", "accounting_export_items", "payment_applications"]);
     await openAction(page, /Match Payment Batch/i);
     await expectModal(page, /Match Payment Batch/i);
-    await page.getByLabel(/Payment Batch ID/i).first().fill(PAYMENT_BATCH_SCHEDULED_ID);
+    await page.getByLabel(/Payment Batch ID/i).first().fill(BANK_RECON_PAYMENT_BATCH_ID);
     await page.getByLabel(/Matched Amount/i).first().fill("5600");
     await submitModal(page);
     const row = await withDb((c) => c.query(`SELECT reconciliation_status FROM bank_transactions WHERE id = $1 AND tenant_id = $2`, [s.bankTxnUnmatchedDebit, TENANT_ID]));
@@ -487,10 +482,8 @@ test.describe("Action-state full submit certification", () => {
   // invoiceApproved while it is still "approved"; Mark Sent runs here afterward.
 
   test("[Invoice] invoiceDraft: Submit Review → status=ready_for_review", async ({ page }) => {
-    test.skip(true, "BLOCKED: invoiceAuthorityRoles requires 'Billing Manager' or 'Finance Manager' (exact match); e2e financeUser has role 'Billing / Finance User' which does not match; no e2e persona satisfies this check.");
     test.slow();
-    // invoice.submit_review requires finance-user permission; systemAdmin lacks this specific grant
-    await installStoredSession(page, personas.financeUser.storageState);
+    await installStoredSession(page, personas.billingManager.storageState);
     await expectRouteHealthy(page, `/invoices/${s.invoiceDraft}`, "invoice");
     const before = await captureBoundaryCounts(TENANT_ID, ["cash_receipts", "payment_batches", "bank_transactions", "payroll_runs", "accounting_export_batches"]);
     await openAction(page, /Submit.*Review/i);
@@ -707,7 +700,6 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Contractor Payable] cpayUnderReview: Approve → status=approved", async ({ page }) => {
-    test.skip(true, "BLOCKED: Seeded cpayUnderReview has 0 active items; API requires at least one active item to approve a contractor payable.");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/contractor-payables/${s.cpayUnderReview}`, "contractor");
@@ -779,7 +771,6 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Payroll] payrollUnderReview: Approve → status=approved", async ({ page }) => {
-    test.skip(true, "BLOCKED: Seeded payrollUnderReview has no active items (item is not in active status); API requires at least one active item to approve a payroll run.");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payroll/${s.payrollUnderReview}`, "payroll");
@@ -836,8 +827,9 @@ test.describe("Action-state full submit certification", () => {
   });
 
   // ── Payment Execution ─────────────────────────────────────────────────────────
-  // NOTE: paymentBatchScheduled:Submit Execution runs here (after bank recon
-  // section matched bankTxnUnmatchedDebit against paymentBatchScheduled).
+  // NOTE: bankTxnUnmatchedDebit now matches against bankReconPaymentBatch (not
+  // paymentBatchScheduled). paymentBatchScheduled is independently ready for
+  // Submit Execution via its corrected execution_status seed.
 
   test("[Payment Execution] paymentBatchDraft: Submit Review → status=ready_for_review", async ({ page }) => {
     test.slow();
@@ -852,8 +844,21 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchDraft-submit-review");
   });
 
+  test("[Payment Execution] paymentItemDraft: Archive Item → status=archived", async ({ page }) => {
+    test.slow();
+    await installStoredSession(page, personas.systemAdmin.storageState);
+    await expectRouteHealthy(page, `/payment-items/${s.paymentItemDraft}`, "payment");
+    const before = await captureBoundaryCounts(TENANT_ID, ["bank_transactions", "reconciliation_matches", "accounting_export_batches"]);
+    await openAction(page, /Archive Item/i);
+    await expectModal(page, /Archive Payment Item/i);
+    await fillArchiveReason(page);
+    await submitModal(page);
+    const row = await withDb((c) => c.query(`SELECT status FROM payment_items WHERE id = $1 AND tenant_id = $2`, [s.paymentItemDraft, TENANT_ID]));
+    expect(row.rows[0].status, "payment_items.status must be archived").toBe("archived");
+    await expectBoundaryUnchanged(TENANT_ID, before, "paymentItemDraft-archive");
+  });
+
   test("[Payment Execution] paymentBatchUnderReview: Approve → status=approved", async ({ page }) => {
-    test.skip(true, "BLOCKED: Seeded paymentBatchUnderReview has 0 items; API requires at least one active item to approve a payment batch.");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchUnderReview}`, "payment");
@@ -896,7 +901,6 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Payment Execution] paymentBatchScheduled: Submit Execution → status=submitted", async ({ page }) => {
-    test.skip(true, "BLOCKED: Seeded paymentBatchScheduled has 0 items and is not in a ready-for-execution state; API requires the batch to be ready for execution (items present and status checks pass).");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${PAYMENT_BATCH_SCHEDULED_ID}`, "payment");
@@ -954,8 +958,21 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "aexDraft-submit-review");
   });
 
-  test("[Accounting Export] aexGenerated: Mark Submitted → export_status=submitted_later [deferred-fix]", async ({ page }) => {
-    test.skip(true, "BLOCKED: seeded aexGenerated has batch status='draft' (not 'approved' or 'generated'); markSubmitted API requires batch.status to be 'approved' or 'generated'; no override is passed.");
+  test("[Accounting Export] aexItemDraft: Archive Item → export_status=archived", async ({ page }) => {
+    test.slow();
+    await installStoredSession(page, personas.systemAdmin.storageState);
+    await expectRouteHealthy(page, `/accounting-export-items/${s.aexItemDraft}`, "accounting");
+    const before = await captureBoundaryCounts(TENANT_ID, ["bank_transactions", "payment_batches", "payments", "ar_records"]);
+    await openAction(page, /Archive Item/i);
+    await expectModal(page, /Archive Item/i);
+    await fillArchiveReason(page);
+    await submitModal(page);
+    const row = await withDb((c) => c.query(`SELECT export_status FROM accounting_export_items WHERE id = $1 AND tenant_id = $2`, [s.aexItemDraft, TENANT_ID]));
+    expect(row.rows[0].export_status, "accounting_export_items.export_status must be archived").toBe("archived");
+    await expectBoundaryUnchanged(TENANT_ID, before, "aexItemDraft-archive");
+  });
+
+  test("[Accounting Export] aexGenerated: Mark Submitted → export_status=submitted_later", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/accounting-exports/${s.aexGenerated}`, "accounting");
@@ -970,7 +987,6 @@ test.describe("Action-state full submit certification", () => {
   });
 
   test("[Accounting Export] aexUnderReview: Approve → approval_status=approved", async ({ page }) => {
-    test.skip(true, "BLOCKED: seeded aexUnderReview has 0 active export items; accounting export approve API requires at least one active item.");
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/accounting-exports/${s.aexUnderReview}`, "accounting");

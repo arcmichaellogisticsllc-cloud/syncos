@@ -66,6 +66,18 @@ export const personas: Record<string, E2EPersona> = {
     storageState: "tests/e2e/.auth/read-only-auditor.json",
     expectedPermissionHint: ".read",
   },
+  qcManager: {
+    slug: "qc-manager",
+    email: "e2e.qc.manager@syncos.test",
+    storageState: "tests/e2e/.auth/qc-manager.json",
+    expectedPermissionHint: "qc_review.start",
+  },
+  billingManager: {
+    slug: "billing-manager",
+    email: "e2e.billing.manager@syncos.test",
+    storageState: "tests/e2e/.auth/billing-manager.json",
+    expectedPermissionHint: "invoice.submit_review",
+  },
 };
 
 export const personaList = Object.values(personas);

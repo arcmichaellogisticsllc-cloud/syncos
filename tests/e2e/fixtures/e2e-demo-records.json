@@ -53,6 +53,16 @@
       "userId": "093e7fa7-8ada-5c5d-9596-4489e588c105",
       "email": "e2e.readonly.auditor@syncos.test",
       "roleName": "Read-Only Auditor"
+    },
+    "qc-manager": {
+      "userId": "f9e47ed3-dc8f-57ba-88bc-0498d7f3b250",
+      "email": "e2e.qc.manager@syncos.test",
+      "roleName": "QC Manager"
+    },
+    "billing-manager": {
+      "userId": "4d231c8a-14b6-5da9-aa31-605db6e00d71",
+      "email": "e2e.billing.manager@syncos.test",
+      "roleName": "Billing Manager"
     }
   },
   "records": {
@@ -344,6 +354,7 @@
     "bankTxnExceptionOpen": "b8cf13e3-68ba-59d4-a158-57051fd69889",
     "bankTxnIgnorable": "9c6e8d50-8880-52be-a336-16e524e3ced0",
     "reconMatchProposed": "d535a46f-ef63-5377-9adb-dc366bd1e622",
+    "bankReconPaymentBatch": "2efeb8f0-373e-523f-a1eb-38a6af421b61",
     "aexDraft": "fe03e839-b486-5997-a2d7-d2cd1e62738c",
     "aexItemDraft": "7ab20d30-7c69-5d21-a068-777d7bac21d7",
     "aexGenerated": "7f64f7ad-ceee-5637-83c1-e3f41b574775",
