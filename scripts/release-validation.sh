@@ -12,6 +12,8 @@ export PORT
 
 cd "${ROOT_DIR}"
 
+node scripts/check-e2e-certification.js
+
 npm run typecheck
 npm run build -w @syncos/api
 npm run build -w @syncos/worker

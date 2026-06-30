@@ -79,6 +79,35 @@ test("Sprint 14 does not introduce disallowed business artifacts", () => {
   }
 });
 
+test("e2e certification enforcer: all action states are certified and none lack required notes when blocked", () => {
+  const source = read("tests/e2e/fixtures/action-states.ts");
+  const lines = source.split("\n");
+  const violations = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (/submitCertificationStatus:\s*["']not-certified["']/.test(lines[i])) {
+      violations.push(`Line ${i + 1}: not-certified state found`);
+    }
+    if (/submitCertificationStatus:\s*["']blocked["']/.test(lines[i])) {
+      let objStart = i;
+      for (let j = i - 1; j >= 0; j--) {
+        if (/^\s*\{/.test(lines[j])) { objStart = j; break; }
+      }
+      let objEnd = i;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^\s*\}/.test(lines[j])) { objEnd = j; break; }
+      }
+      const block = lines.slice(objStart, objEnd + 1).join("\n");
+      if (!/\bnotes\s*:/.test(block)) {
+        const match = block.match(/stateKey:\s*["']([^"']+)["']/);
+        violations.push(`Line ${i + 1} (${match ? match[1] : "unknown"}): blocked without notes`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], `E2E certification violations:\n${violations.join("\n")}`);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

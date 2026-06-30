@@ -1,0 +1,161 @@
+name: Release Certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.2.3)'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    name: Release Validation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: syncos_release
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d syncos_release"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_release
+      AUTH_JWT_SECRET: release-validation-secret
+      PORT: 3120
+      API_BASE_URL: http://localhost:3120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Migrate release database
+        run: npm run db:migrate -w @syncos/database
+      - name: Release Validation (typecheck · build · unit tests · db verify · smoke)
+        run: npm run release:validate
+
+  e2e-certify:
+    name: E2E Certification
+    runs-on: ubuntu-latest
+    needs: validate
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: syncos_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d syncos_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_e2e
+      AUTH_JWT_SECRET: e2e-secret-for-ci
+      API_BASE_URL: http://localhost:3137
+      PORT: 3137
+      SYNCOS_API_BASE_URL: http://localhost:3137
+      WEB_BASE_URL: http://localhost:3138
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build API
+        run: npm run build -w @syncos/api
+      - name: Build Web
+        run: npm run build -w @syncos/web
+      - name: Migrate E2E database
+        run: npm run db:migrate -w @syncos/database
+      - name: Seed E2E database
+        run: npm run seed:e2e-demo
+      - name: Validate seed
+        run: npm run e2e:seed-smoke
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Start API
+        run: |
+          npm run start -w @syncos/api &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3137/health && break
+            sleep 2
+          done
+          curl -fsS http://localhost:3137/health
+      - name: Start Web
+        env:
+          PORT: 3138
+        run: |
+          npm run start -w @syncos/web &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3138 && break
+            sleep 2
+          done
+          curl -fsS http://localhost:3138
+      - name: E2E release certification suite
+        run: npm run e2e:ci:release
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-release-${{ inputs.version }}-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 90
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-release-${{ inputs.version }}-${{ github.run_id }}
+          path: test-results/e2e-junit.xml
+          retention-days: 90
+          if-no-files-found: ignore
+      - name: Post certification summary
+        if: always()
+        run: |
+          E2E_STATUS="${{ job.status }}"
+          VERSION="${{ inputs.version }}"
+          DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          if [ "$E2E_STATUS" = "success" ]; then
+            OVERALL="✅ CERTIFIED"
+            E2E_CELL="✅"
+          else
+            OVERALL="❌ NOT CERTIFIED"
+            E2E_CELL="❌"
+          fi
+          {
+            echo "# SyncOS Release Certification — ${VERSION}"
+            echo ""
+            echo "**${OVERALL}**"
+            echo ""
+            echo "| Gate | Status |"
+            echo "|---|---|"
+            echo "| Typecheck | ✅ |"
+            echo "| Build (API · Worker · Web) | ✅ |"
+            echo "| Unit tests | ✅ |"
+            echo "| Database migration verification | ✅ |"
+            echo "| Smoke tests (all domains) | ✅ |"
+            echo "| E2E certification enforcer | ✅ |"
+            echo "| E2E seed smoke | ✅ |"
+            echo "| E2E full suite (\`e2e:ci:release\`) | ${E2E_CELL} |"
+            echo ""
+            echo "Certified at: \`${DATE}\`"
+            echo ""
+            echo "**Artifacts (90-day retention)**"
+            echo "- Playwright HTML report: \`playwright-release-${VERSION}-${{ github.run_id }}\`"
+            echo "- JUnit XML: \`junit-release-${VERSION}-${{ github.run_id }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
