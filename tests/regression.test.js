@@ -79,33 +79,84 @@ test("Sprint 14 does not introduce disallowed business artifacts", () => {
   }
 });
 
-test("e2e certification enforcer: all action states are certified and none lack required notes when blocked", () => {
+test("e2e certification: no not-certified states, no undocumented blocked states, no placeholder notes, no empty forbiddenTables", () => {
   const source = read("tests/e2e/fixtures/action-states.ts");
   const lines = source.split("\n");
   const violations = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    if (/submitCertificationStatus:\s*["']not-certified["']/.test(lines[i])) {
-      violations.push(`Line ${i + 1}: not-certified state found`);
+  function findObjectBlock(lineIndex) {
+    let objStart = lineIndex;
+    for (let j = lineIndex - 1; j >= 0; j--) {
+      if (/^\s*\{/.test(lines[j])) { objStart = j; break; }
     }
-    if (/submitCertificationStatus:\s*["']blocked["']/.test(lines[i])) {
-      let objStart = i;
-      for (let j = i - 1; j >= 0; j--) {
-        if (/^\s*\{/.test(lines[j])) { objStart = j; break; }
-      }
-      let objEnd = i;
-      for (let j = i + 1; j < lines.length; j++) {
-        if (/^\s*\}/.test(lines[j])) { objEnd = j; break; }
-      }
-      const block = lines.slice(objStart, objEnd + 1).join("\n");
+    let objEnd = lineIndex;
+    for (let j = lineIndex + 1; j < lines.length; j++) {
+      if (/^\s*\}/.test(lines[j])) { objEnd = j; break; }
+    }
+    return lines.slice(objStart, objEnd + 1).join("\n");
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (/submitCertificationStatus:\s*["']not-certified["']/.test(line)) {
+      violations.push(`action-states.ts:${i + 1}: "not-certified" state found`);
+    }
+
+    if (/submitCertificationStatus:\s*["']blocked["']/.test(line)) {
+      const block = findObjectBlock(i);
+      const match = block.match(/stateKey:\s*["']([^"']+)["']/);
+      const stateKey = match ? match[1] : "unknown";
       if (!/\bnotes\s*:/.test(block)) {
-        const match = block.match(/stateKey:\s*["']([^"']+)["']/);
-        violations.push(`Line ${i + 1} (${match ? match[1] : "unknown"}): blocked without notes`);
+        violations.push(`action-states.ts:${i + 1} (${stateKey}): "blocked" without notes`);
       }
+    }
+
+    if (/forbiddenTables:\s*\[\s*\]/.test(line)) {
+      const block = findObjectBlock(i);
+      const match = block.match(/stateKey:\s*["']([^"']+)["']/);
+      violations.push(`action-states.ts:${i + 1} (${match ? match[1] : "unknown"}): forbiddenTables is []`);
+    }
+
+    if (
+      /\bnotes\s*:\s*["']\.\.\.["']/.test(line) ||
+      /\bnotes\s*:\s*["']\s*["']/.test(line) ||
+      /\bnotes\s*:\s*["']TODO["']/i.test(line)
+    ) {
+      violations.push(`action-states.ts:${i + 1}: placeholder notes field`);
     }
   }
 
-  assert.deepEqual(violations, [], `E2E certification violations:\n${violations.join("\n")}`);
+  assert.deepEqual(violations, [], `E2E fixture violations:\n${violations.join("\n")}`);
+});
+
+test("e2e specs: no test.skip, test.only, or .fixme", () => {
+  function findSpecFiles(dir) {
+    const results = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) results.push(...findSpecFiles(fullPath));
+      else if (entry.name.endsWith(".spec.ts")) results.push(fullPath);
+    }
+    return results;
+  }
+
+  const specFiles = findSpecFiles(path.join(root, "tests/e2e"));
+  const violations = [];
+
+  for (const specPath of specFiles) {
+    const rel = path.relative(root, specPath);
+    const specLines = fs.readFileSync(specPath, "utf8").split("\n");
+    for (let i = 0; i < specLines.length; i++) {
+      const line = specLines[i];
+      if (line.trimStart().startsWith("//")) continue;
+      if (/\btest\.skip\b/.test(line)) violations.push(`${rel}:${i + 1}: test.skip`);
+      if (/\btest\.only\b/.test(line)) violations.push(`${rel}:${i + 1}: test.only`);
+      if (/\.fixme\b/.test(line)) violations.push(`${rel}:${i + 1}: .fixme`);
+    }
+  }
+
+  assert.deepEqual(violations, [], `Spec hygiene violations:\n${violations.join("\n")}`);
 });
 
 function read(relativePath) {
