@@ -346,8 +346,8 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
               <div className="warning-box">No real money movement. No bank transaction, provider submission, reconciliation, tax filing, W2/1099, benefit, garnishment, or accounting export is available here.</div>
             </aside>
             <section className="workspace-panel">
-              <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+              <div className="tabs" role="tablist" aria-label="Payment batch detail sections">
+                {tabs.map((itemTab) => <button key={itemTab} type="button" role="tab" aria-selected={tab === itemTab} className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PaymentTab tab={tab} detail={detail} batch={batch} items={items} session={session} onAction={openAction} />
             </section>
@@ -487,10 +487,13 @@ function PaymentItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; se
 function PaymentModal({ type, paymentBatchId, item, related, session, onClose, onSaved }: { type: string; paymentBatchId: string; batch: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Record<string, string>>(prefillItemForm(item));
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     try {
       if (type === "add_contractor") await syncosFetch(`/payment-batches/${paymentBatchId}/items/contractor-payable`, { method: "POST", body: addContractorPayload(form), token: session.token });
       else if (type === "add_payroll") await syncosFetch(`/payment-batches/${paymentBatchId}/items/payroll-run`, { method: "POST", body: addPayrollPayload(form), token: session.token });
@@ -513,14 +516,16 @@ function PaymentModal({ type, paymentBatchId, item, related, session, onClose, o
       onClose();
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
-        <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>
-        {error ? <div className="error-banner">{error}</div> : null}
+        <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose} disabled={submitting}>Close</button></div>
+        {error ? <div className="error-banner" role="alert">{error}</div> : null}
         {type === "add_contractor" ? <AddContractorFields form={form} setForm={setForm} related={related} /> : null}
         {type === "add_payroll" ? <AddPayrollFields form={form} setForm={setForm} related={related} /> : null}
         {type === "edit_item" ? <ItemEditFields form={form} setForm={setForm} /> : null}
@@ -534,7 +539,7 @@ function PaymentModal({ type, paymentBatchId, item, related, session, onClose, o
         {["void", "void_item"].includes(type) ? <VoidFields form={form} setForm={setForm} /> : null}
         {["archive", "archive_item"].includes(type) ? <ArchiveFields form={form} setForm={setForm} /> : null}
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Payment Execution backend only. It creates no ACH, card, check, wire, provider, bank, tax, accounting, reconciliation, or real money movement records.</div> : null}
-        <div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div>
+        <div className="form-actions" data-testid="modal-actions"><button className={["reject", "cancel", "void", "void_item", "archive", "archive_item", "mark_failed"].includes(type) ? "danger-button" : "primary-button"} type="submit" disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button><button type="button" onClick={onClose} disabled={submitting}>Cancel</button></div>
       </form>
     </div>
   );

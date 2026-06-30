@@ -523,7 +523,7 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
               <div className="warning-box">No invoice balance changed. No accounting export created. No payment, bank transfer, ACH, wire, card payout, check, or payroll provider workflow exists here.</div>
             </aside>
             <section className="workspace-panel">
-              <div className="tabs">{transactionTabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>
+              <div className="tabs" role="tablist" aria-label="Bank transaction detail sections">{transactionTabs.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>
               <TransactionTab tab={tab} detail={detail} transaction={transaction} matches={matches} related={related} session={session} onAction={setModal} />
             </section>
           </div>
@@ -706,10 +706,13 @@ function MatchPanel({ title, message, action, related, onAction }: { title: stri
 function BankModal({ type, id, related = emptyRelatedOptions, session, onClose, onSaved }: { type: string; id: string; related?: RelatedOptions; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Record<string, string>>(type.startsWith("match_") ? { match_confidence: "manual" } : {});
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     try {
       if (type === "archive_account") await syncosFetch(`/bank-accounts/${id}/archive`, { method: "POST", body: archivePayload(form), token: session.token });
       else if (type === "archive_transaction") await syncosFetch(`/bank-transactions/${id}/archive`, { method: "POST", body: archivePayload(form), token: session.token });
@@ -729,14 +732,16 @@ function BankModal({ type, id, related = emptyRelatedOptions, session, onClose, 
       onClose();
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
-        <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>
-        {error ? <div className="error-banner">{error}</div> : null}
+        <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose} disabled={submitting}>Close</button></div>
+        {error ? <div className="error-banner" role="alert">{error}</div> : null}
         {type === "match_payment_batch" ? <MatchFields form={form} setForm={setForm} options={related.paymentBatches} idField="payment_batch_id" label="Payment Batch" /> : null}
         {type === "match_payment_item" ? <MatchFields form={form} setForm={setForm} options={related.paymentItems} idField="payment_item_id" label="Payment Item" /> : null}
         {type === "match_cash_receipt" ? <MatchFields form={form} setForm={setForm} options={related.cashReceipts} idField="cash_receipt_id" label="Cash Receipt" /> : null}
@@ -750,7 +755,7 @@ function BankModal({ type, id, related = emptyRelatedOptions, session, onClose, 
         {type === "void_match" ? <VoidFields form={form} setForm={setForm} /> : null}
         {["archive_account", "archive_transaction", "archive_match"].includes(type) ? <ArchiveFields form={form} setForm={setForm} /> : null}
         <div className="warning-box">This action uses hardened Bank Reconciliation backend routes only. It creates no bank feed, statement import, payment execution, cash receipt, payment application, invoice balance change, accounting export, GL entry, tax filing, treasury workflow, or money movement.</div>
-        <div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div>
+        <div className="form-actions" data-testid="modal-actions"><button className={["reject_match", "void_match", "archive_match", "archive_account", "archive_transaction", "ignore_transaction"].includes(type) ? "danger-button" : "primary-button"} type="submit" disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button><button type="button" onClick={onClose} disabled={submitting}>Cancel</button></div>
       </form>
     </div>
   );
@@ -1009,7 +1014,7 @@ function plainError(message: string) {
 
 function Tabs({ tabs, render }: { tabs: string[]; render: (tab: string) => ReactNode }) {
   const [tab, setTab] = useState(tabs[0]);
-  return <><div className="tabs">{tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>{render(tab)}</>;
+  return <><div className="tabs" role="tablist" aria-label="Bank reconciliation detail sections">{tabs.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>{render(tab)}</>;
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled, required }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean; required?: boolean }) {

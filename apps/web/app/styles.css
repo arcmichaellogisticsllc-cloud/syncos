@@ -270,6 +270,14 @@ a {
   gap: 8px;
 }
 
+.form-actions {
+  align-items: center;
+}
+
+.section-toolbar > .form-actions {
+  justify-content: flex-end;
+}
+
 button,
 input,
 select,
@@ -297,9 +305,25 @@ input:disabled {
   opacity: 0.55;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .primary-button {
   background: var(--accent);
   border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.danger-button {
+  background: #8f1f1f;
+  border-color: #8f1f1f;
   color: #ffffff;
   font-weight: 700;
 }
@@ -350,7 +374,8 @@ input:disabled {
 }
 
 .empty-state,
-.error-banner {
+.error-banner,
+.success-banner {
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--muted);
@@ -361,6 +386,12 @@ input:disabled {
   background: #fff5f5;
   border-color: #f0b9b9;
   color: #9b1c1c;
+}
+
+.success-banner {
+  background: #f0f8f2;
+  border-color: #b7dfc1;
+  color: #19692c;
 }
 
 .modal-backdrop {
@@ -378,7 +409,8 @@ input:disabled {
   z-index: 20;
 }
 
-.modal-panel {
+.modal-panel,
+.modal-card {
   background: var(--surface);
   border-radius: 8px;
   box-shadow: 0 20px 60px rgba(17, 24, 39, 0.24);
@@ -440,7 +472,18 @@ input:disabled {
   padding-bottom: 10px;
 }
 
+.tabs button {
+  background: #f8fafc;
+}
+
 .tabs button.active {
+  background: #eef6f8;
+  border-color: #cce1e7;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.tabs button[aria-selected="true"] {
   background: #eef6f8;
   border-color: #cce1e7;
   color: var(--accent);
