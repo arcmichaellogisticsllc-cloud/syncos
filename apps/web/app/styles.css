@@ -159,6 +159,245 @@ a {
   margin: 0;
 }
 
+.command-hero {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 20px;
+}
+
+.command-hero h2 {
+  font-size: 24px;
+  letter-spacing: 0;
+  margin: 4px 0 8px;
+}
+
+.command-hero p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+  max-width: 840px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.command-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.operator-link {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: inline-flex;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 8px 11px;
+}
+
+.operator-link-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.operator-link-secondary {
+  background: #ffffff;
+  color: var(--text);
+}
+
+.operator-link-danger {
+  background: #8f1f1f;
+  border-color: #8f1f1f;
+  color: #ffffff;
+}
+
+.insight-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.insight-item {
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  min-height: 94px;
+  padding: 12px;
+}
+
+.insight-item span,
+.priority-decision-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.insight-item strong,
+.priority-decision-card strong {
+  color: var(--text);
+  font-size: 24px;
+}
+
+.insight-item small,
+.priority-decision-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.priority-decision-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 16px;
+}
+
+.priority-decision-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-left: 4px solid #94a3b8;
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  min-height: 142px;
+  padding: 14px;
+}
+
+a.priority-decision-card:hover,
+.work-queue-row:hover,
+.board-column-row:hover {
+  border-color: #b8c4d2;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.priority-decision-card em {
+  color: var(--accent);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  margin-top: auto;
+}
+
+.priority-decision-card-success {
+  border-left-color: var(--ok);
+}
+
+.priority-decision-card-warning {
+  border-left-color: var(--warn);
+}
+
+.priority-decision-card-danger {
+  border-left-color: #8f1f1f;
+}
+
+.command-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.work-queue {
+  display: grid;
+  gap: 14px;
+}
+
+.work-queue-list,
+.board-column-list {
+  display: grid;
+  gap: 8px;
+}
+
+.work-queue-row,
+.board-column-row {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e8edf3;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.work-queue-row span,
+.board-column-row span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.work-queue-row strong,
+.board-column-row strong {
+  font-size: 14px;
+}
+
+.work-queue-row small,
+.board-column-row small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.queue-value,
+.board-column-row b {
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 999px;
+  color: #334155;
+  flex-shrink: 0;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.queue-value-success {
+  background: #f0f8f2;
+  border-color: #b7dfc1;
+  color: #19692c;
+}
+
+.queue-value-warning {
+  background: #fff8eb;
+  border-color: #edd09b;
+  color: #6f4300;
+}
+
+.queue-value-danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #7f1d1d;
+}
+
+.operations-board {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-bottom: 16px;
+}
+
+.board-column {
+  display: grid;
+  gap: 14px;
+}
+
+.board-column-row[aria-disabled="true"] {
+  cursor: default;
+  pointer-events: none;
+}
+
 .grid {
   display: grid;
   gap: 16px;

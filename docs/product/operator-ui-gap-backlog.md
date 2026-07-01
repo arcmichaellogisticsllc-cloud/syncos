@@ -70,6 +70,22 @@ Still open:
 - OUX-016 through OUX-019 remain open until financial, reconciliation, and accounting pages adopt the financial boundary templates.
 - OUX-030 remains open until timeline and audit panels are applied consistently on detail pages.
 
+## Phase 3 Status
+
+Closed or reduced:
+
+- OUX-005 is reduced by making `/` a real Command Center landing page and redesigning `/executive` and `/operations` around role decisions.
+- OUX-014 is reduced by adding daily priorities, blocker/cash/workflow risk cards, and decision queues to Command Center.
+- OUX-023 is partially reduced by adding an Operations Board that links directly to Projects, Work Orders, Production, and QC queues.
+- OUX-007 is reduced for Command Center and Operations Board through visible next-action links and queue cards.
+
+Still open:
+
+- OUX-005 remains partially open because each persona still needs fully tailored landing modules.
+- OUX-023 remains open until Work Orders receive a dedicated queue/list redesign.
+- OUX-024 and OUX-025 remain open until Production and QC pages adopt review/correction queue templates.
+- OUX-013 remains open until mobile/tablet review is completed.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.
