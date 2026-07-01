@@ -67,6 +67,12 @@ Certified action-state coverage currently includes readiness, modal open/cancel,
 | Open Detail | All lists | Any | Read permission | Row visible. | Not disabled. | Ghost, no modal. | Navigation. | No mutation. Route E2E. | P0 |
 | Create Production | `/work-orders/[id]` future | Production | Field Supervisor | Work order active/ready. | Work order closed/blocked. | Primary, create page. | Production create route. | Production draft created; no billing. Route E2E. | P0 |
 
+Phase 4 list-page notes:
+
+- `/work-orders` now exposes queue actions only: Create Work Order, Open Next Blocked Work Order, Review Active Work, queue tab selection, and Open Detail.
+- Work Order lifecycle mutations remain on `/work-orders/[id]` through existing backend-backed modals.
+- Production Missing is informational until a backend work-order-to-production coverage summary exists.
+
 ## Production
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success state/events/boundary/E2E | Priority |
@@ -78,6 +84,12 @@ Certified action-state coverage currently includes readiness, modal open/cancel,
 | Mark Billable | `/production/[id]` | Production | QC Manager/Finance policy | Status `approved` and not billable. | Already billable or missing permission. | Primary, modal "Billable", no required fields. | Mark billable. | `billable_status=billable`; no invoice/payment/payroll/bank/export creation. Certified. | P0 |
 | Archive | `/production/[id]` | Production | System Admin | Status `voided`. | Not voided or missing permission. | Danger, modal "Archive". | Archive production. | `status=archived`; audit/timeline. Certified. | P0 |
 
+Phase 4 list-page notes:
+
+- `/production` now exposes queue actions only: Create Production Record, Review Submitted Production, Open Corrections, Mark Approved Billable queue, queue tab selection, and Open Detail.
+- Submit, Start Review, Approve, Request Correction, Mark Corrected, Mark Billable, Void, Archive, and Evidence actions remain on `/production/[id]`.
+- List-page Billable Ready copy explicitly says no invoice or finance record is created.
+
 ## QC
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |
@@ -86,6 +98,12 @@ Certified action-state coverage currently includes readiness, modal open/cancel,
 | Approve | `/qc/[id]` | QC review | QC Manager | Status `in_review`. | Missing review/approval note or permission. | Primary, modal "Approve", Review Note/Approval Note. | Approve QC. | `review_status=approved`; no finance downstream. Certified. | P0 |
 | Mark Corrected | `/qc/[id]` | QC review | QC Manager | Status `correction_required`. | Missing correction note. | Primary, modal "Mark Corrected", Correction Note. | Mark corrected. | `review_status=corrected`; audit/timeline. Certified. | P0 |
 | Archive | `/qc/[id]` | QC review | System Admin | Status `voided`. | Not voided or missing permission. | Danger, modal "Archive". | Archive QC. | `review_status=archived`; no settlement/invoice/payment/payroll/export. Certified. | P0 |
+
+Phase 4 list-page notes:
+
+- `/qc` now exposes queue actions only: Create QC Review, Review Next QC Item, Open Corrections, View Aging Reviews, queue tab selection, and Open Detail.
+- Start Review, Approve, Reject, Request Correction, Mark Corrected, Void, and Archive remain on `/qc/[id]`.
+- Aging is client-side display guidance until explicit SLA fields exist.
 
 ## Billable
 

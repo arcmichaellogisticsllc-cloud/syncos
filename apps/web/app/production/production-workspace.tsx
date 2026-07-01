@@ -51,7 +51,7 @@ export function ProductionDirectory() {
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "production_date_desc" });
+  const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "production_date_desc", queue: "draft" });
 
   async function load() {
     setLoading(true);
@@ -77,47 +77,64 @@ export function ProductionDirectory() {
 
   const visible = useMemo(() => sortProduction(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
+  const activeQueue = filters.queue ?? "draft";
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "production_date_desc", queue, ...nextFilters });
 
   return (
-    <ProductionShell title="Production Directory" purpose="Manage field-truth production records without creating settlement, invoice, AR, payment, cash, payroll, or tax records.">
+    <ProductionShell title="Production Board" purpose="Track field production from draft through review, correction, approval, and billable readiness.">
       <SessionPanel session={session} />
-      <div className="warning-box">Production Workspace uses hardened backend routes only. QC Workspace, Billable Workspace, settlement, invoice, AR, payment, cash, payroll, and tax workflows are not created here.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Production.</div> : null}
-      {loading ? <div className="empty-state">Loading production records...</div> : null}
+      <div className="boundary-notice"><strong>Production boundary</strong><span>Production records capture field truth. They do not create settlement, invoice, AR, payment, cash, payroll, tax, or accounting records.</span></div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to submit, review, correct, and prepare field production.</div> : null}
+      {loading ? <div className="loading-state">Loading production records...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>Production Summary</h2>
-                <p className="muted">Production records are prioritized by corrections, review state, production date, and recent updates.</p>
+                <span className="eyebrow">Field Supervisor Workspace</span>
+                <h2>What production must be submitted, corrected, approved, or marked billable?</h2>
+                <p className="muted">Start with corrections, submitted work, and approved records that can move toward billable readiness.</p>
               </div>
-              <Link className="primary-button" href="/production/new" aria-disabled={!hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href="/production/new" aria-disabled={!hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production Record</Link>
+                <button type="button" onClick={() => setQueue("submitted", { status: "submitted" })}>Review Submitted Production</button>
+                <button type="button" onClick={() => setQueue("correction_required", { status: "correction_required" })}>Open Corrections</button>
+                <button type="button" onClick={() => setQueue("billable_ready", { status: "approved" })}>Mark Approved Billable</button>
+              </div>
             </div>
-            <div className="summary-grid">
-              <SummaryCard label="Total Production Records" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "production_date_desc" })} />
-              {["draft", "submitted", "under_review", "correction_required", "corrected", "approved", "rejected", "voided", "archived"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "production_date_desc", status })} />)}
-              <SummaryCard label="Billable Candidate" value={summary.billableCandidate} onClick={() => setFilters({ ...filters, billable_status: "billable_candidate" })} />
-              <SummaryCard label="Billable" value={summary.billable} onClick={() => setFilters({ ...filters, billable_status: "billable" })} />
-              <SummaryCard label="Evidence Missing" value={summary.evidenceMissing} onClick={() => setFilters({ ...filters, hasEvidence: "false" })} />
-              <SummaryCard label="Corrections Open" value={summary.correctionsOpen} onClick={() => setFilters({ ...filters, correctionRequired: "true" })} />
+            <div className="summary-grid priority-grid">
+              <SummaryCard label="Drafts" value={summary.status.draft ?? 0} helper="Field records not submitted yet." active={activeQueue === "draft"} onClick={() => setQueue("draft", { status: "draft" })} />
+              <SummaryCard label="Submitted" value={summary.status.submitted ?? 0} helper="Ready for review intake." active={activeQueue === "submitted"} onClick={() => setQueue("submitted", { status: "submitted" })} />
+              <SummaryCard label="Under Review" value={summary.status.under_review ?? 0} helper="Reviewer has started decision work." active={activeQueue === "under_review"} onClick={() => setQueue("under_review", { status: "under_review" })} />
+              <SummaryCard label="Correction Required" value={summary.correctionsOpen} helper="Field correction or quantity fix required." active={activeQueue === "correction_required"} onClick={() => setQueue("correction_required", { correctionRequired: "true" })} />
+              <SummaryCard label="Approved" value={summary.status.approved ?? 0} helper="Approved production not automatically billable." active={activeQueue === "approved"} onClick={() => setQueue("approved", { status: "approved" })} />
+              <SummaryCard label="Billable Ready" value={summary.billable} helper="Production marked for billable workflow. No invoice is created." active={activeQueue === "billable_ready"} onClick={() => setQueue("billable_ready", { billable_status: "billable" })} />
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
+              <div>
+                <h2>Production Queue</h2>
+                <p className="muted">{visible.length} shown. Queue tabs keep review work ahead of advanced filtering.</p>
+              </div>
               <button type="button" onClick={() => setFilters({ archived: "false", sort: "production_date_desc" })}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["submitted", "under_review", "correction_required", "corrected", "approved", "rejected"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, billable_status: "billable_candidate" })}>Billable Candidate</button>
-              <button type="button" onClick={() => setFilters({ ...filters, hasEvidence: "false" })}>Evidence Missing</button>
-              <button type="button" onClick={() => setFilters({ ...filters, production_type: "delay_report" })}>Delay / No Work Reports</button>
-              <button type="button" onClick={() => setFilters({ ...filters, production_type: "safety_observation" })}>Safety Observations</button>
-              <button type="button" onClick={() => setFilters({ ...filters, issueOnly: "true" })}>Issues</button>
+            <div className="queue-tabs" role="tablist" aria-label="Production queues">
+              {[
+                ["draft", "Draft", { status: "draft" }],
+                ["submitted", "Submitted", { status: "submitted" }],
+                ["under_review", "Under Review", { status: "under_review" }],
+                ["correction_required", "Correction Required", { correctionRequired: "true" }],
+                ["corrected", "Corrected", { status: "corrected" }],
+                ["approved", "Approved", { status: "approved" }],
+                ["billable_ready", "Billable Ready", { billable_status: "billable" }],
+                ["archived", "Archived", { archived: "true", status: "archived" }],
+              ].map(([queue, label, next]) => <button key={String(queue)} type="button" role="tab" aria-selected={activeQueue === queue} onClick={() => setQueue(String(queue), next as Record<string, string>)}>{String(label)}</button>)}
             </div>
+            <details className="filter-drawer">
+            <summary>Advanced filters</summary>
             <div className="filter-grid">
               <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search production, work order, project, location" />
               <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project id" />
@@ -139,14 +156,17 @@ export function ProductionDirectory() {
               <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
               <Select label="Sort" value={filters.sort ?? "production_date_desc"} options={["production_date_desc", "production_date_asc", "updated_desc", "status", "project", "work_order", "provider", "crew"]} labels={{ production_date_desc: "Production date newest", production_date_asc: "Production date oldest", updated_desc: "Recently updated", status: "Status", project: "Project", work_order: "Work Order", provider: "Provider", crew: "Crew" }} onChange={(sort) => setFilters({ ...filters, sort })} />
             </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Production Records</h2>
+              <h2>{productionQueueTitle(activeQueue)}</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No production records yet. Create production against an eligible Work Order through backend validation.</div> : <ProductionTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No production records yet. Create production against an eligible Work Order through backend validation.</div> : null}
+            {rows.length && !visible.length ? <div className="empty-state">{emptyProductionQueue(activeQueue)}</div> : null}
+            {visible.length ? <ProductionTable rows={visible} /> : null}
           </section>
         </>
       ) : null}
@@ -449,36 +469,29 @@ function ProductionTable({ rows }: { rows: SyncRecord[] }) {
       <table>
         <thead>
           <tr>
-            {["Production Type", "Status", "QC Status", "Billable Status", "Production Date", "Project", "Work Order", "Customer", "Territory", "Work Type", "Provider", "Crew", "Foreman", "Submitted By", "Claimed Quantity", "Approved Quantity", "Rejected Quantity", "Corrected Quantity", "Billable Quantity", "Unit", "Evidence Count", "Location Summary", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}
+            {["Production Record", "Work Order", "Crew / Foreman", "Units / Quantity", "Date", "Status", "QC Status", "Correction Status", "Billable Status", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              <td><Link className="table-link" href={`/production/${row.id}`}>{formatAction(row.production_type)}</Link></td>
-              <td>{formatAction(row.status)}</td>
-              <td>{formatAction(row.qc_status)}</td>
-              <td>{formatAction(row.billable_status)}</td>
-              <td>{dateValue(row.production_date)}</td>
-              <td>{projectLink(row.project_id, row.project_name)}</td>
+              <td>
+                <Link className="table-link" href={`/production/${row.id}`}>{formatAction(row.production_type)}</Link>
+                <small className="cell-helper">{textValue(row.location_summary)}</small>
+              </td>
               <td>{workOrderLink(row.work_order_id, row.work_order_name ?? row.work_order_title)}</td>
-              <td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td>
-              <td>{textValue(row.territory_name ?? row.territory_id)}</td>
-              <td>{formatAction(row.work_type)}</td>
-              <td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td>
-              <td>{textValue(row.crew_name ?? row.crew_id)}</td>
-              <td>{textValue(row.foreman_name ?? row.foreman_user_id)}</td>
-              <td>{textValue(row.submitted_by_name ?? row.submitted_by)}</td>
-              <td>{formatCell(row.claimed_quantity)}</td>
-              <td>{formatCell(row.approved_quantity)}</td>
-              <td>{formatCell(row.rejected_quantity)}</td>
-              <td>{formatCell(row.corrected_quantity)}</td>
-              <td>{formatCell(row.billable_quantity)}</td>
-              <td>{formatAction(row.unit)}</td>
-              <td>{formatCell(row.evidence_count)}</td>
-              <td>{textValue(row.location_summary)}</td>
-              <td>{formatAction(row.recommended_next_action)}</td>
-              <td>{dateValue(row.updated_at)}</td>
+              <td>
+                {textValue(row.crew_name ?? row.capacity_provider_name ?? row.crew_id ?? row.capacity_provider_id, "Crew not captured")}
+                <small className="cell-helper">{textValue(row.foreman_name ?? row.foreman_user_id)}</small>
+              </td>
+              <td>{quantity(row.claimed_quantity, row.unit)}<small className="cell-helper">Approved {quantity(row.approved_quantity, row.unit)}</small></td>
+              <td>{dateValue(row.production_date)}</td>
+              <td><span className={`status-badge ${productionStatusTone(row.status)}`}>{formatAction(row.status)}</span></td>
+              <td>{formatAction(row.qc_status)}</td>
+              <td>{correctionState(row)}</td>
+              <td>{formatAction(row.billable_status)}<small className="cell-helper">{quantity(row.billable_quantity, row.unit)}</small></td>
+              <td>{nextProductionAction(row)}</td>
+              <td><Link className="link-button" href={`/production/${row.id}`}>Open Detail</Link></td>
             </tr>
           ))}
         </tbody>
@@ -707,8 +720,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -812,6 +825,51 @@ function reviewRank(status: unknown) {
   if (status === "submitted" || status === "under_review") return 2;
   if (status === "corrected") return 1;
   return 0;
+}
+
+function productionQueueTitle(queue: string) {
+  if (queue === "draft") return "Draft Production";
+  if (queue === "submitted") return "Submitted Production";
+  if (queue === "under_review") return "Under Review";
+  if (queue === "correction_required") return "Correction Required";
+  if (queue === "corrected") return "Corrected Production";
+  if (queue === "approved") return "Approved Production";
+  if (queue === "billable_ready") return "Billable Ready";
+  if (queue === "archived") return "Archived Production";
+  return "Production Records";
+}
+
+function emptyProductionQueue(queue: string) {
+  if (queue === "draft") return "No draft production records need attention.";
+  if (queue === "correction_required") return "No production corrections are currently required.";
+  if (queue === "approved") return "No approved production is waiting for billable readiness.";
+  if (queue === "submitted") return "No submitted production is waiting for review.";
+  return "No production records match this queue.";
+}
+
+function nextProductionAction(row: SyncRecord) {
+  if (row.status === "draft") return "Submit";
+  if (row.status === "submitted") return "Start Review";
+  if (row.status === "under_review") return "Approve or request correction";
+  if (row.status === "correction_required") return "Mark Corrected";
+  if (row.status === "corrected") return "Submit corrected record";
+  if (row.status === "approved" && row.billable_status !== "billable") return "Mark Billable";
+  if (row.billable_status === "billable") return "Ready for billable workflow";
+  return formatAction(row.recommended_next_action);
+}
+
+function correctionState(row: SyncRecord) {
+  if (row.status === "correction_required" || row.correction_required) return "Correction required";
+  if (row.status === "corrected") return "Corrected";
+  if (row.correction_reason) return "Correction history";
+  return "No correction";
+}
+
+function productionStatusTone(status: unknown) {
+  if (["approved", "billable"].includes(String(status))) return "status-badge-success";
+  if (["correction_required", "rejected", "voided"].includes(String(status))) return "status-badge-danger";
+  if (["submitted", "under_review", "corrected"].includes(String(status))) return "status-badge-warning";
+  return "status-badge-neutral";
 }
 
 function productionChecklist(record: SyncRecord, detail: ProductionDetailShape): [string, boolean][] {

@@ -52,7 +52,7 @@ export function WorkOrderDirectory() {
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "default" });
+  const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "default", queue: "ready_to_start" });
 
   async function load() {
     setLoading(true);
@@ -78,74 +78,95 @@ export function WorkOrderDirectory() {
 
   const visible = useMemo(() => sortWorkOrders(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
+  const activeQueue = filters.queue ?? "ready_to_start";
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "default", queue, ...nextFilters });
 
   return (
-    <WorkOrderShell title="Work Order Directory" purpose="Manage executable work packages without creating production, QC evidence, or finance records.">
+    <WorkOrderShell title="Work Orders" purpose="Plan, assign, and monitor executable telecom work before production and QC.">
       <SessionPanel session={session} />
-      <div className="warning-box">Work Order Workspace uses backend lifecycle routes only. Production, QC evidence, settlement, invoice, payment, payroll, AR, and cash records are not created here.</div>
-      {error ? <div className="error-banner">{plainError(error)}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Work Orders.</div> : null}
-      {loading ? <div className="empty-state">Loading work orders...</div> : null}
+      <div className="boundary-notice"><strong>Execution boundary</strong><span>Work Orders plan and control field execution. This page does not create production records, QC evidence, settlements, invoices, payments, payroll, AR, or cash records.</span></div>
+      {error ? <div className="error-banner" role="alert">{plainError(error)}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to plan, assign, and monitor executable telecom work.</div> : null}
+      {loading ? <div className="loading-state">Loading work orders...</div> : null}
       {session.token && !loading ? (
         <>
+          <section className="workspace-panel operator-queue-hero">
+            <div className="section-toolbar">
+              <div>
+                <span className="eyebrow">Operations Manager Workspace</span>
+                <h2>What work needs operational attention today?</h2>
+                <p className="muted">Start with blocked work, ready execution, and work orders that need production or QC movement.</p>
+              </div>
+              <div className="form-actions">
+                <Link className="primary-button" href="/work-orders/new" aria-disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</Link>
+                <button type="button" onClick={() => setQueue("blocked", { hasBlockers: "true" })}>Open Next Blocked Work Order</button>
+                <button type="button" onClick={() => setQueue("active", { status: "in_progress" })}>Review Active Work</button>
+              </div>
+            </div>
+            <div className="summary-grid priority-grid">
+              <SummaryCard label="Ready to Start" value={summary.readyToStart} helper="Assigned or scheduled work that can move into field execution." active={activeQueue === "ready_to_start"} onClick={() => setQueue("ready_to_start", { status: "scheduled" })} />
+              <SummaryCard label="Active Work" value={summary.active} helper="Work already in progress or submitted by the field." active={activeQueue === "active"} onClick={() => setQueue("active", { status: "in_progress" })} />
+              <SummaryCard label="Blocked" value={summary.blocked} helper="Readiness blockers, holds, or hard stops that need a decision." active={activeQueue === "blocked"} onClick={() => setQueue("blocked", { hasBlockers: "true" })} />
+              <SummaryCard label="Production Missing" value={summary.productionMissing} helper="Execution records that appear eligible but do not yet show production truth." active={activeQueue === "production_missing"} onClick={() => setQueue("production_missing", { productionMissing: "true" })} />
+              <SummaryCard label="Ready for QC" value={summary.readyForQc} helper="Submitted work ready for quality review." active={activeQueue === "ready_for_qc"} onClick={() => setQueue("ready_for_qc", { status: "submitted" })} />
+              <SummaryCard label="Completed" value={summary.completed} helper="Approved, billable, closed, or completed execution packages." active={activeQueue === "completed"} onClick={() => setQueue("completed", { completedWork: "true" })} />
+            </div>
+          </section>
+
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
-                <h2>Work Order Summary</h2>
-                <p className="muted">Work Orders are prioritized by blockers, readiness, scheduled start, and recent updates.</p>
+                <h2>Work Order Queue</h2>
+                <p className="muted">{visible.length} shown. Queue tabs drive the page; filters are secondary.</p>
               </div>
-              <Link className="primary-button" href="/work-orders/new" aria-disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</Link>
-            </div>
-            <div className="summary-grid">
-              <SummaryCard label="Total Work Orders" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "default" })} />
-              {workOrderStatuses.map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "default", status })} />)}
-              <SummaryCard label="Production Eligible" value={summary.productionEligible} onClick={() => setFilters({ ...filters, production_eligible: "true" })} />
-              <SummaryCard label="Blocked" value={summary.blocked} onClick={() => setFilters({ ...filters, hasBlockers: "true" })} />
-              <SummaryCard label="Ready With Risk" value={summary.readyWithRisk} onClick={() => setFilters({ ...filters, readiness_band: "ready_with_risk" })} />
-            </div>
-          </section>
-
-          <section className="workspace-panel">
-            <div className="section-toolbar">
-              <h2>Filters</h2>
               <button type="button" onClick={() => setFilters({ archived: "false", sort: "default" })}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["draft", "ready_to_assign", "assigned", "scheduled", "in_progress", "submitted", "qc_review", "corrections_required", "approved", "billable", "on_hold"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, hasBlockers: "true" })}>Blocked</button>
-              <button type="button" onClick={() => setFilters({ ...filters, production_eligible: "true" })}>Production Eligible</button>
-              <button type="button" onClick={() => setFilters({ ...filters, missingAssignment: "true" })}>Missing Assignment</button>
+            <div className="queue-tabs" role="tablist" aria-label="Work order queues">
+              {[
+                ["ready_to_start", "Ready to Start", { status: "scheduled" }],
+                ["active", "Active", { status: "in_progress" }],
+                ["blocked", "Blocked", { hasBlockers: "true" }],
+                ["production_missing", "Production Missing", { productionMissing: "true" }],
+                ["ready_for_qc", "Ready for QC", { status: "submitted" }],
+                ["completed", "Completed", { completedWork: "true" }],
+                ["archived", "Archived", { archived: "true", status: "archived" }],
+              ].map(([queue, label, next]) => <button key={String(queue)} type="button" role="tab" aria-selected={activeQueue === queue} onClick={() => setQueue(String(queue), next as Record<string, string>)}>{String(label)}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search name, number, project, scope, location" />
-              <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project id" />
-              <Select label="Status" value={filters.status ?? ""} options={["", ...workOrderStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
-              <Select label="Readiness status" value={filters.readiness_status ?? ""} options={["", ...readinessStatuses]} onChange={(readiness_status) => setFilters({ ...filters, readiness_status })} />
-              <Select label="QC status" value={filters.qc_status ?? ""} options={["", ...qcStatuses]} onChange={(qc_status) => setFilters({ ...filters, qc_status })} />
-              <Select label="Billable status" value={filters.billable_status ?? ""} options={["", ...billableStatuses]} onChange={(billable_status) => setFilters({ ...filters, billable_status })} />
-              <input value={filters.territory_id ?? ""} onChange={(event) => setFilters({ ...filters, territory_id: event.target.value })} placeholder="Territory id/name" />
-              <input value={filters.work_type ?? ""} onChange={(event) => setFilters({ ...filters, work_type: event.target.value })} placeholder="Work type" />
-              <Select label="Assignment type" value={filters.assignment_type ?? ""} options={["", ...assignmentTypes]} onChange={(assignment_type) => setFilters({ ...filters, assignment_type })} />
-              <input value={filters.assigned_capacity_provider_id ?? ""} onChange={(event) => setFilters({ ...filters, assigned_capacity_provider_id: event.target.value })} placeholder="Assigned provider" />
-              <input value={filters.assigned_crew_id ?? ""} onChange={(event) => setFilters({ ...filters, assigned_crew_id: event.target.value })} placeholder="Assigned crew" />
-              <Select label="Production eligible" value={filters.production_eligible ?? ""} options={["", "true", "false"]} onChange={(production_eligible) => setFilters({ ...filters, production_eligible })} />
-              <Select label="Has blockers" value={filters.hasBlockers ?? ""} options={["", "true", "false"]} onChange={(hasBlockers) => setFilters({ ...filters, hasBlockers })} />
-              <Select label="Has warnings" value={filters.hasWarnings ?? ""} options={["", "true", "false"]} onChange={(hasWarnings) => setFilters({ ...filters, hasWarnings })} />
-              <input value={filters.planned_start_from ?? ""} onChange={(event) => setFilters({ ...filters, planned_start_from: event.target.value })} type="date" aria-label="Planned start from" />
-              <input value={filters.planned_start_to ?? ""} onChange={(event) => setFilters({ ...filters, planned_start_to: event.target.value })} type="date" aria-label="Planned start to" />
-              <input value={filters.scheduled_start_from ?? ""} onChange={(event) => setFilters({ ...filters, scheduled_start_from: event.target.value })} type="date" aria-label="Scheduled start from" />
-              <input value={filters.scheduled_start_to ?? ""} onChange={(event) => setFilters({ ...filters, scheduled_start_to: event.target.value })} type="date" aria-label="Scheduled start to" />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "default"} options={["default", "updated_desc", "planned_start_asc", "scheduled_start_asc", "readiness_asc", "readiness_desc", "status", "project", "assigned_provider"]} labels={{ default: "Default", updated_desc: "Recently updated", planned_start_asc: "Planned start", scheduled_start_asc: "Scheduled start", readiness_asc: "Lowest readiness", readiness_desc: "Highest readiness", status: "Status", project: "Project", assigned_provider: "Assigned provider" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search name, number, project, scope, location" />
+                <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project id" />
+                <Select label="Status" value={filters.status ?? ""} options={["", ...workOrderStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
+                <Select label="Readiness status" value={filters.readiness_status ?? ""} options={["", ...readinessStatuses]} onChange={(readiness_status) => setFilters({ ...filters, readiness_status })} />
+                <Select label="QC status" value={filters.qc_status ?? ""} options={["", ...qcStatuses]} onChange={(qc_status) => setFilters({ ...filters, qc_status })} />
+                <Select label="Billable status" value={filters.billable_status ?? ""} options={["", ...billableStatuses]} onChange={(billable_status) => setFilters({ ...filters, billable_status })} />
+                <input value={filters.territory_id ?? ""} onChange={(event) => setFilters({ ...filters, territory_id: event.target.value })} placeholder="Territory id/name" />
+                <input value={filters.work_type ?? ""} onChange={(event) => setFilters({ ...filters, work_type: event.target.value })} placeholder="Work type" />
+                <Select label="Assignment type" value={filters.assignment_type ?? ""} options={["", ...assignmentTypes]} onChange={(assignment_type) => setFilters({ ...filters, assignment_type })} />
+                <input value={filters.assigned_capacity_provider_id ?? ""} onChange={(event) => setFilters({ ...filters, assigned_capacity_provider_id: event.target.value })} placeholder="Assigned provider" />
+                <input value={filters.assigned_crew_id ?? ""} onChange={(event) => setFilters({ ...filters, assigned_crew_id: event.target.value })} placeholder="Assigned crew" />
+                <Select label="Production eligible" value={filters.production_eligible ?? ""} options={["", "true", "false"]} onChange={(production_eligible) => setFilters({ ...filters, production_eligible })} />
+                <Select label="Has blockers" value={filters.hasBlockers ?? ""} options={["", "true", "false"]} onChange={(hasBlockers) => setFilters({ ...filters, hasBlockers })} />
+                <Select label="Has warnings" value={filters.hasWarnings ?? ""} options={["", "true", "false"]} onChange={(hasWarnings) => setFilters({ ...filters, hasWarnings })} />
+                <input value={filters.planned_start_from ?? ""} onChange={(event) => setFilters({ ...filters, planned_start_from: event.target.value })} type="date" aria-label="Planned start from" />
+                <input value={filters.planned_start_to ?? ""} onChange={(event) => setFilters({ ...filters, planned_start_to: event.target.value })} type="date" aria-label="Planned start to" />
+                <input value={filters.scheduled_start_from ?? ""} onChange={(event) => setFilters({ ...filters, scheduled_start_from: event.target.value })} type="date" aria-label="Scheduled start from" />
+                <input value={filters.scheduled_start_to ?? ""} onChange={(event) => setFilters({ ...filters, scheduled_start_to: event.target.value })} type="date" aria-label="Scheduled start to" />
+                <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+                <Select label="Sort" value={filters.sort ?? "default"} options={["default", "updated_desc", "planned_start_asc", "scheduled_start_asc", "readiness_asc", "readiness_desc", "status", "project", "assigned_provider"]} labels={{ default: "Default", updated_desc: "Recently updated", planned_start_asc: "Planned start", scheduled_start_asc: "Scheduled start", readiness_asc: "Lowest readiness", readiness_desc: "Highest readiness", status: "Status", project: "Project", assigned_provider: "Assigned provider" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Work Orders</h2>
+              <h2>{queueTitle(activeQueue)}</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No work orders yet. Create a work package under a project that is planning, ready for work, or active.</div> : <WorkOrderTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No work orders yet. Create or accept a project handoff before field execution begins.</div> : null}
+            {rows.length && !visible.length ? <div className="empty-state">{emptyWorkOrderQueue(activeQueue)}</div> : null}
+            {visible.length ? <WorkOrderTable rows={visible} /> : null}
           </section>
         </>
       ) : null}
@@ -444,35 +465,35 @@ function WorkOrderTable({ rows }: { rows: SyncRecord[] }) {
       <table>
         <thead>
           <tr>
-            {["Work Order Name", "Status", "Project", "Customer", "Territory", "Work Type", "Planned Quantity", "Completed Quantity", "Approved Quantity", "Billable Quantity", "Unit", "Assignment Type", "Assigned Provider", "Assigned Crew", "Readiness Score", "Readiness Band", "Production Eligible", "QC Status", "Billable Status", "Scheduled Start", "Planned Start", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}
+            {["Work Order", "Project", "Territory / Location", "Crew / Owner", "Status", "Production Status", "QC Status", "Blocker", "Age / Due Date", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              <td><Link className="table-link" href={`/work-orders/${row.id}`}>{textValue(row.work_order_name ?? row.title, "Untitled work order")}</Link></td>
-              <td>{formatAction(row.status)}</td>
+              <td>
+                <Link className="table-link" href={`/work-orders/${row.id}`}>{textValue(row.work_order_name ?? row.title, "Untitled work order")}</Link>
+                <small className="cell-helper">{textValue(row.work_order_number ?? row.customer_work_order_number ?? row.prime_work_order_number, "No work order number")}</small>
+              </td>
               <td>{projectLink(row.project_id, row.project_name)}</td>
-              <td>{row.customer_organization_id ? <Link className="table-link" href={`/intelligence/organizations/${row.customer_organization_id}`}>{textValue(row.customer_organization_name, String(row.customer_organization_id))}</Link> : "Not captured"}</td>
-              <td>{textValue(row.territory_name ?? row.territory_id)}</td>
-              <td>{formatAction(row.work_type)}</td>
-              <td>{formatCell(row.planned_quantity)}</td>
-              <td>{formatCell(row.completed_quantity)}</td>
-              <td>{formatCell(row.approved_quantity)}</td>
-              <td>{formatCell(row.billable_quantity)}</td>
-              <td>{formatAction(row.unit)}</td>
-              <td>{formatAction(row.assignment_type)}</td>
-              <td>{providerLink(row.assigned_capacity_provider_id, row.assigned_capacity_provider_name)}</td>
-              <td>{textValue(row.assigned_crew_name ?? row.assigned_crew_id)}</td>
-              <td>{scoreValue(row.readiness_score)}</td>
-              <td>{formatAction(row.readiness_band)}</td>
-              <td>{row.production_eligible ? "Yes" : "No"}</td>
+              <td>
+                {textValue(row.territory_name ?? row.territory_id)}
+                <small className="cell-helper">{textValue(row.location_summary)}</small>
+              </td>
+              <td>
+                {textValue(row.assigned_crew_name ?? row.assigned_capacity_provider_name ?? row.assigned_crew_id ?? row.assigned_capacity_provider_id, "Unassigned")}
+                <small className="cell-helper">{formatAction(row.assignment_type)}</small>
+              </td>
+              <td><span className={`status-badge ${statusTone(row.status)}`}>{formatAction(row.status)}</span></td>
+              <td>{productionState(row)}</td>
               <td>{formatAction(row.qc_status)}</td>
-              <td>{formatAction(row.billable_status)}</td>
-              <td>{dateValue(row.scheduled_start_date)}</td>
-              <td>{dateValue(row.planned_start_date)}</td>
-              <td>{formatAction(row.recommended_next_action)}</td>
-              <td>{dateValue(row.updated_at)}</td>
+              <td>{blockerText(row)}</td>
+              <td>
+                {ageText(row.updated_at)}
+                <small className="cell-helper">Due {dateValue(row.scheduled_start_date ?? row.planned_start_date)}</small>
+              </td>
+              <td>{nextWorkOrderAction(row)}</td>
+              <td><Link className="link-button" href={`/work-orders/${row.id}`}>Open Detail</Link></td>
             </tr>
           ))}
         </tbody>
@@ -698,8 +719,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -750,8 +771,13 @@ function buildSummary(rows: SyncRecord[]) {
   return {
     total: rows.length,
     status,
+    readyToStart: rows.filter((row) => ["assigned", "scheduled"].includes(String(row.status)) || row.readiness_status === "ready_to_start").length,
+    active: rows.filter((row) => ["in_progress", "submitted", "qc_review"].includes(String(row.status))).length,
     productionEligible: rows.filter((row) => row.production_eligible).length,
     blocked: rows.filter((row) => arrayValue(row.blockers).length || row.readiness_status === "blocked").length,
+    productionMissing: rows.filter((row) => Boolean(row.production_eligible) && numberValue(row.completed_quantity) === 0 && !["draft", "cancelled", "archived", "closed"].includes(String(row.status))).length,
+    readyForQc: rows.filter((row) => ["submitted", "qc_review"].includes(String(row.status)) || row.qc_status === "pending_review").length,
+    completed: rows.filter((row) => ["approved", "billable", "closed"].includes(String(row.status))).length,
     readyWithRisk: rows.filter((row) => row.readiness_band === "ready_with_risk").length,
   };
 }
@@ -774,11 +800,73 @@ function matchesFilters(row: SyncRecord, filters: Record<string, string>) {
   if (filters.hasBlockers && boolMatch(arrayValue(row.blockers).length > 0 || row.readiness_status === "blocked", filters.hasBlockers)) return false;
   if (filters.hasWarnings && boolMatch(arrayValue(row.warnings).length > 0, filters.hasWarnings)) return false;
   if (filters.missingAssignment === "true" && (row.assigned_capacity_provider_id || row.assigned_crew_id || row.assigned_organization_id || row.assigned_equipment_id)) return false;
+  if (filters.productionMissing === "true" && (!row.production_eligible || numberValue(row.completed_quantity) > 0 || ["draft", "cancelled", "archived", "closed"].includes(String(row.status)))) return false;
+  if (filters.completedWork === "true" && !["approved", "billable", "closed"].includes(String(row.status))) return false;
   if (filters.planned_start_from && dateTime(row.planned_start_date) < dateTime(filters.planned_start_from)) return false;
   if (filters.planned_start_to && dateTime(row.planned_start_date) > dateTime(filters.planned_start_to)) return false;
   if (filters.scheduled_start_from && dateTime(row.scheduled_start_date) < dateTime(filters.scheduled_start_from)) return false;
   if (filters.scheduled_start_to && dateTime(row.scheduled_start_date) > dateTime(filters.scheduled_start_to)) return false;
   return true;
+}
+
+function queueTitle(queue: string) {
+  if (queue === "ready_to_start") return "Ready to Start";
+  if (queue === "active") return "Active Work";
+  if (queue === "blocked") return "Blocked Work Orders";
+  if (queue === "production_missing") return "Production Missing";
+  if (queue === "ready_for_qc") return "Ready for QC";
+  if (queue === "completed") return "Completed Work";
+  if (queue === "archived") return "Archived Work Orders";
+  return "Work Orders";
+}
+
+function emptyWorkOrderQueue(queue: string) {
+  if (queue === "ready_to_start") return "No work orders are ready to start.";
+  if (queue === "blocked") return "No blocked work orders.";
+  if (queue === "production_missing") return "All active work currently has production activity or no production is required yet.";
+  if (queue === "ready_for_qc") return "No work orders are waiting for QC movement.";
+  if (queue === "completed") return "No completed work orders are in this queue.";
+  return "No work orders match this queue.";
+}
+
+function nextWorkOrderAction(row: SyncRecord) {
+  if (arrayValue(row.blockers).length || row.readiness_status === "blocked") return "Resolve blocker";
+  if (row.status === "draft") return "Mark ready to assign";
+  if (row.status === "ready_to_assign") return "Assign crew";
+  if (row.status === "assigned" || row.status === "scheduled") return "Start work";
+  if (row.status === "in_progress") return "Submit field work";
+  if (row.status === "submitted") return "Start QC review";
+  if (row.status === "qc_review") return "Approve or request corrections";
+  if (row.status === "approved") return "Mark billable";
+  if (row.status === "billable") return "Ready for billing workflow";
+  return formatAction(row.recommended_next_action);
+}
+
+function productionState(row: SyncRecord) {
+  if (row.production_eligible && numberValue(row.completed_quantity) === 0) return "Production missing";
+  if (numberValue(row.completed_quantity) > 0) return `${numberValue(row.completed_quantity)} ${formatAction(row.unit)} completed`;
+  return row.production_eligible ? "Eligible" : "Not ready";
+}
+
+function blockerText(row: SyncRecord) {
+  const blockers = arrayValue(row.blockers);
+  if (blockers.length) return formatAction(blockers[0]?.blocker_type ?? blockers[0]?.message ?? "Blocked");
+  if (row.readiness_status === "blocked") return "Readiness blocked";
+  return "No blocker";
+}
+
+function statusTone(status: unknown) {
+  if (["approved", "billable", "closed"].includes(String(status))) return "status-badge-success";
+  if (["on_hold", "corrections_required", "cancelled"].includes(String(status))) return "status-badge-danger";
+  if (["submitted", "qc_review", "in_progress"].includes(String(status))) return "status-badge-warning";
+  return "status-badge-neutral";
+}
+
+function ageText(value: unknown) {
+  const then = dateTime(value);
+  if (then === Number.MAX_SAFE_INTEGER) return "Age unavailable";
+  const days = Math.max(0, Math.floor((Date.now() - then) / 86400000));
+  return days === 0 ? "Updated today" : `${days}d since update`;
 }
 
 function sortWorkOrders(rows: SyncRecord[], sort = "default") {

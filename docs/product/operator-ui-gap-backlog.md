@@ -86,6 +86,27 @@ Still open:
 - OUX-024 and OUX-025 remain open until Production and QC pages adopt review/correction queue templates.
 - OUX-013 remains open until mobile/tablet review is completed.
 
+## Phase 4 Status
+
+Closed or reduced:
+
+- OUX-006 is reduced on `/work-orders`, `/production`, and `/qc` by collapsing advanced filters and making queue tabs/cards the primary page controls.
+- OUX-007 is reduced on execution pages through next-action table columns and review/open queue CTAs.
+- OUX-011 is reduced on execution pages through queue-specific empty states.
+- OUX-015 remains controlled on execution pages because developer session panels stay environment-gated and are covered by Phase 4 E2E.
+- OUX-023 is reduced by redesigning Work Orders around Ready to Start, Active, Blocked, Production Missing, Ready for QC, Completed, and Archived queues.
+- OUX-024 is reduced by redesigning Production around submitted, review, correction, approved, and billable-ready queues.
+- OUX-025 is reduced by redesigning QC around pending, in-review, correction-required, approved, and aging review queues.
+- OUX-034 is reduced by adding Phase 4 E2E coverage for Work Orders, Production, QC, hidden developer UI, read-only auditor behavior, and queue tab state changes.
+
+Still open after Phase 4:
+
+- OUX-010 remains open beyond Signal Feed and action detail pages because disabled reasons are not yet standardized across every execution list action.
+- OUX-013 remains open until mobile/tablet review is completed.
+- OUX-023 remains partially open until Work Order detail/create flows are guided by the same operator queue model.
+- OUX-024 remains partially open until Production detail/create flows get stronger next-action and read-only role treatment.
+- OUX-025 remains partially open until QC detail pages become fully evidence-first review layouts.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.

@@ -41,6 +41,15 @@ Every mutation modal must follow these standards:
 | Mark Corrected | Mark correction work complete. | `/production/[id]`, `/qc/[id]` | Mark Corrected | Correction required. | Correction Note. | Required. | Mark Corrected. | Corrected status. | Alert stays open. | Mark corrected. | Correction event and audit. | Certified. |
 | Mark Billable | Mark approved production billable. | `/production/[id]` | Mark Billable | Approved and not billable. | None certified. | State/permission. | Mark Billable. | billable_status=billable. | Alert stays open. | Mark billable. | Billable marker event. | Certified. |
 | Archive | Archive voided production/QC/billable/settlement/invoice/payable/payroll/payment batch. | Detail pages. | Archive | Object voided. | None certified for most archive modals. | State/permission. | Archive. | Archived state. | Alert stays open. | Domain archive route. | Archive event and audit. | Certified. |
+
+## Phase 4 Execution Queue Modal Notes
+
+- `/work-orders`, `/production`, and `/qc` list pages do not introduce new mutation modals.
+- List pages only change queue/filter state or navigate to create/detail routes.
+- Existing high-risk Work Order lifecycle modals remain on `/work-orders/[id]`.
+- Existing high-risk Production lifecycle modals remain on `/production/[id]` for Submit, Start Review, Approve, Reject, Request Correction, Mark Corrected, Mark Billable, Void, Archive, and Evidence metadata actions.
+- Existing high-risk QC lifecycle modals remain on `/qc/[id]` for Start Review, Approve, Reject, Request Correction, Mark Corrected, Void, and Archive.
+- Phase 4 preserves backend validation, tenant authorization, timeline, audit, and system action behavior.
 | Recalculate Readiness | Recompute readiness on billable or settlement item/parent. | `/billable/[id]`, `/settlements/[id]` | Recalculate Readiness | Candidate/draft state. | None. | Permission. | Recalculate. | No unsafe downstream mutation. | Alert stays open. | Recalculate route. | Recalculate event if emitted. | Certified. |
 | Release Hold | Release held billable item. | `/billable/[id]` | Release Hold | Held status. | Release Note/Hold Reason. | Required. | Release Hold. | Status no longer held. | Alert stays open. | Release hold. | Hold released event. | Certified. |
 | Resolve Dispute | Resolve dispute across billable, settlement, invoice, contractor payable, payroll. | Detail pages. | Resolve Dispute | Disputed status. | Resolution Note. | Required. | Resolve Dispute. | Status no longer disputed. | Alert stays open. | Resolve dispute. | Dispute resolved event. | Certified. |

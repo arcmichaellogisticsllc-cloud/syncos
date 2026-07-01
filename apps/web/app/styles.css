@@ -610,6 +610,12 @@ a.priority-decision-card:hover,
   opacity: 0.7;
 }
 
+.summary-card.active-summary-card,
+.summary-card[aria-pressed="true"] {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08);
+}
+
 .summary-card span {
   color: var(--muted);
   font-size: 13px;
@@ -627,6 +633,11 @@ a.priority-decision-card:hover,
 
 .priority-grid .summary-card {
   min-height: 118px;
+}
+
+.operator-queue-hero {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
 }
 
 .operator-hero {
@@ -883,6 +894,14 @@ textarea:focus-visible {
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.cell-helper {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 4px;
 }
 
 .empty-state,

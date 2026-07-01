@@ -228,3 +228,30 @@ Remaining gaps:
 Recommended next sprint after green validation:
 
 Operator UI Phase 4: Work Order, Production, and QC Queue Redesign.
+
+## Phase 4 Status
+
+Status: implemented for Work Orders, Production Board, and QC Review Queue, pending final validation.
+
+Completed in Phase 4:
+
+- `/work-orders` is redesigned as an Operations Manager queue with Ready to Start, Active, Blocked, Production Missing, Ready for QC, Completed, and Archived queues.
+- `/production` is redesigned as a Field Supervisor Production Board with Draft, Submitted, Under Review, Correction Required, Corrected, Approved, Billable Ready, and Archived queues.
+- `/qc` is redesigned as a QC Manager review queue with Pending Review, In Review, Correction Required, Corrected, Approved, Aging, and Archived queues.
+- Advanced filters are collapsed by default on the three execution queue pages.
+- Each queue page now includes operator purpose copy, boundary copy, priority cards, queue tabs with ARIA state, operator-first table columns, next-action guidance, and queue-specific empty states.
+- Existing detail-page lifecycle modals and action-state labels are preserved.
+- No backend routes, migrations, external integrations, financial mutations, or unsupported lifecycle transitions were added.
+- E2E coverage was added for Work Orders, Production Board, QC Review Queue, hidden developer UI, read-only auditor behavior, and queue tab state changes.
+
+Remaining Phase 4 gaps:
+
+- Work Order Production Missing should eventually use a backend work-order-to-production coverage summary.
+- Queue aging should eventually use explicit SLA/age fields rather than client-side updated timestamp calculations.
+- Work Order, Production, and QC detail pages still need stronger next-action cards and read-only role context.
+- Create/edit pages remain CRUD-heavy and should become guided workflows later.
+- Mobile/tablet review remains open.
+
+Recommended next sprint after green validation:
+
+Operator UI Phase 5: Billing, Settlement, and Invoice Workbench Redesign.

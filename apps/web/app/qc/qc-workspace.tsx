@@ -48,7 +48,7 @@ export function QcReviewQueue() {
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc", queue: "pending" });
 
   async function load() {
     setLoading(true);
@@ -73,48 +73,64 @@ export function QcReviewQueue() {
 
   const visible = useMemo(() => sortQcReviews(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
+  const activeQueue = filters.queue ?? "pending";
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "updated_desc", queue, ...nextFilters });
 
   return (
-    <QcShell title="QC Review Queue" purpose="Review acceptance truth for production records without creating billable items, settlements, invoices, AR, payments, cash, payroll, or tax records.">
+    <QcShell title="QC Review Queue" purpose="Review production quality, clear corrections, and protect downstream billable readiness.">
       <SessionPanel session={session} />
-      <div className="warning-box">QC Workspace uses hardened QC review routes only. Billable Workspace and Settlement are placeholders in this sprint.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view QC reviews.</div> : null}
-      {loading ? <div className="empty-state">Loading QC reviews...</div> : null}
+      <div className="boundary-notice"><strong>QC boundary</strong><span>QC reviews approve quality and capture correction or billable-candidate state. They do not create settlements, invoices, AR, payments, cash, payroll, tax, or accounting records.</span></div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review production quality and clear correction queues.</div> : null}
+      {loading ? <div className="loading-state">Loading QC reviews...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>QC Summary</h2>
-                <p className="muted">Reviews are prioritized by corrections, active review state, and recent updates.</p>
+                <span className="eyebrow">QC Manager Workspace</span>
+                <h2>What needs QC review, what is aging, and what can be approved or sent back?</h2>
+                <p className="muted">Start with pending reviews, active reviews, and correction-required items before downstream billable work.</p>
               </div>
-              <Link className="primary-button" href="/qc/new" aria-disabled={!hasPermission(session.permissions, "qc_review.create")}>Create QC Review</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href="/qc/new" aria-disabled={!hasPermission(session.permissions, "qc_review.create")}>Create QC Review</Link>
+                <button type="button" onClick={() => setQueue("pending", { review_status: "pending" })}>Review Next QC Item</button>
+                <button type="button" onClick={() => setQueue("correction_required", { hasCorrectionRequired: "true" })}>Open Corrections</button>
+                <button type="button" onClick={() => setQueue("aging", { aging: "true" })}>View Aging Reviews</button>
+              </div>
             </div>
-            <div className="summary-grid">
-              <SummaryCard label="Total QC Reviews" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {reviewStatuses.map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "updated_desc", review_status: status })} />)}
-              {reviewTypes.map((type) => <SummaryCard key={type} label={formatAction(type)} value={summary.type[type] ?? 0} onClick={() => setFilters({ ...filters, review_type: type })} />)}
-              <SummaryCard label="Billable Candidates" value={summary.billableCandidates} onClick={() => setFilters({ ...filters, hasBillableCandidate: "true" })} />
-              <SummaryCard label="Corrections Open" value={summary.correctionsOpen} onClick={() => setFilters({ ...filters, hasCorrectionRequired: "true" })} />
+            <div className="summary-grid priority-grid">
+              <SummaryCard label="Pending Review" value={summary.status.pending ?? 0} helper="QC work waiting for a reviewer." active={activeQueue === "pending"} onClick={() => setQueue("pending", { review_status: "pending" })} />
+              <SummaryCard label="In Review" value={summary.status.in_review ?? 0} helper="Review already started and needs decision." active={activeQueue === "in_review"} onClick={() => setQueue("in_review", { review_status: "in_review" })} />
+              <SummaryCard label="Correction Required" value={summary.correctionsOpen} helper="Send back or clear correction state." active={activeQueue === "correction_required"} onClick={() => setQueue("correction_required", { hasCorrectionRequired: "true" })} />
+              <SummaryCard label="Corrected" value={summary.status.corrected ?? 0} helper="Corrected work ready for follow-up review." active={activeQueue === "corrected"} onClick={() => setQueue("corrected", { review_status: "corrected" })} />
+              <SummaryCard label="Approved" value={summary.status.approved ?? 0} helper="Approved QC, not automatically invoiced." active={activeQueue === "approved"} onClick={() => setQueue("approved", { review_status: "approved" })} />
+              <SummaryCard label="Aging" value={summary.aging} helper="Reviews stale enough to deserve management attention." active={activeQueue === "aging"} onClick={() => setQueue("aging", { aging: "true" })} />
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
+              <div>
+                <h2>Review Queue</h2>
+                <p className="muted">{visible.length} shown. Queue tabs keep review decisions ahead of filter tuning.</p>
+              </div>
               <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["pending", "in_review", "correction_required", "approved", "rejected", "corrected"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, review_status: status })}>{formatAction(status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, review_type: "billing_qc" })}>Billing QC</button>
-              <button type="button" onClick={() => setFilters({ ...filters, review_type: "final_acceptance" })}>Final Acceptance</button>
-              <button type="button" onClick={() => setFilters({ ...filters, customer_acceptance_status: "pending" })}>Needs Customer Acceptance</button>
-              <button type="button" onClick={() => setFilters({ ...filters, prime_acceptance_status: "pending" })}>Needs Prime Acceptance</button>
-              <button type="button" onClick={() => setFilters({ ...filters, hasBillableCandidate: "true" })}>Billable Candidate</button>
-              <button type="button" onClick={() => setFilters({ ...filters, review_status: "voided" })}>Voided</button>
+            <div className="queue-tabs" role="tablist" aria-label="QC review queues">
+              {[
+                ["pending", "Pending Review", { review_status: "pending" }],
+                ["in_review", "In Review", { review_status: "in_review" }],
+                ["correction_required", "Correction Required", { hasCorrectionRequired: "true" }],
+                ["corrected", "Corrected", { review_status: "corrected" }],
+                ["approved", "Approved", { review_status: "approved" }],
+                ["aging", "Aging", { aging: "true" }],
+                ["archived", "Archived", { archived: "true", review_status: "archived" }],
+              ].map(([queue, label, next]) => <button key={String(queue)} type="button" role="tab" aria-selected={activeQueue === queue} onClick={() => setQueue(String(queue), next as Record<string, string>)}>{String(label)}</button>)}
             </div>
-            <div className="filter-grid">
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
               <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search QC, production, work order, project" />
               <Select label="Review type" value={filters.review_type ?? ""} options={["", ...reviewTypes]} onChange={(review_type) => setFilters({ ...filters, review_type })} />
               <Select label="Review status" value={filters.review_status ?? ""} options={["", ...reviewStatuses]} onChange={(review_status) => setFilters({ ...filters, review_status })} />
@@ -136,15 +152,18 @@ export function QcReviewQueue() {
               <input value={filters.reviewed_to ?? ""} onChange={(event) => setFilters({ ...filters, reviewed_to: event.target.value })} type="date" aria-label="Reviewed to" />
               <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
               <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "reviewed_at_desc", "reviewed_at_asc", "status", "review_type", "project", "work_order", "reviewer"]} labels={{ updated_desc: "Recently updated", reviewed_at_desc: "Reviewed date newest", reviewed_at_asc: "Reviewed date oldest", status: "Status", review_type: "Review type", project: "Project", work_order: "Work Order", reviewer: "Reviewer" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>QC Reviews</h2>
+              <h2>{qcQueueTitle(activeQueue)}</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No QC reviews have been created yet. QC reviews validate submitted production before it can become a billable candidate.</div> : <QcReviewTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No QC reviews have been created yet. QC reviews validate submitted production before it can become a billable candidate.</div> : null}
+            {rows.length && !visible.length ? <div className="empty-state">{emptyQcQueue(activeQueue)}</div> : null}
+            {visible.length ? <QcReviewTable rows={visible} /> : null}
           </section>
         </>
       ) : null}
@@ -397,36 +416,25 @@ function QcReviewTable({ rows }: { rows: SyncRecord[] }) {
       <table>
         <thead>
           <tr>
-            {["Review Type", "Review Status", "Production Record", "Production Status", "Work Order", "Project", "Customer", "Provider", "Crew", "Reviewer", "Reviewed At", "Claimed Quantity", "Approved Quantity", "Rejected Quantity", "Correction Required Quantity", "Billable Candidate Quantity", "Unit", "Evidence Status", "Location Status", "Documentation Status", "Customer Acceptance", "Prime Acceptance", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}
+            {["QC Review", "Production Record", "Work Order / Project", "Reviewer / Owner", "Evidence", "Defect / Issue Status", "Status", "Age", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              <td><Link className="table-link" href={`/qc/${row.id}`}>{formatAction(row.review_type)}</Link></td>
-              <td>{formatAction(row.review_status)}</td>
+              <td>
+                <Link className="table-link" href={`/qc/${row.id}`}>{formatAction(row.review_type)}</Link>
+                <small className="cell-helper">{formatAction(row.customer_acceptance_status)} customer acceptance</small>
+              </td>
               <td>{productionLink(row.production_record_id, row.production_type ?? row.production_record_id)}</td>
-              <td>{formatAction(row.production_record_status)}</td>
-              <td>{workOrderLink(row.work_order_id, row.work_order_name ?? row.work_order_number)}</td>
-              <td>{projectLink(row.project_id, row.project_name)}</td>
-              <td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td>
-              <td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td>
-              <td>{textValue(row.crew_name ?? row.crew_id)}</td>
-              <td>{textValue(row.reviewer_name ?? row.reviewer_user_id)}</td>
-              <td>{dateValue(row.reviewed_at)}</td>
-              <td>{formatCell(row.claimed_quantity)}</td>
-              <td>{formatCell(row.approved_quantity)}</td>
-              <td>{formatCell(row.rejected_quantity)}</td>
-              <td>{formatCell(row.correction_required_quantity)}</td>
-              <td>{formatCell(row.billable_candidate_quantity)}</td>
-              <td>{formatAction(row.unit)}</td>
-              <td>{formatAction(row.evidence_status)}</td>
-              <td>{formatAction(row.location_status)}</td>
-              <td>{formatAction(row.documentation_status)}</td>
-              <td>{formatAction(row.customer_acceptance_status)}</td>
-              <td>{formatAction(row.prime_acceptance_status)}</td>
-              <td>{formatAction(row.recommended_next_action)}</td>
-              <td>{dateValue(row.updated_at)}</td>
+              <td>{workOrderLink(row.work_order_id, row.work_order_name ?? row.work_order_number)}<small className="cell-helper">{projectLink(row.project_id, row.project_name)}</small></td>
+              <td>{textValue(row.reviewer_name ?? row.reviewer_user_id, "Reviewer not assigned")}<small className="cell-helper">{textValue(row.crew_name ?? row.capacity_provider_name)}</small></td>
+              <td>{formatAction(row.evidence_status)}<small className="cell-helper">{formatAction(row.documentation_status)} documentation</small></td>
+              <td>{qcIssueState(row)}</td>
+              <td><span className={`status-badge ${qcStatusTone(row.review_status)}`}>{formatAction(row.review_status)}</span></td>
+              <td>{ageText(row.updated_at)}<small className="cell-helper">Reviewed {dateValue(row.reviewed_at)}</small></td>
+              <td>{nextQcAction(row)}</td>
+              <td><Link className="link-button" href={`/qc/${row.id}`}>Open Detail</Link></td>
             </tr>
           ))}
         </tbody>
@@ -618,8 +626,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -677,6 +685,7 @@ function buildSummary(rows: SyncRecord[]) {
     type,
     billableCandidates: rows.filter((row) => numberValue(row.billable_candidate_quantity) > 0).length,
     correctionsOpen: rows.filter((row) => row.review_status === "correction_required").length,
+    aging: rows.filter((row) => isAging(row.updated_at) && !["approved", "archived", "voided"].includes(String(row.review_status))).length,
   };
 }
 
@@ -699,6 +708,7 @@ function matchesFilters(row: SyncRecord, filters: Record<string, string>) {
   if (filters.prime_acceptance_status && row.prime_acceptance_status !== filters.prime_acceptance_status) return false;
   if (filters.hasCorrectionRequired && boolMismatch(row.review_status === "correction_required" || numberValue(row.correction_required_quantity) > 0, filters.hasCorrectionRequired)) return false;
   if (filters.hasBillableCandidate && boolMismatch(numberValue(row.billable_candidate_quantity) > 0, filters.hasBillableCandidate)) return false;
+  if (filters.aging === "true" && (!isAging(row.updated_at) || ["approved", "archived", "voided"].includes(String(row.review_status)))) return false;
   if (filters.reviewed_from && dateTime(row.reviewed_at) < dateTime(filters.reviewed_from)) return false;
   if (filters.reviewed_to && dateTime(row.reviewed_at) > dateTime(filters.reviewed_to)) return false;
   return true;
@@ -725,6 +735,61 @@ function activeReviewRank(status: unknown) {
   if (status === "pending" || status === "in_review") return 2;
   if (status === "corrected") return 1;
   return 0;
+}
+
+function qcQueueTitle(queue: string) {
+  if (queue === "pending") return "Pending Review";
+  if (queue === "in_review") return "In Review";
+  if (queue === "correction_required") return "Correction Required";
+  if (queue === "corrected") return "Corrected Reviews";
+  if (queue === "approved") return "Approved Reviews";
+  if (queue === "aging") return "Aging Reviews";
+  if (queue === "archived") return "Archived Reviews";
+  return "QC Reviews";
+}
+
+function emptyQcQueue(queue: string) {
+  if (queue === "pending") return "No QC items are waiting for review.";
+  if (queue === "correction_required") return "No QC corrections are currently required.";
+  if (queue === "approved") return "No newly approved QC items in this queue.";
+  if (queue === "aging") return "No QC reviews are aging right now.";
+  return "No QC reviews match this queue.";
+}
+
+function nextQcAction(row: SyncRecord) {
+  if (row.review_status === "pending") return "Start Review";
+  if (row.review_status === "in_review") return "Approve, reject, or request correction";
+  if (row.review_status === "correction_required") return "Mark Corrected";
+  if (row.review_status === "corrected") return "Review corrected work";
+  if (row.review_status === "approved") return "Ready for billable readiness";
+  return formatAction(row.recommended_next_action);
+}
+
+function qcIssueState(row: SyncRecord) {
+  if (row.review_status === "correction_required" || numberValue(row.correction_required_quantity) > 0) return "Correction required";
+  if (row.evidence_status === "missing" || row.documentation_status === "missing") return "Evidence/documentation missing";
+  if (row.location_status === "invalid") return "Location issue";
+  return "No active issue";
+}
+
+function qcStatusTone(status: unknown) {
+  if (status === "approved") return "status-badge-success";
+  if (["correction_required", "rejected", "voided"].includes(String(status))) return "status-badge-danger";
+  if (["pending", "in_review", "corrected"].includes(String(status))) return "status-badge-warning";
+  return "status-badge-neutral";
+}
+
+function isAging(value: unknown) {
+  const then = dateTime(value);
+  if (then === Number.MAX_SAFE_INTEGER) return false;
+  return Date.now() - then > 3 * 86400000;
+}
+
+function ageText(value: unknown) {
+  const then = dateTime(value);
+  if (then === Number.MAX_SAFE_INTEGER) return "Age unavailable";
+  const days = Math.max(0, Math.floor((Date.now() - then) / 86400000));
+  return days === 0 ? "Updated today" : `${days}d since update`;
 }
 
 function qcChecklist(review: SyncRecord, detail: QcDetailShape): [string, boolean][] {
