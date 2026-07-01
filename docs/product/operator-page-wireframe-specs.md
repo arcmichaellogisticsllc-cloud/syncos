@@ -373,3 +373,44 @@ Error State
 Role Behavior
   Only System Admin sees Admin nav; auditors may see audit policy read-only if granted.
 ```
+
+## Phase 2 Template Status
+
+Implemented as shared UI primitives:
+
+- `QueuePageTemplate`
+- `PriorityCard`
+- `QueueTabs`
+- `FilterDrawer`
+- `RecordsPanel`
+- `EmptyState`
+- `LoadingState`
+- `ErrorState`
+- `DetailPageTemplate`
+- `RecordHeader`
+- `KeyFactsPanel`
+- `StateExplanation`
+- `RelatedRecordsPanel`
+- `TimelinePanel`
+- `AuditPanel`
+- `FinancialControlTemplate`
+- `ReviewQueueTemplate`
+- `ActionButton`
+- `ActionBar`
+- `DisabledReason`
+- `BoundaryNotice`
+- `StatusBadge`
+- `SuccessBanner`
+- `ErrorBanner`
+- `ModalActions`
+
+Applied in Phase 2:
+
+- Signal Feed now uses shared priority cards, queue tabs, filter drawer, records panel, loading/empty/error states, action buttons, boundary notices, and modal actions.
+- The global shell uses the shared workspace navigation model.
+
+Documented but not yet rolled out:
+
+- Detail pages remain on existing domain-specific layouts until each domain redesign sprint.
+- Financial control and review queue templates exist for future adoption, but the finance/reconciliation/accounting pages have not been visually redesigned.
+- Command Center still needs its own role-specific dashboard redesign.

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ActionButton as OperatorActionButton, BoundaryNotice, ErrorBanner, ModalActions } from "../../operator-actions";
+import { EmptyState, FilterDrawer, LoadingState, PriorityCard, QueueTabs, RecordsPanel } from "../../operator-page-templates";
 import { dateValue, defaultSignalPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../api";
 import { IntelligenceShell } from "../intelligence-shell";
 
@@ -159,7 +161,7 @@ export function SignalFeed() {
     <IntelligenceShell title="Signal Feed" purpose="Review market intelligence and move qualified signals toward opportunity candidates.">
       <SessionPanel token={token} setToken={setToken} permissions={permissions} setPermissions={setPermissions} save={persistSession} />
       {authMissing ? <LoginRequiredCard /> : null}
-      {!authMissing && error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!authMissing && error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {!authMissing ? (
         <>
           <section className="panel workspace-panel operator-hero">
@@ -168,22 +170,17 @@ export function SignalFeed() {
               <p className="muted">Start with reviewable signals, then clear missing owner, evidence, and organization blockers before a signal can become candidate-ready.</p>
             </div>
             <div className="form-actions">
-              <button className="primary-button" type="button" disabled={!hasPermission(permissions, "signal.create")} title={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} aria-describedby={!hasPermission(permissions, "signal.create") ? "create-signal-disabled-reason" : undefined} onClick={() => setShowCreate(true)}>
-                Create Signal
-              </button>
-              <button type="button" disabled={!nextReviewSignal} title={!nextReviewSignal ? "No signals are available for review." : "Open the highest-priority signal in the current queue."} onClick={() => nextReviewSignal && (window.location.href = `/intelligence/signals/${nextReviewSignal.id}`)}>
-                Review Next Signal
-              </button>
-              {!hasPermission(permissions, "signal.create") ? <span id="create-signal-disabled-reason" className="disabled-reason">Your role can review signals but cannot create them.</span> : null}
+              <OperatorActionButton label="Create Signal" variant="primary" disabledReason={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)} />
+              <OperatorActionButton label="Review Next Signal" disabledReason={!nextReviewSignal ? "No signals are available for review." : undefined} consequence="Open the highest-priority signal in the current queue." onClick={() => nextReviewSignal && (window.location.href = `/intelligence/signals/${nextReviewSignal.id}`)} />
             </div>
           </section>
 
           <div className="summary-grid priority-grid" aria-label="Today's Priorities">
-            <SummaryCard label="Needs Review" value={summary.needsReview} helper="New or scored intelligence that needs a decision." onClick={() => applyQueue("Needs Review")} />
-            <SummaryCard label="High Confidence Unassigned" value={summary.highConfidenceUnassigned} helper="Strong signals that still need an owner." onClick={() => applyQueue("High Confidence Unassigned")} />
-            <SummaryCard label="Missing Organization" value={summary.withoutOrganization} helper="Signals blocked from candidate readiness." onClick={() => applyQueue("Missing Organization")} />
-            <SummaryCard label="Missing Evidence" value={summary.missingEvidence} helper="Signals that cannot be verified yet." onClick={() => applyQueue("Missing Evidence")} />
-            <SummaryCard label="Ready for Candidate" value={summary.readyForCandidate} helper="Verified signals with evidence and organization context." onClick={() => applyQueue("Ready for Candidate")} />
+            <PriorityCard label="Needs Review" value={summary.needsReview} helper="New or scored intelligence that needs a decision." onClick={() => applyQueue("Needs Review")} />
+            <PriorityCard label="High Confidence Unassigned" value={summary.highConfidenceUnassigned} helper="Strong signals that still need an owner." onClick={() => applyQueue("High Confidence Unassigned")} />
+            <PriorityCard label="Missing Organization" value={summary.withoutOrganization} helper="Signals blocked from candidate readiness." onClick={() => applyQueue("Missing Organization")} />
+            <PriorityCard label="Missing Evidence" value={summary.missingEvidence} helper="Signals that cannot be verified yet." onClick={() => applyQueue("Missing Evidence")} />
+            <PriorityCard label="Ready for Candidate" value={summary.readyForCandidate} helper="Verified signals with evidence and organization context." onClick={() => applyQueue("Ready for Candidate")} />
           </div>
         </>
       ) : null}
@@ -196,15 +193,8 @@ export function SignalFeed() {
           </div>
           <span className="badge">{signals.length} Signals shown</span>
         </div>
-        <div className="queue-tabs" role="tablist" aria-label="Signal queues">
-          {queueTabs.map((label) => (
-            <button key={label} type="button" role="tab" aria-selected={activeQueue === label} className={activeQueue === label ? "active" : undefined} onClick={() => applyQueue(label)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <details className="filter-drawer">
-          <summary>Filters</summary>
+        <QueueTabs tabs={queueTabs.map((label) => ({ label }))} activeTab={activeQueue} onTabChange={applyQueue} />
+        <FilterDrawer>
           <div className="filter-grid">
             <input value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Search by title" />
             <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={["", "discovered", "categorized", "scored", "investigated", "verified", "consumed", "archived"]} label="Status" />
@@ -222,25 +212,19 @@ export function SignalFeed() {
               Clear filters
             </button>
           </div>
-        </details>
+        </FilterDrawer>
       </section> : null}
 
-      {!authMissing ? <section className="panel workspace-panel">
-        <div className="section-toolbar">
-          <h2>Signals</h2>
-          <span className="badge">{signals.length} shown</span>
-        </div>
-        {loading ? <div className="empty-state">Loading signals...</div> : null}
+      {!authMissing ? <RecordsPanel title="Signals" count={`${signals.length} shown`}>
+        {loading ? <LoadingState>Loading signals...</LoadingState> : null}
         {!loading && signals.length === 0 ? (
-          <div className="empty-state">
+          <EmptyState>
             <p>No signals yet. Start by adding market intelligence from a funding source, utility, prime contractor, engineering firm, permit activity, or relationship note.</p>
-            <button className="primary-button" type="button" disabled={!hasPermission(permissions, "signal.create")} onClick={() => setShowCreate(true)}>
-              Create Signal
-            </button>
-          </div>
+            <OperatorActionButton label="Create Signal" variant="primary" disabledReason={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)} />
+          </EmptyState>
         ) : null}
         {signals.length > 0 ? <SignalTable signals={signals} permissions={permissions} openAction={(action, signal) => setActionModal({ action, signal })} /> : null}
-      </section> : null}
+      </RecordsPanel> : null}
 
       {showCreate ? <CreateSignalModal organizations={organizations} territories={territories} onClose={() => setShowCreate(false)} onCreated={(signal) => (window.location.href = `/intelligence/signals/${signal.id}`)} /> : null}
       {actionModal ? <SignalActionModal modal={actionModal} onClose={() => setActionModal(null)} onSubmit={submitAction} /> : null}
@@ -305,12 +289,11 @@ function SignalTable({ signals, permissions, openAction }: { signals: SyncRecord
                 <td>
                   <div className="row-actions">
                     <Link href={`/intelligence/signals/${id}`}>Open Detail</Link>
-                    <ActionButton label="Categorize" disabledReason={disabledReasons.categorize} onClick={() => openAction("categorize", signal)} />
-                    <ActionButton label="Score" disabledReason={disabledReasons.score} onClick={() => openAction("score", signal)} />
-                    <ActionButton label="Verify" disabledReason={disabledReasons.verify} onClick={() => openAction("verify", signal)} />
-                    <ActionButton label="Archive" disabledReason={disabledReasons.archive} danger onClick={() => openAction("archive", signal)} />
+                    <OperatorActionButton label="Categorize" disabledReason={disabledReasons.categorize} onClick={() => openAction("categorize", signal)} />
+                    <OperatorActionButton label="Score" disabledReason={disabledReasons.score} onClick={() => openAction("score", signal)} />
+                    <OperatorActionButton label="Verify" disabledReason={disabledReasons.verify} onClick={() => openAction("verify", signal)} />
+                    <OperatorActionButton label="Archive" variant="danger" disabledReason={disabledReasons.archive} onClick={() => openAction("archive", signal)} />
                   </div>
-                  {Object.entries(disabledReasons).map(([key, reason]) => reason ? <span className="disabled-reason" key={key}>{reason}</span> : null)}
                 </td>
               </tr>
             );
@@ -318,14 +301,6 @@ function SignalTable({ signals, permissions, openAction }: { signals: SyncRecord
         </tbody>
       </table>
     </div>
-  );
-}
-
-function ActionButton({ label, disabledReason, danger, onClick }: { label: string; disabledReason?: string; danger?: boolean; onClick: () => void }) {
-  return (
-    <button type="button" className={danger ? "danger-button" : undefined} disabled={Boolean(disabledReason)} title={disabledReason || undefined} onClick={onClick}>
-      {label}
-    </button>
   );
 }
 
@@ -398,7 +373,8 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
           <button type="button" disabled={busy} onClick={onClose}>Close</button>
         </div>
         <p className="muted">Add market intelligence for review. Creating a signal does not create candidates, opportunities, projects, invoices, payments, or accounting records.</p>
-        {error ? <div className="error-banner" role="alert">{error}</div> : null}
+        <BoundaryNotice>This action adds market intelligence for review. It does not create candidates, opportunities, projects, invoices, payments, or accounting records.</BoundaryNotice>
+        {error ? <ErrorBanner>{error}</ErrorBanner> : null}
         <div className="form-grid">
           <label>Title<input name="title" required /></label>
           <label>Summary<textarea name="summary" required /></label>
@@ -421,10 +397,7 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
           <label>Evidence source URL<input name="evidence_source_url" type="url" /></label>
           <label>Evidence trust<SelectInput name="evidence_trust_level" options={trustLevels} defaultValue="unverified" /></label>
         </div>
-        <div className="form-actions">
-          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
-          <button className="primary-button" disabled={busy} type="submit">{busy ? "Creating..." : "Create Signal"}</button>
-        </div>
+        <ModalActions submitLabel="Create Signal" submitting={busy} onCancel={onClose} />
       </form>
     </div>
   );
@@ -463,8 +436,8 @@ function SignalActionModal({ modal, onClose, onSubmit }: { modal: NonNullable<Ac
           </div>
           <button type="button" disabled={busy} onClick={onClose}>Close</button>
         </div>
-        <div className={action === "archive" ? "danger-box" : "warning-box"}>This action updates the signal only. It does not create candidates, opportunities, projects, invoices, payments, or accounting records.</div>
-        {error ? <div className="error-banner" role="alert">{error}</div> : null}
+        <BoundaryNotice title={action === "archive" ? "Destructive boundary" : "Boundary"}>This action updates the signal only. It does not create candidates, opportunities, projects, invoices, payments, or accounting records.</BoundaryNotice>
+        {error ? <ErrorBanner>{error}</ErrorBanner> : null}
         <div className="form-grid">
           {action === "categorize" ? (
             <>
@@ -481,10 +454,7 @@ function SignalActionModal({ modal, onClose, onSubmit }: { modal: NonNullable<Ac
             </>
           ) : null}
         </div>
-        <div className="form-actions">
-          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
-          <button className={action === "archive" ? "danger-button" : "primary-button"} disabled={busy} type="submit">{busy ? "Submitting..." : actionSubmitLabel(action)}</button>
-        </div>
+        <ModalActions submitLabel={actionSubmitLabel(action)} danger={action === "archive"} submitting={busy} onCancel={onClose} />
       </form>
     </div>
   );
@@ -518,16 +488,6 @@ function LoginRequiredCard() {
       </div>
       <div className="warning-box">Authentication is required before this workspace can load.</div>
     </section>
-  );
-}
-
-function SummaryCard({ label, value, helper, onClick, disabled }: { label: string; value: number; helper?: string; onClick?: () => void; disabled?: boolean }) {
-  return (
-    <button className="summary-card" disabled={disabled} type="button" onClick={onClick}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {helper ? <small>{helper}</small> : null}
-    </button>
   );
 }
 

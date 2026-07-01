@@ -319,6 +319,25 @@ Pilot readiness:
 
 Signal Feed is now ready as the first queue-page template pilot for modal behavior, disabled reasons, collapsed filters, and priority tabs. It is not yet a complete reusable component system.
 
+## Phase 2 Alignment
+
+Implemented:
+
+- Signal Feed now uses shared queue/action primitives for priority cards, queue tabs, filter drawer, records panel, loading and empty states, error banners, action buttons, boundary notices, and modal actions.
+- The page continues to avoid developer session UI in production/default mode.
+- The page keeps production-safe unauthenticated copy.
+- The Create, Categorize, Score, Verify, and Archive modal behavior remains intact.
+- Verify remains disabled when evidence is missing and explains why.
+- Read-only users can view the queue without mutation capability.
+
+Remaining:
+
+- Signal detail still needs the same shared action/modal pattern.
+- Assign Owners and Convert Ready Signals remain future actions.
+- Queue-level counts still reflect loaded results rather than a dedicated summary endpoint.
+- Bulk actions and selected-record context panel are still future work.
+- Mobile/tablet screenshot review is still required before calling the Signal Feed fully operator-ready.
+
 ## Redesign Acceptance Criteria
 
 - The first viewport answers: what this page is, what matters today, and what to do next.

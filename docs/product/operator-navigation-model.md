@@ -214,3 +214,25 @@ No production admin route exists yet. Future Admin should include user managemen
 - Show action badges such as Needs Review, Exceptions, Ready, Overdue only when backed by actual data.
 - Do not show integration nav for bank feeds, QuickBooks, ACH, wire, card, check, payroll provider, GL, tax, or payment processor until integrations are built and certified.
 - On mobile, collapse to Command Center, Growth, Operations, Finance, Admin with submenus.
+
+## Phase 2 Implementation Status
+
+Implemented:
+
+- `OperatorNavigation` defines the compact workspace model: Command Center, Growth, Operations, Finance, and planned Admin.
+- Each workspace and subnav item now carries label, route, workspace, description, permission hint, and status.
+- `CommandShell` renders the shared operator navigation for command, growth, operations, and finance pages without changing certified routes.
+- Active workspace subnavigation follows the current route and marks the active link with `aria-current`.
+- Admin is shown as planned because production admin routes are not implemented.
+- Client-side permission filtering is display-only. Backend authorization remains the source of truth.
+
+Remaining:
+
+- Route access should eventually use a generated permission matrix instead of hand-maintained display hints.
+- Role landing pages still need dedicated content per persona.
+- Admin should remain planned or hidden until supported routes, permissions, and audit behavior are implemented.
+- Workspace counts and badges need a backend-backed summary contract before they appear in navigation.
+
+Route matrix implication:
+
+The navigation intentionally links only workspace entry points and readable queue/list routes. Mutation routes, create routes, edit routes, and detail routes remain reachable through workflow actions, tables, and the existing route matrix, not primary navigation.

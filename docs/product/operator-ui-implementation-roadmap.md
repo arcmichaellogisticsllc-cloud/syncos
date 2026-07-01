@@ -175,6 +175,31 @@ Exit criteria:
 - Accessibility issues are triaged.
 - Release gate and certification enforcer pass.
 
+## Phase 2 Status
+
+Status: partial implementation complete, pending validation.
+
+Completed in Phase 2:
+
+- Shared role-aware operator navigation foundation.
+- Compact workspace navigation with active workspace subnavigation.
+- Planned Admin treatment without inventing unsupported admin routes.
+- Shared queue/list page primitives.
+- Shared detail page primitives.
+- Shared financial control page primitive.
+- Shared review queue primitive.
+- Shared action, disabled reason, boundary notice, status, success, error, and modal action components.
+- Signal Feed alignment to shared queue/action primitives without changing backend behavior.
+- E2E coverage for shell navigation, hidden developer controls, Signal Feed queue pattern, disabled reason behavior, read-only auditor behavior, and active queue tabs.
+
+Remaining Phase 2 gaps:
+
+- Role landing pages still need actual persona-specific dashboard content.
+- Permission filtering should eventually be generated from the server-side permission/route matrix.
+- Financial control and review templates are created but not rolled out to every domain page.
+- Mobile screenshots and accessibility review remain a separate UAT task.
+- Domain pages still require workflow-first redesign sprints.
+
 ## Recommended Next Sprint
 
-After Phase 1B, the next recommended sprint is Signal Detail and Growth action consistency: replace remaining Signal Detail browser-native prompts with the same modal pattern, add read-only page-level role context, and prepare shared queue/action primitives only after the Signal Feed and Signal Detail patterns agree.
+If Phase 2 validation is green and the release E2E gate remains green, the next recommended sprint is Operator UI Phase 3: Command Center and Operations Board Redesign. That sprint should turn the shared shell/templates into role-specific daily work surfaces before rolling the pattern into finance-heavy pages.

@@ -52,6 +52,24 @@ Completed:
 - OUX-034 is partially complete with focused Signal Feed hardening coverage.
 - OUX-036 and OUX-037 are complete for Signal Feed list actions.
 
+## Phase 2 Status
+
+Closed or reduced:
+
+- OUX-002 is partially reduced by the shared compact workspace navigation and active subnavigation. It is not fully closed until role landing pages and server-derived permission routing are complete.
+- OUX-006 is reduced for Signal Feed through shared queue tabs and collapsed filters.
+- OUX-009 is reduced by the shared `ActionButton` and `ActionBar` primitives.
+- OUX-010 is reduced by the shared `DisabledReason` and Signal Feed disabled action behavior.
+- OUX-011 and OUX-012 are reduced by shared empty, loading, success, and error state primitives.
+- OUX-034 is reduced by new shell/template E2E coverage.
+
+Still open:
+
+- OUX-005 remains open because role-specific landing pages are not implemented.
+- OUX-014 remains open because Command Center still needs a daily priority redesign.
+- OUX-016 through OUX-019 remain open until financial, reconciliation, and accounting pages adopt the financial boundary templates.
+- OUX-030 remains open until timeline and audit panels are applied consistently on detail pages.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.

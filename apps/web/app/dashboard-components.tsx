@@ -1,13 +1,6 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatValue, type DashboardData, valueAt } from "./dashboard-data";
-
-const navItems = [
-  ["/", "Command Center", "Daily Priorities", "Today's work and blockers"],
-  ["/intelligence/signals", "Growth", "Intelligence", "Find and qualify work"],
-  ["/work-orders", "Operations", "Projects", "Plan and execute work"],
-  ["/billable", "Finance", "Accounting", "Bill, collect, pay, reconcile"],
-];
+import { OperatorNavigation } from "./operator-navigation";
 
 export function CommandShell({ title, purpose, children }: { title: string; purpose: string; children: ReactNode }) {
   return (
@@ -17,15 +10,7 @@ export function CommandShell({ title, purpose, children }: { title: string; purp
           <div className="brand">SyncOS</div>
           <div className="brand-subtitle">Telecom operations command center</div>
         </div>
-        <nav className="nav" aria-label="Workspace navigation">
-          {navItems.map(([href, label, scope, description]) => (
-            <Link href={href} key={href} title={description}>
-              <span>{label}</span>
-              <small>{scope}</small>
-            </Link>
-          ))}
-          <span className="nav-disabled" title="Admin workspace is planned but not implemented yet">Admin</span>
-        </nav>
+        <OperatorNavigation />
       </header>
       <section className="content">
         <div className="page-header">
