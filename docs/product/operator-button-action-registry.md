@@ -163,6 +163,13 @@ Phase 5 list-page notes:
 | Void Payment Application | `/payment-applications/[id]` | Payment application | Finance | Application `applied`. | Missing void reason/note. | Danger, modal, Void Reason/Note. | Void application. | `application_status=voided`; balance impact audited. Certified. | P0 |
 | Archive Payment Application | `/payment-applications/[id]` | Payment application | System Admin | Application `voided`. | Not voided. | Danger, modal. | Archive application. | `application_status=archived`; no bank/export. Certified. | P0 |
 
+Phase 6 list-page notes:
+
+- `/cash` now exposes Create Cash Receipt, Apply Receipt to Invoice, Review Unapplied Cash, and Review Voided / Exceptions as workbench-level navigation/filter actions.
+- `/payment-applications` now exposes Application Review, Voided, and Archived queue controls for visibility only.
+- List-page actions route to existing pages or update client-side queues only; they do not add backend routes, move money, pull bank feeds, process cards, initiate ACH, or post accounting entries.
+- Certified mutating cash actions remain on detail pages with existing modal/backend behavior.
+
 ## Collections
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |
@@ -171,6 +178,13 @@ Phase 5 list-page notes:
 | Archive Case | `/collections/[id]` | Collection case | System Admin | Case `closed`. | Not closed. | Danger, modal "Archive Case". | Archive case. | `case_status=archived`; no cash/payment/export. Certified. | P0 |
 | Complete Action | `/collection-actions/[id]` | Collection action | Collections Specialist | Action `planned`. | Missing completion note/outcome. | Primary, modal, Completion Note/Outcome. | Complete action. | `action_status=completed`; audit/timeline. Certified. | P0 |
 | Archive Action | `/collection-actions/[id]` | Collection action | Collections Specialist/Admin | Action `completed`. | Not completed. | Danger, modal. | Archive action. | `action_status=archived`; no cash/payment/export. Certified. | P0 |
+
+Phase 6 list-page notes:
+
+- `/collections` now exposes Create Collection Case, Assign Owner, Add Collection Action, Complete Due Action, Review Disputes, and Review Aging as workbench-level navigation/filter actions.
+- `/collection-actions` now exposes Needs Action, Promise to Pay, Disputed, Completed, and Archived queue controls for visibility only.
+- List-page actions route to existing pages or update client-side queues only; they do not automatically contact customers, send communications, collect money, report credit, or create legal action.
+- Certified mutating collection actions remain on detail pages with existing modal/backend behavior.
 
 ## Contractor Payable
 

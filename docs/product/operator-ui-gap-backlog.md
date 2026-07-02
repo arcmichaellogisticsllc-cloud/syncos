@@ -128,6 +128,27 @@ Still open after Phase 5:
 - OUX-026 remains partially open until Billing detail/create flows become fully guided workflows.
 - OUX-027 remains open until Cash and Collections are redesigned.
 
+## Phase 6 Status
+
+Closed or reduced:
+
+- OUX-006 is reduced on `/cash`, `/payment-applications`, `/collections`, and `/collection-actions` by collapsing advanced filters and making queue tabs/cards the primary page controls.
+- OUX-007 is reduced on cash and collections pages through next-action table columns and queue CTAs.
+- OUX-011 is reduced on cash and collections pages through queue-specific empty states.
+- OUX-015 remains controlled on cash and collections pages because developer session panels stay environment-gated and are covered by Phase 6 E2E.
+- OUX-016 is reduced by adding Cash Application and Payment Application boundary copy that SyncOS does not pull bank feeds, move money, process cards, initiate ACH, refund money, or post accounting entries.
+- OUX-027 is reduced by redesigning Cash, Payment Applications, Collections, and Collection Actions around the received-cash and manual-follow-up workflow spine.
+- OUX-036 is reduced by adding explicit Collections boundary copy that SyncOS does not automatically email customers, make calls, collect money, report credit, or create legal action.
+- OUX-034 is reduced by adding Phase 6 E2E coverage for cash/collections workbenches, hidden developer UI, read-only auditor behavior, boundary copy, and queue tab state changes.
+
+Still open after Phase 6:
+
+- OUX-010 remains open across cash/collections list actions because disabled reasons are not yet standardized everywhere.
+- OUX-013 remains open until mobile/tablet review is completed.
+- OUX-016 remains partially open until Reconciliation and Accounting Export receive the same workbench treatment.
+- OUX-027 remains partially open until cash and collections detail/create/edit flows become guided workflows.
+- OUX-037 remains open until backend due-action, promise-to-pay, receipt-balance, and exception summaries exist.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.

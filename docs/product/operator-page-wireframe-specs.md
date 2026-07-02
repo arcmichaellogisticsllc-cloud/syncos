@@ -438,3 +438,30 @@ Remaining finance template gaps:
 - Detail pages need stronger next-action cards and read-only role banners.
 - Create/edit flows remain generic forms and should become guided finance workflows later.
 - Mobile/tablet layout still requires visual review.
+
+## Phase 6 Cash And Collections Workbench Status
+
+Implemented cash/collections queue wireframes on:
+
+- `/cash`
+- `/payment-applications`
+- `/collections`
+- `/collection-actions`
+
+Applied template behaviors:
+
+- Header and purpose copy framed around received cash, invoice application, manual follow-up, and collection action decisions.
+- Boundary notices above the queue body for cash application, payment applications, collections, and collection actions.
+- Priority queue cards ahead of filters.
+- Queue tabs with active ARIA state.
+- Collapsed advanced filters.
+- Operator-first records tables with next-action columns.
+- Queue-specific empty states.
+- Visibility panels for payment applications and collection actions under the main workbench pages.
+
+Remaining cash/collections template gaps:
+
+- Detail pages need stronger next-action cards and read-only role banners.
+- Create/edit flows remain generic forms and should become guided cash/collections workflows later.
+- Queue counts should eventually use backend receipt-balance, promise, due-action, and exception summaries.
+- Mobile/tablet layout still requires visual review.

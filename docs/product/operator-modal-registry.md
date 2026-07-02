@@ -76,6 +76,14 @@ Every mutation modal must follow these standards:
 | Archive Case | Archive closed collection case. | `/collections/[id]` | Archive Case | Case closed. | None certified. | State/permission. | Archive Case. | case_status archived. | Alert stays open. | Archive case. | Archive event. | Certified. |
 | Complete Action | Complete collection action. | `/collection-actions/[id]` | Complete | Action planned. | Completion Note/Outcome. | Required. | Complete Action. | action_status completed. | Alert stays open. | Complete action. | Completion event. | Certified. |
 | Archive Action | Archive completed collection action. | `/collection-actions/[id]` | Archive Action | Action completed. | None certified. | State/permission. | Archive Action. | action_status archived. | Alert stays open. | Archive action. | Archive event. | Certified. |
+
+## Phase 6 Cash And Collections Workbench Modal Notes
+
+- Phase 6 preserves existing detail-page modals for Apply to Invoice, Void Receipt, Archive Receipt, Void Payment Application, Archive Payment Application, Assign Owner, Complete Action, Archive Case, and Archive Action.
+- Cash and collections list pages add queue/navigation actions only; they do not introduce new mutating list-page modals or fake backend behavior.
+- Cash Application list boundary copy clarifies that receipt and application workflows do not pull bank feeds, move money, process cards, initiate ACH, refund money, or post accounting entries.
+- Collections list boundary copy clarifies that collection cases and actions do not automatically email customers, make calls, collect money, report credit, or create legal action.
+- Phase 6 preserves backend validation, tenant authorization, timeline, audit, system action behavior, and cash/collections boundary rules.
 | Recalculate Totals | Recalculate contractor payable or payroll totals. | `/contractor-payables/[id]`, `/payroll/[id]` | Recalculate Totals | Draft item/parent. | None. | Permission. | Recalculate Totals. | Totals recalculated, no downstream object. | Alert stays open. | Recalculate totals. | Recalculate event. | Certified. |
 | Mark Payment Ready | Mark contractor payable internally payment ready. | `/contractor-payables/[id]` | Mark Payment Ready | Payable approved. | None certified. | State/permission. | Mark Payment Ready. | payment_readiness_status ready_for_payment. | Alert stays open. | Mark payment ready. | Payment-ready event. | Certified. |
 | Mark Payroll Ready | Mark payroll run internally ready. | `/payroll/[id]` | Mark Payroll Ready | Payroll approved. | None certified. | State/permission. | Mark Payroll Ready. | payroll_readiness_status ready_for_payroll. | Alert stays open. | Mark payroll ready. | Payroll-ready event. | Certified. |

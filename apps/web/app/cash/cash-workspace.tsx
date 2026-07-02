@@ -52,7 +52,9 @@ type Session = ReturnType<typeof useSession>;
 export function CashReceiptQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
+  const [applicationRows, setApplicationRows] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState("unapplied");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -64,7 +66,14 @@ export function CashReceiptQueue() {
       query.set("archived", filters.archived === "true" ? "true" : "false");
       for (const key of ["customer_organization_id", "payment_method", "receipt_status", "deposit_status", "reconciliation_status", "source_type", "payment_date_from", "payment_date_to", "has_unapplied", "q"]) if (filters[key]) query.set(key, filters[key]);
       if (filters.sort) query.set("sort", filters.sort);
-      setRows(await syncosFetch<SyncRecord[]>(`/cash-receipts?${query.toString()}`, { token: session.token }));
+      const applicationQuery = new URLSearchParams();
+      applicationQuery.set("archived", filters.archived === "true" ? "true" : "false");
+      const [receipts, applications] = await Promise.all([
+        syncosFetch<SyncRecord[]>(`/cash-receipts?${query.toString()}`, { token: session.token }),
+        optionalList(`/payment-applications?${applicationQuery.toString()}`, session.token),
+      ]);
+      setRows(receipts);
+      setApplicationRows(applications);
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
     } finally {
@@ -77,58 +86,72 @@ export function CashReceiptQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortReceipts(rows.filter((row) => receiptMatches(row, filters)), filters.sort), [rows, filters]);
-  const summary = useMemo(() => buildReceiptSummary(rows), [rows]);
+  const visible = useMemo(() => sortReceipts(rows.filter((row) => receiptMatches(row, filters)).filter((row) => matchesCashQueue(row, applicationRows, activeQueue)), filters.sort), [rows, applicationRows, filters, activeQueue]);
+  const visibleApplications = useMemo(() => applicationRows.filter((row) => matchesApplicationQueue(row, activeQueue)), [applicationRows, activeQueue]);
+  const queueCards = cashQueues.map((queue) => ({ ...queue, value: cashQueueCount(rows, applicationRows, queue.id) }));
+  const activeQueueLabel = queueCards.find((queue) => queue.id === activeQueue)?.label ?? "Unapplied";
+
+  function selectQueue(queueId: string) {
+    setActiveQueue(queueId);
+    setFilters({ ...filters, archived: queueId === "archived" ? "true" : "false", receipt_status: "" });
+  }
 
   return (
-    <CashShell title="Cash Receipt Queue" purpose="Control received money, unapplied cash, and payment applications without creating bank, payroll, tax, reconciliation, or accounting records.">
+    <CashShell title="Cash Application Workbench" purpose="Track received cash, apply receipts to invoices, and control unapplied or voided cash application workflow inside SyncOS.">
       <SessionPanel session={session} />
-      <div className="warning-box">Receipt creation does not change invoice balances. Invoice balances change only through payment applications.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view cash receipts.</div> : null}
-      {loading ? <div className="empty-state">Loading cash receipts...</div> : null}
+      <div className="boundary-notice"><strong>Cash Application boundary</strong><span>Cash Application records internal receipt and invoice-application state. SyncOS does not pull bank feeds, move money, process cards, initiate ACH, or post accounting entries.</span></div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review received cash, unapplied balances, and payment applications.</div> : null}
+      {loading ? <div className="loading-state">Loading cash application records...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>Cash Receipt Summary</h2>
-                <p className="muted">Receipts are prioritized by unapplied cash, partial application, and recent updates.</p>
+                <span className="eyebrow">Billing / Finance Workspace</span>
+                <h2>What cash needs application, what invoices can be updated, and what receipt/application records need review?</h2>
+                <p className="muted">Start with unapplied cash, partial applications, voided records, and application review.</p>
               </div>
-              <Link className="primary-button" href="/cash/receipts/new" aria-disabled={!hasPermission(session.permissions, "cash_receipt.create")}>Create Receipt</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href="/cash/receipts/new" aria-disabled={!hasPermission(session.permissions, "cash_receipt.create")}>Create Cash Receipt</Link>
+                <Link className="link-button" href={firstReceiptHref(rows.filter((row) => numberValue(row.unapplied_amount, 0) > 0), "/cash")} aria-disabled={!rows.some((row) => numberValue(row.unapplied_amount, 0) > 0)}>Apply Receipt to Invoice</Link>
+                <button type="button" onClick={() => selectQueue("unapplied")}>Review Unapplied Cash</button>
+                <button type="button" onClick={() => selectQueue("voided")}>Review Voided / Exceptions</button>
+              </div>
             </div>
-            <div className="summary-grid">
-              <SummaryCard label="Total Receipts" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {["unapplied", "partially_applied", "fully_applied", "overapplied", "voided", "archived"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "updated_desc", receipt_status: status })} />)}
-              {["ach", "wire", "check", "card", "cash", "lockbox", "portal"].map((method) => <SummaryCard key={method} label={formatAction(method)} value={summary.method[method] ?? 0} onClick={() => setFilters({ ...filters, payment_method: method })} />)}
-              <SummaryCard label="Balance Remaining" value={summary.balanceRemaining} onClick={() => setFilters({ ...filters, has_unapplied: "true" })} />
+            <div className="summary-grid priority-grid">
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => selectQueue(queue.id)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>{activeQueueLabel}</h2>
+                <p className="muted">{emptyCashQueue(activeQueue)}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("unapplied"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["unapplied", "partially_applied", "fully_applied"].map((receipt_status) => <button key={receipt_status} type="button" onClick={() => setFilters({ ...filters, receipt_status })}>{formatAction(receipt_status)}</button>)}
-              {["ach", "wire", "check", "card", "cash", "portal"].map((payment_method) => <button key={payment_method} type="button" onClick={() => setFilters({ ...filters, payment_method })}>{formatAction(payment_method)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, receipt_status: "voided" })}>Voided</button>
+            <div className="queue-tabs" role="tablist" aria-label="Cash application queues">
+              {cashQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search receipt, reference, payer, customer" />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <Select label="Payment Method" value={filters.payment_method ?? ""} options={["", ...paymentMethods]} onChange={(payment_method) => setFilters({ ...filters, payment_method })} />
-              <Select label="Receipt Status" value={filters.receipt_status ?? ""} options={["", ...receiptStatuses]} onChange={(receipt_status) => setFilters({ ...filters, receipt_status })} />
-              <Select label="Deposit Status" value={filters.deposit_status ?? ""} options={["", ...depositStatuses]} onChange={(deposit_status) => setFilters({ ...filters, deposit_status })} />
-              <Select label="Reconciliation Status" value={filters.reconciliation_status ?? ""} options={["", ...reconciliationStatuses]} onChange={(reconciliation_status) => setFilters({ ...filters, reconciliation_status })} />
-              <Select label="Source Type" value={filters.source_type ?? ""} options={["", ...sourceTypes]} onChange={(source_type) => setFilters({ ...filters, source_type })} />
-              <label>Payment Date From<input type="date" value={filters.payment_date_from ?? ""} onChange={(event) => setFilters({ ...filters, payment_date_from: event.target.value })} /></label>
-              <label>Payment Date To<input type="date" value={filters.payment_date_to ?? ""} onChange={(event) => setFilters({ ...filters, payment_date_to: event.target.value })} /></label>
-              <Select label="Has Unapplied Cash" value={filters.has_unapplied ?? ""} options={["", "true", "false"]} onChange={(has_unapplied) => setFilters({ ...filters, has_unapplied })} />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "payment_date_desc", "payment_date_asc", "amount_desc", "unapplied_desc", "receipt_number"]} labels={{ updated_desc: "Recently updated", payment_date_desc: "Payment date newest", payment_date_asc: "Payment date oldest", amount_desc: "Gross amount highest", unapplied_desc: "Unapplied highest", receipt_number: "Receipt number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search receipt, reference, payer, customer" />
+                <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
+                <Select label="Payment Method" value={filters.payment_method ?? ""} options={["", ...paymentMethods]} onChange={(payment_method) => setFilters({ ...filters, payment_method })} />
+                <Select label="Receipt Status" value={filters.receipt_status ?? ""} options={["", ...receiptStatuses]} onChange={(receipt_status) => setFilters({ ...filters, receipt_status })} />
+                <Select label="Deposit Status" value={filters.deposit_status ?? ""} options={["", ...depositStatuses]} onChange={(deposit_status) => setFilters({ ...filters, deposit_status })} />
+                <Select label="Reconciliation Status" value={filters.reconciliation_status ?? ""} options={["", ...reconciliationStatuses]} onChange={(reconciliation_status) => setFilters({ ...filters, reconciliation_status })} />
+                <Select label="Source Type" value={filters.source_type ?? ""} options={["", ...sourceTypes]} onChange={(source_type) => setFilters({ ...filters, source_type })} />
+                <label>Payment Date From<input type="date" value={filters.payment_date_from ?? ""} onChange={(event) => setFilters({ ...filters, payment_date_from: event.target.value })} /></label>
+                <label>Payment Date To<input type="date" value={filters.payment_date_to ?? ""} onChange={(event) => setFilters({ ...filters, payment_date_to: event.target.value })} /></label>
+                <Select label="Has Unapplied Cash" value={filters.has_unapplied ?? ""} options={["", "true", "false"]} onChange={(has_unapplied) => setFilters({ ...filters, has_unapplied })} />
+                <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+                <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "payment_date_desc", "payment_date_asc", "amount_desc", "unapplied_desc", "receipt_number"]} labels={{ updated_desc: "Recently updated", payment_date_desc: "Payment date newest", payment_date_asc: "Payment date oldest", amount_desc: "Gross amount highest", unapplied_desc: "Unapplied highest", receipt_number: "Receipt number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
@@ -136,7 +159,18 @@ export function CashReceiptQueue() {
               <h2>Cash Receipts</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No cash receipts yet. Create a receipt, then apply unapplied cash to ready invoices.</div> : <CashReceiptTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No cash receipts yet. Create a receipt, then apply unapplied cash to ready invoices.</div> : visible.length ? <CashReceiptTable rows={visible} /> : <div className="empty-state">{emptyCashQueue(activeQueue)}</div>}
+          </section>
+
+          <section className="workspace-panel">
+            <div className="section-toolbar">
+              <div>
+                <h2>Payment Application Workflow Visibility</h2>
+                <p className="muted">Payment applications are the internal path that connects receipts to invoice balance state.</p>
+              </div>
+              <Link className="link-button" href="/payment-applications">Open Payment Applications</Link>
+            </div>
+            <PaymentApplicationTable rows={visibleApplications} />
           </section>
         </>
       ) : null}
@@ -368,6 +402,7 @@ export function PaymentApplicationQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false" });
+  const [activeQueue, setActiveQueue] = useState("review");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -391,31 +426,49 @@ export function PaymentApplicationQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => rows.filter((row) => paymentApplicationMatches(row, filters)), [rows, filters]);
+  const visible = useMemo(() => rows.filter((row) => paymentApplicationMatches(row, filters)).filter((row) => matchesApplicationQueue(row, activeQueue)), [rows, filters, activeQueue]);
+  const queueCards = applicationQueues.map((queue) => ({ ...queue, value: rows.filter((row) => matchesApplicationQueue(row, queue.id)).length }));
 
   return (
-    <CashShell title="Payment Applications" purpose="Review payment allocations from cash receipts to invoices without direct invoice balance edits.">
+    <CashShell title="Payment Applications" purpose="Review payment allocations from cash receipts to invoices without direct invoice balance edits, bank movement, or external posting.">
       <SessionPanel session={session} />
-      {error ? <div className="error-banner">{error}</div> : null}
-      {loading ? <div className="empty-state">Loading payment applications...</div> : null}
+      <div className="boundary-notice"><strong>Payment Application boundary</strong><span>Payment Application updates internal receipt-to-invoice allocation state only. It does not move money, refund money, process cards, initiate ACH, or post accounting entries.</span></div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review payment applications.</div> : null}
+      {loading ? <div className="loading-state">Loading payment applications...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
-              <h2>Payment Application Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false" })}>Reset</button>
+              <div>
+                <span className="eyebrow">Cash Application Workspace</span>
+                <h2>Which receipt-to-invoice applications need review or audit visibility?</h2>
+                <p className="muted">Use this view to inspect active, voided, and archived application records without changing bank truth.</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("review"); setFilters({ archived: "false" }); }}>Reset</button>
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search receipt, invoice, customer" />
-              <input value={filters.cash_receipt_id ?? ""} onChange={(event) => setFilters({ ...filters, cash_receipt_id: event.target.value })} placeholder="Receipt" />
-              <input value={filters.invoice_id ?? ""} onChange={(event) => setFilters({ ...filters, invoice_id: event.target.value })} placeholder="Invoice" />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <Select label="Status" value={filters.application_status ?? ""} options={["", ...applicationStatuses]} onChange={(application_status) => setFilters({ ...filters, application_status })} />
-              <Select label="Type" value={filters.application_type ?? ""} options={["", ...applicationTypes]} onChange={(application_type) => setFilters({ ...filters, application_type })} />
-              <label>Date From<input type="date" value={filters.application_date_from ?? ""} onChange={(event) => setFilters({ ...filters, application_date_from: event.target.value })} /></label>
-              <label>Date To<input type="date" value={filters.application_date_to ?? ""} onChange={(event) => setFilters({ ...filters, application_date_to: event.target.value })} /></label>
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+            <div className="summary-grid priority-grid">
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => { setActiveQueue(queue.id); setFilters({ ...filters, archived: queue.id === "archived" ? "true" : "false" }); }} />)}
             </div>
+          </section>
+          <section className="workspace-panel">
+            <div className="queue-tabs" role="tablist" aria-label="Payment application queues">
+              {applicationQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => { setActiveQueue(queue.id); setFilters({ ...filters, archived: queue.id === "archived" ? "true" : "false" }); }}>{queue.label}</button>)}
+            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search receipt, invoice, customer" />
+                <input value={filters.cash_receipt_id ?? ""} onChange={(event) => setFilters({ ...filters, cash_receipt_id: event.target.value })} placeholder="Receipt" />
+                <input value={filters.invoice_id ?? ""} onChange={(event) => setFilters({ ...filters, invoice_id: event.target.value })} placeholder="Invoice" />
+                <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
+                <Select label="Status" value={filters.application_status ?? ""} options={["", ...applicationStatuses]} onChange={(application_status) => setFilters({ ...filters, application_status })} />
+                <Select label="Type" value={filters.application_type ?? ""} options={["", ...applicationTypes]} onChange={(application_type) => setFilters({ ...filters, application_type })} />
+                <label>Date From<input type="date" value={filters.application_date_from ?? ""} onChange={(event) => setFilters({ ...filters, application_date_from: event.target.value })} /></label>
+                <label>Date To<input type="date" value={filters.application_date_to ?? ""} onChange={(event) => setFilters({ ...filters, application_date_to: event.target.value })} /></label>
+                <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+              </div>
+            </details>
           </section>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -543,12 +596,12 @@ function CashShell({ title, purpose, children }: { title: string; purpose: strin
 }
 
 function CashReceiptTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Receipt Number", "Customer", "Payer Name", "Payment Date", "Payment Method", "Payment Reference", "Gross Amount", "Applied Amount", "Unapplied Amount", "Receipt Status", "Deposit Status", "Reconciliation Status", "Source Type", "Application Count", "Invoice Count", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/cash/receipts/${row.id}`}>{textValue(row.receipt_number, String(row.id))}</Link></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{textValue(row.payer_name)}</td><td>{dateValue(row.payment_date)}</td><td>{formatAction(row.payment_method)}</td><td>{textValue(row.payment_reference)}</td><td>{money(row.gross_received_amount)}</td><td>{money(row.applied_amount)}</td><td>{money(row.unapplied_amount)}</td><td>{formatAction(row.receipt_status)}</td><td>{formatAction(row.deposit_status)}</td><td>{formatAction(row.reconciliation_status)}</td><td>{formatAction(row.source_type)}</td><td>{formatCell(row.application_count)}</td><td>{formatCell(row.invoice_count)}</td><td>{formatAction(row.recommended_next_action)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Receipt", "Customer", "Amount Received", "Applied Amount", "Unapplied Balance", "Receipt Date", "Source / Reference", "Status", "Invoice Link", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/cash/receipts/${row.id}`}>{textValue(row.receipt_number, String(row.id))}</Link><div className="cell-helper">{textValue(row.payer_name)}</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.gross_received_amount)}</td><td>{money(row.applied_amount)}</td><td>{money(row.unapplied_amount)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.payment_reference ?? row.external_transaction_id)}<div className="cell-helper">{formatAction(row.source_type)}</div></td><td>{formatAction(row.receipt_status)}<div className="cell-helper">{formatAction(row.reconciliation_status)}</div></td><td>{Number(row.invoice_count ?? 0) > 0 ? `${formatCell(row.invoice_count)} linked` : "No invoice link yet"}</td><td>{nextCashAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/cash/receipts/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
 }
 
 function PaymentApplicationTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No payment applications returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Application ID", "Receipt Number", "Invoice Number", "Customer", "Applied Amount", "Application Date", "Application Type", "Status", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-applications/${row.id}`}>{String(row.id)}</Link></td><td>{cashReceiptLink(row.cash_receipt_id, row.receipt_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.applied_amount)}</td><td>{dateValue(row.application_date)}</td><td>{formatAction(row.application_type)}</td><td>{formatAction(row.application_status)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Application", "Receipt", "Invoice", "Amount Applied", "Application Status", "Applied Date", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-applications/${row.id}`}>{textValue(row.application_number, String(row.id))}</Link><div className="cell-helper">{formatAction(row.application_type)}</div></td><td>{cashReceiptLink(row.cash_receipt_id, row.receipt_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.applied_amount)}</td><td>{formatAction(row.application_status)}</td><td>{dateValue(row.application_date)}</td><td>{nextApplicationAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
 }
 
 function CashReceiptTab({ tab, detail, receipt, applications, session, onApplicationAction }: { tab: string; detail: CashReceiptDetailShape; receipt: SyncRecord; applications: SyncRecord[]; session: Session; onApplicationAction: (type: string, application: SyncRecord) => void }) {
@@ -703,8 +756,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -745,6 +798,75 @@ function buildReceiptSummary(rows: SyncRecord[]) {
     method[String(row.payment_method)] = (method[String(row.payment_method)] ?? 0) + 1;
   }
   return { total: rows.length, status, method, balanceRemaining: rows.filter((row) => numberValue(row.unapplied_amount, 0) > 0).length };
+}
+
+const cashQueues = [
+  { id: "unapplied", label: "Unapplied", helper: "Receipts recorded but not fully applied to invoices." },
+  { id: "partially_applied", label: "Partially Applied", helper: "Receipts with remaining unapplied balance." },
+  { id: "fully_applied", label: "Fully Applied", helper: "Receipts fully applied to invoice balances." },
+  { id: "review", label: "Application Review", helper: "Payment applications needing review or attention." },
+  { id: "voided", label: "Voided", helper: "Voided receipts or applications retained for audit." },
+  { id: "archived", label: "Archived", helper: "Closed records removed from active cash queues." },
+  { id: "exceptions", label: "Exceptions", helper: "Cash or application records requiring investigation." },
+];
+
+const applicationQueues = [
+  { id: "review", label: "Application Review", helper: "Active receipt-to-invoice applications." },
+  { id: "voided", label: "Voided", helper: "Voided applications retained for audit." },
+  { id: "archived", label: "Archived", helper: "Archived application records." },
+];
+
+function cashQueueCount(receipts: SyncRecord[], applications: SyncRecord[], queue: string) {
+  if (queue === "review") return applications.filter((row) => matchesApplicationQueue(row, queue)).length;
+  if (queue === "voided") return receipts.filter((row) => String(row.receipt_status) === "voided").length + applications.filter((row) => String(row.application_status) === "voided").length;
+  if (queue === "archived") return receipts.filter((row) => String(row.receipt_status) === "archived").length + applications.filter((row) => String(row.application_status) === "archived").length;
+  if (queue === "exceptions") return receipts.filter((row) => ["overapplied"].includes(String(row.receipt_status)) || String(row.reconciliation_status).includes("exception")).length;
+  return receipts.filter((row) => matchesCashQueue(row, applications, queue)).length;
+}
+
+function matchesCashQueue(row: SyncRecord, _applications: SyncRecord[], queue: string) {
+  const status = String(row.receipt_status ?? "");
+  const unapplied = numberValue(row.unapplied_amount, 0);
+  const applied = numberValue(row.applied_amount, 0);
+  if (queue === "unapplied") return unapplied > 0 && status !== "voided" && status !== "archived";
+  if (queue === "partially_applied") return status === "partially_applied" || (applied > 0 && unapplied > 0);
+  if (queue === "fully_applied") return status === "fully_applied" || (applied > 0 && unapplied === 0 && status !== "voided" && status !== "archived");
+  if (queue === "voided") return status === "voided";
+  if (queue === "archived") return status === "archived";
+  if (queue === "exceptions") return status === "overapplied" || String(row.reconciliation_status).includes("exception");
+  return true;
+}
+
+function matchesApplicationQueue(row: SyncRecord, queue: string) {
+  const status = String(row.application_status ?? "");
+  if (queue === "voided") return status === "voided";
+  if (queue === "archived") return status === "archived";
+  if (queue === "review") return status !== "voided" && status !== "archived";
+  return true;
+}
+
+function emptyCashQueue(queue: string) {
+  if (queue === "unapplied") return "No unapplied cash receipts need attention.";
+  if (queue === "partially_applied") return "No partially applied receipts in this queue.";
+  if (queue === "fully_applied") return "No fully applied receipts are visible in this queue.";
+  if (queue === "review") return "No payment applications need review.";
+  if (queue === "voided") return "No voided cash records in this queue.";
+  if (queue === "archived") return "No archived cash records in this queue.";
+  return "No cash application exceptions are open.";
+}
+
+function nextCashAction(row: SyncRecord) {
+  if (["voided", "archived"].includes(String(row.receipt_status))) return "Audit only.";
+  if (numberValue(row.unapplied_amount, 0) > 0) return "Apply to invoice or keep unapplied with support.";
+  if (String(row.receipt_status) === "fully_applied") return "Review application history.";
+  if (String(row.receipt_status) === "overapplied") return "Investigate application exception.";
+  return formatAction(row.recommended_next_action) || "Review receipt.";
+}
+
+function nextApplicationAction(row: SyncRecord) {
+  if (String(row.application_status) === "voided") return "Archive when audit review is complete.";
+  if (String(row.application_status) === "archived") return "Audit only.";
+  return "Review receipt and invoice impact.";
 }
 
 function receiptMatches(row: SyncRecord, filters: Record<string, string>) {
@@ -853,6 +975,11 @@ function modalTitle(type: string) {
   if (type === "void_application") return "Void Payment Application";
   if (type === "archive_application") return "Archive Payment Application";
   return "Apply To Invoice";
+}
+
+function firstReceiptHref(rows: SyncRecord[], fallback: string) {
+  const first = rows[0];
+  return first?.id ? `/cash/receipts/${first.id}` : fallback;
 }
 
 function actionNotice(type: string) {

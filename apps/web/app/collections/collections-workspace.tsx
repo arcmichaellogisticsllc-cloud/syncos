@@ -58,7 +58,9 @@ type CollectionActionDetailShape = {
 export function CollectionCaseQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
+  const [actionRows, setActionRows] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState("needs_action");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -67,7 +69,14 @@ export function CollectionCaseQueue() {
     setError("");
     try {
       const query = caseQuery(filters);
-      setRows(await syncosFetch<SyncRecord[]>(`/collection-cases?${query.toString()}`, { token: session.token }));
+      const actionQuery = new URLSearchParams();
+      actionQuery.set("archived", filters.archived === "true" ? "true" : "false");
+      const [cases, actions] = await Promise.all([
+        syncosFetch<SyncRecord[]>(`/collection-cases?${query.toString()}`, { token: session.token }),
+        optionalList(`/collection-actions?${actionQuery.toString()}`, session.token),
+      ]);
+      setRows(cases);
+      setActionRows(actions);
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
     } finally {
@@ -80,69 +89,79 @@ export function CollectionCaseQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortCases(rows.filter((row) => caseMatches(row, filters)), filters.sort), [rows, filters]);
-  const summary = useMemo(() => buildCaseSummary(rows), [rows]);
+  const visible = useMemo(() => sortCases(rows.filter((row) => caseMatches(row, filters)).filter((row) => matchesCollectionQueue(row, activeQueue)), filters.sort), [rows, filters, activeQueue]);
+  const visibleActions = useMemo(() => actionRows.filter((row) => matchesCollectionActionQueue(row, activeQueue)), [actionRows, activeQueue]);
+  const queueCards = collectionQueues.map((queue) => ({ ...queue, value: collectionQueueCount(rows, actionRows, queue.id) }));
+  const activeQueueLabel = queueCards.find((queue) => queue.id === activeQueue)?.label ?? "Needs Action";
+
+  function selectQueue(queueId: string) {
+    setActiveQueue(queueId);
+    setFilters({ ...filters, archived: queueId === "archived" ? "true" : "false", case_status: "" });
+  }
 
   return (
-    <CollectionsShell title="Collection Case Queue" purpose="Control unpaid invoice follow-up, risk, promises, disputes, escalations, and write-off review readiness without moving cash or reducing invoice balances.">
+    <CollectionsShell title="Collections Workbench" purpose="Manage overdue invoice follow-up, owner assignment, disputes, promises to pay, and collection action history.">
       <SessionPanel session={session} />
-      <div className="warning-box">Collections coordinates follow-up only. It does not create cash receipts, payment applications, legal filings, tax/accounting workflows, payroll, or invoice balance reductions.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view collection cases.</div> : null}
-      {loading ? <div className="empty-state">Loading collection cases...</div> : null}
+      <div className="boundary-notice"><strong>Collections boundary</strong><span>Collections tracks manual follow-up work inside SyncOS. It does not automatically email customers, make calls, collect money, report credit, or create legal action.</span></div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to manage collection cases and follow-up actions.</div> : null}
+      {loading ? <div className="loading-state">Loading collection cases...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>Collection Case Summary</h2>
-                <p className="muted">Cases are prioritized by critical risk, overdue follow-up, aging, and recent updates.</p>
+                <span className="eyebrow">Collections Specialist Workspace</span>
+                <h2>Which collection cases need action today, who owns them, what was promised, and what is blocking payment?</h2>
+                <p className="muted">Start with due actions, unassigned cases, promises, disputes, and aging balances.</p>
               </div>
-              <Link className="primary-button" href="/collections/new" aria-disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href="/collections/new" aria-disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</Link>
+                <Link className="link-button" href={firstCaseHref(rows.filter((row) => !row.assigned_owner_user_id), "/collections")} aria-disabled={!rows.some((row) => !row.assigned_owner_user_id)}>Assign Owner</Link>
+                <Link className="link-button" href={firstCaseHref(visible, "/collections")} aria-disabled={!visible.length}>Add Collection Action</Link>
+                <button type="button" onClick={() => selectQueue("needs_action")}>Complete Due Action</button>
+                <button type="button" onClick={() => selectQueue("disputed")}>Review Disputes</button>
+                <button type="button" onClick={() => selectQueue("aging")}>Review Aging</button>
+              </div>
             </div>
-            <div className="summary-grid">
-              <SummaryCard label="Total Cases" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {["open", "in_progress", "promise_to_pay", "disputed", "escalated", "awaiting_payment", "resolved", "closed", "archived"].map((case_status) => <SummaryCard key={case_status} label={formatAction(case_status)} value={summary.status[case_status] ?? 0} onClick={() => setFilters({ archived: case_status === "archived" ? "true" : "false", sort: "updated_desc", case_status })} />)}
-              {agingBuckets.map((aging_bucket) => <SummaryCard key={aging_bucket} label={formatAging(aging_bucket)} value={summary.aging[aging_bucket] ?? 0} onClick={() => setFilters({ ...filters, aging_bucket })} />)}
-              <SummaryCard label="High Risk" value={summary.risk.high ?? 0} onClick={() => setFilters({ ...filters, risk_level: "high" })} />
-              <SummaryCard label="Critical Risk" value={summary.risk.critical ?? 0} onClick={() => setFilters({ ...filters, risk_level: "critical" })} />
-              <SummaryCard label="Due Follow-Up" value={summary.dueFollowUp} onClick={() => setFilters({ ...filters, dueToday: "true" })} />
-              <SummaryCard label="Write-Off Candidates" value={summary.writeoff.candidate ?? 0} onClick={() => setFilters({ ...filters, writeoff_review_status: "candidate" })} />
+            <div className="summary-grid priority-grid">
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => selectQueue(queue.id)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>{activeQueueLabel}</h2>
+                <p className="muted">{emptyCollectionQueue(activeQueue)}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("needs_action"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["open", "in_progress", "promise_to_pay", "disputed", "escalated", "awaiting_payment", "resolved", "closed"].map((case_status) => <button key={case_status} type="button" onClick={() => setFilters({ ...filters, case_status })}>{formatAction(case_status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, aging_bucket: "90_plus" })}>90+</button>
-              <button type="button" onClick={() => setFilters({ ...filters, dueToday: "true" })}>Due Today</button>
-              <button type="button" onClick={() => setFilters({ ...filters, overdueFollowUp: "true" })}>Overdue Follow-Up</button>
-              <button type="button" onClick={() => setFilters({ ...filters, writeoff_review_status: "candidate" })}>Write-Off Candidate</button>
-              <button type="button" onClick={() => setFilters({ ...filters, risk_level: "critical" })}>Critical Risk</button>
+            <div className="queue-tabs" role="tablist" aria-label="Collections queues">
+              {collectionQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search case, invoice, customer, note" />
-              <Select label="Case Status" value={filters.case_status ?? ""} options={["", ...caseStatuses]} onChange={(case_status) => setFilters({ ...filters, case_status })} />
-              <Select label="Priority" value={filters.collection_priority ?? ""} options={["", ...priorities]} onChange={(collection_priority) => setFilters({ ...filters, collection_priority })} />
-              <Select label="Risk Level" value={filters.risk_level ?? ""} options={["", ...riskLevels]} onChange={(risk_level) => setFilters({ ...filters, risk_level })} />
-              <Select label="Aging Bucket" value={filters.aging_bucket ?? ""} options={["", ...agingBuckets]} labels={agingLabels} onChange={(aging_bucket) => setFilters({ ...filters, aging_bucket })} />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <input value={filters.invoice_id ?? ""} onChange={(event) => setFilters({ ...filters, invoice_id: event.target.value })} placeholder="Invoice" />
-              <input value={filters.assigned_owner_user_id ?? ""} onChange={(event) => setFilters({ ...filters, assigned_owner_user_id: event.target.value })} placeholder="Owner" />
-              <Select label="Dispute Status" value={filters.dispute_status ?? ""} options={["", ...disputeStatuses]} onChange={(dispute_status) => setFilters({ ...filters, dispute_status })} />
-              <Select label="Escalation Status" value={filters.escalation_status ?? ""} options={["", ...escalationStatuses]} onChange={(escalation_status) => setFilters({ ...filters, escalation_status })} />
-              <Select label="Write-Off Review" value={filters.writeoff_review_status ?? ""} options={["", ...writeoffStatuses]} onChange={(writeoff_review_status) => setFilters({ ...filters, writeoff_review_status })} />
-              <label>Next Action From<input type="date" value={filters.next_action_due_from ?? ""} onChange={(event) => setFilters({ ...filters, next_action_due_from: event.target.value })} /></label>
-              <label>Next Action To<input type="date" value={filters.next_action_due_to ?? ""} onChange={(event) => setFilters({ ...filters, next_action_due_to: event.target.value })} /></label>
-              <Select label="Has Promise" value={filters.has_promise ?? ""} options={["", "true", "false"]} onChange={(has_promise) => setFilters({ ...filters, has_promise })} />
-              <Select label="Overdue Promise" value={filters.overdue_promise ?? ""} options={["", "true", "false"]} onChange={(overdue_promise) => setFilters({ ...filters, overdue_promise })} />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "aging_desc", "balance_desc", "priority_desc", "next_action_due_asc", "opened_desc", "case_number"]} labels={{ updated_desc: "Recently Updated", aging_desc: "Aging Highest", balance_desc: "Balance Highest", priority_desc: "Priority Highest", next_action_due_asc: "Next Action Due Soonest", opened_desc: "Opened Newest", case_number: "Case Number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search case, invoice, customer, note" />
+                <Select label="Case Status" value={filters.case_status ?? ""} options={["", ...caseStatuses]} onChange={(case_status) => setFilters({ ...filters, case_status })} />
+                <Select label="Priority" value={filters.collection_priority ?? ""} options={["", ...priorities]} onChange={(collection_priority) => setFilters({ ...filters, collection_priority })} />
+                <Select label="Risk Level" value={filters.risk_level ?? ""} options={["", ...riskLevels]} onChange={(risk_level) => setFilters({ ...filters, risk_level })} />
+                <Select label="Aging Bucket" value={filters.aging_bucket ?? ""} options={["", ...agingBuckets]} labels={agingLabels} onChange={(aging_bucket) => setFilters({ ...filters, aging_bucket })} />
+                <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
+                <input value={filters.invoice_id ?? ""} onChange={(event) => setFilters({ ...filters, invoice_id: event.target.value })} placeholder="Invoice" />
+                <input value={filters.assigned_owner_user_id ?? ""} onChange={(event) => setFilters({ ...filters, assigned_owner_user_id: event.target.value })} placeholder="Owner" />
+                <Select label="Dispute Status" value={filters.dispute_status ?? ""} options={["", ...disputeStatuses]} onChange={(dispute_status) => setFilters({ ...filters, dispute_status })} />
+                <Select label="Escalation Status" value={filters.escalation_status ?? ""} options={["", ...escalationStatuses]} onChange={(escalation_status) => setFilters({ ...filters, escalation_status })} />
+                <Select label="Write-Off Review" value={filters.writeoff_review_status ?? ""} options={["", ...writeoffStatuses]} onChange={(writeoff_review_status) => setFilters({ ...filters, writeoff_review_status })} />
+                <label>Next Action From<input type="date" value={filters.next_action_due_from ?? ""} onChange={(event) => setFilters({ ...filters, next_action_due_from: event.target.value })} /></label>
+                <label>Next Action To<input type="date" value={filters.next_action_due_to ?? ""} onChange={(event) => setFilters({ ...filters, next_action_due_to: event.target.value })} /></label>
+                <Select label="Has Promise" value={filters.has_promise ?? ""} options={["", "true", "false"]} onChange={(has_promise) => setFilters({ ...filters, has_promise })} />
+                <Select label="Overdue Promise" value={filters.overdue_promise ?? ""} options={["", "true", "false"]} onChange={(overdue_promise) => setFilters({ ...filters, overdue_promise })} />
+                <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+                <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "aging_desc", "balance_desc", "priority_desc", "next_action_due_asc", "opened_desc", "case_number"]} labels={{ updated_desc: "Recently Updated", aging_desc: "Aging Highest", balance_desc: "Balance Highest", priority_desc: "Priority Highest", next_action_due_asc: "Next Action Due Soonest", opened_desc: "Opened Newest", case_number: "Case Number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
@@ -150,7 +169,18 @@ export function CollectionCaseQueue() {
               <h2>Collection Cases</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No collection cases yet. Create a case from an open invoice balance.</div> : <CollectionCaseTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No collection cases yet. Create a case from an open invoice balance.</div> : visible.length ? <CollectionCaseTable rows={visible} /> : <div className="empty-state">{emptyCollectionQueue(activeQueue)}</div>}
+          </section>
+
+          <section className="workspace-panel">
+            <div className="section-toolbar">
+              <div>
+                <h2>Collection Actions Workflow Visibility</h2>
+                <p className="muted">Collection actions are manual follow-up tasks and activity records. They do not send communications.</p>
+              </div>
+              <Link className="link-button" href="/collection-actions">Open Collection Actions</Link>
+            </div>
+            <CollectionActionTable rows={visibleActions} />
           </section>
         </>
       ) : null}
@@ -394,6 +424,7 @@ export function CollectionActionQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false" });
+  const [activeQueue, setActiveQueue] = useState("needs_action");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -417,43 +448,61 @@ export function CollectionActionQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => rows.filter((row) => actionMatches(row, filters)), [rows, filters]);
+  const visible = useMemo(() => rows.filter((row) => actionMatches(row, filters)).filter((row) => matchesCollectionActionQueue(row, activeQueue)), [rows, filters, activeQueue]);
+  const queueCards = collectionActionQueues.map((queue) => ({ ...queue, value: rows.filter((row) => matchesCollectionActionQueue(row, queue.id)).length }));
 
   return (
-    <CollectionsShell title="Collection Actions" purpose="View and manage collection activities across cases without sending messages or moving money.">
+    <CollectionsShell title="Collection Actions" purpose="View manual follow-up tasks, completed collection activities, promises, disputes, and archived action history without sending messages or moving money.">
       <SessionPanel session={session} />
-      {error ? <div className="error-banner">{error}</div> : null}
-      {loading ? <div className="empty-state">Loading collection actions...</div> : null}
+      <div className="boundary-notice"><strong>Collection Action boundary</strong><span>A collection action records manual follow-up work. It does not send an email, text, letter, phone call, collect money, report credit, or create legal action.</span></div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review collection actions.</div> : null}
+      {loading ? <div className="loading-state">Loading collection actions...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
-              <h2>Action Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false" })}>Reset</button>
+              <div>
+                <span className="eyebrow">Collections Specialist Workspace</span>
+                <h2>Which collection actions are due, completed, or retained for history?</h2>
+                <p className="muted">Use this queue to inspect action due dates and outcomes without implying automated communication.</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("needs_action"); setFilters({ archived: "false" }); }}>Reset</button>
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search case, invoice, customer, note" />
-              <input value={filters.collection_case_id ?? ""} onChange={(event) => setFilters({ ...filters, collection_case_id: event.target.value })} placeholder="Collection Case" />
-              <input value={filters.invoice_id ?? ""} onChange={(event) => setFilters({ ...filters, invoice_id: event.target.value })} placeholder="Invoice" />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <Select label="Action Type" value={filters.action_type ?? ""} options={["", ...actionTypes]} onChange={(action_type) => setFilters({ ...filters, action_type })} />
-              <Select label="Action Status" value={filters.action_status ?? ""} options={["", ...actionStatuses]} onChange={(action_status) => setFilters({ ...filters, action_status })} />
-              <input value={filters.actor_user_id ?? ""} onChange={(event) => setFilters({ ...filters, actor_user_id: event.target.value })} placeholder="Actor" />
-              <label>Action Date From<input type="date" value={filters.action_date_from ?? ""} onChange={(event) => setFilters({ ...filters, action_date_from: event.target.value })} /></label>
-              <label>Action Date To<input type="date" value={filters.action_date_to ?? ""} onChange={(event) => setFilters({ ...filters, action_date_to: event.target.value })} /></label>
-              <label>Due From<input type="date" value={filters.due_at_from ?? ""} onChange={(event) => setFilters({ ...filters, due_at_from: event.target.value })} /></label>
-              <label>Due To<input type="date" value={filters.due_at_to ?? ""} onChange={(event) => setFilters({ ...filters, due_at_to: event.target.value })} /></label>
-              <label>Follow-Up From<input type="date" value={filters.follow_up_due_from ?? ""} onChange={(event) => setFilters({ ...filters, follow_up_due_from: event.target.value })} /></label>
-              <label>Follow-Up To<input type="date" value={filters.follow_up_due_to ?? ""} onChange={(event) => setFilters({ ...filters, follow_up_due_to: event.target.value })} /></label>
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+            <div className="summary-grid priority-grid">
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => { setActiveQueue(queue.id); setFilters({ ...filters, archived: queue.id === "archived" ? "true" : "false" }); }} />)}
             </div>
+          </section>
+          <section className="workspace-panel">
+            <div className="queue-tabs" role="tablist" aria-label="Collection action queues">
+              {collectionActionQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => { setActiveQueue(queue.id); setFilters({ ...filters, archived: queue.id === "archived" ? "true" : "false" }); }}>{queue.label}</button>)}
+            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search case, invoice, customer, note" />
+                <input value={filters.collection_case_id ?? ""} onChange={(event) => setFilters({ ...filters, collection_case_id: event.target.value })} placeholder="Collection Case" />
+                <input value={filters.invoice_id ?? ""} onChange={(event) => setFilters({ ...filters, invoice_id: event.target.value })} placeholder="Invoice" />
+                <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
+                <Select label="Action Type" value={filters.action_type ?? ""} options={["", ...actionTypes]} onChange={(action_type) => setFilters({ ...filters, action_type })} />
+                <Select label="Action Status" value={filters.action_status ?? ""} options={["", ...actionStatuses]} onChange={(action_status) => setFilters({ ...filters, action_status })} />
+                <input value={filters.actor_user_id ?? ""} onChange={(event) => setFilters({ ...filters, actor_user_id: event.target.value })} placeholder="Actor" />
+                <label>Action Date From<input type="date" value={filters.action_date_from ?? ""} onChange={(event) => setFilters({ ...filters, action_date_from: event.target.value })} /></label>
+                <label>Action Date To<input type="date" value={filters.action_date_to ?? ""} onChange={(event) => setFilters({ ...filters, action_date_to: event.target.value })} /></label>
+                <label>Due From<input type="date" value={filters.due_at_from ?? ""} onChange={(event) => setFilters({ ...filters, due_at_from: event.target.value })} /></label>
+                <label>Due To<input type="date" value={filters.due_at_to ?? ""} onChange={(event) => setFilters({ ...filters, due_at_to: event.target.value })} /></label>
+                <label>Follow-Up From<input type="date" value={filters.follow_up_due_from ?? ""} onChange={(event) => setFilters({ ...filters, follow_up_due_from: event.target.value })} /></label>
+                <label>Follow-Up To<input type="date" value={filters.follow_up_due_to ?? ""} onChange={(event) => setFilters({ ...filters, follow_up_due_to: event.target.value })} /></label>
+                <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+              </div>
+            </details>
           </section>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <h2>Collection Actions</h2>
               <span>{visible.length} shown</span>
             </div>
-            <CollectionActionTable rows={visible} />
+            {visible.length ? <CollectionActionTable rows={visible} /> : <div className="empty-state">{emptyCollectionQueue(activeQueue)}</div>}
           </section>
         </>
       ) : null}
@@ -579,12 +628,12 @@ function CollectionsShell({ title, purpose, children }: { title: string; purpose
 }
 
 function CollectionCaseTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Case Number", "Case Status", "Customer", "Invoice Number", "Current Balance", "Original Invoice Amount", "Aging Bucket", "Priority", "Risk Level", "Owner", "Last Payment At", "Last Payment Amount", "Next Action", "Next Action Due", "Promise Date", "Promise Amount", "Dispute Status", "Escalation Status", "Write-Off Review Status", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{caseLink(row.id, row.case_number)}</td><td>{formatAction(row.case_status)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.current_balance)}</td><td>{money(row.original_invoice_amount)}</td><td>{formatAging(row.aging_bucket)}</td><td>{formatAction(row.collection_priority)}</td><td>{formatAction(row.risk_level)}</td><td>{textValue(row.assigned_owner_name ?? row.assigned_owner_user_id)}</td><td>{dateValue(row.last_payment_at)}</td><td>{money(row.last_payment_amount)}</td><td>{formatAction(row.next_action_type)}</td><td>{dateValue(row.next_action_due_at)}</td><td>{dateValue(row.promise_to_pay_date)}</td><td>{money(row.promise_to_pay_amount)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.escalation_status)}</td><td>{formatAction(row.writeoff_review_status)}</td><td>{formatAction(row.recommended_next_action)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Case", "Customer", "Invoice", "Amount Due", "Age / Due Date", "Owner", "Status", "Dispute / Promise", "Next Action Due", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{caseLink(row.id, row.case_number)}<div className="cell-helper">{formatAction(row.collection_priority)} priority</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.current_balance ?? row.original_invoice_amount)}</td><td>{formatAging(row.aging_bucket)}<div className="cell-helper">{dateValue(row.next_action_due_at)}</div></td><td>{textValue(row.assigned_owner_name ?? row.assigned_owner_user_id, "Unassigned")}</td><td>{formatAction(row.case_status)}<div className="cell-helper">{formatAction(row.risk_level)} risk</div></td><td>{collectionPromiseDispute(row)}</td><td>{dateValue(row.next_action_due_at)}</td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collections/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
 }
 
 function CollectionActionTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No collection actions returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Action Type", "Status", "Case Number", "Invoice Number", "Customer", "Action Date", "Due At", "Completed At", "Actor", "Contact Method", "Outcome", "Follow-Up Required", "Follow-Up Due", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/collection-actions/${row.id}`}>{formatAction(row.action_type)}</Link></td><td>{formatAction(row.action_status)}</td><td>{caseLink(row.collection_case_id, row.case_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{dateValue(row.action_date)}</td><td>{dateValue(row.due_at)}</td><td>{dateValue(row.completed_at)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.contact_method)}</td><td>{formatAction(row.outcome)}</td><td>{row.follow_up_required ? "Yes" : "No"}</td><td>{dateValue(row.follow_up_due_at)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Action", "Case", "Type", "Due Date", "Owner", "Status", "Completed At", "Result / Note", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/collection-actions/${row.id}`}>{formatAction(row.action_type)}</Link></td><td>{caseLink(row.collection_case_id, row.case_number)}</td><td>{formatAction(row.contact_method)}<div className="cell-helper">{formatAction(row.action_type)}</div></td><td>{dateValue(row.due_at ?? row.follow_up_due_at ?? row.action_date)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.completed_at)}</td><td>{formatAction(row.outcome)}<div className="cell-helper">{textValue(row.note)}</div></td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collection-actions/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
 }
 
 function CollectionCaseTab({ tab, detail, collectionCase, actions, session, onAction }: { tab: string; detail: CollectionCaseDetailShape; collectionCase: SyncRecord; actions: SyncRecord[]; session: Session; onAction: (type: string, action?: SyncRecord) => void }) {
@@ -880,6 +929,65 @@ function buildCaseSummary(rows: SyncRecord[]) {
   return summary;
 }
 
+const collectionQueues = [
+  { id: "needs_action", label: "Needs Action", helper: "Cases or actions due now." },
+  { id: "unassigned", label: "Unassigned", helper: "Collection cases without a responsible owner." },
+  { id: "promise_to_pay", label: "Promise to Pay", helper: "Cases with payment promise needing follow-up." },
+  { id: "disputed", label: "Disputed", helper: "Cases blocked by dispute." },
+  { id: "aging", label: "Aging", helper: "Invoices or cases aging beyond expected terms." },
+  { id: "completed", label: "Completed", helper: "Completed follow-up actions retained for history." },
+  { id: "archived", label: "Archived", helper: "Closed or removed cases/actions." },
+];
+
+const collectionActionQueues = [
+  { id: "needs_action", label: "Needs Action", helper: "Actions due now or still planned." },
+  { id: "promise_to_pay", label: "Promise to Pay", helper: "Promise-related action history." },
+  { id: "disputed", label: "Disputed", helper: "Dispute-related action history." },
+  { id: "completed", label: "Completed", helper: "Completed manual follow-up actions." },
+  { id: "archived", label: "Archived", helper: "Archived action records." },
+];
+
+function collectionQueueCount(cases: SyncRecord[], actions: SyncRecord[], queue: string) {
+  if (queue === "completed") return actions.filter((row) => matchesCollectionActionQueue(row, queue)).length;
+  if (queue === "archived") return cases.filter((row) => String(row.case_status) === "archived").length + actions.filter((row) => String(row.action_status) === "archived").length;
+  if (queue === "needs_action") return cases.filter((row) => matchesCollectionQueue(row, queue)).length + actions.filter((row) => matchesCollectionActionQueue(row, queue)).length;
+  return cases.filter((row) => matchesCollectionQueue(row, queue)).length;
+}
+
+function matchesCollectionQueue(row: SyncRecord, queue: string) {
+  const status = String(row.case_status ?? "");
+  const today = new Date().toISOString().slice(0, 10);
+  if (queue === "needs_action") return !caseInactive(row) && (!row.next_action_due_at || String(row.next_action_due_at).slice(0, 10) <= today);
+  if (queue === "unassigned") return !caseInactive(row) && !row.assigned_owner_user_id;
+  if (queue === "promise_to_pay") return status === "promise_to_pay" || Boolean(row.promise_to_pay_date);
+  if (queue === "disputed") return status === "disputed" || ["open", "under_review"].includes(String(row.dispute_status));
+  if (queue === "aging") return ["31_60", "61_90", "90_plus"].includes(String(row.aging_bucket)) || numberValue(row.aging_days, 0) > 30;
+  if (queue === "completed") return ["resolved", "closed"].includes(status);
+  if (queue === "archived") return status === "archived";
+  return true;
+}
+
+function matchesCollectionActionQueue(row: SyncRecord, queue: string) {
+  const status = String(row.action_status ?? "");
+  const today = new Date().toISOString().slice(0, 10);
+  if (queue === "needs_action") return status === "planned" && (!row.due_at || String(row.due_at).slice(0, 10) <= today);
+  if (queue === "promise_to_pay") return String(row.action_type) === "promise_to_pay";
+  if (queue === "disputed") return String(row.action_type).includes("dispute");
+  if (queue === "completed") return status === "completed";
+  if (queue === "archived") return status === "archived";
+  return true;
+}
+
+function emptyCollectionQueue(queue: string) {
+  if (queue === "needs_action") return "No collection actions are due today.";
+  if (queue === "unassigned") return "No collection cases are unassigned.";
+  if (queue === "promise_to_pay") return "No promise-to-pay cases need follow-up.";
+  if (queue === "disputed") return "No collection disputes are open.";
+  if (queue === "aging") return "No aging collection cases in this queue.";
+  if (queue === "completed") return "No completed collection actions in this queue.";
+  return "No archived collection records in this queue.";
+}
+
 function caseMatches(row: SyncRecord, filters: Record<string, string>) {
   if (filters.dueToday && String(row.next_action_due_at).slice(0, 10) !== new Date().toISOString().slice(0, 10)) return false;
   if (filters.overdueFollowUp && String(row.next_action_due_at).slice(0, 10) >= new Date().toISOString().slice(0, 10)) return false;
@@ -927,6 +1035,26 @@ function actionInactive(row: SyncRecord) {
   return ["completed", "cancelled", "archived"].includes(String(row.action_status));
 }
 
+function nextCollectionAction(row: SyncRecord) {
+  if ("case_status" in row) {
+    if (caseInactive(row)) return "Audit case history.";
+    if (!row.assigned_owner_user_id) return "Assign an owner.";
+    if (String(row.dispute_status) === "open" || String(row.case_status) === "disputed") return "Review dispute and record next follow-up.";
+    if (row.promise_to_pay_date) return "Follow up on promise to pay.";
+    if (row.next_action_due_at) return `Complete or reschedule ${formatAction(row.next_action_type)}.`;
+    return formatAction(row.recommended_next_action) || "Add next collection action.";
+  }
+  if (actionInactive(row)) return "Audit action result.";
+  if (String(row.action_status) === "planned") return "Complete action or reschedule follow-up.";
+  return "Review action outcome.";
+}
+
+function collectionPromiseDispute(row: SyncRecord) {
+  if (String(row.dispute_status) !== "none" && row.dispute_status) return `Dispute: ${formatAction(row.dispute_status)}`;
+  if (row.promise_to_pay_date) return `Promise: ${dateValue(row.promise_to_pay_date)} / ${money(row.promise_to_pay_amount)}`;
+  return "None recorded";
+}
+
 function modalTitle(type: string) {
   if (type === "assign_owner") return "Assign Owner";
   if (type === "close_case") return "Close Case";
@@ -965,8 +1093,8 @@ function Select({ label, value, options, labels = {}, onChange, disabled, requir
   return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required={required}>{options.map((option) => <option key={option} value={option}>{labels[option] ?? formatAction(option)}</option>)}</select></label>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: unknown; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: unknown; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: ReactNode }) {
@@ -995,6 +1123,11 @@ function caseLink(id: unknown, label: unknown) {
 
 function actionLink(id: unknown, label: unknown) {
   return id ? <Link className="table-link" href={`/collection-actions/${id}`}>{textValue(label, String(id))}</Link> : "Not linked";
+}
+
+function firstCaseHref(rows: SyncRecord[], fallback: string) {
+  const first = rows[0];
+  return first?.id ? `/collections/${first.id}` : fallback;
 }
 
 function invoiceLink(id: unknown, label: unknown) {

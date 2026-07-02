@@ -283,3 +283,33 @@ Remaining Phase 5 gaps:
 Recommended next sprint after green validation:
 
 Operator UI Phase 6: Cash Application and Collections Workbench Redesign.
+
+## Phase 6 Status
+
+Status: implemented for Cash Application Workbench, Payment Applications, Collections Workbench, and Collection Actions, pending final validation.
+
+Completed in Phase 6:
+
+- `/cash` is redesigned as a Cash Application Workbench with Unapplied, Partially Applied, Fully Applied, Application Review, Voided, Archived, and Exceptions queues.
+- `/payment-applications` now has application review, voided, and archived queue visibility under the Cash Application workspace.
+- `/collections` is redesigned as a Collections Workbench with Needs Action, Unassigned, Promise to Pay, Disputed, Aging, Completed, and Archived queues.
+- `/collection-actions` now has due-action, promise, dispute, completed, and archived queue visibility.
+- Advanced filters are collapsed by default on cash and collections workbench pages.
+- Each workbench now includes operator purpose copy, boundary copy, priority cards, queue tabs with ARIA state, operator-first table columns, next-action guidance, and queue-specific empty states.
+- Existing detail-page lifecycle modals and action-state labels are preserved.
+- No backend routes, migrations, external integrations, bank feeds, payment processing, automated communications, legal workflows, accounting posting, or unsupported lifecycle transitions were added.
+- E2E coverage was added for Cash, Payment Applications, Collections, Collection Actions, hidden developer UI, boundary copy, read-only auditor behavior, and queue tab state changes.
+
+Remaining Phase 6 gaps:
+
+- Cash unapplied/partial queues should eventually use backend receipt balance summaries.
+- Cash exceptions should eventually use explicit backend exception reason fields.
+- Collections Needs Action should eventually use backend action due summaries.
+- Promise-to-pay queues should eventually use richer promise metadata and outcome history.
+- Aging should eventually use customer terms and due-date policy.
+- Cash and collections detail/create/edit pages still need stronger guided workflows and read-only role context.
+- Mobile/tablet review remains open.
+
+Recommended next sprint after green validation:
+
+Operator UI Phase 7: Contractor Payables, Payroll, and Payment Execution Workbench Redesign.
