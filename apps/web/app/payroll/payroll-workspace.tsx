@@ -56,11 +56,24 @@ type RelatedData = {
 };
 
 const emptyRelated: RelatedData = { workers: [], crews: [], projects: [], workOrders: [], productionRecords: [] };
+type PayrollQueueKey = "draft" | "submitted" | "recalculate" | "approved" | "payrollReady" | "disputed" | "blocked" | "archived";
+
+const payrollQueueDefinitions: Array<{ key: PayrollQueueKey; label: string; helper: string; empty: string }> = [
+  { key: "draft", label: "Draft", helper: "Payroll records still being prepared.", empty: "No draft payroll records need attention." },
+  { key: "submitted", label: "Submitted for Review", helper: "Payroll records waiting for review.", empty: "No payroll records are waiting for review." },
+  { key: "recalculate", label: "Needs Recalculation", helper: "Payroll totals or readiness require refresh.", empty: "No payroll records need recalculation." },
+  { key: "approved", label: "Approved", helper: "Payroll records approved internally but not yet payroll-ready.", empty: "No approved payroll records are waiting for payroll readiness." },
+  { key: "payrollReady", label: "Payroll Ready", helper: "Payroll records approved for manual/external payroll processing.", empty: "No payroll records are payroll-ready yet." },
+  { key: "disputed", label: "Disputed", helper: "Payroll records blocked by dispute state.", empty: "No payroll disputes are open." },
+  { key: "blocked", label: "Blocked", helper: "Payroll records missing prerequisite or support if supported by current data.", empty: "No blocked payroll records in this queue." },
+  { key: "archived", label: "Archived", helper: "Closed or removed payroll records.", empty: "No archived payroll records in this queue." },
+];
 
 export function PayrollRunQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState<PayrollQueueKey>("submitted");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -82,49 +95,57 @@ export function PayrollRunQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortPayrollRuns(rows, filters.sort), [rows, filters.sort]);
+  const visible = useMemo(() => sortPayrollRuns(rows.filter((row) => payrollQueueMatches(row, activeQueue)), filters.sort), [rows, activeQueue, filters.sort]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
+  const selectedQueue = payrollQueueDefinitions.find((queue) => queue.key === activeQueue) ?? payrollQueueDefinitions[1];
+
+  function selectQueue(queue: PayrollQueueKey) {
+    setActiveQueue(queue);
+    setFilters({ ...filters, archived: queue === "archived" ? "true" : "false", status: "", payroll_readiness_status: "", dispute_status: "", compliance_status: "", tax_document_status: "", hold_status: "" });
+  }
 
   return (
-    <PayrollShell title="Payroll Run Queue" purpose="Control worker compensation readiness before payment execution, payroll provider submission, or tax filing.">
+    <PayrollShell title="Payroll Readiness Workbench" purpose="Review internal payroll readiness, resolve disputes, approve totals, and prepare approved payroll records for manual or external payroll processing.">
       <SessionPanel session={session} />
-      <div className="warning-box">Payroll Ready is only a status. It does not send money, submit payroll, create ACH/card/check records, create bank transactions, or file taxes.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view payroll runs.</div> : null}
+      <div className="warning-box">Payroll in SyncOS tracks internal readiness and approval only. SyncOS does not run payroll, issue direct deposit, submit to a payroll provider, file payroll taxes, or produce W-2/1099 filings.</div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading payroll runs...</div> : null}
       {session.token && !loading ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
-                <h2>Payroll Run Summary</h2>
-                <p className="muted">Blocked, held, disputed, review-ready, approved, and payroll-ready runs stay visible before execution.</p>
+                <h2>Today&apos;s payroll readiness work</h2>
+                <p className="muted">Start with submitted, blocked, disputed, and approved payroll records before marking anything payroll-ready.</p>
               </div>
               <Link className="primary-button" href="/payroll/new" aria-disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</Link>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Total Payroll Runs" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {payrollStatuses.map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ ...filters, archived: status === "archived" ? "true" : "false", status })} />)}
-              {["regular", "off_cycle", "correction", "bonus", "reimbursement", "final_pay"].map((payroll_run_type) => <SummaryCard key={payroll_run_type} label={formatAction(payroll_run_type)} value={summary.type[payroll_run_type] ?? 0} onClick={() => setFilters({ ...filters, payroll_run_type })} />)}
-              <SummaryCard label="Compliance Blocked" value={summary.compliance.blocked ?? 0} onClick={() => setFilters({ ...filters, compliance_status: "blocked" })} />
-              <SummaryCard label="Tax Docs Missing" value={(summary.tax.missing_w9 ?? 0) + (summary.tax.missing_w4_later ?? 0)} onClick={() => setFilters({ ...filters, tax_document_status: "missing_w9" })} />
-              <SummaryCard label="Net Pay" value={money(summary.netPay)} onClick={() => setFilters({ ...filters, sort: "net_amount_desc" })} />
+              {payrollQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPayrollQueue(rows, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>Payroll queues</h2>
+                <p className="muted">{selectedQueue.helper}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("submitted"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["draft", "ready_for_review", "under_review", "approved", "held", "disputed", "payroll_ready"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
+            <div className="tab-row" role="tablist" aria-label="Payroll readiness queues">
+              {payrollQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
+            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="tab-row">
               {["regular", "off_cycle", "correction", "bonus", "reimbursement"].map((payroll_run_type) => <button key={payroll_run_type} type="button" onClick={() => setFilters({ ...filters, payroll_run_type })}>{formatAction(payroll_run_type)}</button>)}
               <button type="button" onClick={() => setFilters({ ...filters, compliance_status: "blocked" })}>Compliance Blocked</button>
               <button type="button" onClick={() => setFilters({ ...filters, tax_document_status: "missing_w9" })}>Tax Docs Missing</button>
               <button type="button" onClick={() => setFilters({ ...filters, sort: "net_amount_desc" })}>Net Pay</button>
-            </div>
-            <div className="filter-grid">
+              </div>
+              <div className="filter-grid">
               <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search payroll run, worker, crew, project, source, earning" />
               <Select label="Payroll Run Type" value={filters.payroll_run_type ?? ""} options={["", ...payrollRunTypes]} onChange={(payroll_run_type) => setFilters({ ...filters, payroll_run_type })} />
               <Select label="Status" value={filters.status ?? ""} options={["", ...payrollStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
@@ -143,15 +164,19 @@ export function PayrollRunQueue() {
               <Select label="Hold Status" value={filters.hold_status ?? ""} options={["", ...holdStatuses]} onChange={(hold_status) => setFilters({ ...filters, hold_status })} />
               <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
               <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "pay_date_asc", "net_amount_desc", "status", "payroll_run_number", "payroll_readiness"]} labels={{ updated_desc: "Recently Updated", pay_date_asc: "Pay Date Soonest", net_amount_desc: "Net Amount Highest", status: "Status", payroll_run_number: "Payroll Run Number", payroll_readiness: "Payroll Readiness" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Payroll Runs</h2>
+              <div>
+                <h2>{selectedQueue.label}</h2>
+                <p className="muted">Payroll-ready means prepared for manual or external processing. SyncOS does not run payroll.</p>
+              </div>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No payroll runs yet. Create a payroll run and add payroll items.</div> : <PayrollRunTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No payroll runs yet. Create a payroll run and add payroll items.</div> : visible.length ? <PayrollRunTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
         </>
       ) : null}
@@ -436,7 +461,7 @@ function PayrollShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PayrollRunTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payroll Run Number", "Payroll Run Type", "Status", "Approval Status", "Payroll Readiness Status", "Payroll Cycle", "Payroll Period Start", "Payroll Period End", "Pay Date", "Project", "Crew", "Gross Pay Amount", "Reimbursement Amount", "Deduction Amount", "Estimated Tax Amount", "Net Pay Amount", "Item Count", "Worker Count", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payrollLink(row.id, row.payroll_run_number)}</td><td>{formatAction(row.payroll_run_type)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.approval_status)}</td><td>{formatAction(row.payroll_readiness_status)}</td><td>{formatAction(row.payroll_cycle)}</td><td>{dateValue(row.payroll_period_start)}</td><td>{dateValue(row.payroll_period_end)}</td><td>{dateValue(row.pay_date)}</td><td>{projectLink(row.project_id, row.project_name)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{money(row.gross_pay_amount)}</td><td>{money(row.reimbursement_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.estimated_tax_amount)}</td><td>{money(row.net_pay_amount)}</td><td>{formatCell(row.item_count)}</td><td>{formatCell(row.worker_count)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td>{formatAction(row.recommended_next_action)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Payroll Record", "Crew / Worker Group", "Amount", "Review Status", "Readiness", "Dispute", "Pay Period / Date", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payrollLink(row.id, row.payroll_run_number ?? row.id)}<div className="muted">{formatAction(row.payroll_run_type)}</div></td><td>{textValue(row.crew_name ?? row.worker_group_name ?? row.crew_id)}<div className="muted">{projectLink(row.project_id, row.project_name)}</div></td><td>{money(row.net_pay_amount ?? row.gross_pay_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{payrollReadinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{dateValue(row.payroll_period_start)} to {dateValue(row.payroll_period_end)}<div className="muted">Pay date {dateValue(row.pay_date)}</div></td><td>{dateValue(row.updated_at)}</td><td>{nextPayrollAction(row)}</td><td><Link className="link-button" href={`/payroll/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
 }
 
 function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: string; detail: DetailShape; run: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -713,6 +738,43 @@ function sortPayrollRuns(rows: SyncRecord[], sort?: string) {
   });
 }
 
+function countPayrollQueue(rows: SyncRecord[], queue: PayrollQueueKey) {
+  return rows.filter((row) => payrollQueueMatches(row, queue)).length;
+}
+
+function payrollQueueMatches(row: SyncRecord, queue: PayrollQueueKey) {
+  const status = String(row.status ?? "");
+  const readiness = String(row.payroll_readiness_status ?? "");
+  const dispute = String(row.dispute_status ?? "");
+  const hold = String(row.hold_status ?? "");
+  const compliance = String(row.compliance_status ?? "");
+  const tax = String(row.tax_document_status ?? "");
+  if (queue === "draft") return ["draft", "assembling"].includes(status);
+  if (queue === "submitted") return ["ready_for_review", "under_review"].includes(status) || String(row.approval_status ?? "") === "pending";
+  if (queue === "recalculate") return ["not_ready", "ready_with_warning"].includes(readiness) || status === "rejected";
+  if (queue === "approved") return status === "approved" && readiness !== "ready_for_payroll";
+  if (queue === "payrollReady") return status === "payroll_ready" || readiness === "ready_for_payroll";
+  if (queue === "disputed") return status === "disputed" || dispute === "open" || dispute === "under_review";
+  if (queue === "blocked") return status === "held" || readiness === "blocked" || hold === "hold" || compliance === "blocked" || tax === "blocked";
+  return status === "archived";
+}
+
+function payrollReadinessLabel(row: SyncRecord) {
+  const blockers = [row.compliance_status, row.tax_document_status].map(formatAction).filter((value) => value !== "Not captured" && value !== "Ready" && value !== "Unknown");
+  return <>{formatAction(row.payroll_readiness_status)}{blockers.length ? <div className="muted">Blocked by {blockers.join(", ")}</div> : null}</>;
+}
+
+function nextPayrollAction(row: SyncRecord) {
+  const status = String(row.status ?? "");
+  if (status === "ready_for_review") return "Submit or start review";
+  if (status === "under_review") return "Approve or reject";
+  if (status === "approved" && row.payroll_readiness_status !== "ready_for_payroll") return "Mark Payroll Ready";
+  if (status === "disputed" || row.dispute_status === "open") return "Resolve Dispute";
+  if (status === "held" || row.hold_status === "hold") return "Release Hold";
+  if (status === "payroll_ready" || row.payroll_readiness_status === "ready_for_payroll") return "Ready for manual/external payroll";
+  return formatAction(row.recommended_next_action);
+}
+
 function payrollChecklist(run: SyncRecord, items: SyncRecord[]): Array<[string, unknown]> {
   return [["Payroll period selected", Boolean(run.payroll_period_start && run.payroll_period_end)], ["Workers included", numberValue(run.worker_count, items.length ? 1 : 0) > 0], ["Items present", items.length > 0], ["Totals calculated", run.net_pay_amount !== undefined], ["Worker classifications reviewed", items.every((item) => item.worker_classification && item.worker_classification !== "unknown")], ["Rates reviewed", items.some((item) => item.rate_regular || item.rate_overtime || item.piece_rate || item.gross_pay_amount)], ["Earnings reviewed", run.gross_pay_amount !== undefined], ["Reimbursements reviewed", run.reimbursement_amount !== undefined], ["Deductions reviewed", run.deduction_amount !== undefined], ["Compliance reviewed", run.compliance_status && run.compliance_status !== "unknown"], ["Tax documents reviewed", run.tax_document_status && run.tax_document_status !== "unknown"], ["No hold", run.hold_status !== "hold"], ["No dispute", run.dispute_status !== "open"], ["Approved", run.approval_status === "approved"], ["Payroll ready", run.payroll_readiness_status === "ready_for_payroll"], ["No payment created", true]];
 }
@@ -765,8 +827,8 @@ function Select({ label, value, options, labels = {}, onChange, disabled, requir
   return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required={required}>{options.map((option) => <option key={option} value={option}>{labels[option] ?? formatAction(option)}</option>)}</select></label>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: unknown; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: unknown; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card${active ? " active" : ""}`} aria-pressed={active ? "true" : "false"} onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: ReactNode }) {

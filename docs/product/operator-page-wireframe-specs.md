@@ -465,3 +465,29 @@ Remaining cash/collections template gaps:
 - Create/edit flows remain generic forms and should become guided cash/collections workflows later.
 - Queue counts should eventually use backend receipt-balance, promise, due-action, and exception summaries.
 - Mobile/tablet layout still requires visual review.
+
+## Phase 7 Payout Workbench Status
+
+Implemented payout-readiness queue wireframes on:
+
+- `/contractor-payables`
+- `/payroll`
+- `/payments`
+
+Applied template behaviors:
+
+- Header and purpose copy framed around contractor payable readiness, payroll readiness, and internal payment execution decisions.
+- Boundary notices above the queue body for payout, payroll, and payment execution non-consequences.
+- Priority queue cards ahead of filters.
+- Queue tabs with active ARIA state.
+- Collapsed advanced filters.
+- Operator-first records tables with next-action columns.
+- Queue-specific empty states.
+- Payment item visibility panel under the Payment Execution Workbench.
+
+Remaining payout template gaps:
+
+- Detail pages need stronger next-action cards and read-only role banners.
+- Create/edit flows remain generic forms and should become guided payout workflows later.
+- Queue counts should eventually use backend payment-readiness, payroll-readiness, payment-item-attention, schedule, and execution summaries.
+- Mobile/tablet layout still requires visual review.

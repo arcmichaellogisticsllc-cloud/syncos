@@ -92,6 +92,16 @@ Every mutation modal must follow these standards:
 | Void Payment Batch | Void payment batch. | `/payments/[id]` | Void | Draft voidable. | Void Reason. | Required. | Void Payment Batch. | status voided. | Alert stays open. | Void batch. | Void event. | Certified. |
 | Submit Execution | Submit internal execution tracking. | `/payments/[id]` | Submit Execution | Batch scheduled. | Submit Note/Execution Reference. | Required. | Submit Execution. | status submitted. | Alert stays open. | Submit execution. | Execution submitted event. No provider call. | Certified. |
 | Mark Executed | Mark internal batch executed later. | `/payments/[id]` | Mark Executed | Batch submitted. | Execution Reference, Execution Note. | Required. | Mark Executed. | status executed_later. | Alert stays open. | Mark executed. | Execution marked event. No payment movement. | Certified. |
+
+## Phase 7 Payout Workbench Modal Notes
+
+- Phase 7 preserves existing detail-page modals for contractor payable Submit Review, Recalculate Totals, Approve, Mark Payment Ready, Resolve Dispute, and Archive.
+- Phase 7 preserves existing detail-page modals for payroll Submit Review, Recalculate Totals, Approve, Mark Payroll Ready, Resolve Dispute, and Archive.
+- Phase 7 preserves existing detail-page modals for payment batch Submit Review, Approve, Schedule, Void, Submit Execution, Mark Executed, Archive, and payment item Archive Item.
+- Contractor Payables, Payroll, and Payment Execution list pages add queue/navigation actions only; they do not introduce new mutating list-page modals or fake backend behavior.
+- Payout boundary copy clarifies that SyncOS does not pay contractors, run payroll, move money, initiate ACH, send wires, issue card payouts, print checks, submit payroll, connect to banks, file taxes, or post accounting entries.
+- Phase 7 preserves backend validation, tenant authorization, timeline, audit, system action behavior, and payout/payment boundary rules.
+
 | Archive Bank Account | Archive inactive bank account. | `/bank-reconciliation/accounts/[id]` | Archive | Account inactive. | None certified. | State/permission. | Archive Bank Account. | status archived. | Alert stays open. | Archive account. | Archive event. | Certified. |
 | Match Payment Batch | Match bank debit to payment batch. | `/bank-reconciliation/transactions/[id]` | Match Payment Batch | Transaction unreconciled debit. | Payment Batch ID, Matched Amount. | Required and amount valid. | Match Payment Batch. | Reconciliation match created. | Alert stays open. | Create match. | Match event. No export/payment application. | Certified. |
 | Match Cash Receipt | Match bank credit to cash receipt. | `/bank-reconciliation/transactions/[id]` | Match Cash Receipt | Transaction unreconciled credit. | Cash Receipt ID, Matched Amount. | Required and amount valid. | Match Cash Receipt. | Reconciliation match created. | Alert stays open. | Create match. | Match event. No export/payment application. | Certified. |

@@ -221,6 +221,15 @@ Phase 6 list-page notes:
 | Mark Executed | `/payments/[id]` | Payment batch | Admin/Accounting policy | Status `submitted`. | Missing execution reference/note. | Primary, modal, Execution Reference and Execution Note. | Mark executed. | `status=executed_later`; internal tracking only. Certified. | P0 |
 | Archive | `/payments/[id]` | Payment batch | Admin | Status `voided`. | Not voided. | Danger, modal. | Archive batch. | `status=archived`; no bank/recon/export. Certified. | P0 |
 
+Phase 7 list-page notes:
+
+- `/contractor-payables` now exposes Review Next Payable, Recalculate Totals, Open Disputes, Open Payment Ready, and Create Contractor Payable as workbench-level navigation/filter actions.
+- `/payroll` now exposes Review Next Payroll, Recalculate Totals, Open Disputes, Open Payroll Ready, and Create Payroll Run as workbench-level navigation/filter actions.
+- `/payments` now exposes Review Next Payment Batch, Open Approved Batches, Open Scheduled Batches, Open Items Needing Attention, and Create Payment Batch as workbench-level navigation/filter actions.
+- Payment Items visibility is surfaced inside `/payments` using existing payment batch item relationships; no standalone payment item list route or fake backend action was added.
+- List-page actions route to existing pages or update client-side queues only; they do not pay contractors, run payroll, move money, initiate ACH, send wires, issue card payouts, print checks, submit payroll, connect to banks, file taxes, or post accounting entries.
+- Certified mutating payout actions remain on detail pages with existing modal/backend behavior.
+
 ## Bank Reconciliation
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |

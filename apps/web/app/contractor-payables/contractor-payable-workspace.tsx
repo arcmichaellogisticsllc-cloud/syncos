@@ -56,11 +56,24 @@ type RelatedData = {
 };
 
 const emptyRelated: RelatedData = { providers: [], crews: [], projects: [], settlements: [], settlementItems: [] };
+type PayableQueueKey = "draft" | "submitted" | "recalculate" | "approved" | "paymentReady" | "disputed" | "blocked" | "archived";
+
+const payableQueueDefinitions: Array<{ key: PayableQueueKey; label: string; helper: string; empty: string }> = [
+  { key: "draft", label: "Draft", helper: "Payable records still being prepared.", empty: "No draft contractor payables need attention." },
+  { key: "submitted", label: "Submitted for Review", helper: "Payables waiting for finance/payables review.", empty: "No contractor payables are waiting for review." },
+  { key: "recalculate", label: "Needs Recalculation", helper: "Payables requiring total or readiness refresh.", empty: "No contractor payables need recalculation." },
+  { key: "approved", label: "Approved", helper: "Payables approved internally but not yet payment-ready.", empty: "No approved contractor payables are waiting for payment readiness." },
+  { key: "paymentReady", label: "Payment Ready", helper: "Payables approved for downstream internal payment preparation.", empty: "No contractor payables are payment-ready yet." },
+  { key: "disputed", label: "Disputed", helper: "Payables blocked by dispute state.", empty: "No contractor payable disputes are open." },
+  { key: "blocked", label: "Blocked", helper: "Payables missing prerequisite or source support if supported by current data.", empty: "No blocked contractor payables in this queue." },
+  { key: "archived", label: "Archived", helper: "Closed or removed payables.", empty: "No archived contractor payables in this queue." },
+];
 
 export function ContractorPayableQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState<PayableQueueKey>("submitted");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -82,50 +95,57 @@ export function ContractorPayableQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortPayables(rows.filter((row) => payableMatches(row, filters)), filters.sort), [rows, filters]);
+  const visible = useMemo(() => sortPayables(rows.filter((row) => payableQueueMatches(row, activeQueue)).filter((row) => payableMatches(row, filters)), filters.sort), [rows, activeQueue, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
+  const selectedQueue = payableQueueDefinitions.find((queue) => queue.key === activeQueue) ?? payableQueueDefinitions[1];
+
+  function selectQueue(queue: PayableQueueKey) {
+    setActiveQueue(queue);
+    setFilters({ ...filters, archived: queue === "archived" ? "true" : "false", status: "", payment_readiness_status: "", dispute_status: "", compliance_status: "", tax_document_status: "", hold_status: "" });
+  }
 
   return (
-    <PayableShell title="Contractor Payable Queue" purpose="Control approved money-out obligations before payment or payroll without creating cash movement, bank transactions, tax filings, or accounting exports.">
+    <PayableShell title="Contractor Payables Workbench" purpose="Review contractor payable records, resolve disputes, approve totals, and prepare approved payables for internal payment execution readiness.">
       <SessionPanel session={session} />
-      <div className="warning-box">Contractor Payable stops at payment readiness. Payment Ready does not create payroll, ACH, card payout, check, bank transaction, tax filing, or accounting export records.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view contractor payables.</div> : null}
+      <div className="warning-box">Contractor Payables tracks internal approval and payment-readiness state. SyncOS does not pay contractors, initiate ACH, issue card payouts, print checks, or post accounting entries.</div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading contractor payables...</div> : null}
       {session.token && !loading ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
-                <h2>Contractor Payable Summary</h2>
-                <p className="muted">Blocked, held, disputed, review-ready, approved, and due payables stay visible before payment readiness.</p>
+                <h2>Today&apos;s payable work</h2>
+                <p className="muted">Start with submitted, blocked, disputed, and approved payables before marking anything payment-ready.</p>
               </div>
               <Link className="primary-button" href="/contractor-payables/new" aria-disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</Link>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Total Payables" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {["draft", "assembling", "ready_for_review", "under_review", "approved", "rejected", "held", "disputed", "payment_ready", "payment_created_later", "partially_paid_later", "paid_later", "voided", "archived"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", status, sort: "updated_desc" })} />)}
-              {["subcontractor", "crew", "internal_self_perform"].map((payable_type) => <SummaryCard key={payable_type} label={formatAction(payable_type)} value={summary.type[payable_type] ?? 0} onClick={() => setFilters({ ...filters, payable_type })} />)}
-              <SummaryCard label="Compliance Blocked" value={summary.compliance.blocked ?? 0} onClick={() => setFilters({ ...filters, compliance_status: "blocked" })} />
-              <SummaryCard label="Tax Docs Missing" value={summary.tax.missing_w9 ?? 0} onClick={() => setFilters({ ...filters, tax_document_status: "missing_w9" })} />
-              <SummaryCard label="Retainage Held" value={summary.retainageHeld} onClick={() => setFilters({ ...filters, hasRetainage: "true" })} />
-              <SummaryCard label="Net Payable" value={money(summary.netPayable)} onClick={() => setFilters({ ...filters, sort: "net_amount_desc" })} />
+              {payableQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPayableQueue(rows, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>Payable queues</h2>
+                <p className="muted">{selectedQueue.helper}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("submitted"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["draft", "ready_for_review", "under_review", "approved", "held", "disputed", "payment_ready"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
+            <div className="tab-row" role="tablist" aria-label="Contractor payable queues">
+              {payableQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
+            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="tab-row">
               {["subcontractor", "crew"].map((payable_type) => <button key={payable_type} type="button" onClick={() => setFilters({ ...filters, payable_type })}>{formatAction(payable_type)}</button>)}
               <button type="button" onClick={() => setFilters({ ...filters, compliance_status: "blocked" })}>Compliance Blocked</button>
               <button type="button" onClick={() => setFilters({ ...filters, tax_document_status: "missing_w9" })}>Tax Docs Missing</button>
               <button type="button" onClick={() => setFilters({ ...filters, hasRetainage: "true" })}>Retainage</button>
-            </div>
-            <div className="filter-grid">
+              </div>
+              <div className="filter-grid">
               <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search payable, provider, crew, project, settlement" />
               <Select label="Payable Type" value={filters.payable_type ?? ""} options={["", ...payableTypes]} onChange={(payable_type) => setFilters({ ...filters, payable_type })} />
               <Select label="Party Type" value={filters.payable_party_type ?? ""} options={["", ...partyTypes]} onChange={(payable_party_type) => setFilters({ ...filters, payable_party_type })} />
@@ -147,15 +167,19 @@ export function ContractorPayableQueue() {
               <label>Due To<input type="date" value={filters.due_date_to ?? ""} onChange={(event) => setFilters({ ...filters, due_date_to: event.target.value })} /></label>
               <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
               <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "due_date_asc", "net_amount_desc", "status", "payable_number", "payment_readiness"]} labels={{ updated_desc: "Recently Updated", due_date_asc: "Due Date Soonest", net_amount_desc: "Net Amount Highest", status: "Status", payable_number: "Payable Number", payment_readiness: "Payment Readiness" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Contractor Payables</h2>
+              <div>
+                <h2>{selectedQueue.label}</h2>
+                <p className="muted">Next actions stay internal to SyncOS. Payment-ready does not mean paid.</p>
+              </div>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No contractor payables yet. Create a payable and add payable-ready settlement items.</div> : <PayableTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No contractor payables yet. Create a payable and add payable-ready settlement items.</div> : visible.length ? <PayableTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
         </>
       ) : null}
@@ -432,7 +456,7 @@ function PayableShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PayableTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payable Number", "Payable Type", "Payable Party Type", "Status", "Approval Status", "Payment Readiness Status", "Payment Status", "Provider", "Crew", "Project", "Settlement", "Pay Cycle Start", "Pay Cycle End", "Due Date", "Gross Payable Amount", "Deduction Amount", "Chargeback Amount", "Retainage Amount", "Net Payable Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Item Count", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payableLink(row.id, row.payable_number)}</td><td>{formatAction(row.payable_type)}</td><td>{formatAction(row.payable_party_type)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.approval_status)}</td><td>{formatAction(row.payment_readiness_status)}</td><td>{formatAction(row.payment_status)}</td><td>{providerLink(row.capacity_provider_id, row.capacity_provider_name)}</td><td>{crewLink(row.crew_id, row.crew_name)}</td><td>{projectLink(row.project_id, row.project_name)}</td><td>{settlementLink(row.settlement_id, row.settlement_number)}</td><td>{dateValue(row.pay_cycle_start)}</td><td>{dateValue(row.pay_cycle_end)}</td><td>{dateValue(row.due_date)}</td><td>{money(row.gross_payable_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.chargeback_amount)}</td><td>{money(row.retainage_amount)}</td><td>{money(row.net_payable_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td>{formatCell(row.item_count)}</td><td>{formatAction(row.recommended_next_action)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Payable", "Contractor / Vendor", "Source Work", "Amount", "Review Status", "Readiness", "Dispute", "Payment Readiness", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payableLink(row.id, row.payable_number ?? row.id)}<div className="muted">{formatAction(row.payable_type)}</div></td><td>{textValue(row.capacity_provider_name ?? row.crew_name ?? row.vendor_organization_id ?? row.payable_party_type)}</td><td>{projectLink(row.project_id, row.project_name)}<div className="muted">{settlementLink(row.settlement_id, row.settlement_number)}</div></td><td>{money(row.net_payable_amount ?? row.gross_payable_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{readinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{formatAction(row.payment_readiness_status)}</td><td>{dateValue(row.updated_at)}</td><td>{nextPayableAction(row)}</td><td><Link className="link-button" href={`/contractor-payables/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
 }
 
 function PayableTab({ tab, detail, payable, items, session, onAction }: { tab: string; detail: DetailShape; payable: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -699,6 +723,43 @@ function payableMatches(row: SyncRecord, filters: Record<string, string>) {
   return true;
 }
 
+function countPayableQueue(rows: SyncRecord[], queue: PayableQueueKey) {
+  return rows.filter((row) => payableQueueMatches(row, queue)).length;
+}
+
+function payableQueueMatches(row: SyncRecord, queue: PayableQueueKey) {
+  const status = String(row.status ?? "");
+  const readiness = String(row.payment_readiness_status ?? "");
+  const dispute = String(row.dispute_status ?? "");
+  const hold = String(row.hold_status ?? "");
+  const compliance = String(row.compliance_status ?? "");
+  const tax = String(row.tax_document_status ?? "");
+  if (queue === "draft") return ["draft", "assembling"].includes(status);
+  if (queue === "submitted") return ["ready_for_review", "under_review"].includes(status) || String(row.approval_status ?? "") === "pending";
+  if (queue === "recalculate") return ["not_ready", "ready_with_warning"].includes(readiness) || ["rejected"].includes(status);
+  if (queue === "approved") return status === "approved" && readiness !== "ready_for_payment";
+  if (queue === "paymentReady") return status === "payment_ready" || readiness === "ready_for_payment";
+  if (queue === "disputed") return status === "disputed" || dispute === "open" || dispute === "under_review";
+  if (queue === "blocked") return status === "held" || readiness === "blocked" || hold === "hold" || compliance === "blocked" || tax === "blocked";
+  return status === "archived";
+}
+
+function readinessLabel(row: SyncRecord) {
+  const blockers = [row.compliance_status, row.tax_document_status].map(formatAction).filter((value) => value !== "Not captured" && value !== "Ready" && value !== "Unknown");
+  return <>{formatAction(row.payment_readiness_status)}{blockers.length ? <div className="muted">Blocked by {blockers.join(", ")}</div> : null}</>;
+}
+
+function nextPayableAction(row: SyncRecord) {
+  const status = String(row.status ?? "");
+  if (status === "ready_for_review") return "Submit or start review";
+  if (status === "under_review") return "Approve or reject";
+  if (status === "approved" && row.payment_readiness_status !== "ready_for_payment") return "Mark Payment Ready";
+  if (status === "disputed" || row.dispute_status === "open") return "Resolve Dispute";
+  if (status === "held" || row.hold_status === "hold") return "Release Hold";
+  if (status === "payment_ready" || row.payment_readiness_status === "ready_for_payment") return "Ready for payment batch";
+  return formatAction(row.recommended_next_action);
+}
+
 function sortPayables(rows: SyncRecord[], sort?: string) {
   const statusRank: Record<string, number> = { held: 8, disputed: 7, ready_for_review: 6, under_review: 5, approved: 4, draft: 3, assembling: 2 };
   return [...rows].sort((a, b) => {
@@ -759,8 +820,8 @@ function Select({ label, value, options, labels = {}, onChange, disabled, requir
   return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required={required}>{options.map((option) => <option key={option} value={option}>{labels[option] ?? formatAction(option)}</option>)}</select></label>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: unknown; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: unknown; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card${active ? " active" : ""}`} aria-pressed={active ? "true" : "false"} onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: ReactNode }) {

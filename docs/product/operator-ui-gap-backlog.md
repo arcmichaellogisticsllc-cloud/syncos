@@ -149,6 +149,27 @@ Still open after Phase 6:
 - OUX-027 remains partially open until cash and collections detail/create/edit flows become guided workflows.
 - OUX-037 remains open until backend due-action, promise-to-pay, receipt-balance, and exception summaries exist.
 
+## Phase 7 Status
+
+Closed or reduced:
+
+- OUX-006 is reduced on `/contractor-payables`, `/payroll`, and `/payments` by collapsing advanced filters and making queue tabs/cards the primary page controls.
+- OUX-007 is reduced on payout pages through next-action table columns and queue CTAs.
+- OUX-011 is reduced on payout pages through queue-specific empty states.
+- OUX-015 remains controlled on payout pages because developer session panels stay environment-gated and are covered by Phase 7 E2E.
+- OUX-016 is reduced by adding payout boundary copy that contractor payable, payroll, and payment execution workflows do not move money, initiate ACH/wire/card/check, submit payroll, connect to banks, file taxes, or post accounting entries.
+- OUX-028 is reduced by redesigning Contractor Payables, Payroll, and Payment Execution around payout readiness instead of raw financial object lists.
+- OUX-038 is reduced by adding payment item visibility inside Payment Execution without inventing a payment item list route or fake backend endpoint.
+- OUX-034 is reduced by adding Phase 7 E2E coverage for payout workbenches, hidden developer UI, read-only auditor behavior, boundary copy, payment item detail route visibility, and queue tab state changes.
+
+Still open after Phase 7:
+
+- OUX-010 remains open across payout list actions because disabled reasons are not yet standardized everywhere.
+- OUX-013 remains open until mobile/tablet review is completed.
+- OUX-016 remains partially open until Reconciliation and Accounting Export receive the same workbench treatment.
+- OUX-028 remains partially open until payout detail/create/edit flows become guided workflows.
+- OUX-038 remains partially open until backend payment item attention summaries and explicit scheduled/executed summaries exist.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.
