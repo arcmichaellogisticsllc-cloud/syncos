@@ -107,6 +107,27 @@ Still open after Phase 4:
 - OUX-024 remains partially open until Production detail/create flows get stronger next-action and read-only role treatment.
 - OUX-025 remains partially open until QC detail pages become fully evidence-first review layouts.
 
+## Phase 5 Status
+
+Closed or reduced:
+
+- OUX-006 is reduced on `/billable`, `/settlements`, and `/invoices` by collapsing advanced filters and making queue tabs/cards the primary page controls.
+- OUX-007 is reduced on finance pages through next-action table columns and review/open queue CTAs.
+- OUX-011 is reduced on finance pages through queue-specific empty states.
+- OUX-015 remains controlled on finance pages because developer session panels stay environment-gated and are covered by Phase 5 E2E.
+- OUX-016 is reduced by adding Billable Workbench boundary copy that billable readiness does not create settlement, invoice, cash receipt, payment application, accounting export, or external accounting entry.
+- OUX-026 is reduced by redesigning Billable, Settlement, and Invoice around the revenue workflow spine instead of object-first directories.
+- OUX-035 is reduced by adding explicit finance boundary copy for billable readiness, settlement invoice readiness, and invoice sent state.
+- OUX-034 is reduced by adding Phase 5 E2E coverage for finance workbenches, hidden developer UI, read-only auditor behavior, boundary copy, and queue tab state changes.
+
+Still open after Phase 5:
+
+- OUX-010 remains open across finance list actions because disabled reasons are not yet standardized everywhere.
+- OUX-013 remains open until mobile/tablet review is completed.
+- OUX-016 remains partially open until Cash Application, Reconciliation, and Accounting Export receive the same workbench treatment.
+- OUX-026 remains partially open until Billing detail/create flows become fully guided workflows.
+- OUX-027 remains open until Cash and Collections are redesigned.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.

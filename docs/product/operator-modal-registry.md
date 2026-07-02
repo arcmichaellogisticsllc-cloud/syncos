@@ -50,6 +50,16 @@ Every mutation modal must follow these standards:
 - Existing high-risk Production lifecycle modals remain on `/production/[id]` for Submit, Start Review, Approve, Reject, Request Correction, Mark Corrected, Mark Billable, Void, Archive, and Evidence metadata actions.
 - Existing high-risk QC lifecycle modals remain on `/qc/[id]` for Start Review, Approve, Reject, Request Correction, Mark Corrected, Void, and Archive.
 - Phase 4 preserves backend validation, tenant authorization, timeline, audit, and system action behavior.
+
+## Phase 5 Finance Workbench Modal Notes
+
+- `/billable`, `/settlements`, and `/invoices` list pages do not introduce new mutation modals.
+- List pages only change queue/filter state or navigate to create/detail routes.
+- Existing Billable lifecycle modals remain on `/billable/[id]` for Recalculate Readiness, Mark Ready For Settlement, Place Hold, Release Hold, Dispute, Resolve Dispute, Void, and Archive.
+- Existing Settlement lifecycle modals remain on `/settlements/[id]` for Add Settlement Item, Submit Review, Start Review, Approve, Reject, Mark Invoice Ready, Mark Payable Ready, Place Hold, Release Hold, Dispute, Resolve Dispute, Void, Archive, and item actions.
+- Existing Invoice lifecycle modals remain on `/invoices/[id]` for Add Invoice Item, Recalculate Totals, Submit Review, Approve, Reject, Mark Sent, Mark Ready For Cash Application, Dispute, Resolve Dispute, Void, Archive, and item actions.
+- Phase 5 preserves backend validation, tenant authorization, timeline, audit, system action behavior, and finance boundary rules.
+
 | Recalculate Readiness | Recompute readiness on billable or settlement item/parent. | `/billable/[id]`, `/settlements/[id]` | Recalculate Readiness | Candidate/draft state. | None. | Permission. | Recalculate. | No unsafe downstream mutation. | Alert stays open. | Recalculate route. | Recalculate event if emitted. | Certified. |
 | Release Hold | Release held billable item. | `/billable/[id]` | Release Hold | Held status. | Release Note/Hold Reason. | Required. | Release Hold. | Status no longer held. | Alert stays open. | Release hold. | Hold released event. | Certified. |
 | Resolve Dispute | Resolve dispute across billable, settlement, invoice, contractor payable, payroll. | Detail pages. | Resolve Dispute | Disputed status. | Resolution Note. | Required. | Resolve Dispute. | Status no longer disputed. | Alert stays open. | Resolve dispute. | Dispute resolved event. | Certified. |

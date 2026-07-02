@@ -255,3 +255,31 @@ Remaining Phase 4 gaps:
 Recommended next sprint after green validation:
 
 Operator UI Phase 5: Billing, Settlement, and Invoice Workbench Redesign.
+
+## Phase 5 Status
+
+Status: implemented for Billable Workbench, Settlement Workbench, and Invoice Workbench, pending final validation.
+
+Completed in Phase 5:
+
+- `/billable` is redesigned as a Billing / Finance User workbench with Ready for Review, On Hold, Disputed, Ready for Settlement, Missing Support, and Archived queues.
+- `/settlements` is redesigned as a Settlement Workbench with Draft, Submitted for Review, Needs Recalculation, Rejected, Approved, Invoice Ready, Disputed, and Archived queues.
+- `/invoices` is redesigned as an Invoice Workbench with Draft, Submitted for Review, Rejected, Approved, Sent, Disputed, Aging, and Archived queues.
+- Advanced filters are collapsed by default on the three finance workbench pages.
+- Each workbench now includes operator purpose copy, financial boundary copy, priority cards, queue tabs with ARIA state, operator-first table columns, next-action guidance, and queue-specific empty states.
+- Existing detail-page lifecycle modals and action-state labels are preserved.
+- No backend routes, migrations, external integrations, accounting posting, cash movement, or unsupported lifecycle transitions were added.
+- E2E coverage was added for Billable, Settlement, and Invoice workbenches, hidden developer UI, financial boundary copy, read-only auditor behavior, and queue tab state changes.
+
+Remaining Phase 5 gaps:
+
+- Billable Missing Support should eventually use backend readiness reason summaries instead of source/readiness heuristics.
+- Settlement Needs Recalculation should eventually use an explicit backend flag.
+- Invoice Aging should eventually use customer terms and explicit due-date policy.
+- Finance detail pages still need stronger next-action cards and read-only role context.
+- Create/edit pages remain CRUD-heavy and should become guided finance workflows later.
+- Mobile/tablet review remains open.
+
+Recommended next sprint after green validation:
+
+Operator UI Phase 6: Cash Application and Collections Workbench Redesign.

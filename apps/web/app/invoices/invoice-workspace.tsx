@@ -7,7 +7,6 @@ import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 
 const invoiceTypes = ["standard", "progress", "final", "retainage_release", "credit_memo", "rebill", "adjustment", "pro_forma"];
-const invoiceStatuses = ["draft", "assembling", "ready_for_review", "under_review", "approved", "sent", "partially_paid_later", "paid_later", "overdue_later", "disputed", "voided", "archived"];
 const approvalStatuses = ["not_submitted", "pending", "approved", "rejected", "withdrawn"];
 const deliveryStatuses = ["not_sent", "queued", "sent", "failed", "acknowledged", "rejected"];
 const cashApplicationStatuses = ["not_ready", "ready_for_cash_application", "partially_applied_later", "fully_applied_later", "overpaid_later", "written_off_later"];
@@ -55,6 +54,7 @@ export function InvoiceQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState("draft");
 
   async function load() {
     setLoading(true);
@@ -77,75 +77,70 @@ export function InvoiceQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortInvoices(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
-  const summary = useMemo(() => buildSummary(rows), [rows]);
+  const visible = useMemo(() => sortInvoices(rows.filter((row) => matchesFilters(row, filters)).filter((row) => matchesInvoiceQueue(row, activeQueue)), filters.sort), [rows, filters, activeQueue]);
+  const queueCards = invoiceQueues.map((queue) => ({ ...queue, value: rows.filter((row) => matchesInvoiceQueue(row, queue.id)).length }));
+  const activeQueueLabel = queueCards.find((queue) => queue.id === activeQueue)?.label ?? "Draft";
+
+  function selectQueue(queueId: string) {
+    setActiveQueue(queueId);
+    setFilters({ ...filters, archived: queueId === "archived" ? "true" : "false" });
+  }
 
   return (
-    <InvoiceShell title="Invoice Queue" purpose="Review customer demand-for-payment records and invoice-owned receivable state before future Cash Application.">
+    <InvoiceShell title="Invoice Workbench" purpose="Track invoice review, sent status, disputes, and aging before cash application and collections workflows.">
       <SessionPanel session={session} />
-      <div className="warning-box">Ready for Cash Application is only a status. It does not create cash, payment, bank, payroll, tax, ACH, card payout, or accounting export records.</div>
+      <div className="warning-box">Invoice workflow tracks internal invoice status. Mark Sent records that an invoice was sent externally or by manual reference. SyncOS does not email the customer, post to QuickBooks, create a cash receipt, apply cash, or collect payment.</div>
       {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view invoices.</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review invoice state, disputes, and aging.</div> : null}
       {loading ? <div className="empty-state">Loading invoices...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>Invoice Summary</h2>
-                <p className="muted">Invoices are prioritized by disputes, due state, balance, due date, and recent updates.</p>
+                <h2>Which invoices need review, which are ready to send, which are sent, and which are disputed or aging?</h2>
+                <p className="muted">Invoice work is prioritized by review state, sent state, dispute state, aging, balance, and recent updates.</p>
               </div>
-              <Link className="primary-button" href="/invoices/new" aria-disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href={firstHref(visible, "/invoices")} aria-disabled={!visible.length}>Review Next Invoice</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "approved" || row.approval_status === "approved"), "/invoices")} aria-disabled={!rows.some((row) => row.status === "approved" || row.approval_status === "approved")}>Open Approved Invoices</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed" || row.collection_status === "disputed"), "/invoices")} aria-disabled={!rows.some((row) => row.status === "disputed" || row.collection_status === "disputed")}>Open Disputes</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0), "/invoices")} aria-disabled={!rows.some((row) => String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0)}>Open Aging Invoices</Link>
+                <Link className="link-button" href="/invoices/new" aria-disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</Link>
+              </div>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Total Invoices" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {["draft", "assembling", "ready_for_review", "under_review", "approved", "sent", "disputed", "voided", "archived"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "updated_desc", status })} />)}
-              <SummaryCard label="Unpaid" value={summary.payment.unpaid ?? 0} onClick={() => setFilters({ ...filters, payment_status: "unpaid" })} />
-              <SummaryCard label="Partially Paid" value={summary.payment.partially_paid ?? 0} onClick={() => setFilters({ ...filters, payment_status: "partially_paid" })} />
-              <SummaryCard label="Paid Later" value={summary.status.paid_later ?? 0} onClick={() => setFilters({ ...filters, status: "paid_later" })} />
-              <SummaryCard label="Overpaid Later" value={summary.cash.overpaid_later ?? 0} onClick={() => setFilters({ ...filters, cash_application_status: "overpaid_later" })} />
-              <SummaryCard label="Ready For Cash Application" value={summary.cash.ready_for_cash_application ?? 0} onClick={() => setFilters({ ...filters, cash_application_status: "ready_for_cash_application" })} />
-              <SummaryCard label="Not Due" value={summary.collection.not_due ?? 0} onClick={() => setFilters({ ...filters, collection_status: "not_due" })} />
-              <SummaryCard label="Due" value={summary.collection.due ?? 0} onClick={() => setFilters({ ...filters, collection_status: "due" })} />
-              <SummaryCard label="Overdue" value={summary.collection.overdue ?? 0} onClick={() => setFilters({ ...filters, collection_status: "overdue" })} />
-              <SummaryCard label="Balance Outstanding" value={summary.balanceOutstanding} onClick={() => setFilters({ ...filters, hasBalance: "true" })} />
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => selectQueue(queue.id)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>{activeQueueLabel}</h2>
+                <p className="muted">{emptyInvoiceQueue(activeQueue)}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("draft"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["draft", "ready_for_review", "approved", "sent", "disputed"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, cash_application_status: "ready_for_cash_application" })}>Ready For Cash Application</button>
-              {["unpaid", "partially_paid"].map((payment_status) => <button key={payment_status} type="button" onClick={() => setFilters({ ...filters, payment_status })}>{formatAction(payment_status)}</button>)}
-              {["not_due", "due", "overdue"].map((collection_status) => <button key={collection_status} type="button" onClick={() => setFilters({ ...filters, collection_status })}>{formatAction(collection_status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, hasBalance: "true" })}>Balance Outstanding</button>
+            <div className="queue-tabs" role="tablist" aria-label="Invoice queues">
+              {invoiceQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search invoice, customer, project, settlement" />
-              <Select label="Invoice Type" value={filters.invoice_type ?? ""} options={["", ...invoiceTypes]} onChange={(invoice_type) => setFilters({ ...filters, invoice_type })} />
-              <Select label="Status" value={filters.status ?? ""} options={["", ...invoiceStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
-              <Select label="Approval Status" value={filters.approval_status ?? ""} options={["", ...approvalStatuses]} onChange={(approval_status) => setFilters({ ...filters, approval_status })} />
-              <Select label="Delivery Status" value={filters.delivery_status ?? ""} options={["", ...deliveryStatuses]} onChange={(delivery_status) => setFilters({ ...filters, delivery_status })} />
-              <Select label="Cash Application Status" value={filters.cash_application_status ?? ""} options={["", ...cashApplicationStatuses]} onChange={(cash_application_status) => setFilters({ ...filters, cash_application_status })} />
-              <Select label="Payment Status" value={filters.payment_status ?? ""} options={["", ...paymentStatuses]} onChange={(payment_status) => setFilters({ ...filters, payment_status })} />
-              <Select label="Collection Status" value={filters.collection_status ?? ""} options={["", ...collectionStatuses]} onChange={(collection_status) => setFilters({ ...filters, collection_status })} />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project" />
-              <input value={filters.settlement_id ?? ""} onChange={(event) => setFilters({ ...filters, settlement_id: event.target.value })} placeholder="Settlement" />
-              <label>Invoice Date From<input type="date" value={filters.invoice_date_from ?? ""} onChange={(event) => setFilters({ ...filters, invoice_date_from: event.target.value })} /></label>
-              <label>Invoice Date To<input type="date" value={filters.invoice_date_to ?? ""} onChange={(event) => setFilters({ ...filters, invoice_date_to: event.target.value })} /></label>
-              <label>Due Date From<input type="date" value={filters.due_date_from ?? ""} onChange={(event) => setFilters({ ...filters, due_date_from: event.target.value })} /></label>
-              <label>Due Date To<input type="date" value={filters.due_date_to ?? ""} onChange={(event) => setFilters({ ...filters, due_date_to: event.target.value })} /></label>
-              <Select label="Payment Terms" value={filters.payment_terms ?? ""} options={["", ...paymentTerms]} onChange={(payment_terms) => setFilters({ ...filters, payment_terms })} />
-              <Select label="Has Balance" value={filters.hasBalance ?? ""} options={["", "true", "false"]} onChange={(hasBalance) => setFilters({ ...filters, hasBalance })} />
-              <Select label="Overdue" value={filters.overdue ?? ""} options={["", "true", "false"]} onChange={(overdue) => setFilters({ ...filters, overdue })} />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "invoice_date_desc", "due_date_asc", "total_amount_desc", "balance_amount_desc", "aging_desc", "status", "invoice_number"]} labels={{ updated_desc: "Recently updated", invoice_date_desc: "Invoice date newest", due_date_asc: "Due date soonest", total_amount_desc: "Total amount highest", balance_amount_desc: "Balance amount highest", aging_desc: "Aging highest", status: "Status", invoice_number: "Invoice number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search invoice, customer, project, settlement" />
+                <Select label="Invoice Type" value={filters.invoice_type ?? ""} options={["", ...invoiceTypes]} onChange={(invoice_type) => setFilters({ ...filters, invoice_type })} />
+                <Select label="Approval Status" value={filters.approval_status ?? ""} options={["", ...approvalStatuses]} onChange={(approval_status) => setFilters({ ...filters, approval_status })} />
+                <Select label="Delivery Status" value={filters.delivery_status ?? ""} options={["", ...deliveryStatuses]} onChange={(delivery_status) => setFilters({ ...filters, delivery_status })} />
+                <Select label="Cash Application Status" value={filters.cash_application_status ?? ""} options={["", ...cashApplicationStatuses]} onChange={(cash_application_status) => setFilters({ ...filters, cash_application_status })} />
+                <Select label="Payment Status" value={filters.payment_status ?? ""} options={["", ...paymentStatuses]} onChange={(payment_status) => setFilters({ ...filters, payment_status })} />
+                <Select label="Collection Status" value={filters.collection_status ?? ""} options={["", ...collectionStatuses]} onChange={(collection_status) => setFilters({ ...filters, collection_status })} />
+                <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
+                <input value={filters.settlement_id ?? ""} onChange={(event) => setFilters({ ...filters, settlement_id: event.target.value })} placeholder="Settlement" />
+                <Select label="Has Balance" value={filters.hasBalance ?? ""} options={["", "true", "false"]} onChange={(hasBalance) => setFilters({ ...filters, hasBalance })} />
+                <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "invoice_date_desc", "due_date_asc", "total_amount_desc", "balance_amount_desc", "aging_desc", "status", "invoice_number"]} labels={{ updated_desc: "Recently updated", invoice_date_desc: "Invoice date newest", due_date_asc: "Due date soonest", total_amount_desc: "Total amount highest", balance_amount_desc: "Balance amount highest", aging_desc: "Aging highest", status: "Status", invoice_number: "Invoice number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
@@ -153,7 +148,7 @@ export function InvoiceQueue() {
               <h2>Invoices</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No invoices yet. Create an invoice shell, then add invoice-ready settlement items.</div> : <InvoiceTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No invoices yet. Create an invoice shell, then add invoice-ready settlement items.</div> : visible.length ? <InvoiceTable rows={visible} /> : <div className="empty-state">{emptyInvoiceQueue(activeQueue)}</div>}
           </section>
         </>
       ) : null}
@@ -443,39 +438,32 @@ function InvoiceTable({ rows }: { rows: SyncRecord[] }) {
   return (
     <div className="wide-table">
       <table>
-        <thead><tr>{["Invoice Number", "Invoice Type", "Status", "Approval Status", "Delivery Status", "Cash Application Status", "Payment Status", "Collection Status", "Customer", "Project", "Settlement", "Invoice Date", "Due Date", "Payment Terms", "Subtotal Amount", "Retainage Amount", "Adjustment Amount", "Tax Amount", "Fee Amount", "Total Amount", "Original Amount", "Paid Amount", "Balance Amount", "Aging Days", "Currency", "Package Status", "Documentation Status", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
+        <thead><tr>{["Invoice", "Customer", "Settlement / Source", "Invoice Amount", "Sent Status", "Due Date / Age", "Dispute Status", "Cash Status", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              <td><Link className="table-link" href={`/invoices/${row.id}`}>{textValue(row.invoice_number, String(row.id))}</Link></td>
-              <td>{formatAction(row.invoice_type)}</td>
-              <td>{formatAction(row.status)}</td>
-              <td>{formatAction(row.approval_status)}</td>
-              <td>{formatAction(row.delivery_status)}</td>
-              <td>{formatAction(row.cash_application_status)}</td>
-              <td>{formatAction(row.payment_status)}</td>
-              <td>{formatAction(row.collection_status)}</td>
+              <td>
+                <Link className="table-link" href={`/invoices/${row.id}`}>{textValue(row.invoice_number, "Invoice")}</Link>
+                <div className="cell-helper">{formatAction(row.status)} / {formatAction(row.approval_status)}</div>
+              </td>
               <td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td>
-              <td>{projectLink(row.project_id, row.project_name)}</td>
-              <td>{settlementLink(row.settlement_id, row.settlement_number)}</td>
-              <td>{dateValue(row.invoice_date)}</td>
-              <td>{dateValue(row.due_date)}</td>
-              <td>{formatAction(row.payment_terms)}</td>
-              <td>{money(row.subtotal_amount)}</td>
-              <td>{money(row.retainage_amount)}</td>
-              <td>{money(row.adjustment_amount)}</td>
-              <td>{money(row.tax_amount)}</td>
-              <td>{money(row.fee_amount)}</td>
-              <td>{money(row.total_amount)}</td>
-              <td>{money(row.original_amount)}</td>
-              <td>{money(row.paid_amount)}</td>
-              <td>{money(row.balance_amount)}</td>
-              <td>{formatCell(row.aging_days)}</td>
-              <td>{textValue(row.currency)}</td>
-              <td>{formatAction(row.invoice_package_status)}</td>
-              <td>{formatAction(row.documentation_status)}</td>
-              <td>{formatAction(row.recommended_next_action)}</td>
-              <td>{dateValue(row.updated_at)}</td>
+              <td>
+                {settlementLink(row.settlement_id, row.settlement_number)}
+                <div className="cell-helper">{projectLink(row.project_id, row.project_name)}</div>
+              </td>
+              <td>
+                {money(row.total_amount)}
+                <div className="cell-helper">Balance {money(row.balance_amount)}</div>
+              </td>
+              <td>{formatAction(row.delivery_status ?? row.status)}</td>
+              <td>
+                {dateValue(row.due_date)}
+                <div className="cell-helper">{formatCell(row.aging_days)} days</div>
+              </td>
+              <td>{row.status === "disputed" || row.collection_status === "disputed" || row.dispute_reason ? formatAction(row.dispute_reason ?? "Disputed") : "No dispute"}</td>
+              <td>{formatAction(row.cash_application_status)}</td>
+              <td>{nextInvoiceAction(row)}</td>
+              <td><Link className="link-button" href={`/invoices/${row.id}`}>Open Detail</Link></td>
             </tr>
           ))}
         </tbody>
@@ -695,8 +683,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active = false, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -733,18 +721,52 @@ function JsonBlock({ value }: { value: unknown }) {
   return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
-function buildSummary(rows: SyncRecord[]) {
-  const status = Object.fromEntries(invoiceStatuses.map((item) => [item, 0]));
-  const payment = Object.fromEntries(paymentStatuses.map((item) => [item, 0]));
-  const collection = Object.fromEntries(collectionStatuses.map((item) => [item, 0]));
-  const cash = Object.fromEntries(cashApplicationStatuses.map((item) => [item, 0]));
-  for (const row of rows) {
-    status[String(row.status)] = (status[String(row.status)] ?? 0) + 1;
-    payment[String(row.payment_status)] = (payment[String(row.payment_status)] ?? 0) + 1;
-    collection[String(row.collection_status)] = (collection[String(row.collection_status)] ?? 0) + 1;
-    cash[String(row.cash_application_status)] = (cash[String(row.cash_application_status)] ?? 0) + 1;
-  }
-  return { total: rows.length, status, payment, collection, cash, balanceOutstanding: rows.filter((row) => numberValue(row.balance_amount, 0) > 0).length };
+const invoiceQueues = [
+  { id: "draft", label: "Draft", helper: "Invoices being prepared." },
+  { id: "submitted_for_review", label: "Submitted for Review", helper: "Invoices waiting for finance approval or review." },
+  { id: "rejected", label: "Rejected", helper: "Invoices returned for correction." },
+  { id: "approved", label: "Approved", helper: "Invoices approved internally and ready to be marked sent if sent externally." },
+  { id: "sent", label: "Sent", helper: "Invoices recorded as sent externally or by manual reference." },
+  { id: "disputed", label: "Disputed", helper: "Invoices blocked by dispute state." },
+  { id: "aging", label: "Aging", helper: "Invoices that may require cash follow-up or collections in later workflow." },
+  { id: "archived", label: "Archived", helper: "Closed or removed invoices." },
+];
+
+function matchesInvoiceQueue(row: SyncRecord, queue: string) {
+  if (queue === "submitted_for_review") return ["ready_for_review", "under_review"].includes(String(row.status)) || row.approval_status === "pending";
+  if (queue === "rejected") return row.status === "rejected" || row.approval_status === "rejected";
+  if (queue === "approved") return row.status === "approved" || row.approval_status === "approved";
+  if (queue === "sent") return row.status === "sent" || row.delivery_status === "sent";
+  if (queue === "disputed") return row.status === "disputed" || row.collection_status === "disputed" || Boolean(row.dispute_reason);
+  if (queue === "aging") return String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0;
+  if (queue === "archived") return row.status === "archived";
+  return ["draft", "assembling"].includes(String(row.status));
+}
+
+function emptyInvoiceQueue(queue: string) {
+  if (queue === "submitted_for_review") return "No invoices are waiting for review.";
+  if (queue === "rejected") return "No rejected invoices need correction.";
+  if (queue === "approved") return "No approved invoices are waiting to be marked sent.";
+  if (queue === "sent") return "No sent invoices in this queue.";
+  if (queue === "disputed") return "No invoice disputes are open.";
+  if (queue === "aging") return "No invoices are aging in this queue.";
+  if (queue === "archived") return "No archived invoices in this queue.";
+  return "No draft invoices need attention.";
+}
+
+function nextInvoiceAction(row: SyncRecord) {
+  if (row.status === "disputed" || row.collection_status === "disputed") return "Resolve Dispute";
+  if (row.status === "rejected" || row.approval_status === "rejected") return "Correct invoice";
+  if (["ready_for_review", "under_review"].includes(String(row.status)) || row.approval_status === "pending") return "Review invoice";
+  if (row.status === "approved" || row.approval_status === "approved") return "Mark Sent";
+  if (row.status === "sent" || row.delivery_status === "sent") return "Monitor cash readiness";
+  if (String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0) return "Review aging";
+  return "Submit Review";
+}
+
+function firstHref(rows: SyncRecord[], fallback: string) {
+  const first = rows[0];
+  return first?.id ? `${fallback}/${first.id}` : fallback;
 }
 
 function matchesFilters(row: SyncRecord, filters: Record<string, string>) {

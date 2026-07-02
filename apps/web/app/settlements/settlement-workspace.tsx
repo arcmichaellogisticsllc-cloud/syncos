@@ -8,7 +8,6 @@ import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 
 const settlementTypes = ["customer_billable", "contractor_payable", "mixed", "internal_adjustment", "retainage_release", "correction_adjustment", "chargeback"];
-const settlementStatuses = ["draft", "assembling", "ready_for_review", "under_review", "approved", "rejected", "held", "disputed", "invoice_ready", "payable_ready", "invoice_created_later", "payable_created_later", "voided", "archived"];
 const itemTypes = ["customer_billable", "contractor_payable", "retainage_hold", "retainage_release", "deduction", "chargeback", "adjustment", "correction"];
 const readinessStatuses = ["not_ready", "needs_review", "ready_with_warning", "ready_for_approval", "blocked"];
 const tabs = ["overview", "items", "customer_billable", "contractor_payable", "retainage", "deductions_chargebacks", "margin", "readiness", "invoice_readiness", "payable_readiness", "holds_disputes", "timeline", "audit", "future_invoice", "future_payment_payroll"];
@@ -52,6 +51,7 @@ export function SettlementQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState("draft");
 
   async function load() {
     setLoading(true);
@@ -74,68 +74,68 @@ export function SettlementQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortSettlements(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
-  const summary = useMemo(() => buildSummary(rows), [rows]);
+  const visible = useMemo(() => sortSettlements(rows.filter((row) => matchesFilters(row, filters)).filter((row) => matchesSettlementQueue(row, activeQueue)), filters.sort), [rows, filters, activeQueue]);
+  const queueCards = settlementQueues.map((queue) => ({ ...queue, value: rows.filter((row) => matchesSettlementQueue(row, queue.id)).length }));
+  const activeQueueLabel = queueCards.find((queue) => queue.id === activeQueue)?.label ?? "Draft";
+
+  function selectQueue(queueId: string) {
+    setActiveQueue(queueId);
+    setFilters({ ...filters, archived: queueId === "archived" ? "true" : "false" });
+  }
 
   return (
-    <SettlementShell title="Settlement Queue" purpose="Review formal financial commitments before invoice, AR, payment, payroll, or cash workflows.">
+    <SettlementShell title="Settlement Workbench" purpose="Review billable totals, clear settlement blockers, and prepare approved settlements for invoice readiness.">
       <SessionPanel session={session} />
-      <div className="warning-box">Invoice Ready and Payable Ready are statuses only. They do not create invoice, invoice item, AR, payment, cash, payroll, tax, ACH, card payout, or bank transaction records.</div>
+      <div className="warning-box">Settlement review confirms internal readiness and totals. Mark Invoice Ready prepares the settlement for invoicing workflow; it does not send, post, create cash, or collect payment.</div>
       {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view settlements.</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review settlement totals and invoice-readiness blockers.</div> : null}
       {loading ? <div className="empty-state">Loading settlements...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>Settlement Summary</h2>
-                <p className="muted">Settlements are prioritized by blockers, holds, disputes, readiness, and recent updates.</p>
+                <h2>Which settlements need review, which totals are blocked, and which settlements are invoice-ready?</h2>
+                <p className="muted">Settlement work is prioritized by review state, recalculation needs, disputes, invoice readiness, and recent updates.</p>
               </div>
-              <Link className="primary-button" href="/settlements/new" aria-disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href={firstHref(visible, "/settlements")} aria-disabled={!visible.length}>Review Next Settlement</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0), "/settlements")} aria-disabled={!rows.some((row) => row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0)}>Recalculate Readiness</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed" || row.has_dispute), "/settlements")} aria-disabled={!rows.some((row) => row.status === "disputed" || row.has_dispute)}>Open Disputes</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.invoice_ready), "/settlements")} aria-disabled={!rows.some((row) => row.invoice_ready)}>Open Invoice Ready</Link>
+                <Link className="link-button" href="/settlements/new" aria-disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</Link>
+              </div>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Total Settlements" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {["draft", "assembling", "ready_for_review", "under_review", "approved", "rejected", "held", "disputed", "invoice_ready", "payable_ready", "voided", "archived"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "updated_desc", status })} />)}
-              <SummaryCard label="Customer Billable" value={summary.customerBillable} onClick={() => setFilters({ ...filters, settlement_type: "customer_billable" })} />
-              <SummaryCard label="Contractor Payable" value={summary.contractorPayable} onClick={() => setFilters({ ...filters, settlement_type: "contractor_payable" })} />
-              <SummaryCard label="Mixed" value={summary.mixed} onClick={() => setFilters({ ...filters, settlement_type: "mixed" })} />
-              <SummaryCard label="Negative Margin" value={summary.negativeMargin} onClick={() => setFilters({ ...filters, negativeMargin: "true" })} />
-              <SummaryCard label="Retainage Applies" value={summary.retainage} onClick={() => setFilters({ ...filters, retainageApplies: "true" })} />
-              <SummaryCard label="Blocked" value={summary.blocked} onClick={() => setFilters({ ...filters, hasBlockers: "true" })} />
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => selectQueue(queue.id)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>{activeQueueLabel}</h2>
+                <p className="muted">{emptySettlementQueue(activeQueue)}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("draft"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["draft", "assembling", "ready_for_review", "under_review", "approved", "rejected", "held", "disputed", "invoice_ready", "payable_ready"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
-              {["customer_billable", "contractor_payable", "mixed"].map((settlement_type) => <button key={settlement_type} type="button" onClick={() => setFilters({ ...filters, settlement_type })}>{formatAction(settlement_type)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, negativeMargin: "true" })}>Negative Margin</button>
-              <button type="button" onClick={() => setFilters({ ...filters, retainageApplies: "true" })}>Retainage</button>
-              <button type="button" onClick={() => setFilters({ ...filters, hasBlockers: "true" })}>Blocked</button>
+            <div className="queue-tabs" role="tablist" aria-label="Settlement queues">
+              {settlementQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search settlement, customer, provider, project" />
-              <Select label="Settlement Type" value={filters.settlement_type ?? ""} options={["", ...settlementTypes]} onChange={(settlement_type) => setFilters({ ...filters, settlement_type })} />
-              <Select label="Status" value={filters.status ?? ""} options={["", ...settlementStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
-              <Select label="Readiness Status" value={filters.readiness_status ?? ""} options={["", ...readinessStatuses]} onChange={(readiness_status) => setFilters({ ...filters, readiness_status })} />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <input value={filters.capacity_provider_id ?? ""} onChange={(event) => setFilters({ ...filters, capacity_provider_id: event.target.value })} placeholder="Provider" />
-              <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project" />
-              <input value={filters.work_order_id ?? ""} onChange={(event) => setFilters({ ...filters, work_order_id: event.target.value })} placeholder="Work Order" />
-              <Select label="Invoice Ready" value={filters.invoice_ready ?? ""} options={["", "true", "false"]} onChange={(invoice_ready) => setFilters({ ...filters, invoice_ready })} />
-              <Select label="Payable Ready" value={filters.payable_ready ?? ""} options={["", "true", "false"]} onChange={(payable_ready) => setFilters({ ...filters, payable_ready })} />
-              <Select label="Has Hold" value={filters.has_hold ?? ""} options={["", "true", "false"]} onChange={(has_hold) => setFilters({ ...filters, has_hold })} />
-              <Select label="Has Dispute" value={filters.has_dispute ?? ""} options={["", "true", "false"]} onChange={(has_dispute) => setFilters({ ...filters, has_dispute })} />
-              <Select label="Negative Margin" value={filters.negativeMargin ?? ""} options={["", "true", "false"]} onChange={(negativeMargin) => setFilters({ ...filters, negativeMargin })} />
-              <Select label="Retainage Applies" value={filters.retainageApplies ?? ""} options={["", "true", "false"]} onChange={(retainageApplies) => setFilters({ ...filters, retainageApplies })} />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "readiness_asc", "readiness_desc", "gross_amount_desc", "net_amount_desc", "margin_asc", "status", "settlement_number"]} labels={{ updated_desc: "Recently updated", readiness_asc: "Lowest readiness", readiness_desc: "Highest readiness", gross_amount_desc: "Gross amount highest", net_amount_desc: "Net amount highest", margin_asc: "Margin lowest", status: "Status", settlement_number: "Settlement number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search settlement, customer, provider, project" />
+                <Select label="Settlement Type" value={filters.settlement_type ?? ""} options={["", ...settlementTypes]} onChange={(settlement_type) => setFilters({ ...filters, settlement_type })} />
+                <Select label="Readiness Status" value={filters.readiness_status ?? ""} options={["", ...readinessStatuses]} onChange={(readiness_status) => setFilters({ ...filters, readiness_status })} />
+                <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
+                <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project" />
+                <Select label="Invoice Ready" value={filters.invoice_ready ?? ""} options={["", "true", "false"]} onChange={(invoice_ready) => setFilters({ ...filters, invoice_ready })} />
+                <Select label="Has Hold" value={filters.has_hold ?? ""} options={["", "true", "false"]} onChange={(has_hold) => setFilters({ ...filters, has_hold })} />
+                <Select label="Has Dispute" value={filters.has_dispute ?? ""} options={["", "true", "false"]} onChange={(has_dispute) => setFilters({ ...filters, has_dispute })} />
+                <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "readiness_asc", "readiness_desc", "gross_amount_desc", "net_amount_desc", "margin_asc", "status", "settlement_number"]} labels={{ updated_desc: "Recently updated", readiness_asc: "Lowest readiness", readiness_desc: "Highest readiness", gross_amount_desc: "Gross amount highest", net_amount_desc: "Net amount highest", margin_asc: "Margin lowest", status: "Status", settlement_number: "Settlement number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
@@ -143,7 +143,7 @@ export function SettlementQueue() {
               <h2>Settlements</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No settlements yet. Create a settlement shell, then add ready billable items.</div> : <SettlementTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No settlements yet. Create a settlement shell, then add ready billable items.</div> : visible.length ? <SettlementTable rows={visible} /> : <div className="empty-state">{emptySettlementQueue(activeQueue)}</div>}
           </section>
         </>
       ) : null}
@@ -437,36 +437,35 @@ function SettlementTable({ rows }: { rows: SyncRecord[] }) {
       <table>
         <thead>
           <tr>
-            {["Settlement Number", "Settlement Type", "Status", "Readiness Status", "Readiness Score", "Customer", "Provider", "Project", "Work Order", "Period Start", "Period End", "Gross Billable Amount", "Contractor Payable Amount", "Retainage Amount", "Deduction Amount", "Chargeback Amount", "Net Settlement Amount", "Estimated Margin Amount", "Estimated Margin Percent", "Invoice Ready", "Payable Ready", "Item Count", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}
+            {["Settlement", "Customer / Project", "Billable Items", "Total Amount", "Readiness", "Review Status", "Invoice Readiness", "Dispute Status", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              <td><Link className="table-link" href={`/settlements/${row.id}`}>{textValue(row.settlement_number, String(row.id))}</Link></td>
-              <td>{formatAction(row.settlement_type)}</td>
+              <td>
+                <Link className="table-link" href={`/settlements/${row.id}`}>{textValue(row.settlement_number, "Settlement")}</Link>
+                <div className="cell-helper">{formatAction(row.settlement_type)}</div>
+              </td>
+              <td>
+                {organizationLink(row.customer_organization_id, row.customer_organization_name)}
+                <div className="cell-helper">{projectLink(row.project_id, row.project_name)}</div>
+              </td>
+              <td>{formatCell(row.item_count ?? row.customer_billable_item_count)}</td>
+              <td>
+                {money(row.net_settlement_amount)}
+                <div className="cell-helper">Gross {money(row.gross_billable_amount)}</div>
+              </td>
+              <td>
+                {formatAction(row.readiness_status)}
+                <div className="cell-helper">Score {formatCell(row.readiness_score)}</div>
+              </td>
               <td>{formatAction(row.status)}</td>
-              <td>{formatAction(row.readiness_status)}</td>
-              <td>{formatCell(row.readiness_score)}</td>
-              <td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td>
-              <td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td>
-              <td>{projectLink(row.project_id, row.project_name)}</td>
-              <td>{workOrderLink(row.work_order_id, row.work_order_name)}</td>
-              <td>{dateValue(row.settlement_period_start)}</td>
-              <td>{dateValue(row.settlement_period_end)}</td>
-              <td>{money(row.gross_billable_amount)}</td>
-              <td>{money(row.contractor_payable_amount)}</td>
-              <td>{money(row.retainage_amount)}</td>
-              <td>{money(row.deduction_amount)}</td>
-              <td>{money(row.chargeback_amount)}</td>
-              <td>{money(row.net_settlement_amount)}</td>
-              <td>{money(row.estimated_margin_amount)}</td>
-              <td>{percent(row.estimated_margin_percent)}</td>
-              <td>{boolText(row.invoice_ready)}</td>
-              <td>{boolText(row.payable_ready)}</td>
-              <td>{formatCell(row.item_count)}</td>
-              <td>{formatAction(row.recommended_next_action)}</td>
+              <td>{row.invoice_ready ? "Invoice Ready" : "Not invoice-ready"}</td>
+              <td>{row.status === "disputed" || row.dispute_reason ? formatAction(row.dispute_reason ?? "Disputed") : "No dispute"}</td>
               <td>{dateValue(row.updated_at)}</td>
+              <td>{nextSettlementAction(row)}</td>
+              <td><Link className="link-button" href={`/settlements/${row.id}`}>Open Detail</Link></td>
             </tr>
           ))}
         </tbody>
@@ -701,8 +700,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active = false, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -739,10 +738,52 @@ function JsonBlock({ value }: { value: unknown }) {
   return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
-function buildSummary(rows: SyncRecord[]) {
-  const status = Object.fromEntries(settlementStatuses.map((item) => [item, 0]));
-  for (const row of rows) status[String(row.status)] = (status[String(row.status)] ?? 0) + 1;
-  return { total: rows.length, status, customerBillable: rows.filter((row) => row.settlement_type === "customer_billable").length, contractorPayable: rows.filter((row) => row.settlement_type === "contractor_payable").length, mixed: rows.filter((row) => row.settlement_type === "mixed").length, negativeMargin: rows.filter((row) => numberValue(row.estimated_margin_amount, 0) < 0).length, retainage: rows.filter((row) => numberValue(row.retainage_amount, 0) > 0).length, blocked: rows.filter((row) => arrayValue(row.blockers).length > 0 || row.readiness_status === "blocked").length };
+const settlementQueues = [
+  { id: "draft", label: "Draft", helper: "Settlement records still being prepared." },
+  { id: "submitted_for_review", label: "Submitted for Review", helper: "Settlements waiting for finance review." },
+  { id: "needs_recalculation", label: "Needs Recalculation", helper: "Settlements that require readiness or total refresh." },
+  { id: "rejected", label: "Rejected", helper: "Settlements returned from review and needing correction." },
+  { id: "approved", label: "Approved", helper: "Settlements approved internally but not yet invoice-ready." },
+  { id: "invoice_ready", label: "Invoice Ready", helper: "Settlements ready for the invoice workflow." },
+  { id: "disputed", label: "Disputed", helper: "Settlements blocked by dispute state." },
+  { id: "archived", label: "Archived", helper: "Closed or removed settlements." },
+];
+
+function matchesSettlementQueue(row: SyncRecord, queue: string) {
+  if (queue === "submitted_for_review") return ["ready_for_review", "under_review"].includes(String(row.status));
+  if (queue === "needs_recalculation") return row.readiness_status === "blocked" || row.readiness_status === "not_ready" || arrayValue(row.blockers).length > 0;
+  if (queue === "rejected") return row.status === "rejected";
+  if (queue === "approved") return row.status === "approved" && !row.invoice_ready;
+  if (queue === "invoice_ready") return row.status === "invoice_ready" || Boolean(row.invoice_ready);
+  if (queue === "disputed") return row.status === "disputed" || Boolean(row.dispute_reason);
+  if (queue === "archived") return row.status === "archived";
+  return ["draft", "assembling"].includes(String(row.status));
+}
+
+function emptySettlementQueue(queue: string) {
+  if (queue === "submitted_for_review") return "No settlements are waiting for review.";
+  if (queue === "needs_recalculation") return "No settlements currently need recalculation.";
+  if (queue === "rejected") return "No rejected settlements need correction.";
+  if (queue === "approved") return "No approved settlements are waiting for invoice readiness.";
+  if (queue === "invoice_ready") return "No settlements are invoice-ready yet.";
+  if (queue === "disputed") return "No settlement disputes are open.";
+  if (queue === "archived") return "No archived settlements in this queue.";
+  return "No draft settlements need attention.";
+}
+
+function nextSettlementAction(row: SyncRecord) {
+  if (row.status === "disputed") return "Resolve Dispute";
+  if (row.status === "rejected") return "Correct settlement";
+  if (row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0) return "Recalculate Readiness";
+  if (["ready_for_review", "under_review"].includes(String(row.status))) return "Review settlement";
+  if (row.status === "approved" && !row.invoice_ready) return "Mark Invoice Ready";
+  if (row.invoice_ready || row.status === "invoice_ready") return "Prepare invoice workflow";
+  return "Submit Review";
+}
+
+function firstHref(rows: SyncRecord[], fallback: string) {
+  const first = rows[0];
+  return first?.id ? `${fallback}/${first.id}` : fallback;
 }
 
 function matchesFilters(row: SyncRecord, filters: Record<string, string>) {

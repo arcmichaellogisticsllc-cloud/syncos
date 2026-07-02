@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 
-const statuses = ["candidate", "needs_rate", "needs_documentation", "needs_customer_acceptance", "held", "ready_for_settlement", "settlement_created", "disputed", "voided", "archived"];
 const readinessStatuses = ["not_ready", "needs_review", "ready_with_warning", "ready_for_settlement", "blocked"];
 const rateSources = ["contract_rate", "project_rate", "customer_rate", "manual_rate", "unknown"];
 const rateConfidences = ["unknown", "low", "medium", "high", "confirmed"];
@@ -51,6 +50,7 @@ export function BillableQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState("ready_for_review");
 
   async function load() {
     setLoading(true);
@@ -73,76 +73,69 @@ export function BillableQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortBillable(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
-  const summary = useMemo(() => buildSummary(rows), [rows]);
+  const visible = useMemo(() => sortBillable(rows.filter((row) => matchesFilters(row, filters)).filter((row) => matchesBillableQueue(row, activeQueue)), filters.sort), [rows, filters, activeQueue]);
+  const queueCards = billableQueues.map((queue) => ({ ...queue, value: rows.filter((row) => matchesBillableQueue(row, queue.id)).length }));
+  const activeQueueLabel = queueCards.find((queue) => queue.id === activeQueue)?.label ?? "Ready for Review";
+
+  function selectQueue(queueId: string) {
+    setActiveQueue(queueId);
+    setFilters({ ...filters, archived: queueId === "archived" ? "true" : "false" });
+  }
 
   return (
-    <BillableShell title="Billable Queue" purpose="Review financial eligibility for accepted work without creating settlement, invoice, AR, payment, cash, payroll, or tax records.">
+    <BillableShell title="Billable Workbench" purpose="Review approved production and QC-cleared work, resolve billing blockers, and prepare billable items for settlement workflow.">
       <SessionPanel session={session} />
-      <div className="warning-box">Ready for settlement is only a status and readiness state. It does not create settlement or invoice records.</div>
+      <div className="warning-box">Billable readiness does not create a settlement, invoice, cash receipt, payment application, accounting export, or external accounting entry.</div>
       {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Billable items.</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Sign in to review billable readiness and settlement blockers.</div> : null}
       {loading ? <div className="empty-state">Loading billable items...</div> : null}
       {session.token && !loading ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
               <div>
-                <h2>Billable Summary</h2>
-                <p className="muted">Billable items are prioritized by blockers, eligibility gaps, readiness, and recent updates.</p>
+                <h2>What work is ready to become billable, and what is blocking settlement readiness?</h2>
+                <p className="muted">Finance work is prioritized by holds, disputes, missing support, readiness, and recent updates.</p>
               </div>
-              <Link className="primary-button" href="/billable/new" aria-disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</Link>
+              <div className="form-actions">
+                <Link className="primary-button" href={firstHref(visible, "/billable")} aria-disabled={!visible.length}>Review Next Billable Item</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "held"), "/billable")} aria-disabled={!rows.some((row) => row.status === "held")}>Open Holds</Link>
+                <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed"), "/billable")} aria-disabled={!rows.some((row) => row.status === "disputed")}>Open Disputes</Link>
+                <Link className="link-button" href="/billable/new" aria-disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</Link>
+              </div>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Total Billable Items" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {["candidate", "needs_rate", "needs_documentation", "needs_customer_acceptance", "held", "ready_for_settlement", "disputed", "voided", "archived"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ archived: status === "archived" ? "true" : "false", sort: "updated_desc", status })} />)}
-              <SummaryCard label="Retainage Applies" value={summary.retainage} onClick={() => setFilters({ ...filters, retainage_required: "true" })} />
-              <SummaryCard label="Manual Rate" value={summary.manualRate} onClick={() => setFilters({ ...filters, rate_source: "manual_rate" })} />
-              <SummaryCard label="Unknown Rate" value={summary.unknownRate} onClick={() => setFilters({ ...filters, rate_source: "unknown" })} />
-              <SummaryCard label="Customer Pending" value={summary.customerPending} onClick={() => setFilters({ ...filters, customer_acceptance_status: "pending" })} />
-              <SummaryCard label="Prime Pending" value={summary.primePending} onClick={() => setFilters({ ...filters, prime_acceptance_status: "pending" })} />
-              <SummaryCard label="Ready With Warning" value={summary.readyWarning} onClick={() => setFilters({ ...filters, readiness_status: "ready_with_warning" })} />
-              <SummaryCard label="Blocked" value={summary.blocked} onClick={() => setFilters({ ...filters, hasBlockers: "true" })} />
+              {queueCards.map((queue) => <SummaryCard key={queue.id} label={queue.label} value={queue.value} helper={queue.helper} active={activeQueue === queue.id} onClick={() => selectQueue(queue.id)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>{activeQueueLabel}</h2>
+                <p className="muted">{emptyBillableQueue(activeQueue)}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("ready_for_review"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["candidate", "needs_rate", "needs_documentation", "needs_customer_acceptance", "held", "ready_for_settlement", "disputed"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, rate_source: "unknown" })}>Unknown Rate</button>
-              <button type="button" onClick={() => setFilters({ ...filters, rate_source: "manual_rate" })}>Manual Rate</button>
-              <button type="button" onClick={() => setFilters({ ...filters, retainage_required: "true" })}>Retainage</button>
-              <button type="button" onClick={() => setFilters({ ...filters, customer_acceptance_status: "pending" })}>Customer Pending</button>
-              <button type="button" onClick={() => setFilters({ ...filters, prime_acceptance_status: "pending" })}>Prime Pending</button>
-              <button type="button" onClick={() => setFilters({ ...filters, hasBlockers: "true" })}>Blocked</button>
+            <div className="queue-tabs" role="tablist" aria-label="Billable queues">
+              {billableQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search billable, project, work order, customer" />
-              <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project" />
-              <input value={filters.work_order_id ?? ""} onChange={(event) => setFilters({ ...filters, work_order_id: event.target.value })} placeholder="Work Order" />
-              <input value={filters.production_record_id ?? ""} onChange={(event) => setFilters({ ...filters, production_record_id: event.target.value })} placeholder="Production record" />
-              <input value={filters.qc_review_id ?? ""} onChange={(event) => setFilters({ ...filters, qc_review_id: event.target.value })} placeholder="QC review" />
-              <Select label="Status" value={filters.status ?? ""} options={["", ...statuses]} onChange={(status) => setFilters({ ...filters, status })} />
-              <Select label="Readiness status" value={filters.readiness_status ?? ""} options={["", ...readinessStatuses]} onChange={(readiness_status) => setFilters({ ...filters, readiness_status })} />
-              <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
-              <input value={filters.capacity_provider_id ?? ""} onChange={(event) => setFilters({ ...filters, capacity_provider_id: event.target.value })} placeholder="Provider" />
-              <input value={filters.crew_id ?? ""} onChange={(event) => setFilters({ ...filters, crew_id: event.target.value })} placeholder="Crew" />
-              <Select label="Customer acceptance" value={filters.customer_acceptance_status ?? ""} options={["", ...acceptanceStatuses]} onChange={(customer_acceptance_status) => setFilters({ ...filters, customer_acceptance_status })} />
-              <Select label="Prime acceptance" value={filters.prime_acceptance_status ?? ""} options={["", ...acceptanceStatuses]} onChange={(prime_acceptance_status) => setFilters({ ...filters, prime_acceptance_status })} />
-              <Select label="Billing package" value={filters.billing_package_status ?? ""} options={["", ...packageStatuses]} onChange={(billing_package_status) => setFilters({ ...filters, billing_package_status })} />
-              <Select label="Documentation" value={filters.documentation_status ?? ""} options={["", ...packageStatuses]} onChange={(documentation_status) => setFilters({ ...filters, documentation_status })} />
-              <Select label="Rate source" value={filters.rate_source ?? ""} options={["", ...rateSources]} onChange={(rate_source) => setFilters({ ...filters, rate_source })} />
-              <Select label="Rate confidence" value={filters.rate_confidence ?? ""} options={["", ...rateConfidences]} onChange={(rate_confidence) => setFilters({ ...filters, rate_confidence })} />
-              <Select label="Retainage required" value={filters.retainage_required ?? ""} options={["", "true", "false"]} onChange={(retainage_required) => setFilters({ ...filters, retainage_required })} />
-              <Select label="Has hold" value={filters.hasHold ?? ""} options={["", "true", "false"]} onChange={(hasHold) => setFilters({ ...filters, hasHold })} />
-              <Select label="Has dispute" value={filters.hasDispute ?? ""} options={["", "true", "false"]} onChange={(hasDispute) => setFilters({ ...filters, hasDispute })} />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "readiness_asc", "readiness_desc", "amount_desc", "status", "project", "customer"]} labels={{ updated_desc: "Recently updated", readiness_asc: "Lowest readiness", readiness_desc: "Highest readiness", amount_desc: "Amount highest", status: "Status", project: "Project", customer: "Customer" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search billable, project, work order, customer" />
+                <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project" />
+                <input value={filters.work_order_id ?? ""} onChange={(event) => setFilters({ ...filters, work_order_id: event.target.value })} placeholder="Work Order" />
+                <input value={filters.production_record_id ?? ""} onChange={(event) => setFilters({ ...filters, production_record_id: event.target.value })} placeholder="Production record" />
+                <input value={filters.qc_review_id ?? ""} onChange={(event) => setFilters({ ...filters, qc_review_id: event.target.value })} placeholder="QC review" />
+                <Select label="Readiness status" value={filters.readiness_status ?? ""} options={["", ...readinessStatuses]} onChange={(readiness_status) => setFilters({ ...filters, readiness_status })} />
+                <Select label="Rate source" value={filters.rate_source ?? ""} options={["", ...rateSources]} onChange={(rate_source) => setFilters({ ...filters, rate_source })} />
+                <Select label="Rate confidence" value={filters.rate_confidence ?? ""} options={["", ...rateConfidences]} onChange={(rate_confidence) => setFilters({ ...filters, rate_confidence })} />
+                <Select label="Has hold" value={filters.hasHold ?? ""} options={["", "true", "false"]} onChange={(hasHold) => setFilters({ ...filters, hasHold })} />
+                <Select label="Has dispute" value={filters.hasDispute ?? ""} options={["", "true", "false"]} onChange={(hasDispute) => setFilters({ ...filters, hasDispute })} />
+                <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "readiness_asc", "readiness_desc", "amount_desc", "status", "project", "customer"]} labels={{ updated_desc: "Recently updated", readiness_asc: "Lowest readiness", readiness_desc: "Highest readiness", amount_desc: "Amount highest", status: "Status", project: "Project", customer: "Customer" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
@@ -150,7 +143,7 @@ export function BillableQueue() {
               <h2>Billable Items</h2>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No billable items yet. Create a billable candidate from an approved QC review.</div> : <BillableTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No billable items yet. Create a billable candidate from an approved QC review.</div> : visible.length ? <BillableTable rows={visible} /> : <div className="empty-state">{emptyBillableQueue(activeQueue)}</div>}
           </section>
         </>
       ) : null}
@@ -429,39 +422,38 @@ function BillableTable({ rows }: { rows: SyncRecord[] }) {
       <table>
         <thead>
           <tr>
-            {["Status", "Readiness Status", "Readiness Score", "Project", "Work Order", "Production Record", "QC Review", "Customer", "Provider", "Crew", "Approved Quantity", "Billable Quantity", "Held Quantity", "Unit", "Unit Rate", "Rate Source", "Rate Confidence", "Estimated Billable Amount", "Retainage Required", "Retainage Amount", "Net Billable Amount", "Customer Acceptance", "Prime Acceptance", "Billing Package Status", "Documentation Status", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}
+            {["Billable Item", "Source Production / Work Order", "Customer / Project", "Quantity / Amount", "Readiness", "Hold Status", "Dispute Status", "Settlement Status", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              <td><Link className="table-link" href={`/billable/${row.id}`}>{formatAction(row.status)}</Link></td>
-              <td>{formatAction(row.readiness_status)}</td>
-              <td>{formatCell(row.readiness_score)}</td>
-              <td>{projectLink(row.project_id, row.project_name)}</td>
-              <td>{workOrderLink(row.work_order_id, row.work_order_name ?? row.work_order_number)}</td>
-              <td>{productionLink(row.production_record_id, row.production_type)}</td>
-              <td>{qcLink(row.qc_review_id, row.qc_review_status)}</td>
-              <td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td>
-              <td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td>
-              <td>{textValue(row.crew_name ?? row.crew_id)}</td>
-              <td>{formatCell(row.approved_quantity)}</td>
-              <td>{formatCell(row.billable_quantity)}</td>
-              <td>{formatCell(row.held_quantity)}</td>
-              <td>{formatAction(row.unit)}</td>
-              <td>{money(row.unit_rate)}</td>
-              <td>{formatAction(row.rate_source)}</td>
-              <td>{formatAction(row.rate_confidence)}</td>
-              <td>{money(row.estimated_billable_amount)}</td>
-              <td>{row.retainage_required ? "Yes" : "No"}</td>
-              <td>{money(row.retainage_amount)}</td>
-              <td>{money(row.net_billable_amount)}</td>
-              <td>{formatAction(row.customer_acceptance_status)}</td>
-              <td>{formatAction(row.prime_acceptance_status)}</td>
-              <td>{formatAction(row.billing_package_status)}</td>
-              <td>{formatAction(row.documentation_status)}</td>
-              <td>{formatAction(row.recommended_next_action)}</td>
+              <td>
+                <Link className="table-link" href={`/billable/${row.id}`}>{formatAction(row.status)}</Link>
+                <div className="cell-helper">{formatAction(row.rate_source)} / {formatAction(row.rate_confidence)}</div>
+              </td>
+              <td>
+                {productionLink(row.production_record_id, row.production_type)}
+                <div className="cell-helper">{workOrderLink(row.work_order_id, row.work_order_name ?? row.work_order_number)}</div>
+              </td>
+              <td>
+                {organizationLink(row.customer_organization_id, row.customer_organization_name)}
+                <div className="cell-helper">{projectLink(row.project_id, row.project_name)}</div>
+              </td>
+              <td>
+                {quantity(row.billable_quantity, row.unit)}
+                <div className="cell-helper">{money(row.net_billable_amount ?? row.estimated_billable_amount)}</div>
+              </td>
+              <td>
+                {formatAction(row.readiness_status)}
+                <div className="cell-helper">Score {formatCell(row.readiness_score)}</div>
+              </td>
+              <td>{row.status === "held" || row.hold_reason ? formatAction(row.hold_reason ?? "On hold") : "No hold"}</td>
+              <td>{row.status === "disputed" || row.dispute_reason ? formatAction(row.dispute_reason ?? "Disputed") : "No dispute"}</td>
+              <td>{row.settlement_item_id ? "Settlement item linked" : formatAction(row.status === "ready_for_settlement" ? "Ready for settlement" : "Not ready yet")}</td>
               <td>{dateValue(row.updated_at)}</td>
+              <td>{nextBillableAction(row)}</td>
+              <td><Link className="link-button" href={`/billable/${row.id}`}>Open Detail</Link></td>
             </tr>
           ))}
         </tbody>
@@ -643,8 +635,8 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="workspace-panel"><h2>{title}</h2>{children}</section>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
+function SummaryCard({ label, value, helper, active = false, onClick }: { label: string; value: number; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{value}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -689,20 +681,44 @@ function JsonBlock({ value }: { value: unknown }) {
   return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
-function buildSummary(rows: SyncRecord[]) {
-  const status = Object.fromEntries(statuses.map((item) => [item, 0]));
-  for (const row of rows) status[String(row.status)] = (status[String(row.status)] ?? 0) + 1;
-  return {
-    total: rows.length,
-    status,
-    retainage: rows.filter((row) => Boolean(row.retainage_required)).length,
-    manualRate: rows.filter((row) => row.rate_source === "manual_rate").length,
-    unknownRate: rows.filter((row) => row.rate_source === "unknown").length,
-    customerPending: rows.filter((row) => row.customer_acceptance_status === "pending").length,
-    primePending: rows.filter((row) => row.prime_acceptance_status === "pending").length,
-    readyWarning: rows.filter((row) => row.readiness_status === "ready_with_warning").length,
-    blocked: rows.filter((row) => arrayValue(row.blockers).length > 0 || row.readiness_status === "blocked").length,
-  };
+const billableQueues = [
+  { id: "ready_for_review", label: "Ready for Review", helper: "Approved or submitted work that finance needs to inspect." },
+  { id: "on_hold", label: "On Hold", helper: "Billable items blocked by hold status or missing prerequisite." },
+  { id: "disputed", label: "Disputed", helper: "Items with dispute state requiring resolution before settlement readiness." },
+  { id: "ready_for_settlement", label: "Ready for Settlement", helper: "Billable items that can move toward settlement workflow." },
+  { id: "missing_support", label: "Missing Support", helper: "Items missing source context, approval support, or readiness data." },
+  { id: "archived", label: "Archived", helper: "Closed or removed billable records." },
+];
+
+function matchesBillableQueue(row: SyncRecord, queue: string) {
+  if (queue === "on_hold") return row.status === "held" || Boolean(row.hold_reason);
+  if (queue === "disputed") return row.status === "disputed" || Boolean(row.dispute_reason);
+  if (queue === "ready_for_settlement") return row.status === "ready_for_settlement" || row.readiness_status === "ready_for_settlement";
+  if (queue === "missing_support") return ["needs_rate", "needs_documentation", "needs_customer_acceptance"].includes(String(row.status)) || ["blocked", "not_ready"].includes(String(row.readiness_status)) || !row.production_record_id || !row.qc_review_id;
+  if (queue === "archived") return row.status === "archived";
+  return ["candidate", "needs_rate", "needs_documentation", "needs_customer_acceptance"].includes(String(row.status)) || ["needs_review", "ready_with_warning"].includes(String(row.readiness_status));
+}
+
+function emptyBillableQueue(queue: string) {
+  if (queue === "on_hold") return "No billable items are currently on hold.";
+  if (queue === "disputed") return "No billable disputes are open.";
+  if (queue === "ready_for_settlement") return "No billable items are ready for settlement yet.";
+  if (queue === "missing_support") return "No visible billable items are missing support.";
+  if (queue === "archived") return "No archived billable items in this queue.";
+  return "No billable items need finance review.";
+}
+
+function nextBillableAction(row: SyncRecord) {
+  if (row.status === "held") return "Release Hold";
+  if (row.status === "disputed") return "Resolve Dispute";
+  if (row.status === "ready_for_settlement" || row.readiness_status === "ready_for_settlement") return "Prepare settlement workflow";
+  if (["needs_rate", "needs_documentation", "needs_customer_acceptance"].includes(String(row.status)) || row.readiness_status === "blocked") return "Resolve readiness support";
+  return "Recalculate Readiness";
+}
+
+function firstHref(rows: SyncRecord[], fallback: string) {
+  const first = rows[0];
+  return first?.id ? `${fallback}/${first.id}` : fallback;
 }
 
 function matchesFilters(row: SyncRecord, filters: Record<string, string>) {

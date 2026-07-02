@@ -107,6 +107,12 @@ Phase 4 list-page notes:
 
 ## Billable
 
+Phase 5 list-page notes:
+
+- `/billable` now exposes queue actions only: Review Next Billable Item, Open Holds, Open Disputes, Create Billable Candidate, queue tab selection, and Open Detail.
+- Recalculate Readiness, Release Hold, Resolve Dispute, and Archive remain on `/billable/[id]`.
+- Billable list boundary copy explicitly says billable readiness does not create settlement, invoice, cash receipt, payment application, accounting export, or external accounting entry.
+
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |
 |---|---|---|---|---|---|---|---|---|---|
 | Recalculate Readiness | `/billable/[id]` | Billable item | Finance | Status `candidate`. | Missing permission. | Secondary, modal, no fields. | Recalculate readiness. | No lifecycle mutation required; no settlement/invoice/payment/payroll/export. Certified. | P0 |
@@ -115,6 +121,12 @@ Phase 4 list-page notes:
 | Archive | `/billable/[id]` | Billable item | System Admin | Status `voided`. | Not voided or missing permission. | Danger, modal "Archive". | Archive. | `status=archived`; no downstream finance creation. Certified. | P0 |
 
 ## Settlement
+
+Phase 5 list-page notes:
+
+- `/settlements` now exposes queue actions only: Review Next Settlement, Recalculate Readiness queue link, Open Disputes, Open Invoice Ready, Create Settlement, queue tab selection, and Open Detail.
+- Submit Review, Recalculate Readiness, Reject, Mark Invoice Ready, Resolve Dispute, and Archive remain on `/settlements/[id]`.
+- Settlement list boundary copy explicitly says Mark Invoice Ready does not send, post, create cash, or collect payment.
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |
 |---|---|---|---|---|---|---|---|---|---|
@@ -126,6 +138,12 @@ Phase 4 list-page notes:
 | Archive | `/settlements/[id]` | Settlement | System Admin | Status `voided`. | Not voided or missing permission. | Danger, modal "Archive". | Archive. | `status=archived`; no invoice/payment/payroll/cash/bank/export. Certified. | P0 |
 
 ## Invoice
+
+Phase 5 list-page notes:
+
+- `/invoices` now exposes queue actions only: Review Next Invoice, Open Approved Invoices, Open Disputes, Open Aging Invoices, Create Invoice, queue tab selection, and Open Detail.
+- Submit Review, Reject, Mark Sent, Resolve Dispute, and Archive remain on `/invoices/[id]`.
+- Invoice list boundary copy explicitly says Mark Sent records an external/manual sent state and does not email, post to QuickBooks, create cash receipts, apply cash, or collect payment.
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |
 |---|---|---|---|---|---|---|---|---|---|

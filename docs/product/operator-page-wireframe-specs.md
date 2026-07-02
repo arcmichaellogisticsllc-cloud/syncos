@@ -414,3 +414,27 @@ Documented but not yet rolled out:
 - Detail pages remain on existing domain-specific layouts until each domain redesign sprint.
 - Financial control and review queue templates exist for future adoption, but the finance/reconciliation/accounting pages have not been visually redesigned.
 - Command Center still needs its own role-specific dashboard redesign.
+
+## Phase 5 Finance Workbench Status
+
+Implemented finance-control queue wireframes on:
+
+- `/billable`
+- `/settlements`
+- `/invoices`
+
+Applied template behaviors:
+
+- Header and purpose copy framed around finance decisions.
+- Financial boundary notice above the queue body.
+- Priority queue cards ahead of filters.
+- Queue tabs with active ARIA state.
+- Collapsed advanced filters.
+- Operator-first records table with next-action column.
+- Queue-specific empty states.
+
+Remaining finance template gaps:
+
+- Detail pages need stronger next-action cards and read-only role banners.
+- Create/edit flows remain generic forms and should become guided finance workflows later.
+- Mobile/tablet layout still requires visual review.
