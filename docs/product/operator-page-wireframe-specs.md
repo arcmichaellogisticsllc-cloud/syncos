@@ -491,3 +491,28 @@ Remaining payout template gaps:
 - Create/edit flows remain generic forms and should become guided payout workflows later.
 - Queue counts should eventually use backend payment-readiness, payroll-readiness, payment-item-attention, schedule, and execution summaries.
 - Mobile/tablet layout still requires visual review.
+
+## Phase 8 Finance-Control Workbench Status
+
+Implemented reconciliation/accounting queue wireframes on:
+
+- `/bank-reconciliation`
+- `/accounting-exports`
+
+Applied template behaviors:
+
+- Header and purpose copy framed around bank-side evidence verification and accounting handoff decisions.
+- Boundary notices above the queue body for bank reconciliation and accounting export non-consequences.
+- Priority queue cards ahead of filters.
+- Queue tabs with active ARIA state.
+- Collapsed advanced filters.
+- Operator-first records tables with next-action columns.
+- Queue-specific empty states.
+- Bank account, bank transaction, reconciliation match, export batch, and export item visibility panels.
+
+Remaining finance-control template gaps:
+
+- Detail pages need stronger next-action cards and read-only role banners.
+- Create/edit flows remain generic forms and should become guided reconciliation/accounting workflows later.
+- Queue counts should eventually use backend unmatched, exception, match-review, export-submission, acceptance, and item-attention summaries.
+- Mobile/tablet layout still requires visual review.

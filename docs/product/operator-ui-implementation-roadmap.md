@@ -341,3 +341,31 @@ Remaining Phase 7 gaps:
 Recommended next sprint after green validation:
 
 Operator UI Phase 8: Bank Reconciliation and Accounting Export Workbench Redesign.
+
+## Phase 8 Status
+
+Status: implemented for Bank Reconciliation Workbench, Reconciliation Match visibility, Accounting Export Workbench, and Accounting Export Item visibility, pending final validation.
+
+Completed in Phase 8:
+
+- `/bank-reconciliation` is redesigned as a Bank Reconciliation Workbench with Unmatched Credits, Unmatched Debits, Review Matches, Open Exceptions, Resolved Exceptions, Ignored, Matched, and Archived queues.
+- `/bank-reconciliation` now includes bank account, bank transaction, and reconciliation match visibility using existing list/detail routes.
+- `/accounting-exports` is redesigned as an Accounting Export Workbench with Draft, Submitted for Review, Approved, Marked Submitted, Accepted, Canceled, Items Need Attention, and Archived queues.
+- `/accounting-exports` now includes accounting export item visibility for items needing attention using existing export batch item endpoints.
+- Advanced filters are collapsed by default on the two finance-control workbench pages.
+- Each workbench now includes operator purpose copy, bank/accounting boundary copy, priority cards, queue tabs with ARIA state, operator-first table columns, next-action guidance, and queue-specific empty states.
+- Existing detail-page lifecycle modals and action-state labels are preserved.
+- No backend routes, migrations, external integrations, bank feeds, bank connections, accounting posting, accounting-system transmission, money movement, or unsupported lifecycle transitions were added.
+- E2E coverage was added for Bank Reconciliation, Accounting Export, hidden developer UI, finance-control boundary copy, read-only auditor behavior, detail route visibility, and queue tab state changes.
+
+Remaining Phase 8 gaps:
+
+- Reconciliation queue counts should eventually use backend direction/match/exception summaries.
+- Accounting export item visibility is currently limited to items reachable from loaded export batches.
+- Export accepted/submitted queues should eventually use explicit backend handoff summaries.
+- Reconciliation and accounting detail/create/edit pages still need stronger guided workflows and read-only role context.
+- Mobile/tablet review remains open.
+
+Recommended next sprint after green validation:
+
+Operator UI Phase 9: Detail Page Next-Action Cards, Read-Only Banners, and Create/Edit Form Cleanup.

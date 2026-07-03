@@ -170,6 +170,27 @@ Still open after Phase 7:
 - OUX-028 remains partially open until payout detail/create/edit flows become guided workflows.
 - OUX-038 remains partially open until backend payment item attention summaries and explicit scheduled/executed summaries exist.
 
+## Phase 8 Status
+
+Closed or reduced:
+
+- OUX-006 is reduced on `/bank-reconciliation` and `/accounting-exports` by collapsing advanced filters and making queue tabs/cards the primary page controls.
+- OUX-007 is reduced on finance-control pages through next-action table columns and queue CTAs.
+- OUX-011 is reduced on reconciliation/accounting pages through queue-specific empty states.
+- OUX-015 remains controlled on reconciliation/accounting pages because developer session panels stay environment-gated and are covered by Phase 8 E2E.
+- OUX-016 is reduced by adding bank reconciliation and accounting export boundary copy that SyncOS does not import bank feeds, connect to banks, move money, create receipts, execute payments, post accounting entries, or post to QuickBooks/ERP/GL/tax/payroll/banking/accounting close systems.
+- OUX-029 is reduced by redesigning Bank Reconciliation and Accounting Export around finance verification and handoff work instead of raw object lists.
+- OUX-039 is reduced by adding reconciliation match visibility and accounting export item visibility without inventing fake list routes or backend endpoints.
+- OUX-034 is reduced by adding Phase 8 E2E coverage for finance-control workbenches, hidden developer UI, read-only auditor behavior, boundary copy, detail route visibility, and queue tab state changes.
+
+Still open after Phase 8:
+
+- OUX-010 remains open across finance-control list actions because disabled reasons are not yet standardized everywhere.
+- OUX-013 remains open until mobile/tablet review is completed.
+- OUX-029 remains partially open until reconciliation/accounting detail/create/edit flows become guided workflows.
+- OUX-039 remains partially open until backend reconciliation queue summaries and accounting export item attention summaries exist.
+- Read-only role context remains a shared detail-page gap across redesigned domains.
+
 Remaining Signal Feed gaps:
 
 - Signal detail actions still need the same modal hardening pattern.

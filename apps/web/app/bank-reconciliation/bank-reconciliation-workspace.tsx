@@ -74,12 +74,26 @@ type MatchDetailShape = {
   _audit?: SyncRecord[];
 };
 
+type ReconciliationQueueKey = "unmatchedCredits" | "unmatchedDebits" | "reviewMatches" | "openExceptions" | "resolvedExceptions" | "ignored" | "matched" | "archived";
+
+const reconciliationQueueDefinitions: Array<{ key: ReconciliationQueueKey; label: string; helper: string; empty: string }> = [
+  { key: "unmatchedCredits", label: "Unmatched Credits", helper: "Credit transactions that may need cash receipt matching.", empty: "No unmatched credit transactions need review." },
+  { key: "unmatchedDebits", label: "Unmatched Debits", helper: "Debit transactions that may need payment batch matching.", empty: "No unmatched debit transactions need review." },
+  { key: "reviewMatches", label: "Review Matches", helper: "Matches that need review or confirmation.", empty: "No reconciliation matches need review." },
+  { key: "openExceptions", label: "Open Exceptions", helper: "Transactions or matches flagged for investigation.", empty: "No reconciliation exceptions are open." },
+  { key: "resolvedExceptions", label: "Resolved Exceptions", helper: "Exceptions resolved and retained for audit/history.", empty: "No resolved exceptions in this queue." },
+  { key: "ignored", label: "Ignored", helper: "Transactions intentionally removed from active reconciliation queues.", empty: "No ignored transactions in this queue." },
+  { key: "matched", label: "Matched", helper: "Transactions matched to SyncOS records.", empty: "No matched transactions in this queue." },
+  { key: "archived", label: "Archived", helper: "Closed or removed records retained for audit.", empty: "No archived accounts or transactions in this queue." },
+];
+
 export function BankReconciliationLanding() {
   const session = useSession();
   const [data, setData] = useState<LandingData>({ accounts: [], transactions: [], matches: [] });
   const [accountFilters, setAccountFilters] = useState<Record<string, string>>({ archived: "false" });
   const [transactionFilters, setTransactionFilters] = useState<Record<string, string>>({ archived: "false", sort: "exception_first" });
   const [matchFilters, setMatchFilters] = useState<Record<string, string>>({ archived: "false" });
+  const [activeQueue, setActiveQueue] = useState<ReconciliationQueueKey>("unmatchedCredits");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -105,23 +119,32 @@ export function BankReconciliationLanding() {
     else setLoading(false);
   }, [session.token, accountFilters.archived, transactionFilters.archived, matchFilters.archived]);
 
-  const transactions = useMemo(() => sortTransactions(data.transactions, transactionFilters.sort), [data.transactions, transactionFilters.sort]);
-  const summary = useMemo(() => buildSummary(data), [data]);
+  const visibleTransactions = useMemo(() => sortTransactions(data.transactions.filter((row) => reconciliationTransactionMatches(row, activeQueue)), transactionFilters.sort), [data.transactions, activeQueue, transactionFilters.sort]);
+  const visibleMatches = useMemo(() => data.matches.filter((row) => reconciliationMatchMatches(row, activeQueue)), [data.matches, activeQueue]);
+  const visibleAccounts = useMemo(() => data.accounts.filter((row) => activeQueue !== "archived" || String(row.status) === "archived"), [data.accounts, activeQueue]);
+  const selectedQueue = reconciliationQueueDefinitions.find((queue) => queue.key === activeQueue) ?? reconciliationQueueDefinitions[0];
+
+  function selectQueue(queue: ReconciliationQueueKey) {
+    setActiveQueue(queue);
+    setAccountFilters({ archived: queue === "archived" ? "true" : "false" });
+    setTransactionFilters({ archived: queue === "archived" ? "true" : "false", sort: "exception_first" });
+    setMatchFilters({ archived: queue === "archived" ? "true" : "false" });
+  }
 
   return (
-    <BankShell title="Bank Reconciliation" purpose="Verify bank truth against payment execution and cash receipt records without feeds, imports, accounting, treasury, or money movement.">
+    <BankShell title="Bank Reconciliation Workbench" purpose="Match bank-side evidence to SyncOS cash and payment records, review exceptions, and keep reconciliation status visible without connecting to banks or moving money.">
       <SessionPanel session={session} />
-      <div className="warning-box">Bank Reconciliation verifies actual bank activity. It does not connect bank feeds, import statements, move money, create cash receipts, create payment applications, update invoice balances, post GL, file taxes, or export accounting.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Bank Reconciliation.</div> : null}
+      <div className="warning-box">Bank Reconciliation verifies internal matches against bank-side evidence. SyncOS does not import bank feeds, connect to banks, move money, create cash receipts, execute payments, or post accounting entries.</div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading bank reconciliation workspace...</div> : null}
       {session.token && !loading ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
-                <h2>Bank Truth Summary</h2>
-                <p className="muted">Unreconciled transactions, open exceptions, partial matches, unmatched debits, unmatched credits, and matches needing review stay prominent.</p>
+                <h2>Today&apos;s reconciliation work</h2>
+                <p className="muted">Prioritize unmatched credits, unmatched debits, exceptions, and match reviews without implying SyncOS imported bank data or moved money.</p>
               </div>
               <div className="form-actions">
                 <Link className="primary-button" href="/bank-reconciliation/accounts/new" aria-disabled={!hasPermission(session.permissions, "bank_account.create")}>Create Bank Account</Link>
@@ -129,50 +152,56 @@ export function BankReconciliationLanding() {
               </div>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Bank Accounts" value={summary.accounts} onClick={() => setAccountFilters({ archived: "false" })} />
-              <SummaryCard label="Active Accounts" value={summary.activeAccounts} onClick={() => setAccountFilters({ archived: "false", status: "active" })} />
-              <SummaryCard label="Bank Transactions" value={summary.transactions} onClick={() => setTransactionFilters({ archived: "false" })} />
-              {["unreconciled", "matched", "partially_matched", "exception", "ignored"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.reconciliation[status] ?? 0} onClick={() => setTransactionFilters({ ...transactionFilters, reconciliation_status: status })} />)}
-              <SummaryCard label="Debit Transactions" value={summary.direction.debit ?? 0} onClick={() => setTransactionFilters({ ...transactionFilters, direction: "debit" })} />
-              <SummaryCard label="Credit Transactions" value={summary.direction.credit ?? 0} onClick={() => setTransactionFilters({ ...transactionFilters, direction: "credit" })} />
-              {["cleared", "returned", "reversed", "pending"].map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.cleared[status] ?? 0} onClick={() => setTransactionFilters({ ...transactionFilters, cleared_status: status })} />)}
-              {["proposed", "approved", "rejected"].map((status) => <SummaryCard key={status} label={`${formatAction(status)} Matches`} value={summary.matches[status] ?? 0} onClick={() => setMatchFilters({ ...matchFilters, match_status: status })} />)}
+              {reconciliationQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countReconciliationQueue(data, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Quick Filters</h2>
-              <button type="button" onClick={() => { setAccountFilters({ archived: "false" }); setTransactionFilters({ archived: "false", sort: "exception_first" }); setMatchFilters({ archived: "false" }); }}>Reset</button>
+              <div>
+                <h2>Reconciliation queues</h2>
+                <p className="muted">{selectedQueue.helper}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("unmatchedCredits"); setAccountFilters({ archived: "false" }); setTransactionFilters({ archived: "false", sort: "exception_first" }); setMatchFilters({ archived: "false" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, reconciliation_status: "unreconciled" })}>Unreconciled</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, exception_status: "open" })}>Exceptions</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, reconciliation_status: "partially_matched" })}>Partially Matched</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, reconciliation_status: "matched" })}>Matched</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, reconciliation_status: "ignored" })}>Ignored</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, direction: "debit" })}>Debit</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, direction: "credit" })}>Credit</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, cleared_status: "cleared" })}>Cleared</button>
-              <button type="button" onClick={() => setTransactionFilters({ ...transactionFilters, cleared_status: "returned" })}>Returned</button>
-              <button type="button" onClick={() => setMatchFilters({ ...matchFilters, match_status: "proposed" })}>Proposed Matches</button>
-              <button type="button" onClick={() => setMatchFilters({ ...matchFilters, match_status: "approved" })}>Approved Matches</button>
+            <div className="tab-row" role="tablist" aria-label="Bank reconciliation queues">
+              {reconciliationQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <LandingFilters accountFilters={accountFilters} setAccountFilters={setAccountFilters} transactionFilters={transactionFilters} setTransactionFilters={setTransactionFilters} matchFilters={matchFilters} setMatchFilters={setMatchFilters} accounts={data.accounts} />
+            </details>
           </section>
 
-          <LandingFilters accountFilters={accountFilters} setAccountFilters={setAccountFilters} transactionFilters={transactionFilters} setTransactionFilters={setTransactionFilters} matchFilters={matchFilters} setMatchFilters={setMatchFilters} accounts={data.accounts} />
-
           <section className="workspace-panel">
-            <div className="section-toolbar"><h2>Bank Accounts</h2><span>{data.accounts.length} shown</span></div>
-            <BankAccountTable rows={data.accounts} />
+            <div className="section-toolbar">
+              <div>
+                <h2>Bank Account Visibility</h2>
+                <p className="muted">Account records are internal control references. They do not connect SyncOS to a bank.</p>
+              </div>
+              <span>{visibleAccounts.length} shown</span>
+            </div>
+            <BankAccountTable rows={visibleAccounts} />
           </section>
           <section className="workspace-panel">
-            <div className="section-toolbar"><h2>Bank Transactions</h2><span>{transactions.length} shown</span></div>
-            <BankTransactionTable rows={transactions} />
+            <div className="section-toolbar">
+              <div>
+                <h2>{selectedQueue.label}</h2>
+                <p className="muted">Matching verifies relationship state only. It does not create receipts, execute payments, or post accounting entries.</p>
+              </div>
+              <span>{visibleTransactions.length} shown</span>
+            </div>
+            {!data.transactions.length ? <div className="empty-state">No bank transactions yet. Create manual bank-side evidence before reconciliation begins.</div> : visibleTransactions.length ? <BankTransactionTable rows={visibleTransactions} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
           <section className="workspace-panel">
-            <div className="section-toolbar"><h2>Reconciliation Matches</h2><span>{data.matches.length} shown</span></div>
-            <MatchTable rows={data.matches} />
+            <div className="section-toolbar">
+              <div>
+                <h2>Reconciliation Match Visibility</h2>
+                <p className="muted">Review proposed, reviewed, approved, rejected, voided, or archived matches without changing external bank or accounting systems.</p>
+              </div>
+              <span>{visibleMatches.length} shown</span>
+            </div>
+            {visibleMatches.length ? <MatchTable rows={visibleMatches} /> : <div className="empty-state">{activeQueue === "reviewMatches" ? selectedQueue.empty : "No reconciliation matches in this queue."}</div>}
           </section>
           <FuturePlaceholders />
         </>
@@ -775,17 +804,17 @@ function BankTransactionFields({ form, setForm, accounts, includeCreate = false 
 
 function BankAccountTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No bank accounts found.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Account Name", "Account Type", "Institution", "Masked Account Number", "Currency", "Status", "Current Balance Snapshot", "Last Statement Date", "Last Reconciled At", "Transaction Count", "Unreconciled Count", "Exception Count", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{accountLink(row.id, row.account_name)}</td><td>{formatAction(row.account_type)}</td><td>{textValue(row.institution_name)}</td><td>{textValue(row.masked_account_number)}</td><td>{textValue(row.currency)}</td><td>{formatAction(row.status)}</td><td>{money(row.current_balance_snapshot)}</td><td>{dateValue(row.last_statement_date)}</td><td>{dateValue(row.last_reconciled_at)}</td><td>{formatCell(row.transaction_count)}</td><td>{formatCell(row.unreconciled_count)}</td><td>{formatCell(row.exception_count)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Account", "Institution / Reference", "Status", "Active Transactions", "Unmatched Count", "Exception Count", "Last Statement", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{accountLink(row.id, row.account_name)}<div className="muted">{formatAction(row.account_type)} / {textValue(row.currency)}</div></td><td>{textValue(row.institution_name)}<div className="muted">{textValue(row.masked_account_number)}</div></td><td>{formatAction(row.status)}</td><td>{formatCell(row.transaction_count)}</td><td>{formatCell(row.unreconciled_count)}</td><td>{formatCell(row.exception_count)}</td><td>{dateValue(row.last_statement_date)}</td><td>{bankAccountNextAction(row)}</td><td><Link className="table-link" href={`/bank-reconciliation/accounts/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
 }
 
 function BankTransactionTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No bank transactions found.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Transaction Date", "Posted Date", "Bank Account", "Direction", "Amount", "Currency", "Description", "Bank Reference", "External Transaction ID", "Payment Method", "Transaction Type", "Reconciliation Status", "Cleared Status", "Exception Status", "Exception Reason", "Source Type", "Active Match Count", "Approved Match Amount", "Unmatched Amount", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{dateValue(row.transaction_date)}</td><td>{dateValue(row.posted_date)}</td><td>{textValue(row.bank_account_name ?? row.bank_account_id)}</td><td>{formatAction(row.direction)}</td><td>{money(row.amount)}</td><td>{textValue(row.currency)}</td><td>{transactionLink(row.id, row.description ?? row.id)}</td><td>{textValue(row.bank_reference)}</td><td>{textValue(row.external_transaction_id)}</td><td>{formatAction(row.payment_method)}</td><td>{formatAction(row.transaction_type)}</td><td>{formatAction(row.reconciliation_status)}</td><td>{formatAction(row.cleared_status)}</td><td>{formatAction(row.exception_status)}</td><td>{textValue(row.exception_reason)}</td><td>{formatAction(row.source_type)}</td><td>{formatCell(row.active_match_count)}</td><td>{money(row.approved_match_amount)}</td><td>{money(row.unmatched_amount)}</td><td>{formatAction(row.recommended_next_action)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Bank Transaction", "Account", "Direction / Type", "Amount", "Transaction Date", "Reference / Memo", "Match Status", "Exception Status", "Related SyncOS Record", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{transactionLink(row.id, row.description ?? row.id)}<div className="muted">{textValue(row.bank_reference)}</div></td><td>{textValue(row.bank_account_name ?? row.bank_account_id)}</td><td>{formatAction(row.direction)}<div className="muted">{formatAction(row.transaction_type)}</div></td><td>{money(row.amount)}</td><td>{dateValue(row.transaction_date)}</td><td>{textValue(row.description)}<div className="muted">{textValue(row.external_transaction_id)}</div></td><td>{formatAction(row.reconciliation_status)}<div className="muted">{formatCell(row.active_match_count)} active matches</div></td><td>{formatAction(row.exception_status)}<div className="muted">{textValue(row.exception_reason)}</div></td><td>{relatedBankRecord(row)}</td><td>{dateValue(row.updated_at)}</td><td>{bankTransactionNextAction(row)}</td><td><Link className="table-link" href={`/bank-reconciliation/transactions/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
 }
 
 function MatchTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No reconciliation matches found.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Match Type", "Matched Object Type", "Matched Object", "Bank Transaction", "Matched Amount", "Match Confidence", "Match Status", "Match Reason", "Variance Amount", "Reviewed At", "Approved At", "Rejected At", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{matchLink(row.id, row.match_type)}</td><td>{formatAction(row.matched_object_type)}</td><td>{matchedObjectLink(row)}</td><td>{transactionLink(row.bank_transaction_id, row.bank_transaction_description ?? row.bank_reference ?? row.bank_transaction_id)}</td><td>{money(row.matched_amount)}</td><td>{formatAction(row.match_confidence)}</td><td>{formatAction(row.match_status)}</td><td>{textValue(row.match_reason)}</td><td>{money(row.variance_amount)}</td><td>{dateValue(row.reviewed_at)}</td><td>{dateValue(row.approved_at)}</td><td>{dateValue(row.rejected_at)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Match", "Bank Transaction", "Matched Record Type", "Matched Record", "Amount", "Review Status", "Exception Status", "Created / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{matchLink(row.id, row.match_type)}<div className="muted">{formatAction(row.match_confidence)}</div></td><td>{transactionLink(row.bank_transaction_id, row.bank_transaction_description ?? row.bank_reference ?? row.bank_transaction_id)}</td><td>{formatAction(row.matched_object_type)}</td><td>{matchedObjectLink(row)}</td><td>{money(row.matched_amount)}<div className="muted">Variance {money(row.variance_amount)}</div></td><td>{formatAction(row.match_status)}<div className="muted">{textValue(row.match_reason)}</div></td><td>{formatAction(row.exception_status ?? "none")}</td><td>{dateValue(row.created_at)}<div className="muted">{dateValue(row.updated_at)}</div></td><td>{reconciliationMatchNextAction(row)}</td><td><Link className="table-link" href={`/reconciliation-matches/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
 }
 
 function FuturePlaceholders() {
@@ -961,6 +990,70 @@ function buildSummary(data: LandingData) {
   return summary;
 }
 
+function countReconciliationQueue(data: LandingData, queue: ReconciliationQueueKey) {
+  if (queue === "reviewMatches") return data.matches.filter((row) => reconciliationMatchMatches(row, queue)).length;
+  if (queue === "archived") return data.accounts.filter((row) => String(row.status) === "archived").length + data.transactions.filter((row) => reconciliationTransactionMatches(row, queue)).length + data.matches.filter((row) => reconciliationMatchMatches(row, queue)).length;
+  return data.transactions.filter((row) => reconciliationTransactionMatches(row, queue)).length;
+}
+
+function reconciliationTransactionMatches(row: SyncRecord, queue: ReconciliationQueueKey) {
+  const direction = String(row.direction ?? "");
+  const reconciliationStatus = String(row.reconciliation_status ?? "");
+  const exceptionStatus = String(row.exception_status ?? "");
+  if (queue === "unmatchedCredits") return direction === "credit" && ["unreconciled", "partially_matched"].includes(reconciliationStatus) && exceptionStatus !== "open";
+  if (queue === "unmatchedDebits") return direction === "debit" && ["unreconciled", "partially_matched"].includes(reconciliationStatus) && exceptionStatus !== "open";
+  if (queue === "openExceptions") return exceptionStatus === "open" || reconciliationStatus === "exception";
+  if (queue === "resolvedExceptions") return exceptionStatus === "resolved";
+  if (queue === "ignored") return reconciliationStatus === "ignored" || exceptionStatus === "ignored";
+  if (queue === "matched") return reconciliationStatus === "matched";
+  if (queue === "archived") return reconciliationStatus === "archived" || Boolean(row.archived_at);
+  return false;
+}
+
+function reconciliationMatchMatches(row: SyncRecord, queue: ReconciliationQueueKey) {
+  const status = String(row.match_status ?? "");
+  if (queue === "reviewMatches") return ["proposed", "reviewed"].includes(status);
+  if (queue === "matched") return status === "approved";
+  if (queue === "archived") return status === "archived" || Boolean(row.archived_at);
+  return false;
+}
+
+function bankAccountNextAction(row: SyncRecord) {
+  if (String(row.status) === "archived") return "Archived for audit.";
+  if (numberValue(row.exception_count, 0) > 0) return "Review account exceptions.";
+  if (numberValue(row.unreconciled_count, 0) > 0) return "Review unmatched transactions.";
+  return "Monitor reconciliation status.";
+}
+
+function bankTransactionNextAction(row: SyncRecord) {
+  const direction = String(row.direction ?? "");
+  const reconciliationStatus = String(row.reconciliation_status ?? "");
+  const exceptionStatus = String(row.exception_status ?? "");
+  if (exceptionStatus === "open" || reconciliationStatus === "exception") return "Resolve reconciliation exception.";
+  if (reconciliationStatus === "ignored") return "Ignored; retained for audit.";
+  if (reconciliationStatus === "matched") return "Matched; review detail if needed.";
+  if (direction === "credit") return "Match Cash Receipt.";
+  if (direction === "debit") return "Match Payment Batch.";
+  return formatAction(row.recommended_next_action) || "Review transaction.";
+}
+
+function reconciliationMatchNextAction(row: SyncRecord) {
+  const status = String(row.match_status ?? "");
+  if (status === "proposed") return "Review Match.";
+  if (status === "reviewed") return "Approve or reject match.";
+  if (status === "approved") return "Approved match retained for reconciliation.";
+  if (status === "rejected") return "Rejected; inspect detail if needed.";
+  if (status === "archived") return "Archived for audit.";
+  return "Open match detail.";
+}
+
+function relatedBankRecord(row: SyncRecord) {
+  if (row.payment_batch_id) return <Link className="table-link" href={`/payments/${row.payment_batch_id}`}>{textValue(row.payment_batch_number ?? row.payment_batch_id)}</Link>;
+  if (row.cash_receipt_id) return <Link className="table-link" href={`/cash/receipts/${row.cash_receipt_id}`}>{textValue(row.receipt_number ?? row.cash_receipt_id)}</Link>;
+  if (row.payment_application_id) return <Link className="table-link" href={`/payment-applications/${row.payment_application_id}`}>{textValue(row.payment_application_id)}</Link>;
+  return "Not linked";
+}
+
 function sortTransactions(rows: SyncRecord[], sort?: string) {
   return [...rows].sort((a, b) => {
     if (sort === "transaction_date_desc") return String(b.transaction_date ?? "").localeCompare(String(a.transaction_date ?? ""));
@@ -1022,8 +1115,8 @@ function Select({ label, value, options, labels = {}, onChange, disabled, requir
   return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required={required}>{options.map((option) => <option key={option} value={option}>{labels[option] ?? formatAction(option)}</option>)}</select></label>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: unknown; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: unknown; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className="summary-card" aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: ReactNode }) {

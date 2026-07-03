@@ -51,10 +51,25 @@ type RelatedData = {
 
 const emptyRelated: RelatedData = { invoices: [], cashReceipts: [], paymentApplications: [], contractorPayables: [], payrollRuns: [], paymentBatches: [], bankTransactions: [], reconciliationMatches: [] };
 
+type ExportQueueKey = "draft" | "submitted" | "approved" | "markedSubmitted" | "accepted" | "canceled" | "itemsAttention" | "archived";
+
+const exportQueueDefinitions: Array<{ key: ExportQueueKey; label: string; helper: string; empty: string }> = [
+  { key: "draft", label: "Draft", helper: "Export batches still being prepared.", empty: "No draft accounting exports need attention." },
+  { key: "submitted", label: "Submitted for Review", helper: "Export batches waiting for accounting review.", empty: "No accounting export batches are waiting for review." },
+  { key: "approved", label: "Approved", helper: "Export batches approved internally but not yet marked submitted.", empty: "No approved exports are waiting to be marked submitted." },
+  { key: "markedSubmitted", label: "Marked Submitted", helper: "Export batches recorded as submitted manually or externally.", empty: "No submitted exports in this queue." },
+  { key: "accepted", label: "Accepted", helper: "Export batches recorded as accepted by an external/manual accounting process.", empty: "No accepted exports in this queue." },
+  { key: "canceled", label: "Canceled", helper: "Export batches canceled inside SyncOS.", empty: "No canceled exports in this queue." },
+  { key: "itemsAttention", label: "Items Need Attention", helper: "Export items archived, blocked, rejected, or requiring review if supported by current data.", empty: "No accounting export items need attention." },
+  { key: "archived", label: "Archived", helper: "Closed or removed export records.", empty: "No archived export records in this queue." },
+];
+
 export function AccountingExportQueue() {
   const session = useSession();
   const [rows, setRows] = useState<SyncRecord[]>([]);
+  const [exportItems, setExportItems] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
+  const [activeQueue, setActiveQueue] = useState<ExportQueueKey>("submitted");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -62,7 +77,10 @@ export function AccountingExportQueue() {
     setLoading(true);
     setError("");
     try {
-      setRows(await syncosFetch<SyncRecord[]>(`/accounting-export-batches?${accountingExportQuery(filters).toString()}`, { token: session.token }));
+      const batches = await syncosFetch<SyncRecord[]>(`/accounting-export-batches?${accountingExportQuery(filters).toString()}`, { token: session.token });
+      setRows(batches);
+      const items = (await Promise.all(batches.slice(0, 25).map((batch) => optionalList(`/accounting-export-batches/${batch.id}/items`, session.token)))).flat();
+      setExportItems(items);
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
     } finally {
@@ -75,73 +93,94 @@ export function AccountingExportQueue() {
     else setLoading(false);
   }, [session.token, filters.archived]);
 
-  const visible = useMemo(() => sortBatches(rows, filters.sort), [rows, filters.sort]);
-  const summary = useMemo(() => buildSummary(rows), [rows]);
+  const visible = useMemo(() => sortBatches(rows.filter((row) => exportQueueMatches(row, activeQueue)), filters.sort), [rows, activeQueue, filters.sort]);
+  const visibleItems = useMemo(() => exportItems.filter((item) => exportItemNeedsAttention(item) || activeQueue === "itemsAttention"), [exportItems, activeQueue]);
+  const selectedQueue = exportQueueDefinitions.find((queue) => queue.key === activeQueue) ?? exportQueueDefinitions[1];
+
+  function selectQueue(queue: ExportQueueKey) {
+    setActiveQueue(queue);
+    setFilters({ ...filters, archived: queue === "archived" ? "true" : "false", status: "", approval_status: "", export_status: "" });
+  }
 
   return (
-    <AccountingExportShell title="Accounting Export Queue" purpose="Prepare accounting export batches without QuickBooks, ERP, GL, tax, payment, bank transaction, source mutation, or accounting close workflows.">
+    <AccountingExportShell title="Accounting Export Workbench" purpose="Prepare and track internal accounting handoff batches and export items without posting to QuickBooks, ERP, GL, tax, payroll, or banking systems.">
       <SessionPanel session={session} />
-      <div className="warning-box">Accounting Export is status/control only in this sprint. It packages facts for external accounting and does not call QuickBooks or ERP APIs, post GL entries, create tax filings, create payments, create bank transactions, close accounting periods, or mutate source records.</div>
-      {error ? <div className="error-banner">{error}</div> : null}
-      {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view accounting export batches.</div> : null}
+      <div className="warning-box">Accounting Export prepares internal accounting handoff status only. SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close.</div>
+      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading accounting exports...</div> : null}
       {session.token && !loading ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
-                <h2>Accounting Export Summary</h2>
-                <p className="muted">Failed batches, mapping errors, review-ready batches, generated exports, and submitted-but-not-accepted batches stay prominent.</p>
+                <h2>Today&apos;s accounting handoff work</h2>
+                <p className="muted">Review export batches, mark manual/external submission and acceptance, and inspect item attention without posting to accounting systems.</p>
               </div>
               <Link className="primary-button" href="/accounting-exports/new" aria-disabled={!hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</Link>
             </div>
             <div className="summary-grid">
-              <SummaryCard label="Total Export Batches" value={summary.total} onClick={() => setFilters({ archived: "false", sort: "updated_desc" })} />
-              {batchStatuses.map((status) => <SummaryCard key={status} label={formatAction(status)} value={summary.status[status] ?? 0} onClick={() => setFilters({ ...filters, archived: status === "archived" ? "true" : "false", status })} />)}
-              {["invoices", "cash_receipts", "payment_applications", "contractor_payables", "payroll", "payment_execution", "bank_reconciliation"].map((export_type) => <SummaryCard key={export_type} label={formatAction(export_type)} value={summary.type[export_type] ?? 0} onClick={() => setFilters({ ...filters, export_type })} />)}
-              <SummaryCard label="Mapping Errors" value={summary.mappingErrors} onClick={() => setFilters({ ...filters, has_mapping_errors: "true" })} />
-              <SummaryCard label="Mapping Warnings" value={summary.mappingWarnings} onClick={() => setFilters({ ...filters, has_mapping_errors: "true" })} />
-              <SummaryCard label="Pending Submission" value={summary.pendingSubmission} onClick={() => setFilters({ ...filters, export_status: "generated" })} />
-              <SummaryCard label="Failed Exports" value={summary.status.failed ?? 0} onClick={() => setFilters({ ...filters, status: "failed" })} />
+              {exportQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countExportQueue(rows, exportItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Filters</h2>
-              <button type="button" onClick={() => setFilters({ archived: "false", sort: "updated_desc" })}>Reset</button>
+              <div>
+                <h2>Accounting export queues</h2>
+                <p className="muted">{selectedQueue.helper}</p>
+              </div>
+              <button type="button" onClick={() => { setActiveQueue("submitted"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
-            <div className="tab-row">
-              {["draft", "ready_for_review", "under_review", "approved", "generated", "submitted_later", "accepted_later", "failed", "cancelled"].map((status) => <button key={status} type="button" onClick={() => setFilters({ ...filters, status })}>{formatAction(status)}</button>)}
-              {["invoices", "cash_receipts", "contractor_payables", "payroll", "payment_execution", "bank_reconciliation"].map((export_type) => <button key={export_type} type="button" onClick={() => setFilters({ ...filters, export_type })}>{formatAction(export_type)}</button>)}
-              {["generic_csv", "generic_json", "manual_export"].map((target_system) => <button key={target_system} type="button" onClick={() => setFilters({ ...filters, target_system })}>{formatAction(target_system)}</button>)}
-              <button type="button" onClick={() => setFilters({ ...filters, has_mapping_errors: "true" })}>Mapping Errors</button>
+            <div className="tab-row" role="tablist" aria-label="Accounting export queues">
+              {exportQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
-            <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, target, account, reference, error" />
-              <Select label="Export Type" value={filters.export_type ?? ""} options={["", ...exportTypes]} onChange={(export_type) => setFilters({ ...filters, export_type })} />
-              <Select label="Target System" value={filters.target_system ?? ""} options={["", ...targetSystems]} onChange={(target_system) => setFilters({ ...filters, target_system })} />
-              <Select label="Export Format" value={filters.export_format ?? ""} options={["", ...exportFormats]} onChange={(export_format) => setFilters({ ...filters, export_format })} />
-              <Select label="Status" value={filters.status ?? ""} options={["", ...batchStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
-              <Select label="Approval Status" value={filters.approval_status ?? ""} options={["", ...approvalStatuses]} onChange={(approval_status) => setFilters({ ...filters, approval_status })} />
-              <Select label="Export Status" value={filters.export_status ?? ""} options={["", ...exportStatuses]} onChange={(export_status) => setFilters({ ...filters, export_status })} />
-              <label>Period Start From<input type="date" value={filters.period_start_from ?? ""} onChange={(event) => setFilters({ ...filters, period_start_from: event.target.value })} /></label>
-              <label>Period End To<input type="date" value={filters.period_end_to ?? ""} onChange={(event) => setFilters({ ...filters, period_end_to: event.target.value })} /></label>
-              <label>Submitted From<input type="date" value={filters.submitted_from ?? ""} onChange={(event) => setFilters({ ...filters, submitted_from: event.target.value })} /></label>
-              <label>Accepted To<input type="date" value={filters.accepted_to ?? ""} onChange={(event) => setFilters({ ...filters, accepted_to: event.target.value })} /></label>
-              <Select label="Has Errors" value={filters.has_errors ?? ""} options={["", "true", "false"]} onChange={(has_errors) => setFilters({ ...filters, has_errors })} />
-              <Select label="Has Mapping Errors" value={filters.has_mapping_errors ?? ""} options={["", "true", "false"]} onChange={(has_mapping_errors) => setFilters({ ...filters, has_mapping_errors })} />
-              <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
-              <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "period_end_desc", "amount_desc", "error_count_desc", "status", "export_batch_number"]} labels={{ updated_desc: "Recently Updated", period_end_desc: "Period End Newest", amount_desc: "Total Amount Highest", error_count_desc: "Error Count Highest", status: "Status", export_batch_number: "Export Batch Number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
-            </div>
+            <details className="filter-drawer">
+              <summary>Advanced filters</summary>
+              <div className="tab-row">
+                {["invoices", "cash_receipts", "contractor_payables", "payroll", "payment_execution", "bank_reconciliation"].map((export_type) => <button key={export_type} type="button" onClick={() => setFilters({ ...filters, export_type })}>{formatAction(export_type)}</button>)}
+                {["generic_csv", "generic_json", "manual_export"].map((target_system) => <button key={target_system} type="button" onClick={() => setFilters({ ...filters, target_system })}>{formatAction(target_system)}</button>)}
+                <button type="button" onClick={() => setFilters({ ...filters, has_mapping_errors: "true" })}>Mapping Errors</button>
+              </div>
+              <div className="filter-grid">
+                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, target, account, reference, error" />
+                <Select label="Export Type" value={filters.export_type ?? ""} options={["", ...exportTypes]} onChange={(export_type) => setFilters({ ...filters, export_type })} />
+                <Select label="Target System" value={filters.target_system ?? ""} options={["", ...targetSystems]} onChange={(target_system) => setFilters({ ...filters, target_system })} />
+                <Select label="Export Format" value={filters.export_format ?? ""} options={["", ...exportFormats]} onChange={(export_format) => setFilters({ ...filters, export_format })} />
+                <Select label="Status" value={filters.status ?? ""} options={["", ...batchStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
+                <Select label="Approval Status" value={filters.approval_status ?? ""} options={["", ...approvalStatuses]} onChange={(approval_status) => setFilters({ ...filters, approval_status })} />
+                <Select label="Export Status" value={filters.export_status ?? ""} options={["", ...exportStatuses]} onChange={(export_status) => setFilters({ ...filters, export_status })} />
+                <label>Period Start From<input type="date" value={filters.period_start_from ?? ""} onChange={(event) => setFilters({ ...filters, period_start_from: event.target.value })} /></label>
+                <label>Period End To<input type="date" value={filters.period_end_to ?? ""} onChange={(event) => setFilters({ ...filters, period_end_to: event.target.value })} /></label>
+                <label>Submitted From<input type="date" value={filters.submitted_from ?? ""} onChange={(event) => setFilters({ ...filters, submitted_from: event.target.value })} /></label>
+                <label>Accepted To<input type="date" value={filters.accepted_to ?? ""} onChange={(event) => setFilters({ ...filters, accepted_to: event.target.value })} /></label>
+                <Select label="Has Errors" value={filters.has_errors ?? ""} options={["", "true", "false"]} onChange={(has_errors) => setFilters({ ...filters, has_errors })} />
+                <Select label="Has Mapping Errors" value={filters.has_mapping_errors ?? ""} options={["", "true", "false"]} onChange={(has_mapping_errors) => setFilters({ ...filters, has_mapping_errors })} />
+                <Select label="Archived" value={filters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setFilters({ ...filters, archived })} />
+                <Select label="Sort" value={filters.sort ?? "updated_desc"} options={["updated_desc", "period_end_desc", "amount_desc", "error_count_desc", "status", "export_batch_number"]} labels={{ updated_desc: "Recently Updated", period_end_desc: "Period End Newest", amount_desc: "Total Amount Highest", error_count_desc: "Error Count Highest", status: "Status", export_batch_number: "Export Batch Number" }} onChange={(sort) => setFilters({ ...filters, sort })} />
+              </div>
+            </details>
           </section>
 
           <section className="workspace-panel">
             <div className="section-toolbar">
-              <h2>Accounting Export Batches</h2>
+              <div>
+                <h2>{selectedQueue.label}</h2>
+                <p className="muted">Submitted and accepted states record manual/external handoff status only. SyncOS does not verify or post external accounting entries.</p>
+              </div>
               <span>{visible.length} shown</span>
             </div>
-            {!rows.length ? <div className="empty-state">No accounting export batches yet. Create a batch and add source objects as export items.</div> : <AccountingExportBatchTable rows={visible} />}
+            {!rows.length ? <div className="empty-state">No accounting export batches yet. Create a batch and add source objects as export items.</div> : visible.length ? <AccountingExportBatchTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
+          </section>
+          <section className="workspace-panel">
+            <div className="section-toolbar">
+              <div>
+                <h2>Accounting Export Item Visibility</h2>
+                <p className="muted">Shows export items needing attention from the loaded export batch population. Item actions remain on batch or item detail pages.</p>
+              </div>
+              <span>{visibleItems.length} items needing attention</span>
+            </div>
+            {visibleItems.length ? <AccountingExportItemVisibilityTable rows={visibleItems} /> : <div className="empty-state">No accounting export items need attention.</div>}
           </section>
           <FuturePlaceholders />
         </>
@@ -461,7 +500,11 @@ function AccountingExportShell({ title, purpose, children }: { title: string; pu
 }
 
 function AccountingExportBatchTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Export Batch Number", "Export Type", "Target System", "Export Format", "Status", "Approval Status", "Export Status", "Period Start", "Period End", "Item Count", "Total Debit Amount", "Total Credit Amount", "Total Amount", "Currency", "Generated File Reference", "External Batch Reference", "Submitted At", "Accepted At", "Rejected At", "Error Count", "Retry Count", "Recommended Next Action", "Updated Date"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.export_batch_number)}</td><td>{formatAction(row.export_type)}</td><td>{formatAction(row.target_system)}</td><td>{formatAction(row.export_format)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.approval_status)}</td><td>{formatAction(row.export_status)}</td><td>{dateValue(row.period_start)}</td><td>{dateValue(row.period_end)}</td><td>{formatCell(row.item_count)}</td><td>{money(row.total_debit_amount)}</td><td>{money(row.total_credit_amount)}</td><td>{money(row.total_amount)}</td><td>{textValue(row.currency)}</td><td>{textValue(row.generated_file_reference)}</td><td>{textValue(row.external_batch_reference)}</td><td>{dateValue(row.submitted_at)}</td><td>{dateValue(row.accepted_at)}</td><td>{dateValue(row.rejected_at)}</td><td>{formatCell(row.error_count)}</td><td>{formatCell(row.retry_count)}</td><td>{formatAction(row.recommended_next_action)}</td><td>{dateValue(row.updated_at)}</td></tr>)}</tbody></table></div>;
+  return <div className="wide-table"><table><thead><tr>{["Export Batch", "Export Type / Scope", "Source Period", "Item Count", "Total Amount", "Review Status", "Submission Status", "Acceptance Status", "Created / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.export_batch_number)}<div className="muted">{formatAction(row.export_format)} / {formatAction(row.target_system)}</div></td><td>{formatAction(row.export_type)}</td><td>{dateValue(row.period_start)} - {dateValue(row.period_end)}</td><td>{formatCell(row.item_count)}</td><td>{money(row.total_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{formatAction(row.export_status)}<div className="muted">{dateValue(row.submitted_at)}</div></td><td>{dateValue(row.accepted_at)}<div className="muted">{textValue(row.external_batch_reference)}</div></td><td>{dateValue(row.created_at)}<div className="muted">{dateValue(row.updated_at)}</div></td><td>{exportBatchNextAction(row)}</td><td><Link className="table-link" href={`/accounting-exports/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+}
+
+function AccountingExportItemVisibilityTable({ rows }: { rows: SyncRecord[] }) {
+  return <div className="wide-table"><table><thead><tr>{["Export Item", "Source Record Type", "Source Record", "Amount", "Item Status", "Export Batch", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.memo ?? row.export_item_type ?? row.id)}<div className="muted">{formatAction(row.export_item_type)}</div></td><td>{formatAction(row.source_object_type)}</td><td>{sourceLink(row)}</td><td>{money(row.amount ?? row.debit_amount ?? row.credit_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.export_status)}<div className="muted">{formatAction(row.mapping_status)}</div></td><td>{batchLink(row.accounting_export_batch_id, row.accounting_export_batch_number ?? row.accounting_export_batch_id)}</td><td>{exportItemNextAction(row)}</td><td><Link className="table-link" href={`/accounting-export-items/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
 }
 
 function AccountingExportTab({ tab, detail, batch, items, session, onAction }: { tab: string; detail: DetailShape; batch: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -731,6 +774,55 @@ function buildSummary(rows: SyncRecord[]) {
   return summary;
 }
 
+function countExportQueue(rows: SyncRecord[], items: SyncRecord[], queue: ExportQueueKey) {
+  if (queue === "itemsAttention") return items.filter(exportItemNeedsAttention).length;
+  return rows.filter((row) => exportQueueMatches(row, queue)).length;
+}
+
+function exportQueueMatches(row: SyncRecord, queue: ExportQueueKey) {
+  const status = String(row.status ?? "");
+  const approvalStatus = String(row.approval_status ?? "");
+  const exportStatus = String(row.export_status ?? "");
+  if (queue === "draft") return ["draft", "assembling"].includes(status) || approvalStatus === "not_submitted";
+  if (queue === "submitted") return ["ready_for_review", "under_review"].includes(status) || approvalStatus === "pending";
+  if (queue === "approved") return status === "approved" || approvalStatus === "approved" || exportStatus === "generated";
+  if (queue === "markedSubmitted") return status === "submitted_later" || exportStatus === "submitted_later";
+  if (queue === "accepted") return status === "accepted_later" || exportStatus === "accepted_later" || Boolean(row.accepted_at);
+  if (queue === "canceled") return status === "cancelled" || exportStatus === "cancelled";
+  if (queue === "archived") return status === "archived" || Boolean(row.archived_at);
+  return false;
+}
+
+function exportItemNeedsAttention(item: SyncRecord) {
+  const status = String(item.export_status ?? "");
+  const mappingStatus = String(item.mapping_status ?? "");
+  return ["rejected_later", "failed", "cancelled", "archived"].includes(status) || ["unmapped", "mapping_warning", "mapping_error"].includes(mappingStatus) || Boolean(item.error_message);
+}
+
+function exportBatchNextAction(row: SyncRecord) {
+  const status = String(row.status ?? "");
+  const approvalStatus = String(row.approval_status ?? "");
+  const exportStatus = String(row.export_status ?? "");
+  if (status === "archived") return "Archived for audit.";
+  if (status === "cancelled" || exportStatus === "cancelled") return "Canceled; inspect detail if needed.";
+  if (exportStatus === "accepted_later" || status === "accepted_later") return "Accepted by manual/external process.";
+  if (exportStatus === "submitted_later" || status === "submitted_later") return "Mark Accepted or Failed.";
+  if (approvalStatus === "approved" || status === "approved" || exportStatus === "generated") return "Mark Submitted when manually sent.";
+  if (approvalStatus === "pending" || ["ready_for_review", "under_review"].includes(status)) return "Review and approve export.";
+  return "Prepare or submit review.";
+}
+
+function exportItemNextAction(item: SyncRecord) {
+  const status = String(item.export_status ?? "");
+  const mappingStatus = String(item.mapping_status ?? "");
+  if (status === "archived") return "Archived for audit.";
+  if (["failed", "rejected_later", "cancelled"].includes(status)) return "Inspect item detail.";
+  if (mappingStatus === "mapping_error") return "Fix mapping error.";
+  if (mappingStatus === "mapping_warning") return "Review mapping warning.";
+  if (mappingStatus === "unmapped") return "Map item before export.";
+  return "No item action needed.";
+}
+
 function sortBatches(rows: SyncRecord[], sort?: string) {
   const statusRank: Record<string, number> = { failed: 9, ready_for_review: 8, under_review: 7, generated: 6, approved: 5, submitted_later: 4, draft: 3, assembling: 2 };
   return [...rows].sort((a, b) => {
@@ -804,8 +896,8 @@ function Select({ label, value, options, labels = {}, onChange, disabled, requir
   return <label>{label}<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} required={required}>{options.map((option) => <option key={option} value={option}>{labels[option] ?? formatAction(option)}</option>)}</select></label>;
 }
 
-function SummaryCard({ label, value, onClick }: { label: string; value: unknown; onClick: () => void }) {
-  return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong></button>;
+function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: unknown; helper?: string; active?: boolean; onClick: () => void }) {
+  return <button type="button" className="summary-card" aria-pressed={active} onClick={onClick}><span>{label}</span><strong>{formatCell(value)}</strong>{helper ? <small>{helper}</small> : null}</button>;
 }
 
 function Metric({ label, value }: { label: string; value: ReactNode }) {

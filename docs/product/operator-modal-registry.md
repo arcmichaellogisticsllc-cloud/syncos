@@ -102,6 +102,15 @@ Every mutation modal must follow these standards:
 - Payout boundary copy clarifies that SyncOS does not pay contractors, run payroll, move money, initiate ACH, send wires, issue card payouts, print checks, submit payroll, connect to banks, file taxes, or post accounting entries.
 - Phase 7 preserves backend validation, tenant authorization, timeline, audit, system action behavior, and payout/payment boundary rules.
 
+## Phase 8 Finance-Control Workbench Modal Notes
+
+- Phase 8 preserves existing detail-page modals for Bank Reconciliation Archive Account, Match Payment Batch, Match Cash Receipt, Open Exception, Resolve Exception, Ignore Transaction, and Review Match.
+- Phase 8 preserves existing detail-page modals for Accounting Export Submit Review, Archive Item, Mark Submitted, Approve, Mark Accepted, and Cancel.
+- Bank Reconciliation and Accounting Export list pages add queue/navigation actions only; they do not introduce new mutating list-page modals or fake backend behavior.
+- Bank Reconciliation list boundary copy clarifies that SyncOS does not import bank feeds, connect to banks, move money, create receipts, execute payments, or post accounting entries.
+- Accounting Export list boundary copy clarifies that SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close.
+- Phase 8 preserves backend validation, tenant authorization, timeline, audit, system action behavior, and bank/accounting boundary rules.
+
 | Archive Bank Account | Archive inactive bank account. | `/bank-reconciliation/accounts/[id]` | Archive | Account inactive. | None certified. | State/permission. | Archive Bank Account. | status archived. | Alert stays open. | Archive account. | Archive event. | Certified. |
 | Match Payment Batch | Match bank debit to payment batch. | `/bank-reconciliation/transactions/[id]` | Match Payment Batch | Transaction unreconciled debit. | Payment Batch ID, Matched Amount. | Required and amount valid. | Match Payment Batch. | Reconciliation match created. | Alert stays open. | Create match. | Match event. No export/payment application. | Certified. |
 | Match Cash Receipt | Match bank credit to cash receipt. | `/bank-reconciliation/transactions/[id]` | Match Cash Receipt | Transaction unreconciled credit. | Cash Receipt ID, Matched Amount. | Required and amount valid. | Match Cash Receipt. | Reconciliation match created. | Alert stays open. | Create match. | Match event. No export/payment application. | Certified. |

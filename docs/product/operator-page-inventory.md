@@ -184,6 +184,24 @@ To keep this inventory readable, each row contains the route-specific values for
 | `/accounting-exports/[id]/edit` | Edit | Controlled export edit | Accounting Manager | "What export metadata changed?" | Save, Cancel. | Export fields. | State constraints unclear. | Disable after submitted/accepted/cancelled. | P2 |
 | `/accounting-export-items/[id]` | Detail | Export item detail | Accounting Manager | "Should this item remain in the export batch?" | Archive Item. | Source record, status, batch link, timeline. | Item route isolated. | Keep under export batch with side detail. | P1 |
 
+## Phase 8 Inventory Status Notes
+
+| Route | Phase 8 status | Operator status note | Remaining gap |
+|---|---|---|---|
+| `/bank-reconciliation` | Redesigned list/workbench | Bank Reconciliation Workbench now includes Unmatched Credits, Unmatched Debits, Review Matches, Open Exceptions, Resolved Exceptions, Ignored, Matched, and Archived queues with bank boundary copy and next-action guidance. | Backend queue summaries should eventually replace loaded-row heuristics. |
+| `/bank-reconciliation/accounts/new` | Existing create route preserved | Manual internal bank account reference creation remains available. | Create flow still needs guided copy and read-only role context. |
+| `/bank-reconciliation/accounts/[id]` | Existing detail route preserved | Bank account detail remains certified and reachable from workbench visibility. | Add detail next-action card and account risk summary later. |
+| `/bank-reconciliation/accounts/[id]/edit` | Existing edit route preserved | Bank account edit remains functional. | Add stronger state-aware edit guidance later. |
+| `/bank-reconciliation/transactions/new` | Existing create route preserved | Manual bank-side evidence creation remains available. | Create flow should better explain manual evidence and no bank connection. |
+| `/bank-reconciliation/transactions/[id]` | Existing detail route preserved | Bank transaction detail remains certified and reachable from workbench queue rows. | Add detail next-action card and match/exception summary later. |
+| `/bank-reconciliation/transactions/[id]/edit` | Existing edit route preserved | Transaction edit remains functional. | Add state-aware constraints and guided edit copy later. |
+| `/reconciliation-matches/[id]` | Existing detail route preserved | Reconciliation match detail remains certified and reachable from workbench match visibility. | Add review consequence card and read-only banner later. |
+| `/accounting-exports` | Redesigned list/workbench | Accounting Export Workbench now includes Draft, Submitted for Review, Approved, Marked Submitted, Accepted, Canceled, Items Need Attention, and Archived queues with accounting boundary copy and next-action guidance. | Backend item-attention summaries should eventually replace loaded-batch item heuristics. |
+| `/accounting-exports/new` | Existing create route preserved | Export batch creation remains available. | Create flow should become a guided handoff setup later. |
+| `/accounting-exports/[id]` | Existing detail route preserved | Export batch detail remains certified and reachable from workbench queue rows. | Add detail next-action card and stronger item-readiness summary later. |
+| `/accounting-exports/[id]/edit` | Existing edit route preserved | Export batch edit remains functional. | Add state-aware constraints and guided edit copy later. |
+| `/accounting-export-items/[id]` | Existing detail route preserved | Export item detail remains certified and reachable from item visibility. | No standalone list route exists; item visibility remains scoped to loaded export batches. |
+
 ## Admin / Configuration Pages That Should Exist
 
 | Proposed route | Type | Persona | Purpose | Priority |

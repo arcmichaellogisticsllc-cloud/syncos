@@ -253,6 +253,16 @@ Phase 7 list-page notes:
 | Mark Accepted | `/accounting-exports/[id]` | Export batch | Accounting Manager | Status `submitted_later`. | Missing acceptance note. | Primary, modal, Acceptance Note. | Mark accepted. | `export_status=accepted_later`; internal tracking only. Certified. | P0 |
 | Cancel | `/accounting-exports/[id]` | Export batch | Accounting Manager | Draft cancelable. | Missing cancel reason. | Danger, modal "Cancel", Cancel Reason. | Cancel export. | `status=cancelled`; no GL/API. Certified. | P0 |
 
+## Phase 8 Finance-Control Workbench Button Notes
+
+- `/bank-reconciliation` list page adds queue/navigation buttons only; it does not introduce mutating list-page actions or fake backend behavior.
+- `/accounting-exports` list page adds queue/navigation buttons only; it does not introduce mutating list-page actions or fake backend behavior.
+- Existing Bank Reconciliation detail buttons remain certified for Archive Account, Match Payment Batch, Match Cash Receipt, Open Exception, Resolve Exception, Ignore, and Review Match.
+- Existing Accounting Export detail buttons remain certified for Submit Review, Archive Item, Mark Submitted, Approve, Mark Accepted, and Cancel.
+- Bank Reconciliation boundary copy clarifies that matching does not create receipts, apply cash, execute payments, move money, import feeds, connect to banks, or post accounting entries.
+- Accounting Export boundary copy clarifies that export status does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close.
+- Phase 8 preserves backend validation, tenant authorization, timeline, audit, system action behavior, and finance-control boundary rules.
+
 ## Admin / Session
 
 | Button | Route/page | Object | Persona/permission | Appears when | Disabled when and explanation | Style/modal/fields | Backend action | Success/events/boundary/E2E | Priority |
