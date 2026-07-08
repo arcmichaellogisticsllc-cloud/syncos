@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../operator-page-templates";
 
 const accountTypes = ["operating", "payroll", "tax", "savings", "escrow", "credit_card", "other"];
 const accountStatuses = ["active", "inactive", "closed", "archived"];
@@ -505,6 +506,17 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
       {!transaction && session.token && !error ? <div className="empty-state">Bank transaction not found or no access.</div> : null}
       {transaction && detail ? (
         <>
+          {!hasPermission(session.permissions, "bank_transaction.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            variant="finance"
+            status={formatAction(transaction.reconciliation_status)}
+            nextActionLabel={bankTransactionNextAction(transaction)}
+            helperText="Review transaction direction, amount, match status, exception state, related SyncOS records, and audit evidence before matching or opening an exception."
+            disabled={!hasPermission(session.permissions, "bank_transaction.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Reconciliation matches bank-side evidence to SyncOS records. It does not import bank feeds, move money, create cash, execute payments, or post accounting entries."
+          />
+          <DetailBoundaryNotice>Reconciliation matches bank-side evidence to SyncOS records. It does not import bank feeds, move money, create cash receipts, execute payments, change invoice balance, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

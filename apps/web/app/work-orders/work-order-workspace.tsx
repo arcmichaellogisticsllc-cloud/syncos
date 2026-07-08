@@ -6,6 +6,7 @@ import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const workOrderStatuses = ["draft", "ready_to_assign", "assigned", "scheduled", "in_progress", "submitted", "qc_review", "corrections_required", "approved", "billable", "closed", "on_hold", "cancelled", "archived"];
 const readinessStatuses = ["not_ready", "ready_to_assign", "ready_to_start", "blocked"];
@@ -205,8 +206,13 @@ export function WorkOrderCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Work Order" purpose="Create an executable field work package under an approved project." afterSave="the work order opens in detail view for assignment, scheduling, and lifecycle action review." />
+        <RequiredFieldNote>Project and assignment type are required to create a work order. Scheduling, production, QC, and billing happen through separate supported actions.</RequiredFieldNote>
+        <FormBoundaryNotice>Creating a work order does not create production, QC approval, invoice, cash, payment, payroll, bank, or accounting records.</FormBoundaryNotice>
         <div className="warning-box">The backend enforces tenant boundaries, valid project status, approved units, and write-action audit behavior.</div>
-        <WorkOrderFormFields form={form} setForm={setForm} related={related} includeRequired />
+        <FormSection title="Required planning fields" description="These fields establish which approved project owns the executable work package.">
+          <WorkOrderFormFields form={form} setForm={setForm} related={related} includeRequired />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</button>
           <Link className="link-button" href="/work-orders">Cancel</Link>
@@ -347,6 +353,16 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
       {!workOrder && session.token && !error ? <div className="empty-state">Work order not found or you do not have access.</div> : null}
       {workOrder && detail ? (
         <>
+          {!hasPermission(session.permissions, "work_order.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            status={formatAction(workOrder.status)}
+            nextActionLabel={nextWorkOrderAction(workOrder)}
+            helperText="Use this detail page to understand field execution state, assignment, production readiness, QC movement, and billable readiness before taking an action."
+            disabled={!hasPermission(session.permissions, "work_order.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Work order actions manage field execution state. They do not create production, QC approval, invoice, cash, or payment records unless a separate supported action exists."
+          />
+          <DetailBoundaryNotice>Work order actions manage field execution state. They do not create production, QC approval, invoice, cash, payment, payroll, bank, or accounting records unless a separate supported action exists.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const exportTypes = ["invoices", "cash_receipts", "payment_applications", "contractor_payables", "payroll", "payment_execution", "bank_reconciliation", "mixed_later", "correction", "reversal"];
 const targetSystems = ["quickbooks_later", "sage_later", "netsuite_later", "generic_csv", "generic_json", "manual_export", "other"];
@@ -211,8 +212,13 @@ export function AccountingExportCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Accounting Export Batch" purpose="Create an internal accounting handoff batch for review." afterSave="the export batch opens in detail view so accounting can add items, generate, approve, mark submitted, or mark accepted." />
+        <RequiredFieldNote>Export type, target system, and export format are required to create a batch shell.</RequiredFieldNote>
+        <FormBoundaryNotice>Create Accounting Export does not post to QuickBooks, ERP, GL, tax systems, banks, payroll systems, or accounting close.</FormBoundaryNotice>
         <div className="warning-box">Backend validation is authoritative. Creating an export batch does not call QuickBooks or ERP APIs, post GL entries, create tax filings, create payments, create bank transactions, mutate source records, or generate downloadable files.</div>
-        <BatchFormFields form={form} setForm={setForm} includeCreate />
+        <FormSection title="Export setup" description="Choose the internal handoff scope and format. Source records are attached later through explicit export item actions.">
+          <BatchFormFields form={form} setForm={setForm} includeCreate />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</button>
           <Link className="link-button" href="/accounting-exports">Cancel</Link>
@@ -323,6 +329,17 @@ export function AccountingExportDetail({ accountingExportBatchId }: { accounting
       {!batch && session.token && !error ? <div className="empty-state">Accounting export batch not found or no access.</div> : null}
       {batch && detail ? (
         <>
+          {!hasPermission(session.permissions, "accounting_export_batch.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            variant="finance"
+            status={formatAction(batch.status)}
+            nextActionLabel={exportBatchNextAction(batch)}
+            helperText="Review batch items, mapping state, approval, submission, acceptance, and errors before recording the next accounting handoff step."
+            disabled={!hasPermission(session.permissions, "accounting_export_batch.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Accounting Export prepares internal handoff status only. SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close."
+          />
+          <DetailBoundaryNotice>Accounting Export prepares internal handoff status only. SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

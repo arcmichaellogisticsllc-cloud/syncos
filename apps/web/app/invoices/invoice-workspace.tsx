@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DangerZone, DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const invoiceTypes = ["standard", "progress", "final", "retainage_release", "credit_memo", "rebill", "adjustment", "pro_forma"];
 const approvalStatuses = ["not_submitted", "pending", "approved", "rejected", "withdrawn"];
@@ -186,8 +187,13 @@ export function InvoiceCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Invoice" purpose="Create an internal invoice record for review." afterSave="the invoice opens in detail view so finance can add items, submit review, approve, and mark sent when external/manual sending occurs." />
+        <RequiredFieldNote>Customer and invoice context should be completed before invoice review. Required backend fields are enforced on submit.</RequiredFieldNote>
+        <FormBoundaryNotice>Create Invoice does not email the customer, collect payment, create cash, apply payment, post accounting entries, or move money.</FormBoundaryNotice>
         <div className="warning-box">Backend validation enforces tenant scope, customer/project/settlement validation, tenant-unique invoice numbers, and event/audit/system_action behavior.</div>
-        <InvoiceFormFields form={form} setForm={setForm} related={related} includeCreate />
+        <FormSection title="Invoice setup" description="Use customer, settlement, project, date, and terms to establish the internal receivable workflow record.">
+          <InvoiceFormFields form={form} setForm={setForm} related={related} includeCreate />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</button>
           <Link className="link-button" href="/invoices">Cancel</Link>
@@ -319,6 +325,17 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       {!record && session.token && !error ? <div className="empty-state">Invoice not found or you do not have access.</div> : null}
       {record && detail ? (
         <>
+          {!hasPermission(session.permissions, "invoice.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            variant="finance"
+            status={formatAction(record.status)}
+            nextActionLabel={nextInvoiceAction(record)}
+            helperText="Review invoice status, approval, sent state, dispute state, aging, and cash-readiness before taking the next finance action."
+            disabled={!hasPermission(session.permissions, "invoice.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Invoice status tracks internal workflow. Mark Sent records external/manual send status only. SyncOS does not email the customer, collect payment, apply cash, or post accounting entries."
+          />
+          <DetailBoundaryNotice>Invoice status tracks internal workflow. Mark Sent records external/manual send status only. SyncOS does not email the customer, collect payment, apply cash, move money, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
@@ -361,6 +378,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               <Metric label="Item Count" value={formatCell(record.item_count ?? items.length)} />
             </div>
             <div className="warning-box">Invoice owns receivable state. Ready for Cash Application does not create cash. Payments and cash application are future workflows.</div>
+            <DangerZone description="Reject, dispute, void, and archive actions change lifecycle state and should stay separated from routine invoice review work. Existing modals continue to control the actual submit behavior.">
+              <span>Danger actions available in the action bar: Reject, Dispute, Void, Archive.</span>
+            </DangerZone>
           </section>
 
           <div className="organization-layout">

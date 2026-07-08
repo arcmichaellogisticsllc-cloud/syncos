@@ -930,6 +930,92 @@ textarea:focus-visible {
   color: #0f3f50;
 }
 
+.detail-next-action-card,
+.form-purpose-header {
+  background: #f7fbfc;
+  border: 1px solid #d5e6ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 16px;
+}
+
+.detail-next-action-card h2,
+.form-purpose-header h2 {
+  font-size: 20px;
+  margin: 4px 0;
+}
+
+.detail-next-action-card-finance {
+  background: #f8faf7;
+  border-color: #d9e5d1;
+}
+
+.detail-next-action-card-danger {
+  background: #fff8f6;
+  border-color: #efc7bd;
+}
+
+.read-only-banner {
+  background: #f5f7fa;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 12px 0;
+  padding: 12px 14px;
+}
+
+.disabled-action-reason,
+.required-field-note {
+  background: #fffaf0;
+  border: 1px solid #edd7a7;
+  border-radius: 8px;
+  color: #7a4a00;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px;
+}
+
+.danger-zone {
+  background: #fff7f7;
+  border: 1px solid #e7b9b9;
+  border-radius: 8px;
+  color: #7f1d1d;
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.danger-zone h2 {
+  color: #7f1d1d;
+  font-size: 18px;
+  margin: 0;
+}
+
+.danger-zone-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-section {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.form-section h3 {
+  font-size: 16px;
+  margin: 0;
+}
+
 .record-header {
   align-items: flex-start;
   display: flex;

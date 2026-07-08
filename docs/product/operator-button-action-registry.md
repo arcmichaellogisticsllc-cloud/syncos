@@ -270,3 +270,11 @@ Phase 7 list-page notes:
 | Save Operator Session | Current Signal Feed developer panel | Local session | Developer/test only | Local/dev/test mode only. | Production mode: hidden. | Utility, no modal, token/permissions fields. | Local storage only. | No backend mutation. Current UX problem; remove from operator experience. | P0 |
 | Clear Filters | Lists/queues | View state | Any readable persona | Filters active. | No active filters: optional disabled. | Ghost/utility, no modal. | Client state. | No mutation. Needs standardized behavior. | P2 |
 | Refresh Queue | Proposed all queues | View state | Any readable persona | Queue visible. | While loading. | Utility, no modal. | GET current queue. | No mutation. Needs E2E per template. | P2 |
+
+## Phase 9 Detail Button Placement Notes
+
+- Representative detail pages now place a `Next Action` card above the existing action area so operators can read current state, recommended action, and consequence boundaries before choosing a button.
+- Read-only users see a plain-language disabled reason in the next-action card: "Read-only users cannot perform lifecycle actions."
+- Invoice Detail introduces a `Danger Zone` region explaining reject/dispute/void/archive risk while preserving existing action buttons, action labels, modals, and certified selectors.
+- Existing lifecycle button labels, permissions, backend actions, and modal triggers were preserved in Phase 9.
+- Remaining registry gap: every individual disabled button should eventually carry a state-specific disabled reason such as "Requires submitted status before review can start" or "Approve before marking payment ready."

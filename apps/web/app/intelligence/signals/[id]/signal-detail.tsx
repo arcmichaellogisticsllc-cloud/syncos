@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { dateValue, defaultSignalPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../../api";
+import { dateValue, defaultSignalPermissions, hasPermission, numberValue, readPermissions, savePermissions, syncosFetch, textValue, type SyncRecord } from "../../api";
 import { IntelligenceShell } from "../../intelligence-shell";
+import { DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../../../operator-page-templates";
 
 const evidenceTypes = ["source_url", "document", "screenshot", "email_note", "call_note", "meeting_note", "public_record", "procurement_notice", "permit_record", "funding_notice", "relationship_note", "other"];
 const archiveReasons = ["duplicate", "stale", "false_signal", "out_of_territory", "not_telecom_work", "insufficient_evidence", "no_longer_relevant", "other"];
@@ -37,14 +38,12 @@ export function SignalDetail({ signalId }: { signalId: string }) {
   const [contacts, setContacts] = useState<SyncRecord[]>([]);
   const [audit, setAudit] = useState<SyncRecord[]>([]);
   const [permissions, setPermissions] = useState<string[]>(defaultSignalPermissions);
-  const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [showEvidence, setShowEvidence] = useState(false);
   const [showCandidate, setShowCandidate] = useState(false);
   const [showAttach, setShowAttach] = useState<"organization" | "territory" | "contact" | null>(null);
 
   useEffect(() => {
-    setToken(readToken());
     setPermissions(readPermissions());
   }, []);
 
@@ -79,12 +78,6 @@ export function SignalDetail({ signalId }: { signalId: string }) {
     }
   }
 
-  function persistSession() {
-    saveToken(token);
-    savePermissions(permissions);
-    void load();
-  }
-
   const signal = detail?.signal;
   const archived = signal?.status === "archived" || Boolean(signal?.archived_at);
 
@@ -93,18 +86,24 @@ export function SignalDetail({ signalId }: { signalId: string }) {
       <section className="panel workspace-panel">
         <div className="section-toolbar">
           <Link href="/intelligence/signals">Back to Signal Feed</Link>
-          <button type="button" onClick={persistSession}>Apply Session</button>
         </div>
-        <div className="session-grid">
-          <input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" />
-          <textarea value={permissions.join(", ")} onChange={(event) => setPermissions(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} />
-        </div>
+        <p className="muted">Signal Detail uses the authenticated workspace credentials already loaded for this user.</p>
       </section>
 
       {error ? <div className="error-banner">{error}</div> : null}
       {!detail || !signal ? <section className="panel"><div className="empty-state">Loading signal...</div></section> : null}
       {detail && signal ? (
         <>
+          {!hasPermission(permissions, "signal.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            status={textValue(signal.status)}
+            nextActionLabel={textValue(signal.recommended_next_action ?? detail.readiness.recommended_action)}
+            helperText="Review evidence, organization/territory readiness, owner context, and candidate readiness before changing this signal."
+            disabled={!hasPermission(permissions, "signal.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Signal actions do not create opportunity, project, invoice, cash, payment, or accounting records unless a separate explicit conversion action exists."
+          />
+          <DetailBoundaryNotice>Signal actions do not create opportunity, project, invoice, cash, payment, payroll, bank, or accounting records unless a separate explicit conversion action exists.</DetailBoundaryNotice>
           <section className="panel workspace-panel">
             <div className="signal-header">
               <div>
@@ -170,7 +169,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
                     </div>
                     <div className="row-actions">
                       {item.source_url ? <a href={String(item.source_url)} target="_blank">Open Source</a> : null}
-                      <button type="button" disabled={archived || !hasPermission(permissions, "signal_evidence.archive") || item.status === "archived"} onClick={() => archiveEvidence(String(item.id), load)}>Archive Evidence</button>
+                      <button type="button" disabled={archived || !hasPermission(permissions, "signal_evidence.archive") || item.status === "archived"} onClick={() => void archiveEvidence(String(item.id), load, setError)}>Archive Evidence</button>
                     </div>
                   </article>
                 ))}
@@ -252,23 +251,100 @@ export function SignalDetail({ signalId }: { signalId: string }) {
   );
 }
 
+type SignalActionKind = "categorize" | "score" | "verify" | "archive";
+
 function LifecycleActions({ signal, permissions, ready, activeEvidenceCount, onAddEvidence, onAttachOrganization, onAttachTerritory, onAttachContact, onCreateCandidate, onReload }: { signal: SyncRecord; permissions: string[]; ready: boolean; activeEvidenceCount: number; onAddEvidence: () => void; onAttachOrganization: () => void; onAttachTerritory: () => void; onAttachContact: () => void; onCreateCandidate: () => void; onReload: () => Promise<void> }) {
+  const [modal, setModal] = useState<SignalActionKind | null>(null);
   const status = String(signal.status);
   const archived = status === "archived";
   const actions = [
-    { label: "Categorize", permission: "signal.categorize", show: status === "discovered", run: () => categorize(String(signal.id), onReload) },
-    { label: "Score", permission: "signal.score", show: status === "categorized", run: () => score(String(signal.id), onReload) },
-    { label: "Verify", permission: "signal.verify", show: ["scored", "investigated"].includes(status), disabled: activeEvidenceCount === 0, run: () => verify(String(signal.id), onReload) },
+    { label: "Categorize", permission: "signal.categorize", show: status === "discovered", run: () => setModal("categorize") },
+    { label: "Score", permission: "signal.score", show: status === "categorized", run: () => setModal("score") },
+    { label: "Verify", permission: "signal.verify", show: ["scored", "investigated"].includes(status), disabled: activeEvidenceCount === 0, run: () => setModal("verify") },
     { label: "Add Evidence", permission: "signal_evidence.create", show: status !== "consumed", run: onAddEvidence },
     { label: "Attach Organization", permission: "signal_entity.create", show: !signal.primary_organization_id, run: onAttachOrganization },
     { label: "Attach Territory", permission: "signal_entity.create", show: !signal.primary_territory_id, run: onAttachTerritory },
     { label: "Attach Contact", permission: "signal_entity.create", show: true, run: onAttachContact },
     { label: "Create Candidate", permission: "opportunity_candidate.create", show: ["scored", "investigated", "verified"].includes(status), disabled: !ready, run: onCreateCandidate },
-    { label: "Archive", permission: "signal.archive", show: status !== "consumed", run: () => archiveSignal(String(signal.id), onReload) },
+    { label: "Archive", permission: "signal.archive", show: status !== "consumed", run: () => setModal("archive") },
   ].filter((action) => action.show && !archived);
 
   if (archived) return <div className="action-bar"><span className="muted">This signal is archived. Actions are limited.</span></div>;
-  return <div className="action-bar">{actions.map((action) => <button key={action.label} type="button" disabled={action.disabled || !hasPermission(permissions, action.permission)} onClick={action.run}>{action.label}</button>)}</div>;
+  return (
+    <>
+      <div className="action-bar">{actions.map((action) => <button key={action.label} type="button" disabled={action.disabled || !hasPermission(permissions, action.permission)} onClick={action.run}>{action.label}</button>)}</div>
+      {modal ? <SignalActionModal action={modal} signalId={String(signal.id)} onClose={() => setModal(null)} onSaved={onReload} /> : null}
+    </>
+  );
+}
+
+function SignalActionModal({ action, signalId, onClose, onSaved }: { action: SignalActionKind; signalId: string; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const isDanger = action === "archive";
+  const title = {
+    categorize: "Categorize Signal",
+    score: "Score Signal",
+    verify: "Verify Signal",
+    archive: "Archive Signal",
+  }[action];
+  const purpose = {
+    categorize: "Set the market category and signal type before scoring.",
+    score: "Set the confidence score for this signal.",
+    verify: "Confirm this signal is valid based on available evidence.",
+    archive: "Remove this signal from active queues with an audit reason.",
+  }[action];
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      if (action === "categorize") {
+        await syncosFetch(`/signals/${signalId}/categorize`, { method: "POST", body: { signal_category: form.get("signal_category"), signal_type: form.get("signal_type") } });
+      } else if (action === "score") {
+        await syncosFetch(`/signals/${signalId}/score`, { method: "POST", body: { confidence_score: Number(form.get("confidence_score")) } });
+      } else if (action === "verify") {
+        await syncosFetch(`/signals/${signalId}/verify`, { method: "POST", body: {} });
+      } else {
+        await syncosFetch(`/signals/${signalId}/archive`, { method: "POST", body: { archive_reason: form.get("archive_reason") } });
+      }
+      await onSaved();
+      onClose();
+    } catch (nextError) {
+      setError((nextError as Error).message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-panel compact-modal" onSubmit={submit}>
+        <div className="section-toolbar">
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose} disabled={submitting}>Close</button>
+        </div>
+        <p>{purpose}</p>
+        <div className="warning-box">This action updates signal workflow state only. It does not create opportunity, project, invoice, cash, payment, payroll, bank, or accounting records.</div>
+        {error ? <div className="error-banner" role="alert">{error}</div> : null}
+        {action === "categorize" ? (
+          <>
+            <label>Signal category<input name="signal_category" defaultValue="funding" required disabled={submitting} /></label>
+            <label>Signal type<input name="signal_type" defaultValue="broadband_funding" required disabled={submitting} /></label>
+          </>
+        ) : null}
+        {action === "score" ? <label>Confidence score<input name="confidence_score" type="number" min="0" max="100" defaultValue="75" required disabled={submitting} /></label> : null}
+        {action === "verify" ? <p className="muted">Verification confirms the signal is ready for candidate consideration if the readiness checklist allows it.</p> : null}
+        {action === "archive" ? <label>Archive reason<SelectInput name="archive_reason" options={archiveReasons} defaultValue="stale" required /></label> : null}
+        <div className="form-actions">
+          <button className={isDanger ? "danger-button" : "primary-button"} type="submit" disabled={submitting}>{submitting ? "Submitting..." : title}</button>
+          <button type="button" onClick={onClose} disabled={submitting}>Cancel</button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function EvidenceModal({ signalId, onClose, onSaved }: { signalId: string; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -392,36 +468,13 @@ function SelectInput({ name, options, required, defaultValue }: { name: string; 
   );
 }
 
-async function categorize(id: string, reload: () => Promise<void>) {
-  const signal_category = window.prompt("Signal category", "funding");
-  const signal_type = window.prompt("Signal type", "broadband_funding");
-  if (!signal_category || !signal_type) return;
-  await syncosFetch(`/signals/${id}/categorize`, { method: "POST", body: { signal_category, signal_type } }).catch((error) => window.alert((error as Error).message));
-  await reload();
-}
-
-async function score(id: string, reload: () => Promise<void>) {
-  const confidence_score = Number(window.prompt("Confidence score 0-100", "75"));
-  if (!Number.isFinite(confidence_score)) return;
-  await syncosFetch(`/signals/${id}/score`, { method: "POST", body: { confidence_score } }).catch((error) => window.alert((error as Error).message));
-  await reload();
-}
-
-async function verify(id: string, reload: () => Promise<void>) {
-  await syncosFetch(`/signals/${id}/verify`, { method: "POST", body: {} }).catch((error) => window.alert((error as Error).message));
-  await reload();
-}
-
-async function archiveSignal(id: string, reload: () => Promise<void>) {
-  const archive_reason = window.prompt(`Archive reason: ${archiveReasons.join(", ")}`, "stale");
-  if (!archive_reason) return;
-  await syncosFetch(`/signals/${id}/archive`, { method: "POST", body: { archive_reason } }).catch((error) => window.alert((error as Error).message));
-  await reload();
-}
-
-async function archiveEvidence(id: string, reload: () => Promise<void>) {
-  await syncosFetch(`/signal-evidence/${id}/archive`, { method: "POST" }).catch((error) => window.alert((error as Error).message));
-  await reload();
+async function archiveEvidence(id: string, reload: () => Promise<void>, setError: (message: string) => void) {
+  try {
+    await syncosFetch(`/signal-evidence/${id}/archive`, { method: "POST" });
+    await reload();
+  } catch (nextError) {
+    setError((nextError as Error).message);
+  }
 }
 
 function readinessLabel(key: string) {

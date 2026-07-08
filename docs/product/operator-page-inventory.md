@@ -225,3 +225,25 @@ To keep this inventory readable, each row contains the route-specific values for
 8. `/payments`
 9. `/bank-reconciliation`
 10. `/accounting-exports`
+
+## Phase 9 Inventory Status Notes
+
+| Route | Phase 9 status | Operator status note | Remaining gap |
+|---|---|---|---|
+| `/intelligence/signals/[id]` | Detail guidance updated | Signal Detail now has next-action card, read-only banner behavior, conversion boundary copy, and no visible token/permissions panel by default. | Lifecycle actions still need full modal-hardening parity with Signal Feed actions. |
+| `/work-orders/new` | Create form guidance updated | Create Work Order now explains purpose, required planning fields, after-save behavior, and no downstream production/QC/finance creation. | Edit form still needs the same grouped purpose treatment. |
+| `/work-orders/[id]` | Detail guidance updated | Work Order Detail now has next-action card, read-only banner behavior, and execution boundary copy. | Danger-zone action separation should be applied later. |
+| `/production/new` | Create form guidance updated | Create Production now explains field-truth capture, required fields, after-save behavior, and no downstream finance creation. | Edit form still needs state-aware field grouping. |
+| `/production/[id]` | Detail guidance updated | Production Detail now has next-action card, read-only banner behavior, and Mark Billable boundary copy. | Danger-zone separation for void/archive should be applied later. |
+| `/qc/[id]` | Detail guidance updated | QC Detail now has next-action card, read-only banner behavior, and QC approval boundary copy. | Create/edit forms still need stronger role/state framing. |
+| `/invoices/new` | Create form guidance updated | Create Invoice now explains internal invoice creation, required context, after-save workflow, and no email/cash/payment/accounting posting. | Edit form still needs state-aware field grouping. |
+| `/invoices/[id]` | Detail guidance updated | Invoice Detail now has next-action card, read-only banner behavior, invoice boundary copy, and a separated danger-zone region. | Extend danger-zone separation to all financial details. |
+| `/cash/receipts/new` | Create form guidance updated | Create Cash Receipt now explains manual/internal receipt recording, required fields, after-save workflow, and no bank/card/ACH/accounting behavior. | Edit form still needs state-aware field grouping. |
+| `/cash/receipts/[id]` | Detail guidance updated | Cash Receipt Detail now has next-action card, read-only banner behavior, and no-money-movement boundary copy. | Payment Application Detail still needs the same next-action card. |
+| `/contractor-payables/new` | Create form guidance updated | Create Contractor Payable now explains internal payable shell creation and no payment/payroll/accounting consequence. | Edit form still needs state-aware field grouping. |
+| `/contractor-payables/[id]` | Detail guidance updated | Contractor Payable Detail now has next-action card, read-only banner behavior, and Payment Ready no-money boundary copy. | Payroll detail should receive the same treatment later. |
+| `/payments/new` | Create form guidance updated | Create Payment Batch now explains internal execution batch creation and no ACH/wire/card/check/payroll/bank/accounting behavior. | Edit form still needs state-aware field grouping. |
+| `/payments/[id]` | Detail guidance updated | Payment Batch Detail now has next-action card, read-only banner behavior, and no-money-movement boundary copy. | Payment Item Detail still needs richer next-action framing. |
+| `/bank-reconciliation/transactions/[id]` | Detail guidance updated | Bank Transaction Detail now has next-action card, read-only banner behavior, and no bank-feed/money/accounting boundary copy. | Bank Account and Reconciliation Match details need the same pattern later. |
+| `/accounting-exports/new` | Create form guidance updated | Create Accounting Export now explains internal handoff creation and no QuickBooks/ERP/GL/tax/bank/accounting-close posting. | Edit form still needs state-aware field grouping. |
+| `/accounting-exports/[id]` | Detail guidance updated | Accounting Export Detail now has next-action card, read-only banner behavior, and internal handoff boundary copy. | Export Item Detail still needs the same next-action card. |

@@ -516,3 +516,30 @@ Remaining finance-control template gaps:
 - Create/edit flows remain generic forms and should become guided reconciliation/accounting workflows later.
 - Queue counts should eventually use backend unmatched, exception, match-review, export-submission, acceptance, and item-attention summaries.
 - Mobile/tablet layout still requires visual review.
+
+## Phase 9 Detail/Form Standard
+
+Implemented representative detail-page wireframe sections:
+
+- Read-only banner when mutation permissions are absent.
+- Next Action card with current state, next action, helper copy, disabled reason, and boundary text.
+- Detail boundary notice separating internal workflow state from downstream/external consequences.
+- Existing key metrics and strategic sidebar retained below the guidance layer.
+- Existing timeline/audit panels retained in current tabs/sections.
+- Danger Zone region introduced on Invoice Detail as the first visual separation pattern.
+
+Implemented representative create-form wireframe sections:
+
+- Form purpose header with title, operator purpose, and after-save consequence.
+- Required-field note.
+- Form boundary notice.
+- Grouped field section for required setup fields.
+- Existing submit/cancel behavior preserved.
+- Existing backend validation and error banners preserved.
+
+Remaining detail/form wireframe gaps:
+
+- Roll the next-action/read-only/boundary pattern to all secondary details.
+- Roll danger-zone sections across all high-risk lifecycle details.
+- Add state-aware edit-form field disabling and disabled-field explanations.
+- Review mobile/tablet layout for all detail cards and dense form grids.

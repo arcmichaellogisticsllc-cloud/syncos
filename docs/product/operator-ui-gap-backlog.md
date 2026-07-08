@@ -199,6 +199,29 @@ Remaining Signal Feed gaps:
 - Mobile/tablet review remains open.
 - Read-only role context should become a shared page-level pattern.
 
+## Phase 9 Status
+
+Closed or reduced:
+
+- OUX-007 is reduced on representative detail pages through prominent next-action cards.
+- OUX-010 is reduced by adding shared read-only disabled-reason guidance on representative detail pages.
+- OUX-015 is reduced by removing visible token/permissions controls from Signal Detail and adding Phase 9 hidden developer UI coverage.
+- OUX-016 is reduced by adding detail/form boundary notices to representative finance, cash, payout, reconciliation, and accounting export pages.
+- OUX-029 is reduced on Bank Transaction and Accounting Export details through explicit next-action and boundary framing.
+- OUX-040 is introduced and partially reduced: representative create forms now explain purpose, required fields, after-save consequence, and downstream non-consequences.
+- OUX-041 is introduced and partially reduced: representative detail pages now show read-only role context.
+- OUX-042 is introduced and partially reduced: Invoice Detail now has a separated danger-zone region.
+- OUX-034 is expanded with Phase 9 E2E coverage for detail cards, read-only banners, disabled reasons, danger-zone separation, form guidance, hidden developer UI, and boundary copy.
+
+Still open after Phase 9:
+
+- OUX-010 remains open until every lifecycle button has a state-specific disabled reason or is hidden under a clear policy.
+- OUX-013 remains open until mobile/tablet review is completed.
+- OUX-040 remains open until every create/edit form has the guided form standard.
+- OUX-041 remains open until all readable detail pages have read-only banners where mutation permissions are absent.
+- OUX-042 remains open until danger-zone separation is applied to all archive, void, reject, cancel, ignore, and delete-like actions.
+- Secondary detail pages need the same next-action card and boundary treatment.
+
 ## Top 10 UX Problems
 
 1. Developer token/session UI is visible in the operator experience.

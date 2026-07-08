@@ -6,6 +6,7 @@ import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../operator-page-templates";
 
 const reviewTypes = ["internal_qc", "safety_qc", "compliance_qc", "customer_qc", "prime_qc", "billing_qc", "final_acceptance"];
 const reviewStatuses = ["pending", "in_review", "approved", "rejected", "correction_required", "corrected", "voided", "archived"];
@@ -303,6 +304,16 @@ export function QcReviewDetail({ qcReviewId }: { qcReviewId: string }) {
       {!review && session.token && !error ? <div className="empty-state">QC review not found or you do not have access.</div> : null}
       {review && detail ? (
         <>
+          {!hasPermission(session.permissions, "qc_review.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            status={formatAction(review.review_status)}
+            nextActionLabel={nextQcAction(review)}
+            helperText="Review production evidence, correction state, quality decision fields, and billable-candidate quantity before approving or sending work back."
+            disabled={!hasPermission(session.permissions, "qc_review.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="QC approval protects downstream billable readiness. It does not create invoice or cash records."
+          />
+          <DetailBoundaryNotice>QC approval protects downstream billable readiness. It does not create settlement, invoice, cash, payment, payroll, bank, or accounting records.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

@@ -369,3 +369,28 @@ Remaining Phase 8 gaps:
 Recommended next sprint after green validation:
 
 Operator UI Phase 9: Detail Page Next-Action Cards, Read-Only Banners, and Create/Edit Form Cleanup.
+
+## Phase 9 Status
+
+Status: implemented for representative detail pages and create forms, pending final validation.
+
+Completed in Phase 9:
+
+- Added shared detail/form standards: next-action cards, read-only banners, detail boundary notices, danger-zone framing, form purpose headers, required-field notes, form sections, and form boundary notices.
+- Applied detail next-action/read-only/boundary guidance to representative pages across Signal, Work Order, Production, QC, Invoice, Cash Receipt, Contractor Payable, Payment Execution, Bank Transaction, and Accounting Export.
+- Removed visible token and permissions session controls from Signal Detail in the default operator experience.
+- Added guided create-form treatment to Work Order, Production, Invoice, Cash Receipt, Contractor Payable, Payment Batch, and Accounting Export create flows.
+- Added E2E coverage for representative detail next-action guidance, read-only banner behavior, disabled read-only reason, danger-zone separation, form purpose/boundary copy, hidden developer UI, and finance-control detail copy.
+- Preserved existing lifecycle action labels, certified modals, backend routes, tenant boundaries, event/audit behavior, and financial/control boundary rules.
+
+Remaining Phase 9 gaps:
+
+- Secondary detail pages still need the same next-action/read-only card pattern.
+- Edit forms need deeper state-aware field grouping and disabled-field explanations.
+- Danger-zone visual separation should be rolled across all high-risk detail pages.
+- Individual lifecycle buttons still need more consistent disabled reasons beyond the shared read-only next-action reason.
+- Mobile/tablet review remains open.
+
+Recommended next sprint after green validation:
+
+Operator UI Phase 10: Mobile/Tablet Review, Accessibility Sweep, and Operator UAT Prep.

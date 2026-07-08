@@ -132,3 +132,11 @@ Every mutation modal must follow these standards:
 5. Some archive modals do not require reasons; product policy should decide whether that is acceptable.
 6. Modal titles and button labels are certified, but operator consequence copy needs a consistent template.
 7. Create/edit modals and pages are not covered by the action-state registry.
+
+## Phase 9 Detail/Card Relationship Notes
+
+- Phase 9 did not change certified lifecycle modal behavior.
+- Representative detail pages now introduce a next-action card before the action area so operators see state, blocked/read-only reason, and boundary copy before opening a modal.
+- Invoice Detail adds a Danger Zone explanation for reject/dispute/void/archive risk while preserving existing modal triggers.
+- Representative create forms now use form purpose headers and form boundary notices, but remain page forms rather than lifecycle modals.
+- Remaining modal gap: modal consequence copy should be aligned with the new detail-card boundary language across every high-risk lifecycle action.

@@ -6,6 +6,7 @@ import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const productionTypes = ["daily_production", "progress_update", "completion_submission", "correction_submission", "inspection_submission", "restoration_submission", "delay_report", "no_work_report", "safety_observation", "material_issue", "access_issue", "weather_delay", "customer_issue", "other"];
 const productionStatuses = ["draft", "submitted", "under_review", "correction_required", "corrected", "approved", "rejected", "voided", "archived", "billable"];
@@ -205,8 +206,13 @@ export function ProductionCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Production" purpose="Capture field production truth against an existing work order for later review." afterSave="the production record opens in detail view where it can be submitted, reviewed, corrected, approved, or marked billable." />
+        <RequiredFieldNote>Work order, production type, status, production date, quantity, and unit are required for a production record.</RequiredFieldNote>
+        <FormBoundaryNotice>Creating production does not approve field work, create QC approval, create billable items, create settlement, invoice, cash, payment, payroll, bank, or accounting records.</FormBoundaryNotice>
         <div className="warning-box">The backend enforces Work Order eligibility, Project status, performer context, quantity rules, evidence requirements, tenant boundaries, and write-action audit behavior.</div>
-        <ProductionFormFields form={form} setForm={setForm} related={related} includeRequired />
+        <FormSection title="Required field-truth fields" description="These fields define what work happened, where it belongs, and the quantity being claimed.">
+          <ProductionFormFields form={form} setForm={setForm} related={related} includeRequired />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production</button>
           <Link className="link-button" href="/production">Cancel</Link>
@@ -353,6 +359,16 @@ export function ProductionDetail({ productionId }: { productionId: string }) {
       {!record && session.token && !error ? <div className="empty-state">Production record not found or you do not have access.</div> : null}
       {record && detail ? (
         <>
+          {!hasAnyPermission(session.permissions, ["production_record.update", "production.update"]) ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            status={formatAction(record.status)}
+            nextActionLabel={nextProductionAction(record)}
+            helperText="Review field truth, evidence, correction status, QC state, and billable readiness before moving this record forward."
+            disabled={!hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Mark Billable makes approved production eligible for billing workflow. It does not create settlement, invoice, cash, or accounting export records."
+          />
+          <DetailBoundaryNotice>Production actions move field truth through review, correction, approval, and billable readiness. They do not create settlement, invoice, cash, payment, payroll, bank, or accounting records.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

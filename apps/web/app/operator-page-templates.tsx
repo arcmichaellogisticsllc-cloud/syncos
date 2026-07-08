@@ -166,6 +166,135 @@ export function DetailPageTemplate({
   );
 }
 
+export function DetailNextActionCard({
+  title = "Next Action",
+  status,
+  nextActionLabel,
+  disabled,
+  disabledReason,
+  boundaryText,
+  helperText,
+  personaHint,
+  variant = "default",
+}: {
+  title?: string;
+  status?: ReactNode;
+  nextActionLabel: ReactNode;
+  disabled?: boolean;
+  disabledReason?: ReactNode;
+  boundaryText?: ReactNode;
+  helperText?: ReactNode;
+  personaHint?: ReactNode;
+  variant?: "default" | "finance" | "danger";
+}) {
+  return (
+    <section className={`detail-next-action-card detail-next-action-card-${variant}`} aria-label="Next Action">
+      <div>
+        <span className="eyebrow">{title}</span>
+        <h2>{nextActionLabel}</h2>
+        {status ? <p className="muted">Current state: {status}</p> : null}
+        {helperText ? <p>{helperText}</p> : null}
+      </div>
+      {disabled && disabledReason ? <DisabledActionReason>{disabledReason}</DisabledActionReason> : null}
+      {personaHint ? <p className="muted">{personaHint}</p> : null}
+      {boundaryText ? <BoundaryNotice title="Action boundary">{boundaryText}</BoundaryNotice> : null}
+    </section>
+  );
+}
+
+export function ReadOnlyBanner({ children }: { children?: ReactNode }) {
+  return (
+    <div className="read-only-banner" role="status">
+      {children ?? "You are viewing this record in read-only mode. You can inspect status, related records, and audit history, but lifecycle actions are unavailable."}
+    </div>
+  );
+}
+
+export function RecordStateSummary({
+  status,
+  meaning,
+  next,
+  blockers,
+}: {
+  status: ReactNode;
+  meaning: ReactNode;
+  next: ReactNode;
+  blockers?: ReactNode;
+}) {
+  return (
+    <section className="record-state-summary panel workspace-panel">
+      <h2>State Explanation</h2>
+      <dl className="detail-list">
+        <dt>Status</dt><dd>{status}</dd>
+        <dt>What this means</dt><dd>{meaning}</dd>
+        <dt>What happens next</dt><dd>{next}</dd>
+        {blockers ? <><dt>Blocking progress</dt><dd>{blockers}</dd></> : null}
+      </dl>
+    </section>
+  );
+}
+
+export function DetailBoundaryNotice({ children, title = "Detail boundary" }: { children: ReactNode; title?: string }) {
+  return <BoundaryNotice title={title}>{children}</BoundaryNotice>;
+}
+
+export function RelatedRecordPanel({ title = "Related Records", children }: { title?: string; children: ReactNode }) {
+  return <TemplatePanel title={title}>{children}</TemplatePanel>;
+}
+
+export function DangerZone({ children, description }: { children: ReactNode; description?: ReactNode }) {
+  return (
+    <section className="danger-zone" aria-label="Danger zone">
+      <h2>Danger Zone</h2>
+      {description ? <p>{description}</p> : null}
+      <div className="danger-zone-actions">{children}</div>
+    </section>
+  );
+}
+
+export function DisabledActionReason({ children }: { children: ReactNode }) {
+  return <div className="disabled-action-reason">{children}</div>;
+}
+
+export function FormPurposeHeader({
+  title,
+  purpose,
+  afterSave,
+}: {
+  title: ReactNode;
+  purpose: ReactNode;
+  afterSave?: ReactNode;
+}) {
+  return (
+    <section className="form-purpose-header">
+      <div>
+        <span className="eyebrow">Operator form</span>
+        <h2>{title}</h2>
+        <p>{purpose}</p>
+      </div>
+      {afterSave ? <p className="muted">After save: {afterSave}</p> : null}
+    </section>
+  );
+}
+
+export function FormSection({ title, children, description }: { title: string; children: ReactNode; description?: ReactNode }) {
+  return (
+    <section className="form-section">
+      <h3>{title}</h3>
+      {description ? <p className="muted">{description}</p> : null}
+      {children}
+    </section>
+  );
+}
+
+export function RequiredFieldNote({ children = "Required fields are marked and must be completed before this record can be saved." }: { children?: ReactNode }) {
+  return <p className="required-field-note">{children}</p>;
+}
+
+export function FormBoundaryNotice({ children }: { children: ReactNode }) {
+  return <BoundaryNotice title="Form boundary">{children}</BoundaryNotice>;
+}
+
 export function RecordHeader({ title, identifier, status, owner, context }: { title: ReactNode; identifier?: ReactNode; status?: ReactNode; owner?: ReactNode; context?: ReactNode }) {
   return (
     <section className="panel record-header">

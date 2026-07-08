@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const paymentMethods = ["ach", "wire", "check", "card", "cash", "lockbox", "portal", "zelle", "other"];
 const receiptStatuses = ["received", "partially_applied", "fully_applied", "unapplied", "overapplied", "voided", "archived"];
@@ -207,8 +208,13 @@ export function CashReceiptCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Cash Receipt" purpose="Record received cash in SyncOS from manual/internal source documentation." afterSave="the receipt opens in detail view so finance can apply it to invoices or investigate unapplied cash." />
+        <RequiredFieldNote>Amount, payment date, and method are required for receipt creation.</RequiredFieldNote>
+        <FormBoundaryNotice>Create Cash Receipt does not import a bank transaction, move money, process card payment, initiate ACH, apply cash to an invoice, or post accounting entries.</FormBoundaryNotice>
         <div className="warning-box">Backend validation is authoritative. Creating a receipt does not update invoice balances and does not create payment applications or bank transactions.</div>
-        <ReceiptFormFields form={form} setForm={setForm} related={related} includeCreate />
+        <FormSection title="Receipt evidence and amount" description="Capture the received amount, date, payment method, payer, and reference that finance can use for later application.">
+          <ReceiptFormFields form={form} setForm={setForm} related={related} includeCreate />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "cash_receipt.create")}>Create Receipt</button>
           <Link className="link-button" href="/cash">Cancel</Link>
@@ -335,6 +341,17 @@ export function CashReceiptDetail({ receiptId }: { receiptId: string }) {
       {!receipt && session.token && !error ? <div className="empty-state">Receipt not found or no access.</div> : null}
       {receipt && detail ? (
         <>
+          {!hasPermission(session.permissions, "cash_receipt.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            variant="finance"
+            status={formatAction(receipt.receipt_status)}
+            nextActionLabel={nextCashAction(receipt)}
+            helperText="Review unapplied balance, existing payment applications, receipt evidence, and reconciliation status before applying or voiding cash."
+            disabled={!hasPermission(session.permissions, "cash_receipt.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Cash receipt/application actions update internal SyncOS records only. They do not move money, refund money, process cards, initiate ACH, or post accounting entries."
+          />
+          <DetailBoundaryNotice>Cash receipt/application actions update internal SyncOS records only. They do not move money, refund money, process cards, initiate ACH, change bank truth, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

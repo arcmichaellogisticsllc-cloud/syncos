@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const payableTypes = ["subcontractor", "crew", "worker_later", "vendor_later", "internal_self_perform", "adjustment", "retainage_release", "chargeback"];
 const partyTypes = ["capacity_provider", "crew", "worker_later", "vendor_later", "internal_self_perform"];
@@ -216,8 +217,13 @@ export function ContractorPayableCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Contractor Payable" purpose="Create an internal payable shell for review and payment-readiness tracking." afterSave="the payable opens in detail view so payables can add items, review totals, approve, and mark payment ready." />
+        <RequiredFieldNote>Payable type and party type are required. Amount and source support are added through payable fields and item actions.</RequiredFieldNote>
+        <FormBoundaryNotice>Creating a contractor payable does not pay a contractor, initiate ACH, issue card payouts, print checks, create payroll, or post accounting entries.</FormBoundaryNotice>
         <div className="warning-box">Backend validation is authoritative. Creating a payable does not create payment, payroll, bank transaction, or accounting export records.</div>
-        <PayableFormFields form={form} setForm={setForm} related={related} includeCreate />
+        <FormSection title="Payable setup" description="Capture who the payable is for and the internal approval context before adding or reviewing payable items.">
+          <PayableFormFields form={form} setForm={setForm} related={related} includeCreate />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</button>
           <Link className="link-button" href="/contractor-payables">Cancel</Link>
@@ -337,6 +343,17 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
       {!payable && session.token && !error ? <div className="empty-state">Contractor payable not found or no access.</div> : null}
       {payable && detail ? (
         <>
+          {!hasPermission(session.permissions, "contractor_payable.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            variant="finance"
+            status={formatAction(payable.status)}
+            nextActionLabel={nextPayableAction(payable)}
+            helperText="Review payable totals, approval, disputes, holds, compliance, tax document status, and payment readiness before moving this payable forward."
+            disabled={!hasPermission(session.permissions, "contractor_payable.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Payment Ready does not pay the contractor or move money."
+          />
+          <DetailBoundaryNotice>Contractor Payable tracks internal approval and payment-readiness state. It does not pay contractors, initiate ACH, issue card payouts, print checks, move money, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>

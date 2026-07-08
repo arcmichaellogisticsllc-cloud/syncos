@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const batchTypes = ["contractor_payable", "payroll", "mixed_later", "correction", "reversal"];
 const paymentMethods = ["ach", "check", "card_payout", "wire", "payroll_provider", "manual", "other"];
@@ -209,8 +210,13 @@ export function PaymentBatchCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Create Payment Batch" purpose="Create an internal payment execution batch for approval and manual/external status tracking." afterSave="the batch opens in detail view so payables can add items, submit review, approve, schedule, and record manual/external execution state." />
+        <RequiredFieldNote>Batch type, payment method, and currency are required for the internal payment batch shell.</RequiredFieldNote>
+        <FormBoundaryNotice>Create Payment Batch does not move money, initiate ACH, send wires, issue card payouts, print checks, submit payroll, connect to a bank, or post accounting entries.</FormBoundaryNotice>
         <div className="warning-box">Backend validation is authoritative. Creating a batch does not create ACH, card payout, check, wire, payroll provider, bank transaction, tax filing, or accounting export records.</div>
-        <PaymentFormFields form={form} setForm={setForm} includeCreate />
+        <FormSection title="Payment batch setup" description="Define the internal batch type and method before adding payable or payroll items.">
+          <PaymentFormFields form={form} setForm={setForm} includeCreate />
+        </FormSection>
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</button>
           <Link className="link-button" href="/payments">Cancel</Link>
@@ -321,6 +327,17 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
       {!batch && session.token && !error ? <div className="empty-state">Payment batch not found or no access.</div> : null}
       {batch && detail ? (
         <>
+          {!hasPermission(session.permissions, "payment_batch.update") ? <ReadOnlyBanner /> : null}
+          <DetailNextActionCard
+            variant="finance"
+            status={formatAction(batch.status)}
+            nextActionLabel={nextPaymentAction(batch)}
+            helperText="Review approval, schedule, submission, execution status, included items, and exceptions before recording the next internal payment state."
+            disabled={!hasPermission(session.permissions, "payment_batch.update")}
+            disabledReason="Read-only users cannot perform lifecycle actions."
+            boundaryText="Payment Execution records internal/manual status only. SyncOS does not initiate ACH, wire, card payout, check, payroll, or bank movement."
+          />
+          <DetailBoundaryNotice>Payment Execution records internal/manual status only. SyncOS does not initiate ACH, wire, card payout, check, payroll, bank movement, tax filing, or accounting posting.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
