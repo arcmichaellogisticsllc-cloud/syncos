@@ -137,7 +137,7 @@ export function AccountingExportQueue() {
               {exportQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="tab-row">
                 {["invoices", "cash_receipts", "contractor_payables", "payroll", "payment_execution", "bank_reconciliation"].map((export_type) => <button key={export_type} type="button" onClick={() => setFilters({ ...filters, export_type })}>{formatAction(export_type)}</button>)}
                 {["generic_csv", "generic_json", "manual_export"].map((target_system) => <button key={target_system} type="button" onClick={() => setFilters({ ...filters, target_system })}>{formatAction(target_system)}</button>)}

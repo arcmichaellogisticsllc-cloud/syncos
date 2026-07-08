@@ -127,7 +127,7 @@ export function InvoiceQueue() {
               {invoiceQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
                 <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search invoice, customer, project, settlement" />
                 <Select label="Invoice Type" value={filters.invoice_type ?? ""} options={["", ...invoiceTypes]} onChange={(invoice_type) => setFilters({ ...filters, invoice_type })} />

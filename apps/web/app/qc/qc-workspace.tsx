@@ -130,7 +130,7 @@ export function QcReviewQueue() {
               ].map(([queue, label, next]) => <button key={String(queue)} type="button" role="tab" aria-selected={activeQueue === queue} onClick={() => setQueue(String(queue), next as Record<string, string>)}>{String(label)}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
               <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search QC, production, work order, project" />
               <Select label="Review type" value={filters.review_type ?? ""} options={["", ...reviewTypes]} onChange={(review_type) => setFilters({ ...filters, review_type })} />

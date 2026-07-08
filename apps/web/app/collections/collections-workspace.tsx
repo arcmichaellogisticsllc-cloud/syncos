@@ -141,7 +141,7 @@ export function CollectionCaseQueue() {
               {collectionQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
                 <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search case, invoice, customer, note" />
                 <Select label="Case Status" value={filters.case_status ?? ""} options={["", ...caseStatuses]} onChange={(case_status) => setFilters({ ...filters, case_status })} />
@@ -478,7 +478,7 @@ export function CollectionActionQueue() {
               {collectionActionQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => { setActiveQueue(queue.id); setFilters({ ...filters, archived: queue.id === "archived" ? "true" : "false" }); }}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
                 <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search case, invoice, customer, note" />
                 <input value={filters.collection_case_id ?? ""} onChange={(event) => setFilters({ ...filters, collection_case_id: event.target.value })} placeholder="Collection Case" />

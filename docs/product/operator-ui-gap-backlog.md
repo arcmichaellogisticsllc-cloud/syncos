@@ -222,6 +222,25 @@ Still open after Phase 9:
 - OUX-042 remains open until danger-zone separation is applied to all archive, void, reject, cancel, ignore, and delete-like actions.
 - Secondary detail pages need the same next-action card and boundary treatment.
 
+## Phase 10 Status
+
+Closed or reduced:
+
+- OUX-013 is reduced by shared responsive CSS improvements, mobile/tablet checklist creation, and Phase 10 E2E coverage for mobile shell, tablet workbenches, mobile modal usability, and body overflow checks.
+- OUX-034 is expanded with Phase 10 E2E coverage for mobile/tablet smoke, keyboard focus, queue semantics, read-only banner, and hidden developer UI.
+- OUX-043 is introduced and reduced: operator UAT scripts now exist for Executive, Growth Operator, Operations Manager, Field Supervisor, QC Manager, Billing/Finance User, Collections Specialist, Payables/Payroll Admin, Accounting Manager, Read-only Auditor, and System Admin.
+- OUX-044 is introduced and reduced: demo scripts now exist for command center, growth, field execution, revenue, cash, payout, finance control, and read-only auditor flows.
+- OUX-045 is introduced and reduced: accessibility review checklist now exists and initial smoke coverage verifies nav landmarks, tab semantics, modal controls, filter drawer labels, focus reachability, and read-only banners.
+
+Still open after Phase 10:
+
+- OUX-013 remains partially open until real-device mobile/tablet review is completed and issues are captured from operator UAT.
+- OUX-010 remains open until every lifecycle button has state-specific disabled reason copy.
+- OUX-040 remains open until every create/edit form has guided form structure.
+- OUX-041 remains open until all readable detail pages have read-only banners where mutation permissions are absent.
+- OUX-042 remains open until danger-zone separation is applied to all high-risk detail pages.
+- OUX-045 remains partially open until full manual contrast, screen-reader, and tab-order audits are complete.
+
 ## Top 10 UX Problems
 
 1. Developer token/session UI is visible in the operator experience.

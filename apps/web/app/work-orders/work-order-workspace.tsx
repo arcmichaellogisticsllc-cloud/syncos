@@ -134,7 +134,7 @@ export function WorkOrderDirectory() {
               ].map(([queue, label, next]) => <button key={String(queue)} type="button" role="tab" aria-selected={activeQueue === queue} onClick={() => setQueue(String(queue), next as Record<string, string>)}>{String(label)}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
                 <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search name, number, project, scope, location" />
                 <input value={filters.project_id ?? ""} onChange={(event) => setFilters({ ...filters, project_id: event.target.value })} placeholder="Project id" />

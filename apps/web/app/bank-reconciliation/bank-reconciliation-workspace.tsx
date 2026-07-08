@@ -169,7 +169,7 @@ export function BankReconciliationLanding() {
               {reconciliationQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <LandingFilters accountFilters={accountFilters} setAccountFilters={setAccountFilters} transactionFilters={transactionFilters} setTransactionFilters={setTransactionFilters} matchFilters={matchFilters} setMatchFilters={setMatchFilters} accounts={data.accounts} />
             </details>
           </section>

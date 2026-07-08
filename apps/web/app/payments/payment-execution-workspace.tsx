@@ -135,7 +135,7 @@ export function PaymentBatchQueue() {
               {paymentQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="tab-row">
               {["contractor_payable", "payroll"].map((batch_type) => <button key={batch_type} type="button" onClick={() => setFilters({ ...filters, batch_type })}>{formatAction(batch_type)}</button>)}
               {["ach", "check", "manual"].map((payment_method) => <button key={payment_method} type="button" onClick={() => setFilters({ ...filters, payment_method })}>{formatAction(payment_method)}</button>)}

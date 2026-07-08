@@ -99,7 +99,7 @@ export function QueueTabs({ tabs, activeTab, onTabChange }: { tabs: QueueTabConf
 export function FilterDrawer({ children, label = "Filters" }: { children: ReactNode; label?: string }) {
   return (
     <details className="filter-drawer">
-      <summary>{label}</summary>
+      <summary aria-label={`${label} drawer`}>{label}</summary>
       {children}
     </details>
   );

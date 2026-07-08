@@ -137,7 +137,7 @@ export function CashReceiptQueue() {
               {cashQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => selectQueue(queue.id)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
                 <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search receipt, reference, payer, customer" />
                 <input value={filters.customer_organization_id ?? ""} onChange={(event) => setFilters({ ...filters, customer_organization_id: event.target.value })} placeholder="Customer" />
@@ -473,7 +473,7 @@ export function PaymentApplicationQueue() {
               {applicationQueues.map((queue) => <button key={queue.id} type="button" role="tab" aria-selected={activeQueue === queue.id} className={activeQueue === queue.id ? "active" : ""} onClick={() => { setActiveQueue(queue.id); setFilters({ ...filters, archived: queue.id === "archived" ? "true" : "false" }); }}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="filter-grid">
                 <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search receipt, invoice, customer" />
                 <input value={filters.cash_receipt_id ?? ""} onChange={(event) => setFilters({ ...filters, cash_receipt_id: event.target.value })} placeholder="Receipt" />

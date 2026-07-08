@@ -139,7 +139,7 @@ export function ContractorPayableQueue() {
               {payableQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
-              <summary>Advanced filters</summary>
+              <summary aria-label="Advanced filters drawer">Advanced filters</summary>
               <div className="tab-row">
               {["subcontractor", "crew"].map((payable_type) => <button key={payable_type} type="button" onClick={() => setFilters({ ...filters, payable_type })}>{formatAction(payable_type)}</button>)}
               <button type="button" onClick={() => setFilters({ ...filters, compliance_status: "blocked" })}>Compliance Blocked</button>
