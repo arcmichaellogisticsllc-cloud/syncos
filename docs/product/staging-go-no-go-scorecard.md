@@ -10,6 +10,8 @@ Statuses: PASS, PARTIAL, BLOCKED, NOT STARTED, NO-GO.
 | Staging DB decision | NOT STARTED | Provider not selected. |
 | Staging hosting decision | NOT STARTED | Provider not selected. |
 | Env var readiness | PARTIAL | Placeholders documented. |
+| Implementation planning package | PASS | Provider matrix, ADR, deployment checklist, env map, tenant/admin execution plan, approval gate, and dry-run plan added. |
+| Actual staging deployment | NOT STARTED | No provider services, DNS, database, or secrets configured. |
 | Secrets readiness | NOT STARTED | Provider secret store pending. |
 | Tenant bootstrap | PARTIAL | Schema known; method pending. |
 | Admin bootstrap | PARTIAL | Must avoid default local credentials. |
@@ -26,4 +28,5 @@ Statuses: PASS, PARTIAL, BLOCKED, NOT STARTED, NO-GO.
 | Mobile/tablet readiness | PARTIAL | Phase 10 smoke passed; physical device review pending. |
 | Accessibility readiness | PARTIAL | Smoke passed; full audit pending. |
 | External integrations disabled | PASS | No external integration behavior added. |
+| External integrations | NO-GO | External integrations remain explicitly out of scope. |
 | Production readiness | NO-GO | Requires staging deployment, UAT, backup restore, and signoff. |

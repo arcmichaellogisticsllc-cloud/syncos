@@ -18,3 +18,9 @@
 | STG-014 | UAT tracking | UAT issue tracking process is not selected. | Feedback lost. | TBD | No | Yes | Yes | Pick issue tracker and triage cadence. |
 | STG-015 | Production | Production deployment remains NO-GO. | Premature launch. | TBD | No | No | Yes | Complete staging/UAT first. |
 | STG-016 | Integrations | External integrations remain NO-GO. | Unsafe financial assumptions. | TBD | No | No | Yes | Keep integration work out of staging UAT. |
+| STG-017 | Logs/monitoring | Provider logs and monitoring decision is not made. | Staging issues may be hard to diagnose. | TBD | Yes | Partial | Yes | Confirm provider log access and minimal alerting before UAT. |
+| STG-018 | Worker | Worker deployment decision is not made. | Background behavior may be omitted or unclear. | TBD | Yes | Partial | Yes | Decide whether worker is deployed idle, active, or explicitly deferred. |
+
+## Planning Package Status
+
+The implementation planning package addresses provider comparison, architecture proposal, deployment checklist, environment map, tenant/admin execution plan, UAT packet, approval gate, and dry-run plan. These planning artifacts are addressed, but deployment blockers remain open until Mike approves the provider, database, secrets process, bootstrap method, and UAT user plan.
