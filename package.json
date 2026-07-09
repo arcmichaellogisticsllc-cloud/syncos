@@ -38,6 +38,7 @@
     "e2e:report": "playwright show-report",
     "e2e:seed-smoke": "node tests/e2e/validate-seed.js",
     "e2e:check-certification": "node scripts/check-e2e-certification.js",
+    "staging:check": "node scripts/check-staging-readiness.js",
     "security:smoke": "npm run smoke:security -w @syncos/api",
     "sprint1:smoke": "npm run smoke:sprint1 -w @syncos/api",
     "sprint2:smoke": "npm run smoke:sprint2 -w @syncos/api",
