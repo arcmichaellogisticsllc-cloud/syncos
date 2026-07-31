@@ -21,14 +21,14 @@ Use the seeded staging/UAT tenant and record each result as PASS, PARTIAL, or FA
 
 ## Growth Operator
 
-- Primary landing page: `/intelligence/signals`
-- 30-second understanding: which signals need review, evidence, verification, or candidate readiness.
-- Daily tasks: review signals, create signal, categorize, score, verify when evidence exists, archive irrelevant signals.
-- Required test path: open Signal Feed, select queue tabs, create a signal, open signal detail, read next-action and conversion boundary.
+- Primary landing page: `/intelligence/signals` and `/intelligence/account-onboarding`
+- 30-second understanding: which signals need review and which prime/customer or contractor/vendor accounts are moving from identification toward mobilization.
+- Daily tasks: review signals, create signal, categorize, score, verify when evidence exists, review account onboarding lanes, and identify missing contact/document/commercial readiness.
+- Required test path: open Signal Feed, select queue tabs, open `/intelligence/account-onboarding`, select Prime / Customer and Contractor / Vendor lanes, review the onboarding spine, open an organization, and read next-action and conversion boundary.
 - Available actions: create/categorize/score/verify/archive when permissions and state allow.
-- Unavailable actions: project, invoice, cash, payment, payroll, bank, or accounting creation from signal actions.
-- Success criteria: tester can explain what Verify does and what it does not create downstream.
-- Tester questions: Which signal would you open first? What evidence is required? Is conversion boundary clear?
+- Unavailable actions: project, invoice, cash, payment, payroll, bank, accounting, contract, or guaranteed-work creation from signal or account onboarding actions.
+- Success criteria: tester can explain what Verify does, what the account onboarding stage means, and what onboarding does not create downstream.
+- Tester questions: Which signal would you open first? Which account is closest to mobilized? What is blocking the next stage? Is conversion/onboarding boundary clear?
 - Observed friction notes: TBD.
 - Result: [ ] PASS [ ] PARTIAL [ ] FAIL
 

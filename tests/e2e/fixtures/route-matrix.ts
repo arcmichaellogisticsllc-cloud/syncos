@@ -51,6 +51,7 @@ export const routeMatrix: RouteMatrixEntry[] = [
   route("Growth / Intelligence", "/intelligence", "Intelligence"),
   route("Growth / Intelligence", "/intelligence/signals", "Signals"),
   idRoute("Growth / Intelligence", "signal"),
+  route("Growth / Intelligence", "/intelligence/account-onboarding", "Account Onboarding"),
   route("Growth / Intelligence", "/intelligence/organizations", "Organizations"),
   route("Growth / Intelligence", "/intelligence/organizations/new", "Organizations"),
   idRoute("Growth / Intelligence", "organization"),

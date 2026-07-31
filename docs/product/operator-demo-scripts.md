@@ -16,18 +16,21 @@ Purpose: give the team repeatable SyncOS demo flows for controlled operator revi
 - Known gaps: role-specific landing modules need deeper personalization.
 - Demo readiness: [ ] PASS [ ] PARTIAL [ ] FAIL
 
-## 2. Growth to Opportunity Demo
+## 2. Growth to Opportunity and Account Onboarding Demo
 
-- Objective: show market intelligence review and safe conversion boundaries.
+- Objective: show market intelligence review, prime/customer onboarding, contractor/vendor onboarding, and safe conversion boundaries.
 - Persona: Growth Operator.
-- Route sequence: `/intelligence/signals` -> seeded signal detail.
+- Route sequence: `/intelligence/signals` -> seeded signal detail -> `/intelligence/account-onboarding` -> organization detail.
 - Talking points:
   - Signal Feed is queue-first with priority cards, tabs, collapsed filters, and next actions.
+  - Account Onboarding uses one simple spine for prime/customer and contractor/vendor accounts: Identified, Contact Discovered, Initial Outreach, Application Submitted, Documents Requested, Compliance Review, Operational Interview, Rate Negotiation, Approved, Market Assigned, and Mobilized.
+  - Prime onboarding answers whether Sync can receive work from a company; contractor onboarding answers whether a company can become usable field capacity.
+  - Account onboarding shows owner, relationship strength, contact title, last interaction, next action, deadline, documents, market availability, programs, rate sheet, payment terms, approval status, and probability where current data supports it.
   - Create/categorize/score/verify/archive use operator modals and disabled reasons.
   - Signal detail explains that signal actions do not create opportunity, project, invoice, cash, payment, payroll, bank, or accounting records unless a separate explicit conversion exists.
-- What not to claim: do not claim automatic opportunity creation, AI qualification, or external data enrichment.
-- Expected operator questions: What evidence is enough to verify? Who owns candidate conversion? How are duplicates handled?
-- Known gaps: owner assignment and explicit candidate conversion remain future workflow work.
+- What not to claim: do not claim automatic opportunity creation, AI qualification, external data enrichment, contract creation, guaranteed work, insurance verification, payables, payroll, invoice creation, or customer-system integration.
+- Expected operator questions: What evidence is enough to verify? Who owns candidate conversion? Which prime is closest to sending work? Which contractor is closest to mobilized? What documents or commercial terms are blocking progress?
+- Known gaps: explicit account onboarding backend state, document checklist summary, customer programs, rate sheet readiness, deadline, and probability fields need future backend support.
 - Demo readiness: [ ] PASS [ ] PARTIAL [ ] FAIL
 
 ## 3. Field Execution Demo

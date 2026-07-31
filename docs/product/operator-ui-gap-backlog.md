@@ -241,6 +241,22 @@ Still open after Phase 10:
 - OUX-042 remains open until danger-zone separation is applied to all high-risk detail pages.
 - OUX-045 remains partially open until full manual contrast, screen-reader, and tab-order audits are complete.
 
+## Phase 11 Status
+
+Closed or reduced:
+
+- OUX-046 is introduced and reduced: Account onboarding now has a dedicated Intelligence workbench at `/intelligence/account-onboarding`.
+- OUX-047 is introduced and reduced: Prime/customer and contractor/vendor onboarding lanes now share a simple operator-readable lifecycle.
+- OUX-048 is introduced and reduced: Account onboarding now shows owner, relationship strength, contact title, last interaction, next action, deadline, document fields, market availability, customer programs, rate sheet, payment terms, approval status, and probability using current API data where available.
+- OUX-049 is introduced and reduced: onboarding boundary copy now states that onboarding does not create contracts, payables, payroll, invoices, tax filings, insurance verification, customer assignments, or guaranteed work.
+
+Still open after Phase 11:
+
+- OUX-046 remains partially open until explicit account onboarding backend state exists instead of inferred UI state.
+- OUX-048 remains partially open because required documents, missing documents, customer programs, rate sheet readiness, deadline, and probability of receiving work are not all first-class account onboarding fields.
+- OUX-050 remains open: approved prime target companies need approved staging/demo/operator-entered records instead of UI hardcoding.
+- OUX-051 remains open: account onboarding lifecycle actions need backend support before operators can move accounts from stage to stage.
+
 ## Top 10 UX Problems
 
 1. Developer token/session UI is visible in the operator experience.

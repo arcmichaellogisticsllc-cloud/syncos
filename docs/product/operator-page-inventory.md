@@ -247,3 +247,12 @@ To keep this inventory readable, each row contains the route-specific values for
 | `/bank-reconciliation/transactions/[id]` | Detail guidance updated | Bank Transaction Detail now has next-action card, read-only banner behavior, and no bank-feed/money/accounting boundary copy. | Bank Account and Reconciliation Match details need the same pattern later. |
 | `/accounting-exports/new` | Create form guidance updated | Create Accounting Export now explains internal handoff creation and no QuickBooks/ERP/GL/tax/bank/accounting-close posting. | Edit form still needs state-aware field grouping. |
 | `/accounting-exports/[id]` | Detail guidance updated | Accounting Export Detail now has next-action card, read-only banner behavior, and internal handoff boundary copy. | Export Item Detail still needs the same next-action card. |
+
+## Phase 11 Inventory Status Notes
+
+| Route | Phase 11 status | Operator status note | Remaining gap |
+|---|---|---|---|
+| `/intelligence/account-onboarding` | New read-only workbench | Account Onboarding Workbench now shows the approved prime/customer and contractor/vendor onboarding spine from Identified through Mobilized, using existing organization, contact, candidate, capacity provider, contract, rate schedule, and territory data. | Explicit onboarding lifecycle state, document checklist summaries, customer programs, rate sheet readiness, deadline, and probability should become backend-supported fields later. |
+| `/intelligence/organizations` | Existing route reused | Organizations remain the source account profile surface for prime/customer and contractor/vendor onboarding records. | Prime target organizations should be created through approved staging/demo/operator data, not hardcoded UI. |
+| `/intelligence/contacts` | Existing route reused | Contacts provide contact title, relationship strength, verification, and last interaction signals for onboarding readiness. | Contact-to-onboarding next-action history needs first-class workflow task support later. |
+| `/opportunities/candidates` | Existing route reused | Candidates provide application/intake, score, confidence, relationship access, and operational review signals for onboarding readiness. | Candidate status is not the same as account onboarding status and is only used as an inferred signal. |

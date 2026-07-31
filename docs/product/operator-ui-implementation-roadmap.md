@@ -422,3 +422,32 @@ Remaining Phase 10 gaps:
 Recommended next sprint after green validation:
 
 Staging Readiness Sprint: Tenant Bootstrap, Admin Setup, and Controlled UAT Environment.
+
+## Phase 11 Status
+
+Operator UI Phase 11: Account Onboarding Workbench for Prime and Contractor Readiness.
+
+Status: implemented as a frontend/read-only workbench over current Intelligence, Organization, Contact, Opportunity Candidate, Capacity Provider, Contract, and Rate Schedule data.
+
+Completed in Phase 11:
+
+- Added `/intelligence/account-onboarding` as a new Intelligence workspace route.
+- Added Intelligence navigation for Account Onboarding.
+- Added queue cards and accessible tabs for the approved onboarding spine: Identified, Contact Discovered, Initial Outreach, Application Submitted, Documents Requested, Compliance Review, Operational Interview, Rate Negotiation, Approved, Market Assigned, and Mobilized.
+- Added Prime / Customer and Contractor / Vendor lanes.
+- Added operator columns for account owner, relationship strength, contact title, last interaction, next action, deadline, required documents, missing documents, market availability, customer programs, rate sheet, payment terms, approval status, and probability of receiving work.
+- Added explicit boundary copy: onboarding does not create contracts, payables, payroll, invoices, tax filings, insurance verification, customer assignments, or guaranteed work unless a separate supported workflow exists.
+- Documented schema gaps instead of hardcoding unsupported document/program/probability data.
+- Added Phase 11 E2E coverage for rendering, boundary copy, stage tabs, lane/search interaction, schema gap callouts, route matrix coverage, and hidden developer UI.
+
+Remaining Phase 11 gaps:
+
+- Explicit account onboarding stage is inferred from current records and should become a dedicated backend field/model.
+- Required and missing documents need a first-class account-level compliance document summary.
+- Customer programs, rate sheet readiness, payment terms summary, onboarding deadline, and probability of receiving work need dedicated account onboarding fields.
+- Prime target companies should be loaded through approved staging/demo/operator data, not hardcoded into the UI.
+- Lifecycle actions for moving accounts through onboarding stages require backend support before buttons are added.
+
+Recommended next sprint:
+
+Account Onboarding Backend Contract Sprint: define and implement the account onboarding data model, lifecycle transitions, document checklist summary, customer program membership, rate sheet readiness, deadlines, and probability scoring while preserving financial and integration boundaries.
