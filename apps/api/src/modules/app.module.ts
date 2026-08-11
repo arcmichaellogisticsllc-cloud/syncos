@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
 import { AuthController } from "../routes/auth.controller";
 import { AccountingExportController } from "../routes/accounting-export.controller";
+import { AccountOnboardingController } from "../routes/account-onboarding.controller";
 import { BankReconciliationController } from "../routes/bank-reconciliation.controller";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
@@ -40,6 +41,7 @@ import { DatabaseModule } from "./database.module";
   controllers: [
     HealthController,
     AccountingExportController,
+    AccountOnboardingController,
     AuthController,
     BankReconciliationController,
     SecurityTestController,

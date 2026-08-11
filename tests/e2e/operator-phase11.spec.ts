@@ -48,17 +48,18 @@ test.describe("Operator UI Phase 11 account onboarding workbench", () => {
     await context.close();
   });
 
-  test("shows onboarding field gaps instead of hardcoded unsupported data", async ({ browser }) => {
+  test("shows contract-backed prime onboarding fields instead of hardcoded UI data", async ({ browser }) => {
     const context = await browser.newContext({ storageState: personas.growthOperator.storageState });
     const page = await context.newPage();
     await installStoredSession(page, personas.growthOperator.storageState);
     await page.goto("/intelligence/account-onboarding");
 
-    await expect(page.getByRole("heading", { name: "Current schema gaps" })).toBeVisible();
-    await expect(page.getByText(/Explicit onboarding stage/i)).toBeVisible();
-    await expect(page.getByText(/Required and missing documents/i)).toBeVisible();
-    await expect(page.getByText(/Customer programs and rate sheet detail/i)).toBeVisible();
-    await expect(page.getByText(/Probability uses current scores/i)).toBeVisible();
+    await page.getByRole("tab", { name: "Application Submitted" }).click();
+    await expect(page.getByRole("row", { name: /Underground Contractors Inc\./i })).toBeVisible();
+    await expect(page.getByRole("row", { name: /Underground Contractors Inc\./i })).toContainText("MI/OH");
+    await expect(page.getByRole("row", { name: /Underground Contractors Inc\./i })).toContainText("Vendor Manager");
+    await expect(page.getByRole("row", { name: /Underground Contractors Inc\./i })).toContainText("Probability: Medium (58)");
+    await expect(page.getByRole("heading", { name: "Current schema gaps" })).toHaveCount(0);
     await expectNoDevSessionUi(page);
 
     await context.close();

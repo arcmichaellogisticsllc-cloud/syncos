@@ -32,6 +32,7 @@ type OnboardingStage = (typeof onboardingStages)[number];
 type AccountLane = "prime" | "contractor" | "all";
 
 type OnboardingData = {
+  onboardingProfiles: SyncRecord[];
   organizations: SyncRecord[];
   territories: SyncRecord[];
   contacts: SyncRecord[];
@@ -190,7 +191,7 @@ export function AccountOnboardingWorkbench() {
         {visible.length > 0 ? <OnboardingTable rows={visible} /> : null}
       </section>
 
-      <section className="workspace-panel">
+      {data.onboardingProfiles.length === 0 ? <section className="workspace-panel">
         <div className="section-toolbar">
           <div>
             <h2>Current schema gaps</h2>
@@ -203,7 +204,7 @@ export function AccountOnboardingWorkbench() {
           <GapCard title="Customer programs and rate sheet detail" body="Current contracts and rate schedules expose partial commercial context, but program membership and rate sheet readiness need dedicated fields." />
           <GapCard title="Deadline and probability" body="Deadlines are approximated from candidate or opportunity review dates when present. Probability uses current scores and should become an explicit onboarding field later." />
         </div>
-      </section>
+      </section> : null}
     </IntelligenceShell>
   );
 }
@@ -305,7 +306,8 @@ function UnsupportedNotice({ unavailable }: { unavailable: Record<string, string
 
 async function loadOnboardingData(): Promise<OnboardingData> {
   const unavailable: Record<string, string> = {};
-  const [organizations, territories, contacts, candidates, opportunities, capacityProviders, contracts, rateSchedules] = await Promise.all([
+  const [onboardingProfiles, organizations, territories, contacts, candidates, opportunities, capacityProviders, contracts, rateSchedules] = await Promise.all([
+    optionalList("/account-onboarding", unavailable, "account onboarding"),
     optionalList("/organizations", unavailable, "organizations"),
     optionalList("/territories", unavailable, "territories"),
     optionalList("/contacts", unavailable, "contacts"),
@@ -315,7 +317,7 @@ async function loadOnboardingData(): Promise<OnboardingData> {
     optionalList("/contracts", unavailable, "contracts"),
     optionalList("/rate-schedules", unavailable, "rate schedules"),
   ]);
-  return { organizations, territories, contacts, candidates, opportunities, capacityProviders, contracts, rateSchedules, unavailable };
+  return { onboardingProfiles, organizations, territories, contacts, candidates, opportunities, capacityProviders, contracts, rateSchedules, unavailable };
 }
 
 async function optionalList(path: string, unavailable: Record<string, string>, key: string) {
@@ -328,6 +330,7 @@ async function optionalList(path: string, unavailable: Record<string, string>, k
 }
 
 const emptyData: OnboardingData = {
+  onboardingProfiles: [],
   organizations: [],
   territories: [],
   contacts: [],
@@ -340,10 +343,57 @@ const emptyData: OnboardingData = {
 };
 
 function buildRecords(data: OnboardingData): AccountOnboardingRecord[] {
+  if (data.onboardingProfiles.length > 0) {
+    return data.onboardingProfiles
+      .map((profile) => buildContractRecord(profile, data))
+      .sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || probabilityNumber(b.probabilityOfReceivingWork) - probabilityNumber(a.probabilityOfReceivingWork) || a.company.localeCompare(b.company));
+  }
   return data.organizations
     .filter((organization) => isOnboardingAccount(organization))
     .map((organization) => buildRecord(organization, data))
     .sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || probabilityNumber(b.probabilityOfReceivingWork) - probabilityNumber(a.probabilityOfReceivingWork) || a.company.localeCompare(b.company));
+}
+
+function buildContractRecord(profile: SyncRecord, data: OnboardingData): AccountOnboardingRecord {
+  const organizationId = String(profile.organization_id ?? profile.id);
+  const organization = data.organizations.find((row) => row.id === organizationId) ?? { id: organizationId, name: profile.organization_name, organization_type: profile.organization_type };
+  const contacts = data.contacts.filter((contact) => contact.organization_id === organizationId);
+  const candidates = data.candidates.filter((candidate) => candidate.organization_id === organizationId);
+  const opportunities = data.opportunities.filter((opportunity) => opportunity.organization_id === organizationId);
+  const capacityProviders = data.capacityProviders.filter((provider) => provider.organization_id === organizationId);
+  const contracts = data.contracts.filter((contract) => contract.organization_id === organizationId);
+  const rateSchedules = data.rateSchedules.filter((schedule) => schedule.organization_id === organizationId || profile.rate_schedule_id === schedule.id || contracts.some((contract) => contract.id === schedule.contract_id));
+  const stage = stageFromApi(profile.onboarding_stage ?? profile.stage_label);
+  const accountType = String(profile.lane ?? "") === "contractor" ? "Contractor / Vendor" : "Prime / Customer";
+  const contactTitle = profile.contact_title ?? profile.primary_contact_title ?? profile.primary_contact_role;
+  return {
+    id: organizationId,
+    organization,
+    accountType,
+    company: textValue(profile.organization_name ?? organization.name),
+    stateRegion: textValue(profile.organization_state ?? profile.territory_code ?? profile.territory_name, "Not captured yet"),
+    stage,
+    accountOwner: textValue(profile.account_owner_name ?? profile.organization_owner_name, "Unassigned"),
+    relationshipStrength: scoreText(profile.relationship_strength_score, "Relationship strength"),
+    contactTitle: textValue(contactTitle, "No contact title captured"),
+    lastInteraction: dateValue(profile.last_interaction_at ?? profile.primary_contact_last_contacted_at ?? profile.updated_at),
+    nextAction: textValue(profile.next_action_label ?? profile.next_action, nextActionText(stage, organization, contacts, candidates, capacityProviders, contracts, rateSchedules)),
+    deadline: dateValue(profile.next_action_deadline),
+    requiredDocuments: listText(profile.required_documents, "No required documents captured"),
+    missingDocuments: listText(profile.missing_documents, Number(profile.missing_document_count ?? 0) > 0 ? `${profile.missing_document_count} missing document(s)` : "No missing documents captured"),
+    marketAvailability: listText(profile.market_summary ?? profile.market_availability, "Market not assigned"),
+    customerPrograms: listText(profile.customer_programs, "Not captured yet"),
+    rateSheet: profile.rate_schedule_name ? `${textValue(profile.rate_schedule_name)} (${textValue(profile.rate_sheet_status ?? profile.rate_schedule_current_status)})` : formatLabel(profile.rate_sheet_status ?? "not_captured"),
+    paymentTerms: profile.payment_terms_days === undefined || profile.payment_terms_days === null ? "Not captured yet" : `Net ${profile.payment_terms_days}`,
+    approvalStatus: formatLabel(profile.approval_status),
+    probabilityOfReceivingWork: scoreText(profile.probability_of_work, "Probability"),
+    contacts,
+    candidates,
+    opportunities,
+    capacityProviders,
+    contracts,
+    rateSchedules,
+  };
 }
 
 function buildRecord(organization: SyncRecord, data: OnboardingData): AccountOnboardingRecord {
@@ -558,6 +608,25 @@ function emptyMessage(stage: OnboardingStage) {
 
 function stageIndex(stage: OnboardingStage) {
   return onboardingStages.indexOf(stage);
+}
+
+function stageFromApi(value: unknown): OnboardingStage {
+  const label = formatLabel(value);
+  return onboardingStages.find((stage) => stage.toLowerCase() === label.toLowerCase()) ?? "Identified";
+}
+
+function listText(value: unknown, fallback: string) {
+  const list = asArray(value);
+  return list.length ? list.join(", ") : fallback;
+}
+
+function scoreText(value: unknown, label: string) {
+  const score = numberOrNull(value);
+  if (score === null) return "Not captured yet";
+  if (score >= 80) return `${label}: High (${score})`;
+  if (score >= 55) return `${label}: Medium (${score})`;
+  if (score >= 30) return `${label}: Low (${score})`;
+  return `${label}: Unproven (${score})`;
 }
 
 function probabilityNumber(value: string) {

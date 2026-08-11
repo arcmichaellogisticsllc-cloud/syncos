@@ -4,7 +4,7 @@
 
 - Baseline commit: `1e0694b472268190084d125262e81555ad61ce1d`
 - Branch: `main`
-- Scope: Growth / Intelligence operator UI only.
+- Scope: Growth / Intelligence operator UI and Account Onboarding backend contract.
 - Deployment status: not deployed.
 - Staging status: Hostinger VPS architecture approved directionally; SSH execution not approved in this sprint.
 
@@ -45,7 +45,7 @@ Existing data usable for account onboarding:
 - Contract status and payment terms.
 - Rate schedule name, effective date, and status.
 
-Fields requested by product but not explicit first-class onboarding fields yet:
+Fields requested by product that were not explicit first-class onboarding fields before the backend contract sprint:
 
 - Explicit account onboarding stage.
 - Required document summary by account.
@@ -57,11 +57,20 @@ Fields requested by product but not explicit first-class onboarding fields yet:
 
 ## Files Changed
 
+- `apps/api/src/routes/account-onboarding.controller.ts`
+- `apps/api/scripts/account-onboarding-smoke.js`
 - `apps/web/app/intelligence/account-onboarding/page.tsx`
 - `apps/web/app/intelligence/account-onboarding/account-onboarding-workbench.tsx`
 - `apps/web/app/intelligence/intelligence-shell.tsx`
+- `packages/database/migrations/041_account_onboarding_contract_foundation.sql`
+- `packages/database/scripts/seed.js`
+- `packages/database/scripts/seed-e2e-demo.js`
+- `apps/api/package.json`
+- `package.json`
 - `tests/e2e/operator-phase11.spec.ts`
 - `tests/e2e/fixtures/route-matrix.ts`
+- `docs/api/routes.md`
+- `docs/product/account-onboarding-backend-contract.md`
 - `docs/product/operator-ui-phase-11-report.md`
 - `docs/product/operator-ui-implementation-roadmap.md`
 - `docs/product/operator-ui-gap-backlog.md`
@@ -73,7 +82,7 @@ The new `/intelligence/account-onboarding` workbench:
 - Adds an Account Onboarding Workbench inside the Intelligence shell.
 - Shows the approved onboarding stage sequence as queue cards and accessible tabs.
 - Supports Prime / Customer and Contractor / Vendor lanes.
-- Computes counts from existing tenant-scoped API data.
+- Prefers the contract-backed `/account-onboarding` read model and falls back to existing tenant-scoped API data when the contract is unavailable.
 - Shows core account readiness fields:
   - Account owner
   - Relationship strength
@@ -90,7 +99,15 @@ The new `/intelligence/account-onboarding` workbench:
   - Approval status
   - Probability of receiving work
 - Keeps organization and candidate links navigable.
-- Adds explicit schema gap cards where current APIs cannot support exact fields.
+- Removes schema gap cards when contract-backed onboarding profiles are present.
+
+## Backend Contract Summary
+
+Added `account_onboarding_profiles` as a tenant-scoped profile for onboarding state. The model stores explicit stage, lane, account owner, relationship strength, primary contact, last interaction, next action, deadline, required/missing documents, market availability, customer programs, rate sheet status, rate schedule link, payment terms, approval status, probability of receiving work, notes, and archive metadata.
+
+Added `GET /account-onboarding`, `GET /account-onboarding/:id`, `POST /account-onboarding`, `PATCH /account-onboarding/:id`, and `POST /account-onboarding/:id/archive`.
+
+The API read model joins organization, territory, owner, primary contact, rate schedule, contract, contacts, candidates, opportunities, capacity providers, and compliance document summaries without creating downstream work or external integrations.
 
 ## Boundary Copy
 
@@ -100,7 +117,7 @@ Added:
 
 ## Prime Target Context
 
-The approved prime target list should be created through staging/demo data or operator-entered records, not hardcoded into the UI:
+The approved prime target list is now seeded as E2E/demo data only and should be created in staging through approved staging/demo data or operator-entered records, not hardcoded into the UI:
 
 - Underground Contractors Inc. — MI/OH
 - Danella — OH
@@ -115,19 +132,20 @@ The approved prime target list should be created through staging/demo data or op
 
 ## Known Gaps
 
-- The onboarding stage is inferred, not persisted.
-- Dedicated document checklist fields do not exist yet.
-- Customer program fields do not exist yet.
-- Dedicated rate sheet readiness and payment terms summary fields are partial.
-- Deadline is only available where candidate/opportunity review dates exist.
-- Probability of receiving work is approximated from existing scores.
-- No lifecycle mutation buttons were added because backend onboarding transitions do not exist yet.
+- Account onboarding detail pages are not implemented yet.
+- Lifecycle stage-transition buttons are not yet added to the web app.
+- Customer programs are currently onboarding profile summary values, not first-class customer program records.
+- Required/missing document fields are profile summary arrays; document-type policy per program remains future work.
+- Rate sheet readiness is status-only unless tied to existing rate schedules.
+- Staging/customer onboarding records still require an approved controlled data-entry process.
 
 ## Tests Added
 
 - `tests/e2e/operator-phase11.spec.ts`
-  - Verifies the workbench title, purpose, boundary copy, stage tabs, hidden developer UI, tab interaction, lane filtering, search, and schema gap callouts.
+  - Verifies the workbench title, purpose, boundary copy, stage tabs, hidden developer UI, tab interaction, lane filtering, search, and contract-backed prime onboarding fields.
 - Route matrix updated for `/intelligence/account-onboarding`.
+- `apps/api/scripts/account-onboarding-smoke.js`
+  - Verifies auth, permission denial, tenant isolation, create/update/archive event/audit behavior, and enriched read-model fields.
 
 ## Validation Results
 
@@ -135,4 +153,4 @@ Pending current sprint validation.
 
 ## Recommended Next Sprint
 
-Account Onboarding Backend Contract Sprint: add an explicit account onboarding model, document checklist summary, customer program membership, rate sheet readiness, deadline, owner/persona assignment, and probability fields without changing financial execution behavior.
+Account Onboarding Lifecycle UX Sprint: add guarded detail pages and modalized stage actions for account onboarding profiles, keeping every action internal-only and preserving no downstream contract/payment/work creation boundaries.

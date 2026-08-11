@@ -22,6 +22,11 @@ Sprint 0 implements the health and protected write route pattern. Domain routes 
 - `PATCH /organizations/:id`
 - `POST /organizations/:id/qualify`
 - `POST /organizations/:id/archive`
+- `GET /account-onboarding`
+- `GET /account-onboarding/:id`
+- `POST /account-onboarding`
+- `PATCH /account-onboarding/:id`
+- `POST /account-onboarding/:id/archive`
 - `GET /contacts`
 - `GET /contacts/:id`
 - `POST /contacts`
@@ -49,6 +54,7 @@ Sprint 0 implements the health and protected write route pattern. Domain routes 
 - `/roles`
 - `/permissions`
 - `/organizations`
+- `/account-onboarding`
 - `/contacts`
 - `/relationship-maps`
 - `/signals`

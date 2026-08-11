@@ -161,6 +161,7 @@ const actionIds = Object.freeze({
 });
 
 const softDeleteTables = new Set([
+  "account_onboarding_profiles",
   "accounting_export_batches",
   "accounting_export_items",
   "bank_accounts",
@@ -188,7 +189,7 @@ const softDeleteTables = new Set([
 
 const personas = [
   ["system-admin", "System Admin", "e2e.system.admin@syncos.test", "E2E System Admin", ["*"]],
-  ["growth-operator", "Growth Operator", "e2e.growth.operator@syncos.test", "E2E Growth Operator", ["signal.", "signal_evidence.", "signal_entity.", "organization.", "contact.", "relationship_map.", "relationship_path.", "opportunity_candidate.", "candidate_signal.", "opportunity.read", "opportunity.create", "opportunity.update", "opportunity.submit_review"]],
+  ["growth-operator", "Growth Operator", "e2e.growth.operator@syncos.test", "E2E Growth Operator", ["signal.", "signal_evidence.", "signal_entity.", "organization.", "account_onboarding.", "contact.", "relationship_map.", "relationship_path.", "opportunity_candidate.", "candidate_signal.", "opportunity.read", "opportunity.create", "opportunity.update", "opportunity.submit_review"]],
   ["ops-manager", "Operations / Project Manager", "e2e.ops.manager@syncos.test", "E2E Ops Manager", ["opportunity.read", "coverage_plan.", "coverage_requirement.", "coverage_source.", "coverage_gap.", "project_handoff.", "project.", "work_order.", "production.read", "production.create", "production.update", "production.submit", "production_evidence."]],
   ["field-supervisor", "Field Supervisor", "e2e.field.supervisor@syncos.test", "E2E Field Supervisor", ["project.read", "work_order.read", "production.", "production_evidence.", "qc_review.read"]],
   ["qc-reviewer", "QC Reviewer", "e2e.qc.reviewer@syncos.test", "E2E QC Reviewer", ["production.read", "production_evidence.read", "qc_review."]],
@@ -285,6 +286,7 @@ async function seedCanonicalRecords(client) {
   await upsert(client, "contacts", { id: ids.contactDana, tenant_id: ids.tenant, organization_id: ids.orgCustomer, first_name: "Dana", last_name: "Lewis", full_name: "Dana Lewis", title: "Program Manager", email: "dana.lewis@cedarridge.test", verification_status: "verified", status: "verified" });
   await upsert(client, "contacts", { id: ids.contactMorgan, tenant_id: ids.tenant, organization_id: ids.orgStakeholder, first_name: "Morgan", last_name: "Ellis", full_name: "Morgan Ellis", title: "Broadband Office Contact", email: "morgan.ellis@cedarridge.test", verification_status: "verified", status: "relationship_active" });
   await upsert(client, "contacts", { id: ids.contactLuis, tenant_id: ids.tenant, organization_id: ids.orgProvider, first_name: "Luis", last_name: "Moreno", full_name: "Luis Moreno", title: "Crew Coordinator", email: "luis.moreno@bluesplice.test", verification_status: "verified", status: "engaged" });
+  await seedAccountOnboardingProfiles(client, admin);
   await upsert(client, "capacity_providers", { id: ids.provider, tenant_id: ids.tenant, organization_id: ids.orgProvider, primary_contact_id: ids.contactLuis, name: "Blue Splice Fiber Services", provider_type: "subcontractor", verification_status: "verified", contract_status: "contracted", status: "activated" });
   await upsert(client, "crews", { id: ids.crew, tenant_id: ids.tenant, capacity_provider_id: ids.provider, name: "Blue Splice Crew A", crew_type: "trench", status: "active" });
   await upsert(client, "workers", { id: ids.worker, tenant_id: ids.tenant, capacity_provider_id: ids.provider, crew_id: ids.crew, first_name: "Alex", last_name: "Rivera", status: "active" });
@@ -298,6 +300,7 @@ async function seedCanonicalRecords(client) {
   await upsert(client, "opportunities", { id: ids.opportunity, tenant_id: ids.tenant, candidate_id: ids.candidate, organization_id: ids.orgCustomer, territory_id: ids.territoryNorth, owner_user_id: admin, title: "Cedar Ridge Phase 1 Fiber Build", work_type: "fiber", evidence_summary: "Canonical Browser E2E opportunity.", scope_summary: "Underground fiber Segment A.", next_action: "Proceed to coverage planning.", stage: "awarded", status: "awarded", estimated_value: 10000, signal_strength_score: 90, relationship_access_score: 82, capacity_fit_score: 86, margin_potential_score: 75, strategic_fit_score: 85, payment_risk_score: 22, pursuit_score: 86, recommendation: "Priority Pursuit" });
   await upsert(client, "contracts", { id: ids.contract, tenant_id: ids.tenant, organization_id: ids.orgCustomer, opportunity_id: ids.opportunity, name: "Cedar Ridge Phase 1 Contract", contract_number: "CON-CR-001", contract_type: "customer", payment_terms_days: 30, status: "active" });
   await upsert(client, "rate_schedules", { id: ids.rateSchedule, tenant_id: ids.tenant, contract_id: ids.contract, organization_id: ids.orgCustomer, name: "Cedar Ridge Phase 1 Rates", effective_date: "2026-01-01", status: "active" });
+  await upsert(client, "account_onboarding_profiles", { id: uuid("account-onboarding:cedar-ridge"), tenant_id: ids.tenant, organization_id: ids.orgCustomer, lane: "prime", onboarding_stage: "approved", account_owner_user_id: admin, primary_contact_id: ids.contactDana, last_interaction_at: "2026-01-25T12:00:00Z", next_action: "Assign additional markets and keep program relationship current.", next_action_deadline: "2026-02-05", required_documents: ["vendor packet", "insurance certificate", "program rate sheet"], missing_documents: [], market_availability: ["Cedar Ridge North"], customer_programs: ["Fiber Phase 1"], rate_sheet_status: "approved", rate_schedule_id: ids.rateSchedule, payment_terms_days: 30, approval_status: "approved", probability_of_work: 86, status: "active", notes: "Canonical account onboarding profile. Status only; no guaranteed work.", created_by: admin, updated_by: admin });
   await upsert(client, "rate_codes", { id: ids.rateCode, tenant_id: ids.tenant, rate_schedule_id: ids.rateSchedule, code: "FIBER-FT", description: "Underground fiber foot", unit: "feet", unit_type: "feet", amount: 10, customer_rate: 10, contractor_rate: 7, margin_amount: 3, margin_percent: 30, status: "active" });
 
   await upsert(client, "coverage_plans", { id: ids.coveragePlan, tenant_id: ids.tenant, opportunity_id: ids.opportunity, status: "approved_for_handoff", coverage_readiness_score: 91, capacity_readiness_score: 88, compliance_readiness_score: 86, economic_readiness_score: 82, coverage_readiness_band: "ready_for_handoff", operations_owner_user_id: admin, approved_for_handoff_by: admin, approved_for_handoff_at: "2026-01-08T12:00:00Z", approval_note: "Seeded coverage approved for E2E.", created_by: admin, updated_by: admin });
@@ -338,6 +341,83 @@ async function seedCanonicalRecords(client) {
   await client.query("UPDATE settlement_items SET invoice_item_id = $1, payable_item_id = $2, updated_at = now() WHERE id = $3 AND tenant_id = $4", [ids.invoiceItem, ids.contractorPayableItem, ids.settlementItem, ids.tenant]);
   await client.query("UPDATE contractor_payable_items SET payment_item_id = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3", [ids.contractorPaymentItem, ids.contractorPayableItem, ids.tenant]);
   await client.query("UPDATE payroll_items SET payment_item_id = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3", [ids.payrollPaymentItem, ids.payrollItem, ids.tenant]);
+}
+
+async function seedAccountOnboardingProfiles(client, admin) {
+  const primeTargets = [
+    ["Underground Contractors Inc.", "MI/OH", "application_submitted", "Vendor Manager", "Submit Ohio/Michigan onboarding application packet.", "2026-02-10", ["vendor application", "insurance certificate", "safety packet"], ["insurance certificate", "safety packet"], ["Michigan", "Ohio"], ["Underground construction"], "requested", 45, "submitted", 58],
+    ["Danella", "OH", "contact_discovered", "Procurement Contact", "Record initial outreach with Ohio vendor management.", "2026-02-08", ["vendor packet", "insurance certificate", "rate sheet"], ["vendor packet", "insurance certificate", "rate sheet"], ["Ohio"], ["Fiber construction", "utility construction"], "not_captured", null, "not_submitted", 35],
+    ["Mears Group", "Midwest", "initial_outreach", "Regional Operations Manager", "Confirm onboarding owner and application requirements.", "2026-02-12", ["vendor packet", "insurance certificate", "safety packet", "rate sheet"], ["vendor packet", "rate sheet"], ["Midwest"], ["Gas/electric utility construction", "telecom construction"], "requested", 60, "not_submitted", 52],
+    ["Sellenriek Construction", "Midwest", "documents_requested", "Subcontractor Coordinator", "Follow up on missing compliance and rate documents.", "2026-02-06", ["insurance certificate", "W-9", "safety packet", "rate sheet"], ["W-9", "rate sheet"], ["Midwest"], ["Directional boring", "utility construction"], "received", 45, "submitted", 64],
+    ["Edison Power Constructors", "OH", "compliance_review", "Compliance Coordinator", "Complete internal compliance review before operational interview.", "2026-02-14", ["insurance certificate", "safety packet", "program terms"], ["program terms"], ["Ohio"], ["Power utility construction"], "in_review", 45, "in_review", 61],
+    ["Henkels & McCoy", "National", "operational_interview", "Telecom Program Director", "Schedule operational interview for Ohio and Midwest market fit.", "2026-02-18", ["vendor packet", "insurance certificate", "safety packet", "rate sheet"], [], ["National", "Ohio", "Midwest"], ["Telecom construction", "utility services"], "received", 60, "in_review", 73],
+    ["NorthStar Group Services", "Midwest", "rate_negotiation", "Regional Director", "Confirm rate sheet and payment terms for Midwest work.", "2026-02-16", ["vendor packet", "insurance certificate", "rate sheet"], [], ["Midwest"], ["Infrastructure services"], "in_review", 45, "in_review", 68],
+    ["Irby Construction", "Midwest", "approved", "Subcontractor Program Manager", "Assign first market/program owner for controlled UAT tracking.", "2026-02-20", ["vendor packet", "insurance certificate", "safety packet", "rate sheet"], [], ["Midwest"], ["Utility construction"], "approved", 30, "approved", 78],
+    ["Michels Corporation", "National", "market_assigned", "National Vendor Manager", "Confirm first-work path for Ohio/Midwest telecom program.", "2026-02-22", ["vendor packet", "insurance certificate", "safety packet", "rate sheet"], [], ["National", "Ohio", "Midwest"], ["Telecom construction", "utility construction"], "approved", 30, "approved", 82],
+    ["W.A. Chester", "Midwest", "mobilized", "Operations Contact", "Monitor mobilization readiness and relationship cadence.", "2026-02-28", ["vendor packet", "insurance certificate", "safety packet", "rate sheet"], [], ["Midwest"], ["Underground utility construction"], "approved", 30, "approved", 85],
+  ];
+
+  for (const [index, target] of primeTargets.entries()) {
+    const [name, state, stage, title, nextAction, deadline, requiredDocuments, missingDocuments, marketAvailability, programs, rateSheetStatus, paymentTermsDays, approvalStatus, probability] = target;
+    const orgId = uuid(`prime-target:${name}`);
+    const contactId = uuid(`prime-target-contact:${name}`);
+    await upsert(client, "organizations", {
+      id: orgId,
+      tenant_id: ids.tenant,
+      territory_id: state === "OH" || state === "MI/OH" ? ids.territoryNorth : ids.territorySouth,
+      name,
+      type: "prime_contractor",
+      organization_type: "prime_contractor",
+      actor_roles: ["work_distributor"],
+      state,
+      relationship_owner_user_id: admin,
+      influence_score: Math.min(95, Number(probability ?? 40) + 5),
+      work_relevance_score: probability,
+      trust_level: index > 5 ? "medium" : "low",
+      status: ["approved", "market_assigned", "mobilized"].includes(stage) ? "qualified" : "researched",
+      source_name: "approved staging/demo prime target list",
+      description: "Demo/staging-only prime onboarding target. No production data and no guaranteed work.",
+    });
+    await upsert(client, "contacts", {
+      id: contactId,
+      tenant_id: ids.tenant,
+      organization_id: orgId,
+      first_name: "Staging",
+      last_name: "Contact",
+      full_name: `${name} Staging Contact`,
+      title,
+      email: `${name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "")}@example.test`,
+      verification_status: ["identified", "contact_discovered"].includes(stage) ? "unverified" : "verified",
+      status: stage === "contact_discovered" ? "discovered" : "engaged",
+      relationship_strength_score: Math.max(20, Number(probability ?? 40) - 10),
+      last_contacted_at: "2026-01-30T12:00:00Z",
+    });
+    await upsert(client, "account_onboarding_profiles", {
+      id: uuid(`account-onboarding:${name}`),
+      tenant_id: ids.tenant,
+      organization_id: orgId,
+      lane: "prime",
+      onboarding_stage: stage,
+      account_owner_user_id: admin,
+      primary_contact_id: contactId,
+      relationship_strength_score: Math.max(20, Number(probability ?? 40) - 10),
+      last_interaction_at: "2026-01-30T12:00:00Z",
+      next_action: nextAction,
+      next_action_deadline: deadline,
+      required_documents: requiredDocuments,
+      missing_documents: missingDocuments,
+      market_availability: marketAvailability,
+      customer_programs: programs,
+      rate_sheet_status: rateSheetStatus,
+      payment_terms_days: paymentTermsDays,
+      approval_status: approvalStatus,
+      probability_of_work: probability,
+      status: "active",
+      notes: "Demo/staging-only onboarding state. Does not create customer assignment, contract, payment, payroll, invoice, tax filing, or guaranteed work.",
+      created_by: admin,
+      updated_by: admin,
+    });
+  }
 }
 
 async function seedActionStateRecords(client) {
