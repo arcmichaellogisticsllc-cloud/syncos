@@ -20,6 +20,7 @@ import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { PayrollController } from "../routes/payroll.controller";
 import { PaymentExecutionController } from "../routes/payment-execution.controller";
+import { PartnerDomainController } from "../routes/partner-domain.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -32,6 +33,7 @@ import { TestObjectsController } from "../routes/test-objects.controller";
 import { TerritoriesController } from "../routes/territories.controller";
 import { WorkflowsController } from "../routes/workflows.controller";
 import { AuthenticatedGuard } from "../security/authenticated.guard";
+import { OrganizationScopeService } from "../security/organization-scope";
 import { PermissionGuard } from "../security/permission.guard";
 import { TenantIsolationGuard } from "../security/tenant-isolation.guard";
 import { DatabaseModule } from "./database.module";
@@ -58,6 +60,7 @@ import { DatabaseModule } from "./database.module";
     CapacityController,
     PayrollController,
     PaymentExecutionController,
+    PartnerDomainController,
     ProductionController,
     SettlementsController,
     CashController,
@@ -74,6 +77,7 @@ import { DatabaseModule } from "./database.module";
     { provide: APP_GUARD, useClass: AuthenticatedGuard },
     { provide: APP_GUARD, useClass: TenantIsolationGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
+    OrganizationScopeService,
   ],
 })
 export class AppModule implements NestModule {
