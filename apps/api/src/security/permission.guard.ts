@@ -7,6 +7,8 @@ import { DATABASE_POOL } from "../modules/database.module";
 import { IS_PUBLIC_ROUTE } from "./public.decorator";
 import { REQUIRED_PERMISSION } from "./require-permission.decorator";
 
+const partnerScopedPermissions = new Set<PermissionKey>(["partner_context.read", "partner_profile.read", "partner_actions.read"]);
+
 @Injectable()
 export class PermissionGuard implements CanActivate {
   constructor(
@@ -33,6 +35,10 @@ export class PermissionGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request & { auth: { tenantId: string; userId: string } }>();
+    const scopeType = this.getScopeType(request);
+    const scopeId = this.getScopeId(request);
+    const isPartnerScopedPermission = partnerScopedPermissions.has(permission);
+    const hasExplicitScopeHeader = Boolean(request.header("x-scope-type") || request.header("x-scope-id"));
     const result = await this.pool.query<{ allowed: boolean }>(
       `
       SELECT EXISTS (
@@ -46,8 +52,22 @@ export class PermissionGuard implements CanActivate {
           AND tu.status = 'active'
           AND p.key = $3
           AND (
-            ur.scope_type = 'tenant'
-            OR (ur.scope_type = $4 AND ur.scope_id = $5)
+            (
+              $6::boolean = true
+              AND ur.scope_type = 'organization'
+              AND ur.scope_id IS NOT NULL
+              AND (
+                $7::boolean = false
+                OR (ur.scope_type = $4 AND ur.scope_id::text = $5)
+              )
+            )
+            OR (
+              $6::boolean = false
+              AND (
+                ur.scope_type = 'tenant'
+                OR (ur.scope_type = $4 AND ur.scope_id::text = $5)
+              )
+            )
           )
       ) AS allowed
       `,
@@ -55,8 +75,10 @@ export class PermissionGuard implements CanActivate {
         request.auth.tenantId,
         request.auth.userId,
         permission,
-        this.getScopeType(request),
-        this.getScopeId(request),
+        scopeType,
+        scopeId,
+        isPartnerScopedPermission,
+        hasExplicitScopeHeader,
       ],
     );
 
@@ -68,7 +90,7 @@ export class PermissionGuard implements CanActivate {
 
   private getScopeType(request: Request): string {
     const value = request.header("x-scope-type");
-    return value && ["organization", "territory", "project", "customer", "contractor"].includes(value)
+    return value && ["organization", "territory", "project", "customer", "contractor", "tenant"].includes(value)
       ? value
       : "tenant";
   }

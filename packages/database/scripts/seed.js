@@ -19,6 +19,8 @@ const roles = [
   "Customer Viewer",
   "Customer Validator",
   "Customer Financial Authority",
+  "Partner Admin",
+  "Partner Foreman",
   "System Admin",
   "AI/System",
 ];
@@ -488,6 +490,9 @@ const permissions = [
   "capacity_record.update",
   "capacity_record.score",
   "capacity_record.archive",
+  "partner_context.read",
+  "partner_profile.read",
+  "partner_actions.read",
   "capacity_gap_analysis.read",
   "capacity_gap_analysis.create",
   "coverage_plan.read",
@@ -701,6 +706,26 @@ async function main() {
       `,
       [tenantId, systemAdminRole.rows[0].id],
     );
+
+    const partnerRolePermissions = [
+      { name: "Partner Admin", permissions: ["partner_context.read", "partner_profile.read", "partner_actions.read"] },
+      { name: "Partner Foreman", permissions: ["partner_context.read", "partner_actions.read"] },
+    ];
+    for (const partnerRole of partnerRolePermissions) {
+      const role = await client.query("SELECT id FROM roles WHERE tenant_id = $1 AND name = $2", [tenantId, partnerRole.name]);
+      for (const key of partnerRole.permissions) {
+        await client.query(
+          `
+          INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+          SELECT $1, $2, p.id
+          FROM permissions p
+          WHERE p.key = $3
+          ON CONFLICT (role_id, permission_id) DO NOTHING
+          `,
+          [tenantId, role.rows[0].id, key],
+        );
+      }
+    }
 
     await client.query("COMMIT");
     console.log(`seeded tenant ${tenantId}`);

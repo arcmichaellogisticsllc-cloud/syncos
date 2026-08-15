@@ -21,6 +21,7 @@ import { OrganizationsController } from "../routes/organizations.controller";
 import { PayrollController } from "../routes/payroll.controller";
 import { PaymentExecutionController } from "../routes/payment-execution.controller";
 import { PartnerDomainController } from "../routes/partner-domain.controller";
+import { PartnerPersonasController } from "../routes/partner-personas.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -61,6 +62,7 @@ import { DatabaseModule } from "./database.module";
     PayrollController,
     PaymentExecutionController,
     PartnerDomainController,
+    PartnerPersonasController,
     ProductionController,
     SettlementsController,
     CashController,
