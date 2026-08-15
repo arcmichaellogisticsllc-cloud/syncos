@@ -7,7 +7,21 @@ import { DATABASE_POOL } from "../modules/database.module";
 import { IS_PUBLIC_ROUTE } from "./public.decorator";
 import { REQUIRED_PERMISSION } from "./require-permission.decorator";
 
-const partnerScopedPermissions = new Set<PermissionKey>(["partner_context.read", "partner_profile.read", "partner_actions.read"]);
+const partnerScopedPermissions = new Set<PermissionKey>([
+  "partner_context.read",
+  "partner_profile.read",
+  "partner_actions.read",
+  "partner_compliance.summary.read",
+  "partner_compliance.profile.read",
+  "partner_compliance.profile.submit",
+  "partner_compliance.w9.read",
+  "partner_compliance.w9.submit",
+  "partner_compliance.payment.read",
+  "partner_compliance.payment.submit",
+  "partner_compliance.insurance.read",
+  "partner_compliance.insurance.submit",
+  "partner_compliance.evidence.read",
+]);
 
 @Injectable()
 export class PermissionGuard implements CanActivate {

@@ -493,6 +493,18 @@ const permissions = [
   "partner_context.read",
   "partner_profile.read",
   "partner_actions.read",
+  "partner_compliance.summary.read",
+  "partner_compliance.profile.read",
+  "partner_compliance.profile.submit",
+  "partner_compliance.w9.read",
+  "partner_compliance.w9.submit",
+  "partner_compliance.payment.read",
+  "partner_compliance.payment.submit",
+  "partner_compliance.insurance.read",
+  "partner_compliance.insurance.submit",
+  "partner_compliance.evidence.read",
+  "partner_compliance.review",
+  "partner_compliance.evidence.review",
   "capacity_gap_analysis.read",
   "capacity_gap_analysis.create",
   "coverage_plan.read",
@@ -708,8 +720,32 @@ async function main() {
     );
 
     const partnerRolePermissions = [
-      { name: "Partner Admin", permissions: ["partner_context.read", "partner_profile.read", "partner_actions.read"] },
-      { name: "Partner Foreman", permissions: ["partner_context.read", "partner_actions.read"] },
+      {
+        name: "Partner Admin",
+        permissions: [
+          "partner_context.read",
+          "partner_profile.read",
+          "partner_actions.read",
+          "partner_compliance.summary.read",
+          "partner_compliance.profile.read",
+          "partner_compliance.profile.submit",
+          "partner_compliance.w9.read",
+          "partner_compliance.w9.submit",
+          "partner_compliance.payment.read",
+          "partner_compliance.payment.submit",
+          "partner_compliance.insurance.read",
+          "partner_compliance.insurance.submit",
+          "partner_compliance.evidence.read",
+        ],
+      },
+      {
+        name: "Partner Foreman",
+        permissions: [
+          "partner_context.read",
+          "partner_actions.read",
+          "partner_compliance.summary.read",
+        ],
+      },
     ];
     for (const partnerRole of partnerRolePermissions) {
       const role = await client.query("SELECT id FROM roles WHERE tenant_id = $1 AND name = $2", [tenantId, partnerRole.name]);
