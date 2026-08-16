@@ -23,6 +23,7 @@ import { PaymentExecutionController } from "../routes/payment-execution.controll
 import { PartnerDomainController } from "../routes/partner-domain.controller";
 import { PartnerComplianceController } from "../routes/partner-compliance.controller";
 import { PartnerPersonasController } from "../routes/partner-personas.controller";
+import { PartnerWorkforceController } from "../routes/partner-workforce.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -65,6 +66,7 @@ import { DatabaseModule } from "./database.module";
     PartnerComplianceController,
     PartnerDomainController,
     PartnerPersonasController,
+    PartnerWorkforceController,
     ProductionController,
     SettlementsController,
     CashController,
