@@ -177,6 +177,15 @@ test("certified Partner workforce E2E is included in the global certification ru
   );
 });
 
+test("certified Partner agreement E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-agreements-work-orders-vehicles\.spec\.ts/,
+    "P5 Partner agreements/work orders/vehicles E2E must run as part of npm run e2e:certification",
+  );
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
