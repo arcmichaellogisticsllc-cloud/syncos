@@ -55,6 +55,14 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_notice.acknowledge",
   "partner_notice.foreman.read",
   "partner_notice.foreman.acknowledge",
+  "partner_map.read",
+  "partner_map.read_assigned",
+  "partner_jsa.read",
+  "partner_jsa_history.read",
+  "partner_jsa.create",
+  "partner_jsa.update_draft",
+  "partner_jsa.complete",
+  "partner_jsa.read_own",
 ]);
 
 @Injectable()

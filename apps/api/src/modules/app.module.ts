@@ -26,6 +26,7 @@ import { PartnerPersonasController } from "../routes/partner-personas.controller
 import { PartnerWorkforceController } from "../routes/partner-workforce.controller";
 import { PartnerAgreementsController } from "../routes/partner-agreements.controller";
 import { PartnerMobilizationController } from "../routes/partner-mobilization.controller";
+import { SyncfieldController } from "../routes/syncfield.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -71,6 +72,7 @@ import { DatabaseModule } from "./database.module";
     PartnerWorkforceController,
     PartnerAgreementsController,
     PartnerMobilizationController,
+    SyncfieldController,
     ProductionController,
     SettlementsController,
     CashController,

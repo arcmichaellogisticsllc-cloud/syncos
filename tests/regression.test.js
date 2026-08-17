@@ -204,6 +204,15 @@ test("certified Partner Portal shell E2E is included in the global certification
   );
 });
 
+test("certified SyncField map and Daily JSA E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-map-jsa\.spec\.ts/,
+    "P8 SyncField map/JSA E2E must run as part of npm run e2e:certification",
+  );
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

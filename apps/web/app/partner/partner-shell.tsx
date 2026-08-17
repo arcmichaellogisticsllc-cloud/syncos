@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { readPermissions, readToken, syncosFetch } from "../intelligence/api";
 
 type Persona = "partner_admin" | "partner_foreman";
@@ -19,7 +20,9 @@ type Section =
   | "work-orders"
   | "work-order-detail"
   | "vehicles"
-  | "mobilization";
+  | "mobilization"
+  | "field-map"
+  | "daily-jsa";
 
 type PartnerContext = {
   user: { id: string; display_name: string };
@@ -80,6 +83,31 @@ type Notice = {
   external_conditions?: string[];
   production_start?: { authorization_status?: string; start_date?: string | null; start_time?: string | null; timezone?: string | null; map_work_package_ref?: string | null; work_area?: string | null };
 };
+type MapAssignment = {
+  id?: string;
+  status?: string;
+  project?: { id?: string; name?: string };
+  work_order?: { id?: string; work_order_number?: string; scope_summary?: string; primary_work_area?: string | null };
+  crew?: { id?: string; name?: string };
+  map?: { document_id?: string; version_id?: string; name?: string; customer_document_number?: string | null; revision_number?: number; revision_label?: string | null; page_count?: number; processing_status?: string; status?: string; original_filename?: string; file_hash?: string };
+  work_zones?: Array<{ id?: string; name?: string; page_number?: number; x_ratio?: number; y_ratio?: number; zoom_level?: number }>;
+};
+type DailyJsa = {
+  id?: string;
+  status?: string;
+  work_date?: string;
+  work_location?: string;
+  weather?: string;
+  site_conditions?: string;
+  hazards?: string[];
+  controls?: string[];
+  meeting_completed_at?: string;
+  foreman_certified?: boolean;
+  crew_name?: string;
+  foreman_name?: string;
+  assignment?: Record<string, unknown>;
+  participants?: Array<{ worker_id?: string; name?: string; role?: string; participation_status?: string; acknowledged?: boolean }>;
+};
 
 type PortalData = {
   context?: PartnerContext;
@@ -98,6 +126,9 @@ type PortalData = {
   vehicles?: VehicleAssignment[];
   mobilization?: Readiness | null;
   notice?: Notice | null;
+  mapAssignment?: MapAssignment | null;
+  jsaToday?: DailyJsa | null;
+  jsas?: DailyJsa[];
   foremanCrew?: Crew | null;
   foremanRoster?: Worker[];
   foremanWorkOrder?: WorkOrder | null;
@@ -113,12 +144,15 @@ const adminNav = [
   ["Work Orders", "/partner/work-orders"],
   ["Vehicles", "/partner/vehicles"],
   ["Mobilization", "/partner/mobilization"],
+  ["Daily JSA", "/partner/jsa"],
 ] as const;
 
 const foremanNav = [
   ["Today", "/partner"],
   ["Crew", "/partner/crews"],
   ["Assignment", "/partner/work-orders"],
+  ["Field Map", "/partner/field/map"],
+  ["Daily JSA", "/partner/jsa"],
   ["Mobilization", "/partner/mobilization"],
 ] as const;
 
@@ -196,16 +230,38 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
               <StatusPill label="Organization" value={data.context?.organization.status} />
             </header>
             {message ? <div className={/failed|forbidden|error/i.test(message) ? "partner-banner error" : "partner-banner success"}>{message}</div> : null}
-            {renderSection(section, data, permissions, itemId, acknowledgeNotice)}
+            {renderSection(section, data, permissions, itemId, acknowledgeNotice, completeJsa)}
           </>
         )}
       </section>
     </main>
   );
+
+  async function completeJsa() {
+    try {
+      setMessage(null);
+      const completed = await syncosFetch<DailyJsa>("syncfield/foreman/jsa/today/complete", {
+        method: "POST",
+        body: {
+          work_location: data.mapAssignment?.work_order?.primary_work_area || data.notice?.initial_work_area || "Assigned work area",
+          weather: "Field reviewed",
+          site_conditions: "Reviewed with Crew",
+          hazards: ["traffic", "overhead_utilities"],
+          controls: ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed", "traffic_control_reviewed"],
+          foreman_certified: true,
+        },
+      });
+      setState((current) => ({ ...current, data: { ...current.data, jsaToday: completed } }));
+      setMessage("Daily JSA completed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Daily JSA completion failed.");
+    }
+  }
 }
 
 async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles] = await Promise.all([
+  const permissions = readPermissions();
+  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas] = await Promise.all([
     safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
     safeFetch<CompanyProfile>("partner-compliance/me/company-profile"),
     safeFetch<TaxProfile>("partner-compliance/me/w9"),
@@ -216,6 +272,8 @@ async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Pro
     safeFetch<Agreement[]>("partner-agreements/me/agreements", []),
     safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []),
     safeFetch<VehicleAssignment[]>("partner-agreements/me/vehicle-assignments", []),
+    permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
+    permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
@@ -230,19 +288,22 @@ async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Pro
   const versionId = str(firstWorkOrder?.id);
   const mobilization = versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice };
+  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas };
 }
 
 async function loadForeman(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
-  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice] = await Promise.all([
+  const permissions = readPermissions();
+  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday] = await Promise.all([
     safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
     safeFetch<Crew | null>("partner-workforce/foreman/crew", null),
     safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []),
     safeFetch<WorkOrder | null>("partner-agreements/foreman/work-order", null),
     safeFetch<Readiness | null>("partner-mobilization/foreman/readiness", null),
     safeFetch<Notice | null>("partner-mobilization/foreman/notice", null),
+    permissions.includes("partner_map.read_assigned") ? safeFetch<MapAssignment | null>("syncfield/foreman/map-assignment", null) : null,
+    permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>("syncfield/foreman/jsa/today", null) : null,
   ]);
-  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice };
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday };
 }
 
 async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
@@ -254,7 +315,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
   }
 }
 
-function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>) {
+function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: () => Promise<void>) {
   if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles"].includes(section)) {
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
@@ -262,6 +323,8 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     if (section === "dashboard") return <ForemanToday data={data} acknowledgeNotice={acknowledgeNotice} />;
     if (section === "crews" || section === "crew-detail" || section === "workforce") return <ForemanCrew data={data} />;
     if (section === "work-orders" || section === "work-order-detail") return <ForemanAssignment data={data} />;
+    if (section === "field-map") return <FieldMapWorkspace data={data} />;
+    if (section === "daily-jsa") return <DailyJsaWorkspace data={data} completeJsa={completeJsa} />;
     if (section === "mobilization") return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
   }
 
@@ -294,6 +357,10 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
       return <VehiclesWorkspace data={data} />;
     case "mobilization":
       return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
+    case "daily-jsa":
+      return <AdminJsaWorkspace data={data} />;
+    case "field-map":
+      return <FieldMapWorkspace data={data} />;
     default:
       return <EmptyPortal title="Workspace unavailable" body="This Partner workspace is not available." />;
   }
@@ -355,6 +422,8 @@ function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowl
 
 function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowledgeNotice: () => Promise<void> }) {
   const notice = data.notice;
+  const map = data.mapAssignment?.map;
+  const jsa = data.jsaToday;
   return (
     <div className="partner-field-layout">
       <section className="field-status-band" aria-label="Today assignment">
@@ -375,9 +444,15 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
             ["Timezone", notice?.timezone ?? notice?.production_start?.timezone ?? "Not set"],
             ["Map Package", notice?.initial_map_work_package_ref ?? str(data.foremanWorkOrder?.map_work_package_ref) ?? "Not issued"],
             ["Initial Work Area", notice?.initial_work_area ?? "Not assigned"],
+            ["Map Version", map?.name ? `${map.name} Rev ${map.revision_number ?? "0"}` : "Not assigned"],
+            ["Daily JSA", jsa?.status === "completed" ? `complete - ${shortTime(jsa.meeting_completed_at)}` : "required"],
           ]} />
           <p className="partner-safe-text">{notice?.external_instructions || "Production entry is not available in P7. Use the authorized start instructions when issued."}</p>
           {notice?.id ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+          <div className="partner-actions-row">
+            {map?.status === "ready" ? <Link className="partner-button wide-touch" href="/partner/field/map">Open Field Map</Link> : null}
+            <Link className="partner-button wide-touch" href="/partner/jsa">{jsa?.status === "completed" ? "View Daily JSA" : "Complete JSA"}</Link>
+          </div>
         </Panel>
         <Panel title="Crew" eyebrow={str(data.foremanCrew?.name)}>
           <StatusRows rows={[["Crew Readiness", data.mobilization?.overall_status ?? "not_evaluated"], ["Roster", `${data.foremanRoster?.length ?? 0} active Workers`]]} />
@@ -389,11 +464,100 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
             ["Customer", str(data.foremanWorkOrder?.customer_name) || "Not shown"],
             ["Vehicle", vehicleLabel(data.foremanWorkOrder?.vehicle as Record<string, unknown> | undefined)],
             ["Operator", "Use assigned vehicle authorization"],
-            ["SyncField", "Daily Production opens in P8"],
+            ["SyncField", "Daily Production is not available in P8"],
           ]} />
         </Panel>
       </div>
     </div>
+  );
+}
+
+function FieldMapWorkspace({ data }: { data: PortalData }) {
+  const assignment = data.mapAssignment;
+  if (!assignment?.map || assignment.map.status !== "ready") {
+    return <EmptyPortal title="No assigned field map" body="A read-only field map appears after Sync assigns a READY Map Version to your Work Order and Crew." />;
+  }
+  const zones = assignment.work_zones ?? [];
+  return (
+    <div className="field-map-shell">
+      <section className="field-map-header" aria-label="Field map context">
+        <div>
+          <p className="eyebrow">Read-only field map</p>
+          <h3>{assignment.map.name} Rev {assignment.map.revision_number ?? 0}</h3>
+          <p>{assignment.work_order?.work_order_number} · {assignment.crew?.name}</p>
+        </div>
+        <StatusPill label="Map" value={assignment.map.processing_status} />
+      </section>
+      <section className="field-map-viewer" aria-label="PDF map viewer">
+        <div className="field-map-toolbar" aria-label="Map controls">
+          <button className="partner-button" type="button" aria-label="Previous PDF page">Page -</button>
+          <span>Page 1 / {assignment.map.page_count ?? 1}</span>
+          <button className="partner-button" type="button" aria-label="Next PDF page">Page +</button>
+          <button className="partner-button" type="button" aria-label="Zoom out">-</button>
+          <button className="partner-button" type="button" aria-label="Zoom in">+</button>
+        </div>
+        <div className="field-map-canvas" role="img" aria-label={`Read-only PDF map ${assignment.map.name} revision ${assignment.map.revision_number ?? 0}`}>
+          <span>{assignment.map.customer_document_number || assignment.map.name}</span>
+          <strong>PDF page preview</strong>
+          <small>Pan and zoom target area. Production marks and annotations are not available in P8.</small>
+        </div>
+      </section>
+      <Panel title="Work Zones" eyebrow="Navigation bookmarks">
+        <div className="partner-actions-row">
+          {zones.map((zone) => <button className="partner-button" type="button" key={zone.id}>Jump to {zone.name} · Pg {zone.page_number}</button>)}
+          {!zones.length ? <span className="partner-safe-text">No Work Zones assigned.</span> : null}
+        </div>
+      </Panel>
+      <Panel title="Field Cache" eyebrow="Online only in P8">
+        <StatusRows rows={[["State", "available_online"], ["Offline Map Cache", "Future P9 prerequisite"], ["Production Entry", "not_available_in_p8"]]} />
+      </Panel>
+    </div>
+  );
+}
+
+function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJsa: () => Promise<void> }) {
+  const jsa = data.jsaToday;
+  return (
+    <div className="partner-stack">
+      <Panel title="Daily JSA" eyebrow={jsa?.work_date || "Today"}>
+        <StatusRows rows={[
+          ["Status", jsa?.status === "completed" ? "complete" : "required"],
+          ["Work Area", jsa?.work_location || data.mapAssignment?.work_order?.primary_work_area || data.notice?.initial_work_area || "Assigned work area"],
+          ["Map", data.mapAssignment?.map?.name ? `${data.mapAssignment.map.name} Rev ${data.mapAssignment.map.revision_number ?? 0}` : "Not assigned"],
+          ["Completed", jsa?.meeting_completed_at ? shortTime(jsa.meeting_completed_at) : "Not completed"],
+          ["Production", "not_available_in_p8"],
+        ]} />
+        {jsa?.status === "completed" ? <p className="partner-safe-text">Foreman attestation is complete for today. This does not create production, QC, billable, settlement, payable, or payment records.</p> : (
+          <button className="partner-button primary wide-touch" type="button" onClick={() => void completeJsa()}>Complete JSA</button>
+        )}
+      </Panel>
+      <Panel title="Hazards and Controls" eyebrow="Tailgate review">
+        <StatusRows rows={[
+          ["Hazards", (jsa?.hazards ?? ["traffic", "overhead_utilities"]).join(", ")],
+          ["Controls", (jsa?.controls ?? ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed"]).join(", ")],
+          ["Certification", jsa?.foreman_certified ? "Foreman certified" : "Required before completion"],
+        ]} />
+      </Panel>
+      <Panel title="Crew Attendance" eyebrow="Resolved from P4 Crew membership">
+        <RosterList roster={data.foremanRoster ?? []} foreman />
+      </Panel>
+    </div>
+  );
+}
+
+function AdminJsaWorkspace({ data }: { data: PortalData }) {
+  const jsas = data.jsas ?? [];
+  return (
+    <Panel title="Daily JSAs" eyebrow="Partner Admin-safe history">
+      <div className="partner-card-grid">
+        {jsas.map((jsa) => (
+          <RecordCard key={jsa.id} title={`${jsa.work_date || "Work date"} · ${jsa.work_location || "Work area"}`} status={jsa.status}>
+            <StatusRows rows={[["Crew", str(jsa.crew_name)], ["Foreman", str(jsa.foreman_name)], ["Completed", shortTime(jsa.meeting_completed_at)], ["Hazards", (jsa.hazards ?? []).join(", ") || "Not set"]]} />
+          </RecordCard>
+        ))}
+      </div>
+      {!jsas.length ? <EmptyPortal title="No Daily JSAs" body="Completed Foreman safety attestations appear here." /> : null}
+    </Panel>
   );
 }
 
@@ -691,7 +855,7 @@ function RosterList({ roster, foreman = false }: { roster: Worker[]; foreman?: b
   );
 }
 
-function Panel({ title, eyebrow, children }: { title: string; eyebrow?: string | null; children: React.ReactNode }) {
+function Panel({ title, eyebrow, children }: { title: string; eyebrow?: string | null; children: ReactNode }) {
   return <section className="partner-panel"><p className="eyebrow">{eyebrow}</p><h3>{title}</h3>{children}</section>;
 }
 
@@ -750,13 +914,15 @@ function activeSectionLabel(section: Section, persona?: Persona) {
     if (section === "dashboard") return "Today";
     if (section === "crews" || section === "crew-detail" || section === "workforce") return "Crew";
     if (section === "work-orders" || section === "work-order-detail") return "Assignment";
+    if (section === "field-map") return "Field Map";
+    if (section === "daily-jsa") return "Daily JSA";
     return "Mobilization";
   }
   if (section === "worker-detail") return "Workers";
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA" };
   return labels[section] ?? "Dashboard";
 }
 
@@ -766,6 +932,8 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "worker-detail") return "Worker";
   if (section === "crew-detail") return "Crew";
   if (section === "agreement-detail") return "Agreement";
+  if (section === "field-map") return "Field Map";
+  if (section === "daily-jsa") return "Daily JSA";
   return activeSectionLabel(section, persona);
 }
 
@@ -805,6 +973,13 @@ function contactLine(row: Record<string, unknown>, prefix: "primary" | "complian
 function vehicleLabel(vehicle?: Record<string, unknown>) {
   if (!vehicle) return "Not assigned";
   return [vehicle.equipment_name, vehicle.equipment_type].map(str).filter(Boolean).join(" · ") || str(vehicle.assignment_id) || "Assigned vehicle";
+}
+
+function shortTime(value?: string | null) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 function rateLabel(rate?: Record<string, unknown>) {
