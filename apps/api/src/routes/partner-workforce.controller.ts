@@ -472,18 +472,22 @@ export class PartnerWorkforceController {
     return this.withClient(async (client) => {
       const partner = await this.requireInternalPartnerOrganization(client, request, organizationId, "partner_workforce.review");
       const status = requireAllowed(body.status, workerInternalReviewStatuses, "status");
+      const suspensionReason = this.optionalString(body.suspended_reason) ?? this.optionalString(body.external_return_reason);
       return this.writeWithClient(client, request, "worker.review", this.reviewEvent("worker", status), "worker", async (writeClient) => {
         const before = await this.requireWorkerByOrg(writeClient, request.auth.tenantId, organizationId, workerId);
         const result = await writeClient.query(
           `
           UPDATE workers
-          SET review_status = $4, status = CASE WHEN $4 IN ('suspended', 'inactive') THEN $4 ELSE status END,
+          SET review_status = $4,
+              status = CASE WHEN $4 IN ('suspended', 'inactive') THEN $4 WHEN $4 IN ('approved', 'conditional') THEN 'active' ELSE status END,
+              suspended_reason = CASE WHEN $4 = 'suspended' THEN $8 WHEN $4 IN ('approved', 'conditional') THEN NULL ELSE suspended_reason END,
+              inactive_at = CASE WHEN $4 IN ('suspended', 'inactive') THEN now() WHEN $4 IN ('approved', 'conditional') THEN NULL ELSE inactive_at END,
               reviewed_by_user_id = $5, reviewed_at = now(), external_return_reason = $6,
               internal_review_notes = $7, updated_at = now()
           WHERE tenant_id = $1 AND organization_id = $2 AND id = $3
           RETURNING *
           `,
-          [request.auth.tenantId, organizationId, workerId, status, request.auth.userId, this.optionalString(body.external_return_reason), this.optionalString(body.internal_review_notes)],
+          [request.auth.tenantId, organizationId, workerId, status, request.auth.userId, this.optionalString(body.external_return_reason), this.optionalString(body.internal_review_notes), suspensionReason],
         );
         await writeClient.query("UPDATE partner_worker_profiles SET status = $4, reviewed_by_user_id = $5, reviewed_at = now(), external_return_reason = $6, internal_review_notes = $7, updated_at = now() WHERE tenant_id = $1 AND organization_id = $2 AND worker_id = $3 AND deleted_at IS NULL AND status <> 'superseded'", [request.auth.tenantId, organizationId, workerId, status, request.auth.userId, this.optionalString(body.external_return_reason), this.optionalString(body.internal_review_notes)]);
         return { entityType: "worker", entityId: workerId, beforeState: this.safeWorker(before, "internal"), afterState: this.safeWorker({ ...result.rows[0], capacity_provider_id: partner.capacity_provider_id }, "internal") };

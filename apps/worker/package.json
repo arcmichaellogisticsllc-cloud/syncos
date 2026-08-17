@@ -5,14 +5,18 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build:deps": "npm run build -w @syncos/shared",
+    "build": "npm run build:deps && tsc",
+    "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
-    "bullmq": "^5.8.2"
+    "@syncos/shared": "file:../../packages/shared",
+    "bullmq": "^5.8.2",
+    "pg": "^8.12.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
+    "@types/pg": "^8.11.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }

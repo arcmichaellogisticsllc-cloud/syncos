@@ -299,6 +299,21 @@ export class PartnerAgreementsController {
     });
   }
 
+  @Post("organizations/:organizationId/agreements/:versionId/terminate")
+  @RequirePermission("partner_agreement.review")
+  async terminateAgreement(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("versionId") versionId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      await this.requireInternalOrganizationAccess(client, request, organizationId);
+      return this.writeWithClient(client, request, "partner_agreement.terminate", "partner_agreement.terminated", "partner_agreement", async (writeClient) => {
+        const version = await this.requireAgreementVersion(writeClient, request.auth.tenantId, organizationId, versionId);
+        if (version.status === "terminated") return { entityType: "partner_agreement", entityId: version.contract_id, afterState: this.safeAgreement(version) };
+        const after = await writeClient.query("UPDATE partner_agreement_versions SET status = 'terminated', termination_date = COALESCE($4::date, CURRENT_DATE), updated_at = now() WHERE tenant_id = $1 AND organization_id = $2 AND id = $3 RETURNING *", [request.auth.tenantId, organizationId, versionId, body.termination_date ?? null]);
+        await writeClient.query("UPDATE contracts SET agreement_lifecycle_status = 'terminated', agreement_terminated_at = COALESCE($3::date, CURRENT_DATE)::timestamptz, agreement_termination_reason = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2", [request.auth.tenantId, version.contract_id, body.termination_date ?? null, this.optionalString(body.reason)]);
+        return { entityType: "partner_agreement", entityId: version.contract_id, beforeState: this.safeAgreement(version), afterState: this.safeAgreement(after.rows[0]) };
+      });
+    });
+  }
+
   @Post("organizations/:organizationId/work-orders")
   @RequirePermission("partner_work_order.manage")
   async createPartnerWorkOrder(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Body() body: Record<string, unknown>) {
@@ -424,6 +439,21 @@ export class PartnerAgreementsController {
     });
   }
 
+  @Post("organizations/:organizationId/work-orders/:versionId/suspend")
+  @RequirePermission("partner_work_order.manage")
+  async suspendWorkOrder(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("versionId") versionId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      await this.requireInternalOrganizationAccess(client, request, organizationId);
+      return this.writeWithClient(client, request, "partner_work_order.suspend", "partner_work_order.suspended", "partner_work_order", async (writeClient) => {
+        const version = await this.requireWorkOrderVersion(writeClient, request.auth.tenantId, organizationId, versionId);
+        if (version.status === "suspended") return { entityType: "partner_work_order", entityId: version.work_order_id, afterState: this.safeWorkOrder(version, false) };
+        const after = await writeClient.query("UPDATE partner_work_order_versions SET status = 'suspended', updated_at = now() WHERE tenant_id = $1 AND organization_id = $2 AND id = $3 RETURNING *", [request.auth.tenantId, organizationId, versionId]);
+        await writeClient.query("UPDATE work_orders SET partner_execution_status = 'suspended', updated_at = now() WHERE tenant_id = $1 AND id = $2", [request.auth.tenantId, version.work_order_id]);
+        return { entityType: "partner_work_order", entityId: version.work_order_id, beforeState: this.safeWorkOrder(version, false), afterState: { ...this.safeWorkOrder(after.rows[0], false), reason: this.optionalString(body.reason) } };
+      });
+    });
+  }
+
   @Post("organizations/:organizationId/vehicle-assignments")
   @RequirePermission("partner_vehicle_assignment.manage")
   async createVehicleAssignment(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Body() body: Record<string, unknown>) {
@@ -438,9 +468,9 @@ export class PartnerAgreementsController {
           INSERT INTO partner_vehicle_assignments (
             tenant_id, organization_id, capacity_provider_id, equipment_id, work_order_id, work_order_version_id, crew_id,
             rental_provider, sync_possession_date, partner_custody_start_date, daily_allocation_amount, currency, timezone,
-            odometer_at_assignment, fuel_level_at_assignment, status, created_by_user_id
+            odometer_at_assignment, fuel_level_at_assignment, aerial_inspection_expires_at, status, created_by_user_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, 'USD'), COALESCE($13, 'America/New_York'), $14, $15, 'active_custody', $16)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, 'USD'), COALESCE($13, 'America/New_York'), $14, $15, $16, 'active_custody', $17)
           RETURNING *
           `,
           [
@@ -459,10 +489,26 @@ export class PartnerAgreementsController {
             body.timezone ?? "America/New_York",
             body.odometer_at_assignment ?? null,
             body.fuel_level_at_assignment ?? null,
+            body.aerial_inspection_expires_at ?? null,
             request.auth.userId,
           ],
         );
         return { entityType: "vehicle_assignment", entityId: result.rows[0].id, afterState: this.safeVehicleAssignment(result.rows[0]) };
+      });
+    });
+  }
+
+  @Post("organizations/:organizationId/vehicle-assignments/:assignmentId/operators/:operatorId/revoke")
+  @RequirePermission("partner_vehicle_assignment.operator.manage")
+  async revokeOperator(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("assignmentId") assignmentId: string, @Param("operatorId") operatorId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      await this.requireInternalOrganizationAccess(client, request, organizationId);
+      await this.requireVehicleAssignment(client, request.auth.tenantId, organizationId, assignmentId);
+      return this.writeWithClient(client, request, "vehicle_assignment.operator_revoke", "vehicle_assignment.operator_revoked", "vehicle_assignment", async (writeClient) => {
+        const before = await writeClient.query("SELECT * FROM partner_vehicle_operator_authorizations WHERE tenant_id = $1 AND organization_id = $2 AND vehicle_assignment_id = $3 AND id = $4 AND qualification_status = 'approved' AND end_date IS NULL", [request.auth.tenantId, organizationId, assignmentId, operatorId]);
+        if (!before.rows[0]) throw new NotFoundException("active operator authorization not found");
+        const after = await writeClient.query("UPDATE partner_vehicle_operator_authorizations SET qualification_status = 'revoked', end_date = CURRENT_DATE, ended_by_user_id = $5, ended_reason = $6 WHERE tenant_id = $1 AND organization_id = $2 AND vehicle_assignment_id = $3 AND id = $4 RETURNING *", [request.auth.tenantId, organizationId, assignmentId, operatorId, request.auth.userId, this.optionalString(body.reason)]);
+        return { entityType: "vehicle_operator_authorization", entityId: operatorId, beforeState: this.safeOperator(before.rows[0]), afterState: this.safeOperator(after.rows[0]) };
       });
     });
   }
@@ -906,6 +952,11 @@ export class PartnerAgreementsController {
 
   private optionalDate(value: unknown) {
     return value === undefined || value === null ? null : this.dateOnly(value);
+  }
+
+  private optionalString(value: unknown) {
+    if (value === undefined || value === null || value === "") return null;
+    return String(value);
   }
 
   private async writeWithClient<T extends QueryResultRow>(

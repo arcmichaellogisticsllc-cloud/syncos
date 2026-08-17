@@ -186,6 +186,15 @@ test("certified Partner agreement E2E is included in the global certification ru
   );
 });
 
+test("certified Partner mobilization E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-mobilization-readiness\.spec\.ts/,
+    "P6 Partner mobilization readiness E2E must run as part of npm run e2e:certification",
+  );
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

@@ -49,6 +49,12 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_vehicle_assignment.sign",
   "partner_vehicle_assignment.artifact.read",
   "partner_vehicle_assignment.allocation.read",
+  "partner_mobilization.read",
+  "partner_mobilization.foreman.read",
+  "partner_notice.read",
+  "partner_notice.acknowledge",
+  "partner_notice.foreman.read",
+  "partner_notice.foreman.acknowledge",
 ]);
 
 @Injectable()
