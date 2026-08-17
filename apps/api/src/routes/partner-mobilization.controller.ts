@@ -285,6 +285,18 @@ export class PartnerMobilizationController {
     });
   }
 
+  @Get("me/work-order-versions/:versionId/notice")
+  @RequirePermission("partner_notice.read")
+  async ownCurrentNotice(@Req() request: AuthenticatedRequest, @Param("versionId") versionId: string, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const partner = await this.requirePartner(client, request, "partner_admin", query.organization_id);
+      const context = await this.resolveMobilizationContext(client, partner.tenant_id, partner.organization.id, versionId);
+      const notice = await this.currentNotice(client, context);
+      if (!notice) throw new NotFoundException("Notice not found");
+      return this.safeNotice(notice, await this.currentProductionStart(client, notice), false);
+    });
+  }
+
   @Post("me/notices/:noticeId/acknowledge")
   @RequirePermission("partner_notice.acknowledge")
   async ownAcknowledge(@Req() request: AuthenticatedRequest, @Param("noticeId") noticeId: string, @Query() query: Record<string, string | undefined>) {
@@ -530,9 +542,15 @@ export class PartnerMobilizationController {
 
   private async latestOrEvaluate(client: PoolClient, request: AuthenticatedRequest, context: MobilizationContext, internal: boolean, view: "admin" | "foreman" = "admin") {
     const evaluation = await this.currentEvaluation(client, context);
-    if (!evaluation) return this.evaluateAndStore(client, request, context, "explicit_request", internal);
+    if (!evaluation) {
+      const created = await this.evaluateAndStore(client, request, context, "explicit_request", internal);
+      const decision = await this.currentDecision(client, context);
+      return { ...created, decision: decision ? this.safeDecision(decision, false) : { decision: "pending" } };
+    }
     const checks = await this.evaluationChecks(client, context.tenant_id, evaluation.id);
-    return view === "foreman" ? this.safeForemanEvaluation(evaluation, checks) : this.safeEvaluation(evaluation, checks, internal);
+    const response = view === "foreman" ? this.safeForemanEvaluation(evaluation, checks) : this.safeEvaluation(evaluation, checks, internal);
+    const decision = await this.currentDecision(client, context);
+    return { ...response, decision: decision ? this.safeDecision(decision, false) : { decision: "pending" } };
   }
 
   private async currentEvaluation(client: PoolClient, context: MobilizationContext) {
