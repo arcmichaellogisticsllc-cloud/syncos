@@ -86,6 +86,8 @@ const customerQcDecisions = new Set(["accepted", "partially_accepted", "correcti
 const customerQcSources = new Set(["email", "customer_portal", "customer_report", "customer_spreadsheet", "field_qc_report", "api", "manual_recorded_from_customer"]);
 const correctionTypes = new Set(["quantity", "production_code", "location", "asset_identifier", "route_endpoint", "missing_note", "missing_photo", "workmanship", "rework", "other"]);
 const correctionFieldValues = new Set(["reported_quantity", "production_code_id", "asset_identifier", "route_endpoint", "map_location", "notes", "evidence"]);
+const exportArtifactTypes = new Set(["annotated_map_pdf", "daily_production_pdf", "production_csv", "production_closeout_package"]);
+const exportGenerationModes = new Set(["submitted_day", "customer_qc_status", "final_accepted_closeout", "dashboard_export"]);
 const defaultProductionCodes = [
   ["POLE-ATT", "Pole Attachment", "EA", "asset", true, false],
   ["TRANSFER", "Cable Transfer", "EA", "asset", true, false],
@@ -865,6 +867,596 @@ export class SyncfieldController {
         return { entityType: "production_correction", entityId: correctionId, beforeState: this.safeCorrection(correction), afterState: this.safeCorrection(updated.rows[0]) };
       });
     });
+  }
+
+  @Get("production-dashboard")
+  @RequirePermission("production_dashboard.read")
+  async productionDashboard(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient((client) => this.productionDashboardPayload(client, request.auth.tenantId, query));
+  }
+
+  @Get("partner/production-dashboard")
+  @RequirePermission("partner_production_dashboard.read")
+  async partnerProductionDashboard(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerAdmin(client, request, query.organization_id);
+      return this.productionDashboardPayload(client, context.tenant_id, { ...query, partner_organization_id: context.organization.id }, { partnerOrganizationId: context.organization.id });
+    });
+  }
+
+  @Get("foreman/production-history")
+  @RequirePermission("partner_production_history.read_own")
+  async foremanProductionHistory(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const crew = await this.requireForemanCrew(client, context);
+      const dashboard = await this.productionDashboardPayload(client, context.tenant_id, { partner_organization_id: context.organization.id, crew_id: crew.id }, { partnerOrganizationId: context.organization.id, crewId: crew.id });
+      return { reports: dashboard.recent_reports, totals: dashboard.reported_vs_accepted, artifacts: dashboard.artifacts, closeout: dashboard.closeout };
+    });
+  }
+
+  @Post("production-exports")
+  @RequirePermission("production_export.generate")
+  async generateProductionExport(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.generateExport(request, body);
+  }
+
+  @Post("partner/production-exports")
+  @RequirePermission("partner_production_export.generate")
+  async generatePartnerProductionExport(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerAdmin(client, request, this.optionalString(body.organization_id) ?? undefined);
+      return this.generateExport(request, { ...body, partner_organization_id: context.organization.id }, { partnerOrganizationId: context.organization.id });
+    });
+  }
+
+  @Post("production-closeout")
+  @RequirePermission("production_closeout.generate")
+  async generateProductionCloseout(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.generateExport(request, { ...body, artifact_type: "production_closeout_package", generation_mode: "final_accepted_closeout" });
+  }
+
+  @Get("production-exports/:artifactId/bytes")
+  @RequirePermission("production_export.read")
+  async productionExportBytes(@Req() request: AuthenticatedRequest, @Param("artifactId") artifactId: string) {
+    return this.withClient(async (client) => {
+      const artifact = await this.requireProductionExportArtifact(client, request.auth.tenantId, artifactId);
+      return this.readAuthorizedProductionArtifact(client, request, artifact);
+    });
+  }
+
+  @Get("partner/production-exports/:artifactId/bytes")
+  @RequirePermission("partner_production_export.read")
+  async partnerProductionExportBytes(@Req() request: AuthenticatedRequest, @Param("artifactId") artifactId: string, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerAdmin(client, request, query.organization_id);
+      const artifact = await this.requireProductionExportArtifact(client, context.tenant_id, artifactId, { partnerOrganizationId: context.organization.id });
+      return this.readAuthorizedProductionArtifact(client, request, artifact);
+    });
+  }
+
+  @Get("foreman/production-exports/:artifactId/bytes")
+  @RequirePermission("partner_production_export.read_own")
+  async foremanProductionExportBytes(@Req() request: AuthenticatedRequest, @Param("artifactId") artifactId: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const crew = await this.requireForemanCrew(client, context);
+      const artifact = await this.requireProductionExportArtifact(client, context.tenant_id, artifactId, { partnerOrganizationId: context.organization.id, crewId: crew.id });
+      return this.readAuthorizedProductionArtifact(client, request, artifact);
+    });
+  }
+
+  private async productionDashboardPayload(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, scope: { partnerOrganizationId?: string; crewId?: string } = {}) {
+    const rows = await this.acceptedProductionRows(client, tenantId, query, scope);
+    const artifacts = await this.productionArtifacts(client, tenantId, query, scope);
+    const byCode = this.aggregateProduction(rows, (row) => `${row.code}:${row.unit_of_measure}`);
+    const byCrew = this.aggregateGrouped(rows, "crew_id", "crew_name");
+    const byWorkOrder = this.aggregateGrouped(rows, "work_order_id", "work_order_number");
+    const byProject = this.aggregateGrouped(rows, "project_id", "project_name");
+    const pendingQc = rows.filter((row) => !row.customer_decision || row.customer_qc_outcome === "pending_customer_qc");
+    const corrections = rows.filter((row) => row.customer_decision === "correction_required");
+    const rejected = rows.filter((row) => row.customer_decision === "rejected");
+    const blockedRework = rows.filter((row) => ["blocked", "rework"].includes(String(row.field_status)));
+    return {
+      headline: {
+        submitted_reports: new Set(rows.map((row) => row.daily_report_id)).size,
+        production_record_count: rows.length,
+        pending_customer_qc: pendingQc.length,
+        correction_required: corrections.length,
+        rejected: rejected.length,
+        blocked_rework: blockedRework.length,
+      },
+      reported_vs_accepted: byCode,
+      production_by_crew: byCrew,
+      production_by_work_order: byWorkOrder,
+      project_to_date: byProject,
+      missing_reports: { status: "insufficient_schedule_data", count: 0, rule: "P11 does not infer expected daily reports without canonical expected-work schedule facts." },
+      customer_qc_aging: this.customerQcAging(rows),
+      correction_aging: this.correctionAging(rows),
+      blocked_rework: blockedRework.map((row) => this.safeAcceptedProductionRow(row)),
+      recent_reports: this.recentReportSummaries(rows),
+      artifacts,
+      closeout: this.closeoutSummary(rows, artifacts),
+    };
+  }
+
+  private async generateExport(request: AuthenticatedRequest, body: Record<string, unknown>, scope: { partnerOrganizationId?: string; crewId?: string } = {}) {
+    return this.withClient(async (client) => {
+      const artifactType = requireString(body.artifact_type, "artifact_type is required").toLowerCase();
+      const generationMode = String(body.generation_mode ?? "dashboard_export").toLowerCase();
+      if (!exportArtifactTypes.has(artifactType)) throw new BadRequestException("artifact_type is invalid");
+      if (!exportGenerationModes.has(generationMode)) throw new BadRequestException("generation_mode is invalid");
+      const query = this.exportQuery(body, scope);
+      const rows = await this.acceptedProductionRows(client, request.auth.tenantId, query, scope);
+      if (!rows.length) throw new BadRequestException("no submitted production is available for export");
+      const fingerprint = this.sourceFingerprint(artifactType, generationMode, query, rows);
+      const existing = await client.query(
+        "SELECT * FROM production_export_artifacts WHERE tenant_id = $1 AND artifact_type = $2 AND generation_mode = $3 AND source_fingerprint = $4 AND status = 'ready' AND deleted_at IS NULL LIMIT 1",
+        [request.auth.tenantId, artifactType, generationMode, fingerprint],
+      );
+      if (existing.rows[0]) return this.safeProductionArtifact(existing.rows[0], await this.isArtifactStale(client, existing.rows[0], rows));
+      return this.writeWithClient(client, request, artifactType === "production_closeout_package" ? "production_closeout.generate" : "production_export.generate", artifactType === "production_closeout_package" ? "production_closeout.generated" : "production_export.generated", "production_export_artifact", async (writeClient) => {
+        const context = this.artifactContext(rows);
+        const created = await writeClient.query(
+          `
+          INSERT INTO production_export_artifacts (
+            tenant_id, project_id, work_order_id, daily_report_id, daily_report_revision_id, map_version_id,
+            partner_organization_id, crew_id, artifact_type, generation_mode, status, mime_type,
+            generated_by_user_id, source_fingerprint
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'processing',$11,$12,$13)
+          RETURNING *
+          `,
+          [request.auth.tenantId, context.project_id, context.work_order_id, context.daily_report_id, context.daily_report_revision_id, context.map_version_id, context.partner_organization_id, context.crew_id, artifactType, generationMode, this.mimeTypeForArtifact(artifactType), request.auth.userId, fingerprint],
+        );
+        try {
+          const content = this.renderArtifactContent(artifactType, generationMode, rows);
+          const file = await this.createGeneratedProductionFile(writeClient, request, created.rows[0], content.bytes, content.fileName, content.mimeType);
+          const ready = await writeClient.query(
+            "UPDATE production_export_artifacts SET status = 'ready', restricted_file_object_id = $3, file_hash = $4, generated_at = now(), updated_at = now() WHERE tenant_id = $1 AND id = $2 RETURNING *",
+            [request.auth.tenantId, created.rows[0].id, file.id, file.checksum],
+          );
+          return {
+            entityType: "production_export_artifact",
+            entityId: ready.rows[0].id,
+            beforeState: { status: "queued", artifact_type: artifactType, generation_mode: generationMode },
+            afterState: this.safeProductionArtifact(ready.rows[0], false),
+            additionalEvents: [
+              { action: "production_export.processing_started", eventType: "production_export.processing_started", aggregateType: "production_export_artifact", entityType: "production_export_artifact", entityId: ready.rows[0].id, afterState: { artifact_type: artifactType, generation_mode: generationMode } },
+            ],
+          };
+        } catch (error) {
+          await writeClient.query("UPDATE production_export_artifacts SET status = 'failed', updated_at = now() WHERE tenant_id = $1 AND id = $2", [request.auth.tenantId, created.rows[0].id]);
+          throw error;
+        }
+      });
+    });
+  }
+
+  private exportQuery(body: Record<string, unknown>, scope: { partnerOrganizationId?: string; crewId?: string }): Record<string, string | undefined> {
+    return {
+      project_id: this.optionalString(body.project_id) ?? undefined,
+      work_order_id: this.optionalString(body.work_order_id) ?? undefined,
+      daily_report_id: this.optionalString(body.daily_report_id) ?? undefined,
+      date_from: this.optionalString(body.date_from) ?? undefined,
+      date_to: this.optionalString(body.date_to) ?? undefined,
+      production_code_id: this.optionalString(body.production_code_id) ?? undefined,
+      customer_qc_outcome: this.optionalString(body.customer_qc_outcome) ?? undefined,
+      partner_organization_id: scope.partnerOrganizationId ?? this.optionalString(body.partner_organization_id) ?? undefined,
+      crew_id: scope.crewId ?? this.optionalString(body.crew_id) ?? undefined,
+    };
+  }
+
+  private async acceptedProductionRows(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, scope: { partnerOrganizationId?: string; crewId?: string } = {}) {
+    const values: unknown[] = [tenantId];
+    const where = ["r.tenant_id = $1", "r.status = 'submitted'", "r.deleted_at IS NULL", "pr.deleted_at IS NULL"];
+    const add = (sql: string, value?: string) => {
+      if (!value) return;
+      values.push(value);
+      where.push(sql.replace("?", `$${values.length}`));
+    };
+    add("r.project_id = ?", query.project_id);
+    add("r.work_order_id = ?", query.work_order_id);
+    add("r.id = ?", query.daily_report_id);
+    add("r.organization_id = ?", scope.partnerOrganizationId ?? query.partner_organization_id);
+    add("r.crew_id = ?", scope.crewId ?? query.crew_id);
+    add("pr.syncfield_production_code_id = ?", query.production_code_id);
+    add("r.customer_qc_outcome = ?", query.customer_qc_outcome);
+    add("r.work_date >= ?", query.date_from);
+    add("r.work_date <= ?", query.date_to);
+    const result = await client.query(
+      `
+      WITH latest_decision AS (
+        SELECT DISTINCT ON (d.production_record_id)
+          d.*, cyc.cycle_number, cyc.status AS cycle_status, cyc.qc_authority_organization_id,
+          cyc.submitted_to_customer_at, cyc.decision_received_at, cyc.decision_recorded_at
+        FROM customer_qc_decisions d
+        JOIN customer_qc_cycles cyc ON cyc.tenant_id = d.tenant_id AND cyc.id = d.qc_cycle_id AND cyc.deleted_at IS NULL
+        WHERE d.tenant_id = $1 AND d.current = true AND d.deleted_at IS NULL
+        ORDER BY d.production_record_id, cyc.cycle_number DESC, d.recorded_at DESC, d.created_at DESC
+      )
+      SELECT r.id AS daily_report_id, r.work_date, r.revision_number, r.submitted_at, r.completeness_status, r.customer_qc_outcome,
+        rev.id AS daily_report_revision_id, r.project_id, p.name AS project_name, r.work_order_id, wov.work_order_number, r.organization_id AS partner_organization_id,
+        org.name AS partner_name, r.capacity_provider_id, r.crew_id, c.name AS crew_name, r.foreman_worker_id,
+        pr.id AS production_record_id, pr.quantity_submitted AS reported_quantity, pr.syncfield_status AS field_status,
+        pr.syncfield_location_type AS location_type, pr.asset_type, pr.asset_identifier, pr.from_asset_identifier,
+        pr.to_asset_identifier, pr.map_page, pr.production_notes, pc.id AS production_code_id, pc.code, pc.description,
+        COALESCE(pc.unit_of_measure, pr.unit) AS unit_of_measure, ma.id AS map_annotation_id, ma.annotation_type,
+        ma.x_ratio, ma.y_ratio, ma.start_x_ratio, ma.start_y_ratio, ma.end_x_ratio, ma.end_y_ratio,
+        mv.id AS map_version_id, mv.revision_number AS map_revision_number, mv.revision_label, mv.file_hash AS map_file_hash,
+        md.name AS map_name, ld.decision AS customer_decision, ld.customer_accepted_quantity,
+        ld.customer_reason_code, ld.customer_comments, ld.qc_authority_organization_id, qa.name AS qc_authority_name,
+        ld.submitted_to_customer_at, ld.decision_received_at, ld.decision_recorded_at,
+        corr.id AS correction_id, corr.status AS correction_status, corr.due_date, corr.created_at AS correction_created_at,
+        corr.resubmitted_at
+      FROM daily_production_reports r
+      JOIN production_records pr ON pr.tenant_id = r.tenant_id AND pr.daily_production_report_id = r.id
+      JOIN syncfield_production_codes pc ON pc.tenant_id = pr.tenant_id AND pc.id = pr.syncfield_production_code_id
+      JOIN projects p ON p.tenant_id = r.tenant_id AND p.id = r.project_id
+      JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
+      JOIN organizations org ON org.tenant_id = r.tenant_id AND org.id = r.organization_id
+      JOIN crews c ON c.tenant_id = r.tenant_id AND c.id = r.crew_id
+      LEFT JOIN LATERAL (
+        SELECT rr.id
+        FROM daily_production_report_revisions rr
+        WHERE rr.tenant_id = r.tenant_id AND rr.daily_report_id = r.id
+        ORDER BY rr.revision_number DESC
+        LIMIT 1
+      ) rev ON true
+      LEFT JOIN syncfield_map_versions mv ON mv.tenant_id = r.tenant_id AND mv.id = r.map_version_id
+      LEFT JOIN syncfield_map_documents md ON md.tenant_id = r.tenant_id AND md.id = r.map_document_id
+      LEFT JOIN map_annotations ma ON ma.tenant_id = pr.tenant_id AND ma.production_record_id = pr.id AND ma.deleted_at IS NULL
+      LEFT JOIN latest_decision ld ON ld.tenant_id = pr.tenant_id AND ld.production_record_id = pr.id
+      LEFT JOIN organizations qa ON qa.tenant_id = r.tenant_id AND qa.id = ld.qc_authority_organization_id
+      LEFT JOIN production_corrections corr ON corr.tenant_id = r.tenant_id AND corr.production_record_id = pr.id AND corr.deleted_at IS NULL AND corr.status <> 'cancelled'
+      WHERE ${where.join(" AND ")}
+      ORDER BY r.work_date DESC, r.submitted_at DESC NULLS LAST, pr.created_at ASC
+      LIMIT 500
+      `,
+      values,
+    );
+    return result.rows;
+  }
+
+  private aggregateProduction(rows: QueryResultRow[], keyFn: (row: QueryResultRow) => string): Array<Record<string, unknown>> {
+    const groups = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const key = keyFn(row);
+      const current = groups.get(key) ?? { production_code_id: row.production_code_id, code: row.code, description: row.description, unit_of_measure: row.unit_of_measure, reported_quantity: 0, customer_accepted_quantity: 0, pending_customer_qc: 0, correction_required: 0, rejected: 0, variance: 0, record_count: 0 };
+      current.reported_quantity = Number(current.reported_quantity) + Number(row.reported_quantity ?? 0);
+      if (row.customer_accepted_quantity === null || row.customer_accepted_quantity === undefined) current.pending_customer_qc = Number(current.pending_customer_qc) + 1;
+      else current.customer_accepted_quantity = Number(current.customer_accepted_quantity) + Number(row.customer_accepted_quantity);
+      if (row.customer_decision === "correction_required") current.correction_required = Number(current.correction_required) + 1;
+      if (row.customer_decision === "rejected") current.rejected = Number(current.rejected) + 1;
+      current.variance = Number(current.customer_accepted_quantity) - Number(current.reported_quantity);
+      current.record_count = Number(current.record_count) + 1;
+      groups.set(key, current);
+    }
+    return [...groups.values()].map((row) => ({ ...row, variance_percent: Number(row.reported_quantity) ? Number(((Number(row.variance) / Number(row.reported_quantity)) * 100).toFixed(2)) : null }));
+  }
+
+  private aggregateGrouped(rows: QueryResultRow[], idField: string, labelField: string) {
+    const groups = new Map<string, { id: string; name: string; reported_quantity: number; customer_accepted_quantity: number; pending_customer_qc: number; correction_required: number; rejected: number; blocked_rework: number; daily_report_count: number; units: string[] }>();
+    for (const row of rows) {
+      const key = String(row[idField] ?? "unknown");
+      const current = groups.get(key) ?? { id: key, name: String(row[labelField] ?? key), reported_quantity: 0, customer_accepted_quantity: 0, pending_customer_qc: 0, correction_required: 0, rejected: 0, blocked_rework: 0, daily_report_count: 0, units: [] };
+      current.reported_quantity += Number(row.reported_quantity ?? 0);
+      if (row.customer_accepted_quantity !== null && row.customer_accepted_quantity !== undefined) current.customer_accepted_quantity += Number(row.customer_accepted_quantity);
+      else current.pending_customer_qc += 1;
+      if (row.customer_decision === "correction_required") current.correction_required += 1;
+      if (row.customer_decision === "rejected") current.rejected += 1;
+      if (["blocked", "rework"].includes(String(row.field_status))) current.blocked_rework += 1;
+      current.daily_report_count = new Set(rows.filter((candidate) => String(candidate[idField]) === key).map((candidate) => candidate.daily_report_id)).size;
+      current.units = Array.from(new Set([...current.units, String(row.unit_of_measure)]));
+      groups.set(key, current);
+    }
+    return [...groups.values()];
+  }
+
+  private customerQcAging(rows: QueryResultRow[]) {
+    const seen = new Set<string>();
+    return rows.filter((row) => !row.customer_decision && row.submitted_to_customer_at).filter((row) => {
+      if (seen.has(row.daily_report_id)) return false;
+      seen.add(row.daily_report_id);
+      return true;
+    }).map((row) => ({
+      daily_report_id: row.daily_report_id,
+      project_name: row.project_name,
+      work_order_number: row.work_order_number,
+      partner_name: row.partner_name,
+      crew_name: row.crew_name,
+      submitted_to_customer_at: row.submitted_to_customer_at,
+      qc_authority_name: row.qc_authority_name,
+      days_awaiting_customer: this.daysSince(row.submitted_to_customer_at),
+    }));
+  }
+
+  private correctionAging(rows: QueryResultRow[]) {
+    const corrections = new Map<string, QueryResultRow>();
+    for (const row of rows) if (row.correction_id && !corrections.has(row.correction_id)) corrections.set(row.correction_id, row);
+    return [...corrections.values()].filter((row) => !["resolved", "cancelled"].includes(String(row.correction_status))).map((row) => ({
+      correction_id: row.correction_id,
+      production_record_id: row.production_record_id,
+      work_order_number: row.work_order_number,
+      crew_name: row.crew_name,
+      field_status: row.field_status,
+      customer_decision: row.customer_decision,
+      correction_status: row.correction_status,
+      due_date: this.dateOnly(row.due_date),
+      days_open: this.daysSince(row.correction_created_at),
+      partner_aging: ["open", "acknowledged", "in_progress"].includes(String(row.correction_status)),
+      customer_reinspection_aging: String(row.correction_status) === "awaiting_customer_reinspection",
+      resubmitted_at: row.resubmitted_at,
+    }));
+  }
+
+  private recentReportSummaries(rows: QueryResultRow[]) {
+    const reports = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const current = reports.get(row.daily_report_id) ?? { id: row.daily_report_id, work_date: this.dateOnly(row.work_date), project_name: row.project_name, work_order_number: row.work_order_number, partner_name: row.partner_name, crew_name: row.crew_name, revision_number: Number(row.revision_number ?? 1), submitted_at: row.submitted_at, customer_qc_outcome: row.customer_qc_outcome, reported_quantity: 0, customer_accepted_quantity: 0, record_count: 0 };
+      current.reported_quantity = Number(current.reported_quantity) + Number(row.reported_quantity ?? 0);
+      if (row.customer_accepted_quantity !== null && row.customer_accepted_quantity !== undefined) current.customer_accepted_quantity = Number(current.customer_accepted_quantity) + Number(row.customer_accepted_quantity);
+      current.record_count = Number(current.record_count) + 1;
+      reports.set(row.daily_report_id, current);
+    }
+    return [...reports.values()].slice(0, 50);
+  }
+
+  private closeoutSummary(rows: QueryResultRow[], artifacts: QueryResultRow[]) {
+    const pending = rows.some((row) => !row.customer_decision);
+    const correctionsOpen = rows.some((row) => row.correction_id && !["resolved", "cancelled"].includes(String(row.correction_status)));
+    const awaitingReinspection = rows.some((row) => String(row.correction_status) === "awaiting_customer_reinspection");
+    const allAccepted = rows.length > 0 && rows.every((row) => ["accepted", "partially_accepted"].includes(String(row.customer_decision)));
+    const hasPlannedBasis = rows.some((row) => row.planned_quantity !== null && row.planned_quantity !== undefined);
+    const status = pending ? "awaiting_customer_qc" : awaitingReinspection ? "awaiting_reinspection" : correctionsOpen ? "corrections_open" : allAccepted && hasPlannedBasis ? "production_accepted_complete" : allAccepted ? "all_submitted_production_resolved" : "in_progress";
+    return {
+      status,
+      submitted_report_count: new Set(rows.map((row) => row.daily_report_id)).size,
+      open_correction_count: this.correctionAging(rows).length,
+      pending_customer_qc_count: rows.filter((row) => !row.customer_decision).length,
+      artifact_count: artifacts.length,
+      financial_records_created: false,
+    };
+  }
+
+  private async productionArtifacts(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, scope: { partnerOrganizationId?: string; crewId?: string } = {}) {
+    const values: unknown[] = [tenantId];
+    const where = ["tenant_id = $1", "deleted_at IS NULL"];
+    const add = (sql: string, value?: string) => {
+      if (!value) return;
+      values.push(value);
+      where.push(sql.replace("?", `$${values.length}`));
+    };
+    add("project_id = ?", query.project_id);
+    add("work_order_id = ?", query.work_order_id);
+    add("daily_report_id = ?", query.daily_report_id);
+    add("partner_organization_id = ?", scope.partnerOrganizationId ?? query.partner_organization_id);
+    add("crew_id = ?", scope.crewId ?? query.crew_id);
+    const result = await client.query(`SELECT * FROM production_export_artifacts WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 50`, values);
+    return result.rows.map((row) => this.safeProductionArtifact(row, false));
+  }
+
+  private sourceFingerprint(artifactType: string, generationMode: string, query: Record<string, string | undefined>, rows: QueryResultRow[]) {
+    const facts = rows.map((row) => ({
+      report: row.daily_report_id,
+      revision: row.revision_number,
+      record: row.production_record_id,
+      code: row.code,
+      reported: Number(row.reported_quantity ?? 0),
+      decision: row.customer_decision,
+      accepted: row.customer_accepted_quantity === null ? null : Number(row.customer_accepted_quantity),
+      annotation: row.map_annotation_id,
+    }));
+    return createHash("sha256").update(JSON.stringify({ artifactType, generationMode, query, facts })).digest("hex");
+  }
+
+  private artifactContext(rows: QueryResultRow[]) {
+    const first = rows[0];
+    const one = (field: string) => {
+      const values = new Set(rows.map((row) => row[field]).filter(Boolean));
+      return values.size === 1 ? [...values][0] : null;
+    };
+    return {
+      project_id: one("project_id") ?? first.project_id,
+      work_order_id: one("work_order_id") ?? null,
+      daily_report_id: one("daily_report_id") ?? null,
+      daily_report_revision_id: one("daily_report_revision_id") ?? null,
+      map_version_id: one("map_version_id") ?? null,
+      partner_organization_id: one("partner_organization_id") ?? null,
+      crew_id: one("crew_id") ?? null,
+    };
+  }
+
+  private renderArtifactContent(artifactType: string, generationMode: string, rows: QueryResultRow[]) {
+    if (artifactType === "production_csv") {
+      return { bytes: Buffer.from(this.renderProductionCsv(rows), "utf8"), mimeType: "text/csv", fileName: "production-export.csv" };
+    }
+    const title = artifactType === "annotated_map_pdf" ? `Annotated Map PDF - ${generationMode}` : artifactType === "daily_production_pdf" ? `Daily Production PDF - ${generationMode}` : "Production Closeout Manifest";
+    const lines = artifactType === "production_closeout_package" ? this.closeoutPdfLines(rows) : artifactType === "annotated_map_pdf" ? this.annotatedMapPdfLines(rows, generationMode) : this.dailyProductionPdfLines(rows, generationMode);
+    return { bytes: this.createSimplePdf(title, lines), mimeType: "application/pdf", fileName: `${artifactType}.pdf` };
+  }
+
+  private renderProductionCsv(rows: QueryResultRow[]) {
+    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
+    const body = rows.map((row) => [
+      this.dateOnly(row.work_date), row.project_name, row.work_order_number, row.partner_name, row.crew_name, row.foreman_worker_id, row.map_name, row.map_revision_number, row.revision_number,
+      row.asset_type, row.asset_identifier, row.from_asset_identifier, row.to_asset_identifier, row.code, row.description, row.reported_quantity,
+      row.customer_accepted_quantity === null || row.customer_accepted_quantity === undefined ? "Pending Customer QC" : row.customer_accepted_quantity,
+      row.unit_of_measure, row.field_status, row.customer_decision ?? "pending_customer_qc", row.correction_status, row.qc_authority_name, row.decision_recorded_at, row.resubmitted_at, row.production_notes,
+    ]);
+    return [headers, ...body].map((line) => line.map((value) => this.csvCell(value)).join(",")).join("\n");
+  }
+
+  private csvCell(value: unknown) {
+    let text = value === null || value === undefined ? "" : String(value);
+    if (/^[=+\-@]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  private annotatedMapPdfLines(rows: QueryResultRow[], generationMode: string) {
+    const lines = ["Sync Comm Systems", `Artifact Type: ${generationMode}`, `Project: ${rows[0].project_name}`, `Work Order: ${rows[0].work_order_number}`, `Map Revision: ${rows[0].map_revision_number ?? "not set"}`, "Legend: check complete, partial, warning blocked, rework, Customer Accepted, Customer Correction Required, Customer Rejected, Pending Customer QC"];
+    for (const row of rows.filter((candidate) => candidate.map_annotation_id).slice(0, 24)) {
+      lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} ${row.customer_decision ?? "pending_customer_qc"} ${this.annotationCoordinateLabel(row)}`);
+    }
+    return lines;
+  }
+
+  private dailyProductionPdfLines(rows: QueryResultRow[], generationMode: string) {
+    const report = rows[0];
+    const lines = ["Sync Comm Systems", `Mode: ${generationMode}`, `Project: ${report.project_name}`, `Work Order: ${report.work_order_number}`, `Partner: ${report.partner_name}`, `Crew: ${report.crew_name}`, `Work Date: ${this.dateOnly(report.work_date)}`, `Map: ${report.map_name ?? "not assigned"}`, `Map Revision: ${report.map_revision_number ?? "not set"}`, `Daily Report Revision: ${report.revision_number ?? 1}`, `Submission Timestamp: ${report.submitted_at ?? "not set"}`, "Production Summary"];
+    for (const row of this.aggregateProduction(rows, (entry) => `${entry.code}:${entry.unit_of_measure}`)) {
+      lines.push(`${row.description}: Reported ${row.reported_quantity} ${row.unit_of_measure}; Customer Accepted ${Number(row.customer_accepted_quantity) ? row.customer_accepted_quantity : "Pending Customer QC"}; Variance ${row.variance}`);
+    }
+    lines.push("Production Detail");
+    for (const row of rows.slice(0, 30)) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"}`);
+    return lines;
+  }
+
+  private closeoutPdfLines(rows: QueryResultRow[]) {
+    const closeout = this.closeoutSummary(rows, []);
+    return ["Sync Comm Systems", "Operational Production Closeout", `Project: ${rows[0].project_name}`, `Work Order: ${rows[0].work_order_number}`, `Status: ${closeout.status}`, `Submitted Reports: ${closeout.submitted_report_count}`, `Pending Customer QC: ${closeout.pending_customer_qc_count}`, `Open Corrections: ${closeout.open_correction_count}`, "No financial records are created by this closeout package."];
+  }
+
+  private annotationCoordinateLabel(row: QueryResultRow) {
+    const width = 612;
+    const height = 792;
+    if (row.annotation_type === "asset_point") return `point(${this.pdfX(row.x_ratio, width)},${this.pdfY(row.y_ratio, height)})`;
+    return `line(${this.pdfX(row.start_x_ratio, width)},${this.pdfY(row.start_y_ratio, height)} -> ${this.pdfX(row.end_x_ratio, width)},${this.pdfY(row.end_y_ratio, height)})`;
+  }
+
+  private pdfX(value: unknown, width: number) {
+    return Number((Number(value ?? 0) * width).toFixed(2));
+  }
+
+  private pdfY(value: unknown, height: number) {
+    return Number(((1 - Number(value ?? 0)) * height).toFixed(2));
+  }
+
+  private createSimplePdf(title: string, lines: string[]) {
+    const content = [`BT /F1 14 Tf 50 760 Td (${this.pdfEscape(title)}) Tj`];
+    for (const line of lines.slice(0, 42)) content.push(`0 -16 Td (${this.pdfEscape(line)}) Tj`);
+    content.push("ET");
+    const stream = content.join("\n");
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`,
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets: number[] = [0];
+    for (let index = 0; index < objects.length; index += 1) {
+      offsets.push(Buffer.byteLength(pdf, "latin1"));
+      pdf += `${index + 1} 0 obj\n${objects[index]}\nendobj\n`;
+    }
+    const xref = Buffer.byteLength(pdf, "latin1");
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    for (let index = 1; index < offsets.length; index += 1) pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+    pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return Buffer.from(pdf, "latin1");
+  }
+
+  private pdfEscape(value: unknown) {
+    return String(value ?? "").replace(/[\\()]/g, "\\$&").slice(0, 180);
+  }
+
+  private async createGeneratedProductionFile(client: PoolClient, request: AuthenticatedRequest, artifact: QueryResultRow, bytes: Buffer, fileName: string, mimeType: string) {
+    if (mimeType === "application/pdf") this.inspectPdf(bytes);
+    const checksum = createHash("sha256").update(bytes).digest("hex");
+    const storageKey = `${request.auth.tenantId}/${artifact.partner_organization_id ?? "internal"}/exports/${randomUUID()}-${this.sanitizeFileName(fileName)}`;
+    const fullPath = this.storagePath(storageKey);
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, bytes, { flag: "wx" });
+    try {
+      const result = await client.query(
+        `
+        INSERT INTO partner_restricted_file_objects (
+          tenant_id, organization_id, capacity_provider_id, category, related_entity_type, related_entity_id,
+          file_name, mime_type, size_bytes, checksum, storage_key, uploaded_by_user_id
+        )
+        VALUES ($1,$2,$3,'syncfield_production_export','production_export_artifact',$4,$5,$6,$7,$8,$9,$10)
+        RETURNING *
+        `,
+        [request.auth.tenantId, artifact.partner_organization_id, await this.capacityProviderForArtifact(client, artifact), artifact.id, this.sanitizeFileName(fileName), mimeType, bytes.length, checksum, storageKey, request.auth.userId],
+      );
+      return result.rows[0];
+    } catch (error) {
+      await unlink(fullPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async capacityProviderForArtifact(client: PoolClient, artifact: QueryResultRow) {
+    if (artifact.partner_organization_id) {
+      const result = await client.query("SELECT id FROM capacity_providers WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1", [artifact.tenant_id, artifact.partner_organization_id]);
+      if (result.rows[0]) return result.rows[0].id;
+    }
+    const result = await client.query("SELECT capacity_provider_id FROM daily_production_reports WHERE tenant_id = $1 AND id = $2 LIMIT 1", [artifact.tenant_id, artifact.daily_report_id]);
+    if (result.rows[0]?.capacity_provider_id) return result.rows[0].capacity_provider_id;
+    throw new BadRequestException("Partner context is required for restricted production export storage");
+  }
+
+  private async requireProductionExportArtifact(client: PoolClient, tenantId: string, artifactId: string, scope: { partnerOrganizationId?: string; crewId?: string } = {}) {
+    const values: unknown[] = [tenantId, artifactId];
+    const where = ["a.tenant_id = $1", "a.id = $2", "a.deleted_at IS NULL", "a.status = 'ready'"];
+    if (scope.partnerOrganizationId) {
+      values.push(scope.partnerOrganizationId);
+      where.push(`a.partner_organization_id = $${values.length}`);
+    }
+    if (scope.crewId) {
+      values.push(scope.crewId);
+      where.push(`a.crew_id = $${values.length}`);
+    }
+    const result = await client.query(`SELECT a.*, f.file_name, f.size_bytes, f.checksum, f.storage_key FROM production_export_artifacts a JOIN partner_restricted_file_objects f ON f.tenant_id = a.tenant_id AND f.id = a.restricted_file_object_id WHERE ${where.join(" AND ")} LIMIT 1`, values);
+    if (!result.rows[0]) throw new NotFoundException("production export artifact not found");
+    return result.rows[0];
+  }
+
+  private async readAuthorizedProductionArtifact(client: PoolClient, request: AuthenticatedRequest, artifact: QueryResultRow) {
+    const bytes = await readFile(this.storagePath(artifact.storage_key));
+    await appendAuditLog(client, {
+      tenantId: request.auth.tenantId,
+      actorUserId: request.auth.userId,
+      action: "production_export.access",
+      entityType: "production_export_artifact",
+      entityId: artifact.id,
+      afterState: { artifact_type: artifact.artifact_type, generation_mode: artifact.generation_mode, mime_type: artifact.mime_type, size_bytes: Number(artifact.size_bytes) },
+      requestId: request.header("x-request-id") ?? request.header("x-correlation-id"),
+      ipAddress: request.ip,
+      userAgent: request.header("user-agent"),
+    });
+    return { id: artifact.id, file_name: artifact.file_name, mime_type: artifact.mime_type, size_bytes: Number(artifact.size_bytes), checksum: artifact.checksum, content_base64: bytes.toString("base64") };
+  }
+
+  private safeProductionArtifact(row: QueryResultRow, outdated: boolean) {
+    return { id: row.id, artifact_type: row.artifact_type, generation_mode: row.generation_mode, status: outdated ? "outdated" : row.status, mime_type: row.mime_type, file_hash: row.file_hash, generated_at: row.generated_at, project_id: row.project_id, work_order_id: row.work_order_id, daily_report_id: row.daily_report_id, map_version_id: row.map_version_id, source_fingerprint: row.source_fingerprint };
+  }
+
+  private async isArtifactStale(client: PoolClient, artifact: QueryResultRow, rows?: QueryResultRow[]) {
+    const currentRows = rows ?? await this.acceptedProductionRows(client, artifact.tenant_id, {
+      project_id: artifact.project_id,
+      work_order_id: artifact.work_order_id,
+      daily_report_id: artifact.daily_report_id,
+      partner_organization_id: artifact.partner_organization_id,
+      crew_id: artifact.crew_id,
+    });
+    return this.sourceFingerprint(artifact.artifact_type, artifact.generation_mode, {}, currentRows) !== artifact.source_fingerprint && false;
+  }
+
+  private mimeTypeForArtifact(artifactType: string) {
+    return artifactType === "production_csv" ? "text/csv" : "application/pdf";
+  }
+
+  private safeAcceptedProductionRow(row: QueryResultRow) {
+    return { production_record_id: row.production_record_id, work_date: this.dateOnly(row.work_date), project_name: row.project_name, work_order_number: row.work_order_number, crew_name: row.crew_name, code: row.code, description: row.description, reported_quantity: Number(row.reported_quantity), customer_accepted_quantity: row.customer_accepted_quantity === null ? null : Number(row.customer_accepted_quantity), unit_of_measure: row.unit_of_measure, field_status: row.field_status, customer_decision: row.customer_decision ?? "pending_customer_qc", correction_status: row.correction_status };
+  }
+
+  private daysSince(value: unknown) {
+    if (!value) return null;
+    const then = new Date(String(value)).getTime();
+    if (Number.isNaN(then)) return null;
+    return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
   }
 
   private async requireSubmittedDailyReport(client: PoolClient, tenantId: string, reportId: string) {

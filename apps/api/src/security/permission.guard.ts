@@ -82,6 +82,11 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_correction.read_own",
   "partner_correction.update_allowed",
   "partner_correction.resubmit",
+  "partner_production_dashboard.read",
+  "partner_production_export.read",
+  "partner_production_export.generate",
+  "partner_production_history.read_own",
+  "partner_production_export.read_own",
 ]);
 
 @Injectable()

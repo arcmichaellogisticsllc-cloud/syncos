@@ -242,6 +242,15 @@ test("certified Customer QC E2E is included in the global certification runner",
   );
 });
 
+test("certified SyncField production exports/dashboard E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-production-exports-dashboard\.spec\.ts/,
+    "P11 production exports/dashboard E2E must run as part of npm run e2e:certification",
+  );
+});
+
 test("P10 Customer QC language preserves customer authority boundary", () => {
   const sources = [
     read("apps/api/src/routes/syncfield.controller.ts"),
@@ -250,6 +259,20 @@ test("P10 Customer QC language preserves customer authority boundary", () => {
   ].join("\n");
   assert.doesNotMatch(sources, /approved by Sync|Sync QC accepted|Sync approved footage/i);
   assert.match(sources, /Customer QC|customer_qc|QC Authority/);
+});
+
+test("P11 exports and closeout preserve production and financial boundaries", () => {
+  const sources = [
+    read("apps/api/src/routes/syncfield.controller.ts"),
+    read("apps/web/app/production-dashboard/page.tsx"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/syncfield-production-exports-dashboard-p11.md"),
+  ].join("\n");
+  assert.match(sources, /production_export_artifacts/);
+  assert.match(sources, /Customer Accepted|customer_accepted|Customer QC/);
+  assert.match(sources, /csvCell|formula/i);
+  assert.doesNotMatch(sources, /Sync approved footage|Sync QC accepted|approved by Sync/i);
+  assert.doesNotMatch(sources, /INSERT INTO (billable_items|settlements|contractor_payables|payments|invoices|cash_receipts)/i);
 });
 
 function read(relativePath) {
