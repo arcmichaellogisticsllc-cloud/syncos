@@ -87,6 +87,9 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_production_export.generate",
   "partner_production_history.read_own",
   "partner_production_export.read_own",
+  "partner_settlement.read",
+  "partner_contractor_payable.read",
+  "partner_payment_eligibility.read",
 ]);
 
 @Injectable()

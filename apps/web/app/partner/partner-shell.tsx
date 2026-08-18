@@ -26,7 +26,8 @@ type Section =
   | "daily-production"
   | "review-day"
   | "customer-qc"
-  | "corrections";
+  | "corrections"
+  | "settlements";
 
 type PartnerContext = {
   user: { id: string; display_name: string };
@@ -181,6 +182,18 @@ type ProductionDashboard = {
   closeout?: Record<string, unknown>;
   artifacts?: Array<Record<string, unknown>>;
 };
+type PartnerSettlement = {
+  id?: string;
+  settlement_number?: string;
+  settlement_period_start?: string;
+  settlement_period_end?: string;
+  net_settlement_amount?: number;
+  pay_when_paid_status?: string;
+  eligible_amount?: number;
+  payment_due_at?: string | null;
+  dispute_deadline?: string | null;
+  items?: Array<{ production_code?: string; accepted_quantity?: number; unit?: string; partner_rate?: number; gross_partner_amount?: number }>;
+};
 
 type PortalData = {
   context?: PartnerContext;
@@ -208,6 +221,7 @@ type PortalData = {
   customerQcReports?: CustomerQcItem[];
   productionDashboard?: ProductionDashboard | null;
   productionHistory?: ProductionDashboard | null;
+  partnerSettlements?: PartnerSettlement[];
   foremanCrew?: Crew | null;
   foremanRoster?: Worker[];
   foremanWorkOrder?: WorkOrder | null;
@@ -225,6 +239,7 @@ const adminNav = [
   ["Mobilization", "/partner/mobilization"],
   ["Daily JSA", "/partner/jsa"],
   ["Customer QC", "/partner/customer-qc"],
+  ["Settlements", "/partner/settlements"],
 ] as const;
 
 const foremanNav = [
@@ -254,7 +269,7 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
       try {
         const context = await syncosFetch<PartnerContext>("partner-personas/me/context");
         const actions = await safeFetch<PartnerActions>("partner-personas/me/actions");
-        const data = context.persona === "partner_foreman" ? await loadForeman(context, actions) : await loadAdmin(context, actions);
+        const data = context.persona === "partner_foreman" ? await loadForeman(context, actions, section) : await loadAdmin(context, actions, section, itemId);
         if (!cancelled) setState({ loading: false, data });
       } catch (error) {
         const text = error instanceof Error ? error.message : String(error);
@@ -265,7 +280,7 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [section, itemId]);
 
   const data = state.data;
   const persona = data.context?.persona;
@@ -342,56 +357,74 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
   }
 }
 
-async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
+async function loadAdmin(context: PartnerContext, actions: PartnerActions | undefined, section: Section, itemId?: string): Promise<PortalData> {
   const permissions = readPermissions();
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard] = await Promise.all([
-    safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
-    safeFetch<CompanyProfile>("partner-compliance/me/company-profile"),
-    safeFetch<TaxProfile>("partner-compliance/me/w9"),
-    safeFetch<PaymentProfile>("partner-compliance/me/payment-profile"),
-    safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []),
-    safeFetch<Worker[]>("partner-workforce/me/workers", []),
-    safeFetch<Crew[]>("partner-workforce/me/crews", []),
-    safeFetch<Agreement[]>("partner-agreements/me/agreements", []),
-    safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []),
-    safeFetch<VehicleAssignment[]>("partner-agreements/me/vehicle-assignments", []),
-    permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
-    permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
-    permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
-    permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
-    permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
+  const needsDashboard = section === "dashboard";
+  const needsCompliance = needsDashboard || section === "compliance";
+  const needsCompany = section === "company";
+  const needsCrews = needsDashboard || section === "crews" || section === "crew-detail";
+  const needsAgreements = needsDashboard || section === "agreements" || section === "agreement-detail";
+  const needsWorkOrders = needsDashboard || section === "work-orders" || section === "work-order-detail" || section === "mobilization";
+  const needsVehicles = needsDashboard || section === "vehicles";
+  const needsMobilization = needsDashboard || section === "mobilization";
+  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements] = await Promise.all([
+    needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
+    needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
+    section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
+    needsCompliance || needsDashboard ? safeFetch<PaymentProfile>("partner-compliance/me/payment-profile") : undefined,
+    section === "compliance" ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
+    section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
+    needsCrews ? safeFetch<Crew[]>("partner-workforce/me/crews", []) : [],
+    needsAgreements ? safeFetch<Agreement[]>("partner-agreements/me/agreements", []) : [],
+    needsWorkOrders ? safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []) : [],
+    needsVehicles ? safeFetch<VehicleAssignment[]>("partner-agreements/me/vehicle-assignments", []) : [],
+    section === "field-map" && permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
+    section === "daily-jsa" && permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
+    (section === "daily-production" || section === "review-day") && permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
+    (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
+    section === "daily-production" && permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
+    section === "settlements" && permissions.includes("partner_settlement.read") ? safeFetch<PartnerSettlement[]>("accepted-production-financials/partner/settlements", []) : [],
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
-  await Promise.all((crews ?? []).map(async (crew) => {
+  const crewsForReadiness = needsDashboard ? (crews ?? []).slice(0, 1) : (section === "crews" || section === "crew-detail" ? crews ?? [] : []);
+  await Promise.all(crewsForReadiness.map(async (crew) => {
     const id = str(crew.id);
     if (!id) return;
     rosterByCrew[id] = await safeFetch<Worker[]>(`partner-workforce/me/crews/${id}/roster`, []);
     const readiness = await safeFetch<Readiness | null>(`partner-workforce/me/crews/${id}/readiness`, null);
     if (readiness) readinessByCrew[id] = readiness;
   }));
-  const firstWorkOrder = (workOrders ?? [])[0];
-  const versionId = str(firstWorkOrder?.id);
-  const mobilization = versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
-  const notice = versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard };
+  const selectedWorkOrder = itemId ? (workOrders ?? []).find((workOrder) => str(workOrder.id) === itemId) : (workOrders ?? [])[0];
+  const versionId = str(selectedWorkOrder?.id);
+  const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
+  const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
+  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements };
 }
 
-async function loadForeman(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
+async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section): Promise<PortalData> {
   const permissions = readPermissions();
+  const needsToday = section === "dashboard";
+  const needsCrew = needsToday || section === "crews" || section === "crew-detail" || section === "workforce";
+  const needsAssignment = needsToday || section === "work-orders" || section === "work-order-detail";
+  const needsMobilization = needsToday || section === "mobilization";
+  const needsMap = needsToday || section === "field-map" || section === "daily-production" || section === "review-day";
+  const needsJsa = needsToday || section === "daily-jsa" || section === "daily-production" || section === "review-day";
+  const needsProduction = section === "daily-production" || section === "review-day";
+  const needsProductionHistory = section === "daily-production" || section === "review-day";
   const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, customerQcReports, productionHistory] = await Promise.all([
-    safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
-    safeFetch<Crew | null>("partner-workforce/foreman/crew", null),
-    safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []),
-    safeFetch<WorkOrder | null>("partner-agreements/foreman/work-order", null),
-    safeFetch<Readiness | null>("partner-mobilization/foreman/readiness", null),
-    safeFetch<Notice | null>("partner-mobilization/foreman/notice", null),
-    permissions.includes("partner_map.read_assigned") ? safeFetch<MapAssignment | null>("syncfield/foreman/map-assignment", null) : null,
-    permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>("syncfield/foreman/jsa/today", null) : null,
-    permissions.includes("partner_daily_production.read") ? safeFetch<DailyProduction | null>("syncfield/foreman/production/today", null) : null,
-    permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>("syncfield/foreman/production/codes", []) : [],
-    permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
-    permissions.includes("partner_production_history.read_own") ? safeFetch<ProductionDashboard | null>("syncfield/foreman/production-history", null) : null,
+    needsToday ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
+    needsCrew ? safeFetch<Crew | null>("partner-workforce/foreman/crew", null) : null,
+    needsCrew ? safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []) : [],
+    needsAssignment || needsToday ? safeFetch<WorkOrder | null>("partner-agreements/foreman/work-order", null) : null,
+    needsMobilization ? safeFetch<Readiness | null>("partner-mobilization/foreman/readiness", null) : null,
+    needsMobilization || needsToday ? safeFetch<Notice | null>("partner-mobilization/foreman/notice", null) : null,
+    needsMap && permissions.includes("partner_map.read_assigned") ? safeFetch<MapAssignment | null>("syncfield/foreman/map-assignment", null) : null,
+    needsJsa && permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>("syncfield/foreman/jsa/today", null) : null,
+    needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<DailyProduction | null>("syncfield/foreman/production/today", null) : null,
+    needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>("syncfield/foreman/production/codes", []) : [],
+    (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
+    needsProductionHistory && permissions.includes("partner_production_history.read_own") ? safeFetch<ProductionDashboard | null>("syncfield/foreman/production-history", null) : null,
   ]);
   return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, customerQcReports, productionHistory };
 }
@@ -406,7 +439,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
 }
 
 function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: () => Promise<void>) {
-  if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles"].includes(section)) {
+    if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements"].includes(section)) {
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
   if (data.context?.persona === "partner_foreman") {
@@ -458,6 +491,8 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     case "customer-qc":
     case "corrections":
       return <CustomerQcWorkspace data={data} />;
+    case "settlements":
+      return <PartnerSettlementsWorkspace data={data} />;
     case "field-map":
       return <FieldMapWorkspace data={data} />;
     default:
@@ -704,7 +739,6 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
     }
     try {
       await syncosFetch("syncfield/foreman/production/records", { method: "POST", body: mutation });
-      location.reload();
     } catch (caught) {
       if (isTransientNetworkError(caught)) {
         await queue.enqueue({ operation: "CREATE_PRODUCTION", payload: mutation });
@@ -749,7 +783,6 @@ function ReviewDayWorkspace({ data }: { data: PortalData }) {
   async function submitDay() {
     if (unsynced) return;
     await syncosFetch("syncfield/foreman/production/review-day/submit", { method: "POST", body: { work_date: report?.work_date, client_mutation_id: crypto.randomUUID(), general_notes: "Foreman reviewed daily production." } });
-    location.reload();
   }
   return (
     <div className="partner-stack">
@@ -877,6 +910,43 @@ function CustomerQcWorkspace({ data }: { data: PortalData }) {
       </Panel>
       <Panel title="Correction History" eyebrow="Partner-safe relay">
         <CorrectionList reports={reports} />
+      </Panel>
+    </div>
+  );
+}
+
+function PartnerSettlementsWorkspace({ data }: { data: PortalData }) {
+  const settlements = data.partnerSettlements ?? [];
+  return (
+    <div className="partner-stack">
+      <Panel title="Weekly Settlements" eyebrow="Partner Admin financial view">
+        <div className="partner-card-grid">
+          {settlements.map((settlement) => (
+            <RecordCard key={str(settlement.id)} title={str(settlement.settlement_number)} status={str(settlement.pay_when_paid_status) || "awaiting_customer_funds"}>
+              <StatusRows rows={[
+                ["Period", `${str(settlement.settlement_period_start)} to ${str(settlement.settlement_period_end)}`],
+                ["Net Settlement", currency(settlement.net_settlement_amount)],
+                ["Customer-Funded Eligibility", currency(settlement.eligible_amount)],
+                ["Due Date", str(settlement.payment_due_at) || "Awaiting cleared customer funds"],
+                ["Dispute Deadline", str(settlement.dispute_deadline)],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!settlements.length ? <EmptyPortal title="No settlement statements" body="Weekly settlement statements appear after Customer-accepted production is converted by Sync Finance." /> : null}
+      </Panel>
+      <Panel title="Statement Lines" eyebrow="No Customer rate or margin">
+        {settlements.flatMap((settlement) => settlement.items ?? []).length ? (
+          <div className="partner-list">
+            {settlements.flatMap((settlement) => settlement.items ?? []).map((item, index) => (
+              <div className="partner-list-row static" key={`${str(item.production_code)}-${index}`}>
+                <span><strong>{str(item.production_code)}</strong><small>{quantityText(item.accepted_quantity, item.unit)} Customer Accepted</small></span>
+                <StatusPill label="Partner Rate" value={`${currency(item.partner_rate)} / ${str(item.unit)}`} />
+                <StatusPill label="Gross" value={currency(item.gross_partner_amount)} />
+              </div>
+            ))}
+          </div>
+        ) : <EmptyPortal title="No settlement line items" body="Accepted production line items appear after settlement creation." />}
       </Panel>
     </div>
   );
@@ -1346,7 +1416,7 @@ function activeSectionLabel(section: Section, persona?: Persona) {
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements" };
   return labels[section] ?? "Dashboard";
 }
 
@@ -1362,6 +1432,7 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "review-day") return "Review Day";
   if (section === "customer-qc") return "Customer QC";
   if (section === "corrections") return "Corrections";
+  if (section === "settlements") return "Settlements";
   return activeSectionLabel(section, persona);
 }
 
@@ -1400,6 +1471,11 @@ function str(value: unknown): string {
 function quantityText(quantity: unknown, unit: unknown) {
   if (quantity === null || quantity === undefined || quantity === "") return "Pending Customer QC";
   return [str(quantity), str(unit)].filter(Boolean).join(" ");
+}
+
+function currency(value: unknown) {
+  const number = Number(value ?? 0);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number.isFinite(number) ? number : 0);
 }
 
 function workerName(worker?: Record<string, unknown>) {

@@ -251,6 +251,15 @@ test("certified SyncField production exports/dashboard E2E is included in the gl
   );
 });
 
+test("certified accepted production financials E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/accepted-production-financials\.spec\.ts/,
+    "P12 accepted production financials E2E must run as part of npm run e2e:certification",
+  );
+});
+
 test("P10 Customer QC language preserves customer authority boundary", () => {
   const sources = [
     read("apps/api/src/routes/syncfield.controller.ts"),

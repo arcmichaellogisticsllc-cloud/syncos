@@ -4,6 +4,7 @@ import { CorrelationMiddleware } from "../instrumentation/correlation.middleware
 import { AuthController } from "../routes/auth.controller";
 import { AccountingExportController } from "../routes/accounting-export.controller";
 import { AccountOnboardingController } from "../routes/account-onboarding.controller";
+import { AcceptedProductionFinancialsController } from "../routes/accepted-production-financials.controller";
 import { BankReconciliationController } from "../routes/bank-reconciliation.controller";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
@@ -48,6 +49,7 @@ import { DatabaseModule } from "./database.module";
   imports: [DatabaseModule],
   controllers: [
     HealthController,
+    AcceptedProductionFinancialsController,
     AccountingExportController,
     AccountOnboardingController,
     AuthController,
