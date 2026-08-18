@@ -52,8 +52,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("authorized").first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Company" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compliance", exact: true })).toBeVisible();
-    await expect(page.getByText("Daily Production")).toBeVisible();
-    await expect(page.getByText("After start authorization")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Daily Production" })).toBeVisible();
     await expect(page.getByText("Finance")).toHaveCount(0);
     await expect(page.getByText("Collections")).toHaveCount(0);
     await expect(page.getByText("margin")).toHaveCount(0);

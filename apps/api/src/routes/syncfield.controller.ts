@@ -64,11 +64,38 @@ type MapAssignmentRow = QueryResultRow & {
   file_object_id: string;
 };
 
+type DailyProductionReportRow = QueryResultRow & {
+  id: string;
+  tenant_id: string;
+  work_order_version_id: string;
+  crew_id: string;
+  work_date: string;
+  status: string;
+  map_version_id: string | null;
+};
+
 const partnerProviderTypes = new Set(["subcontractor", "crew_provider"]);
 const mapDocumentTypes = new Set(["construction_map", "work_package", "permit_map", "other"]);
 const hazardValues = new Set(["traffic", "energized_utilities", "overhead_utilities", "fall_exposure", "bucket_aerial_lift", "pole_hazards", "unsafe_pole", "guy_anchor", "trip_hazards", "public_exposure", "weather", "equipment_movement", "blocked_access", "animals", "other"]);
 const controlValues = new Set(["ppe_reviewed", "traffic_control_reviewed", "fall_protection_reviewed", "equipment_inspection_complete", "emergency_procedures_reviewed", "rescue_procedures_reviewed", "communication_confirmed", "exclusion_zone_established", "stop_work_authority_reviewed", "utilities_reviewed", "aerial_hazards_reviewed", "incident_reporting_reviewed"]);
 const storageRejectKeys = ["storage_key", "storage_path", "storage_url", "public_url", "raw_url", "object_key", "bucket", "url", "path"];
+const productionStatuses = new Set(["partial", "complete", "blocked", "rework"]);
+const productionLocationTypes = new Set(["asset", "route", "daily"]);
+const assetTypes = new Set(["pole", "pedestal", "handhole", "vault", "cabinet", "enclosure", "terminal", "riser", "anchor", "other"]);
+const defaultProductionCodes = [
+  ["POLE-ATT", "Pole Attachment", "EA", "asset", true, false],
+  ["TRANSFER", "Cable Transfer", "EA", "asset", true, false],
+  ["RISER", "Riser Installation", "EA", "asset", true, false],
+  ["ANCHOR", "Anchor Installation", "EA", "asset", true, false],
+  ["STRAND", "Place Strand", "LF", "route", false, true],
+  ["FIBER", "Place Fiber", "LF", "route", false, true],
+  ["LASH", "Lash Fiber", "LF", "route", false, true],
+  ["BORE", "Directional Bore", "LF", "route", false, true],
+  ["CONDUIT", "Place Conduit", "LF", "route", false, true],
+  ["HANDHOLE", "Install Handhole", "EA", "asset", true, false],
+  ["LABOR", "Labor Hours", "HR", "daily", false, false],
+  ["EQUIPMENT", "Equipment Hours", "HR", "daily", false, false],
+] as const;
 
 @Controller("syncfield")
 export class SyncfieldController {
@@ -359,6 +386,227 @@ export class SyncfieldController {
     });
   }
 
+  @Get("foreman/production/today")
+  @RequirePermission("partner_daily_production.read")
+  async foremanProductionToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate?: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const date = this.workDate(workDate);
+      const report = await this.findDailyReport(client, assignment, date);
+      if (!report) return { status: "not_started", work_date: date, gate: await this.productionGate(client, assignment, date), assignment: this.safeAssignmentContext(assignment), records: [], annotations: [], totals: [] };
+      return this.safeDailyProductionDetail(client, report);
+    });
+  }
+
+  @Get("partner/production")
+  @RequirePermission("partner_daily_production.read_org")
+  async partnerProductionReports(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerAdmin(client, request, query.organization_id);
+      const result = await client.query(
+        `
+        SELECT r.*, c.name AS crew_name, wov.work_order_number
+        FROM daily_production_reports r
+        JOIN crews c ON c.tenant_id = r.tenant_id AND c.id = r.crew_id
+        JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
+        WHERE r.tenant_id = $1 AND r.organization_id = $2 AND r.deleted_at IS NULL
+        ORDER BY r.work_date DESC, r.created_at DESC
+        LIMIT 50
+        `,
+        [context.tenant_id, context.organization.id],
+      );
+      return result.rows.map((row) => this.safeDailyProductionSummary(row));
+    });
+  }
+
+  @Get("foreman/production/codes")
+  @RequirePermission("partner_daily_production.read")
+  async foremanProductionCodes(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      await this.ensureDefaultProductionCodes(client, assignment);
+      const result = await client.query(
+        `
+        SELECT pc.*
+        FROM syncfield_work_order_production_codes wopc
+        JOIN syncfield_production_codes pc ON pc.tenant_id = wopc.tenant_id AND pc.id = wopc.production_code_id
+        WHERE wopc.tenant_id = $1 AND wopc.work_order_version_id = $2 AND wopc.status = 'active'
+          AND wopc.deleted_at IS NULL AND pc.active = true AND pc.deleted_at IS NULL
+        ORDER BY pc.location_type, pc.code
+        `,
+        [assignment.tenant_id, assignment.work_order_version_id],
+      );
+      return result.rows.map((row) => this.safeProductionCode(row));
+    });
+  }
+
+  @Post("foreman/production/today")
+  @RequirePermission("partner_daily_production.create")
+  async openForemanProductionToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate: string | undefined, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const date = this.workDate(workDate ?? String(body.work_date ?? ""));
+      return this.writeWithClient(client, request, "daily_report.create", "daily_report.created", "daily_report", async (writeClient) => {
+        const existing = await this.findDailyReport(writeClient, assignment, date);
+        if (existing) return { entityType: "daily_report", entityId: existing.id, afterState: await this.safeDailyProductionDetail(writeClient, existing) };
+        const gate = await this.assertProductionGate(writeClient, assignment, date);
+        const mutationId = this.optionalString(body.client_mutation_id);
+        if (mutationId) {
+          const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "create_daily_report");
+          if (receipt?.entity_id) {
+            const row = await this.requireDailyReportById(writeClient, assignment.tenant_id, receipt.entity_id);
+            return { entityType: "daily_report", entityId: row.id, afterState: await this.safeDailyProductionDetail(writeClient, row) };
+          }
+        }
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO daily_production_reports (
+            tenant_id, project_id, work_order_id, work_order_version_id, organization_id, capacity_provider_id, crew_id,
+            foreman_worker_id, foreman_user_id, work_date, map_document_id, map_version_id, daily_jsa_id, status,
+            start_time, weather, general_notes, client_mutation_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft',$14,$15,$16,$17)
+          RETURNING *
+          `,
+          [assignment.tenant_id, assignment.project_id, assignment.work_order_id, assignment.work_order_version_id, assignment.organization_id, assignment.capacity_provider_id, assignment.crew_id, assignment.foreman_worker_id, request.auth.userId, date, assignment.map_document_id, assignment.map_version_id, gate.daily_jsa_id, this.optionalString(body.start_time), this.optionalString(body.weather), this.optionalString(body.general_notes), mutationId],
+        );
+        if (mutationId) await this.recordMutationReceipt(writeClient, request, mutationId, "create_daily_report", "daily_report", inserted.rows[0].id, body);
+        return { entityType: "daily_report", entityId: inserted.rows[0].id, afterState: await this.safeDailyProductionDetail(writeClient, inserted.rows[0]) };
+      });
+    });
+  }
+
+  @Post("foreman/production/records")
+  @RequirePermission("partner_production_record.create")
+  async createForemanProductionRecord(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const date = this.workDate(String(body.work_date ?? ""));
+      return this.writeWithClient(client, request, "production.record", "production.recorded", "production_record", async (writeClient) => {
+        await this.assertProductionGate(writeClient, assignment, date);
+        const report = await this.findDailyReport(writeClient, assignment, date) ?? await this.createReportInline(writeClient, request, assignment, date, body);
+        if (report.status !== "draft") throw new BadRequestException("submitted report is read-only");
+        const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+        const existingReceipt = await this.findMutationReceipt(writeClient, request, mutationId, "create_production");
+        if (existingReceipt?.entity_id) {
+          const existing = await this.requireProductionRecord(writeClient, assignment.tenant_id, existingReceipt.entity_id);
+          return { entityType: "production_record", entityId: existing.id, afterState: await this.safeProductionRecordDetail(writeClient, existing), skipEventAudit: true };
+        }
+        const code = await this.requireAuthorizedProductionCode(writeClient, assignment, requireString(body.production_code_id, "production_code_id is required"));
+        const locationType = requireString(body.location_type ?? code.location_type, "location_type is required");
+        if (!productionLocationTypes.has(locationType) || locationType !== code.location_type) throw new BadRequestException("production code is not valid for location type");
+        const status = requireString(body.status ?? "complete", "status is required").toLowerCase();
+        if (!productionStatuses.has(status)) throw new BadRequestException("production status is invalid");
+        const quantity = this.positiveNumber(body.reported_quantity, "reported_quantity must be positive");
+        const duplicate = await this.duplicateWarning(writeClient, assignment, report, code, body);
+        if (duplicate.requires_reason && !this.optionalString(body.duplicate_reason)) throw new BadRequestException("duplicate reason is required");
+        const values = this.validateProductionLocation(body, code, locationType);
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO production_records (
+            tenant_id, project_id, work_order_id, work_order_version_id, capacity_provider_id, crew_id, foreman_user_id,
+            foreman_worker_id, submitted_by_user_id, submitted_by, production_date, quantity_submitted, quantity, claimed_quantity,
+            unit_type, unit, rate_code_id, production_type, qc_status, billable_status, status, daily_production_report_id,
+            partner_organization_id, map_document_id, map_version_id, syncfield_production_code_id, syncfield_location_type,
+            syncfield_status, asset_type, asset_identifier, from_asset_identifier, to_asset_identifier, map_page,
+            duplicate_reason, client_mutation_id, production_notes, created_by, updated_by
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,$7,$9,$10,$10,$10,$11,$11,NULL,'daily_production','not_started','not_billable','draft',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$7,$7)
+          ON CONFLICT (tenant_id, foreman_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL AND daily_production_report_id IS NOT NULL
+          DO UPDATE SET updated_at = production_records.updated_at
+          RETURNING *, (xmax = 0) AS inserted_new
+          `,
+          [
+            assignment.tenant_id, assignment.project_id, assignment.work_order_id, assignment.work_order_version_id, assignment.capacity_provider_id, assignment.crew_id,
+            request.auth.userId, assignment.foreman_worker_id, date, quantity, code.unit_of_measure, report.id, assignment.organization_id,
+            locationType === "daily" ? null : assignment.map_document_id, locationType === "daily" ? null : assignment.map_version_id, code.id, locationType, status,
+            values.assetType, values.assetIdentifier, values.fromAssetIdentifier, values.toAssetIdentifier, values.mapPage, this.optionalString(body.duplicate_reason), mutationId, this.optionalString(body.notes),
+          ],
+        );
+        const record = inserted.rows[0];
+        if (!record.inserted_new) {
+          await this.recordMutationReceipt(writeClient, request, mutationId, "create_production", "production_record", record.id, body);
+          return { entityType: "production_record", entityId: record.id, afterState: await this.safeProductionRecordDetail(writeClient, record), skipEventAudit: true };
+        }
+        if (locationType !== "daily") await this.insertAnnotation(writeClient, request, assignment, record, locationType, values, status);
+        await this.recordMutationReceipt(writeClient, request, mutationId, "create_production", "production_record", record.id, body);
+        return { entityType: "production_record", entityId: record.id, afterState: await this.safeProductionRecordDetail(writeClient, record) };
+      });
+    });
+  }
+
+  @Post("foreman/production/records/:recordId")
+  @RequirePermission("partner_production_record.update_draft")
+  async updateForemanProductionRecord(@Req() request: AuthenticatedRequest, @Param("recordId") recordId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      return this.writeWithClient(client, request, "production.update", "production.updated", "production_record", async (writeClient) => {
+        const before = await this.requireScopedProductionRecord(writeClient, assignment, recordId);
+        const report = await this.requireDailyReportById(writeClient, assignment.tenant_id, before.daily_production_report_id);
+        if (report.status !== "draft" || before.locked_at) throw new BadRequestException("submitted production is read-only");
+        const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+        const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "update_draft_production");
+        if (receipt?.entity_id) return { entityType: "production_record", entityId: before.id, afterState: await this.safeProductionRecordDetail(writeClient, before) };
+        const status = body.status === undefined ? before.syncfield_status : requireString(body.status, "status is required").toLowerCase();
+        if (!productionStatuses.has(status)) throw new BadRequestException("production status is invalid");
+        const quantity = body.reported_quantity === undefined ? Number(before.quantity_submitted) : this.positiveNumber(body.reported_quantity, "reported_quantity must be positive");
+        const updated = await writeClient.query(
+          `
+          UPDATE production_records
+          SET quantity_submitted = $3, quantity = $3, claimed_quantity = $3, syncfield_status = $4,
+            production_notes = COALESCE($5, production_notes), updated_by = $6, updated_at = now()
+          WHERE tenant_id = $1 AND id = $2 AND daily_production_report_id IS NOT NULL AND status = 'draft'
+          RETURNING *
+          `,
+          [assignment.tenant_id, recordId, quantity, status, this.optionalString(body.notes), request.auth.userId],
+        );
+        await writeClient.query("UPDATE map_annotations SET display_status = $3, updated_at = now() WHERE tenant_id = $1 AND production_record_id = $2 AND deleted_at IS NULL", [assignment.tenant_id, recordId, status]);
+        await this.recordMutationReceipt(writeClient, request, mutationId, "update_draft_production", "production_record", recordId, body);
+        return { entityType: "production_record", entityId: recordId, beforeState: await this.safeProductionRecordDetail(writeClient, before), afterState: await this.safeProductionRecordDetail(writeClient, updated.rows[0]) };
+      });
+    });
+  }
+
+  @Post("foreman/production/review-day/submit")
+  @RequirePermission("partner_daily_production.submit")
+  async submitForemanProductionDay(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const date = this.workDate(String(body.work_date ?? ""));
+      return this.writeWithClient(client, request, "daily_report.submit", "daily_report.submitted", "daily_report", async (writeClient) => {
+        await this.assertProductionGate(writeClient, assignment, date);
+        const report = await this.findDailyReport(writeClient, assignment, date);
+        if (!report) throw new BadRequestException("daily production report is required");
+        const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+        const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "submit_daily_report");
+        if (receipt?.entity_id) return { entityType: "daily_report", entityId: report.id, afterState: await this.safeDailyProductionDetail(writeClient, report) };
+        if (report.status !== "draft") throw new BadRequestException("only draft reports can be submitted");
+        const records = await this.reportRecords(writeClient, assignment.tenant_id, report.id);
+        if (!records.length) throw new BadRequestException("at least one production record is required");
+        const snapshot = await this.buildReportSnapshot(writeClient, report);
+        const revision = await writeClient.query(
+          `
+          INSERT INTO daily_production_report_revisions (tenant_id, daily_report_id, revision_number, snapshot_json, reason, submitted_by_user_id)
+          VALUES ($1,$2,1,$3,'submitted',$4)
+          ON CONFLICT (tenant_id, daily_report_id, revision_number) DO NOTHING
+          RETURNING *
+          `,
+          [assignment.tenant_id, report.id, snapshot, request.auth.userId],
+        );
+        await writeClient.query("UPDATE production_records SET status = 'submitted', submitted_at = now(), submitted_by_user_id = $3, submitted_by = $3, locked_at = now(), updated_at = now() WHERE tenant_id = $1 AND daily_production_report_id = $2 AND status = 'draft'", [assignment.tenant_id, report.id, request.auth.userId]);
+        const submitted = await writeClient.query("UPDATE daily_production_reports SET status = 'submitted', submitted_at = now(), submitted_by_user_id = $3, general_notes = COALESCE($4, general_notes), updated_at = now() WHERE tenant_id = $1 AND id = $2 AND status = 'draft' RETURNING *", [assignment.tenant_id, report.id, request.auth.userId, this.optionalString(body.general_notes)]);
+        await this.recordMutationReceipt(writeClient, request, mutationId, "submit_daily_report", "daily_report", report.id, body);
+        return { entityType: "daily_report", entityId: report.id, beforeState: this.safeDailyProductionSummary(report), afterState: await this.safeDailyProductionDetail(writeClient, submitted.rows[0] ?? report), additionalEvents: [{ action: "daily_report_revision.create", eventType: "daily_report_revision.created", aggregateType: "daily_report_revision", entityType: "daily_report_revision", entityId: revision.rows[0]?.id ?? report.id, afterState: { daily_report_id: report.id, revision_number: 1 } }] };
+      });
+    });
+  }
+
   private async requireWorkOrderContext(client: PoolClient, tenantId: string, organizationId: string, versionId: string): Promise<WorkOrderContext> {
     const result = await client.query(
       `
@@ -579,6 +827,230 @@ export class SyncfieldController {
     );
   }
 
+  private async productionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
+    const blockers: string[] = [];
+    const authorization = await client.query(
+      `
+      SELECT psa.authorization_status
+      FROM production_start_authorizations psa
+      JOIN notice_to_proceed_versions n ON n.tenant_id = psa.tenant_id AND n.id = psa.notice_id
+      WHERE psa.tenant_id = $1 AND n.work_order_version_id = $2 AND n.crew_assignment_id = $3
+        AND psa.current = true AND psa.authorization_status = 'authorized'
+      LIMIT 1
+      `,
+      [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_assignment_id],
+    );
+    if (!authorization.rows[0]) blockers.push("production_start_not_authorized");
+    const jsa = await this.findJsa(client, assignment, workDate);
+    if (!jsa || jsa.status !== "completed") blockers.push("daily_jsa_incomplete");
+    if (assignment.version_status !== "ready" || assignment.processing_status !== "ready") blockers.push("map_version_not_ready");
+    return { allowed: blockers.length === 0, blockers, daily_jsa_id: jsa?.id ?? null };
+  }
+
+  private async assertProductionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
+    const gate = await this.productionGate(client, assignment, workDate);
+    if (!gate.allowed) throw new BadRequestException(gate.blockers.join(","));
+    return gate;
+  }
+
+  private async ensureDefaultProductionCodes(client: PoolClient, assignment: MapAssignmentRow) {
+    for (const [code, description, unit, locationType, requiresAsset, requiresRoute] of defaultProductionCodes) {
+      const inserted = await client.query(
+        `
+        INSERT INTO syncfield_production_codes (tenant_id, code, description, category, unit_of_measure, location_type, requires_asset, requires_route)
+        VALUES ($1,$2,$3,'field',$4,$5,$6,$7)
+        ON CONFLICT (tenant_id, upper(code)) WHERE deleted_at IS NULL DO UPDATE
+          SET description = EXCLUDED.description, unit_of_measure = EXCLUDED.unit_of_measure, location_type = EXCLUDED.location_type, active = true, updated_at = now()
+        RETURNING id
+        `,
+        [assignment.tenant_id, code, description, unit, locationType, requiresAsset, requiresRoute],
+      );
+      await client.query(
+        `
+        INSERT INTO syncfield_work_order_production_codes (tenant_id, work_order_version_id, production_code_id, status)
+        VALUES ($1,$2,$3,'active')
+        ON CONFLICT (tenant_id, work_order_version_id, production_code_id) WHERE deleted_at IS NULL AND status = 'active' DO NOTHING
+        `,
+        [assignment.tenant_id, assignment.work_order_version_id, inserted.rows[0].id],
+      );
+    }
+  }
+
+  private async findDailyReport(client: PoolClient, assignment: MapAssignmentRow, workDate: string): Promise<DailyProductionReportRow | null> {
+    const result = await client.query(
+      "SELECT * FROM daily_production_reports WHERE tenant_id = $1 AND work_order_version_id = $2 AND crew_id = $3 AND work_date = $4 AND current = true AND deleted_at IS NULL AND status <> 'void' LIMIT 1",
+      [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_id, workDate],
+    );
+    return result.rows[0] as DailyProductionReportRow | undefined ?? null;
+  }
+
+  private async createReportInline(client: PoolClient, request: AuthenticatedRequest, assignment: MapAssignmentRow, workDate: string, body: Record<string, unknown>): Promise<DailyProductionReportRow> {
+    const gate = await this.assertProductionGate(client, assignment, workDate);
+    const inserted = await client.query(
+      `
+      INSERT INTO daily_production_reports (
+        tenant_id, project_id, work_order_id, work_order_version_id, organization_id, capacity_provider_id, crew_id,
+        foreman_worker_id, foreman_user_id, work_date, map_document_id, map_version_id, daily_jsa_id, status,
+        weather, general_notes
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft',$14,$15)
+      ON CONFLICT (tenant_id, work_order_version_id, crew_id, work_date) WHERE current = true AND deleted_at IS NULL AND status <> 'void' DO UPDATE SET updated_at = daily_production_reports.updated_at
+      RETURNING *
+      `,
+      [assignment.tenant_id, assignment.project_id, assignment.work_order_id, assignment.work_order_version_id, assignment.organization_id, assignment.capacity_provider_id, assignment.crew_id, assignment.foreman_worker_id, request.auth.userId, workDate, assignment.map_document_id, assignment.map_version_id, gate.daily_jsa_id, this.optionalString(body.weather), this.optionalString(body.general_notes)],
+    );
+    return inserted.rows[0] as DailyProductionReportRow;
+  }
+
+  private async requireDailyReportById(client: PoolClient, tenantId: string, reportId: string): Promise<DailyProductionReportRow> {
+    const result = await client.query("SELECT * FROM daily_production_reports WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, reportId]);
+    if (!result.rows[0]) throw new NotFoundException("daily production report not found");
+    return result.rows[0] as DailyProductionReportRow;
+  }
+
+  private async requireAuthorizedProductionCode(client: PoolClient, assignment: MapAssignmentRow, codeId: string) {
+    await this.ensureDefaultProductionCodes(client, assignment);
+    const result = await client.query(
+      `
+      SELECT pc.*
+      FROM syncfield_work_order_production_codes wopc
+      JOIN syncfield_production_codes pc ON pc.tenant_id = wopc.tenant_id AND pc.id = wopc.production_code_id
+      WHERE wopc.tenant_id = $1 AND wopc.work_order_version_id = $2 AND pc.id = $3
+        AND wopc.status = 'active' AND pc.active = true AND wopc.deleted_at IS NULL AND pc.deleted_at IS NULL
+      `,
+      [assignment.tenant_id, assignment.work_order_version_id, codeId],
+    );
+    if (!result.rows[0]) throw new BadRequestException("production code is not authorized for Work Order");
+    return result.rows[0];
+  }
+
+  private validateProductionLocation(body: Record<string, unknown>, code: QueryResultRow, locationType: string) {
+    const mapPage = locationType === "daily" ? null : this.positiveInt(body.map_page, "map_page is required");
+    if (locationType === "asset") {
+      const assetType = requireString(body.asset_type, "asset_type is required").toLowerCase();
+      if (!assetTypes.has(assetType)) throw new BadRequestException("asset_type is invalid");
+      return { assetType, assetIdentifier: requireString(body.asset_identifier, "asset_identifier is required"), fromAssetIdentifier: null, toAssetIdentifier: null, mapPage, x: this.ratio(body.x_ratio, "x_ratio"), y: this.ratio(body.y_ratio, "y_ratio") };
+    }
+    if (locationType === "route") {
+      return { assetType: null, assetIdentifier: null, fromAssetIdentifier: requireString(body.from_asset_identifier, "from_asset_identifier is required"), toAssetIdentifier: requireString(body.to_asset_identifier, "to_asset_identifier is required"), mapPage, startX: this.ratio(body.start_x_ratio, "start_x_ratio"), startY: this.ratio(body.start_y_ratio, "start_y_ratio"), endX: this.ratio(body.end_x_ratio, "end_x_ratio"), endY: this.ratio(body.end_y_ratio, "end_y_ratio") };
+    }
+    if (code.requires_asset || code.requires_route) throw new BadRequestException("map geometry is required for this production code");
+    return { assetType: null, assetIdentifier: null, fromAssetIdentifier: null, toAssetIdentifier: null, mapPage: null };
+  }
+
+  private async insertAnnotation(client: PoolClient, request: AuthenticatedRequest, assignment: MapAssignmentRow, record: QueryResultRow, locationType: string, values: Record<string, unknown>, status: string) {
+    if (locationType === "asset") {
+      await client.query(
+        "INSERT INTO map_annotations (tenant_id, production_record_id, map_version_id, page_number, annotation_type, x_ratio, y_ratio, label_x_ratio, label_y_ratio, display_status, created_by_user_id) VALUES ($1,$2,$3,$4,'asset_point',$5,$6,$5,$6,$7,$8)",
+        [assignment.tenant_id, record.id, assignment.map_version_id, values.mapPage, values.x, values.y, status, request.auth.userId],
+      );
+      return;
+    }
+    await client.query(
+      "INSERT INTO map_annotations (tenant_id, production_record_id, map_version_id, page_number, annotation_type, start_x_ratio, start_y_ratio, end_x_ratio, end_y_ratio, display_status, created_by_user_id) VALUES ($1,$2,$3,$4,'route_line',$5,$6,$7,$8,$9,$10)",
+      [assignment.tenant_id, record.id, assignment.map_version_id, values.mapPage, values.startX, values.startY, values.endX, values.endY, status, request.auth.userId],
+    );
+  }
+
+  private async duplicateWarning(client: PoolClient, assignment: MapAssignmentRow, report: DailyProductionReportRow, code: QueryResultRow, body: Record<string, unknown>) {
+    const params = [assignment.tenant_id, assignment.work_order_version_id, code.id, report.id];
+    let result;
+    if (code.location_type === "asset") {
+      result = await client.query("SELECT id, production_date, quantity_submitted, syncfield_status FROM production_records WHERE tenant_id = $1 AND work_order_version_id = $2 AND syncfield_production_code_id = $3 AND daily_production_report_id <> $4 AND status = 'submitted' AND upper(asset_identifier) = upper($5) LIMIT 5", [...params, requireString(body.asset_identifier, "asset_identifier is required")]);
+    } else if (code.location_type === "route") {
+      result = await client.query("SELECT id, production_date, quantity_submitted, syncfield_status FROM production_records WHERE tenant_id = $1 AND work_order_version_id = $2 AND syncfield_production_code_id = $3 AND daily_production_report_id <> $4 AND status = 'submitted' AND upper(from_asset_identifier) = upper($5) AND upper(to_asset_identifier) = upper($6) LIMIT 5", [...params, requireString(body.from_asset_identifier, "from_asset_identifier is required"), requireString(body.to_asset_identifier, "to_asset_identifier is required")]);
+    } else {
+      result = { rows: [] };
+    }
+    return { requires_reason: result.rows.length > 0, prior_records: result.rows.map((row) => ({ id: row.id, work_date: this.dateOnly(row.production_date), quantity: Number(row.quantity_submitted), status: row.syncfield_status })) };
+  }
+
+  private async reportRecords(client: PoolClient, tenantId: string, reportId: string) {
+    const result = await client.query(
+      `
+      SELECT pr.*, pc.code, pc.description, pc.location_type, pc.unit_of_measure
+      FROM production_records pr
+      JOIN syncfield_production_codes pc ON pc.tenant_id = pr.tenant_id AND pc.id = pr.syncfield_production_code_id
+      WHERE pr.tenant_id = $1 AND pr.daily_production_report_id = $2 AND pr.deleted_at IS NULL
+      ORDER BY pr.created_at ASC
+      `,
+      [tenantId, reportId],
+    );
+    return result.rows;
+  }
+
+  private async safeDailyProductionDetail(client: PoolClient, row: QueryResultRow) {
+    const records = await this.reportRecords(client, row.tenant_id, row.id);
+    const annotations = await client.query("SELECT * FROM map_annotations WHERE tenant_id = $1 AND production_record_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, records.map((record) => record.id)]);
+    return { ...this.safeDailyProductionSummary(row), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), totals: this.productionTotals(records), annotation_count: annotations.rowCount ?? 0 };
+  }
+
+  private safeDailyProductionSummary(row: QueryResultRow) {
+    return { id: row.id, work_date: this.dateOnly(row.work_date), work_order_version_id: row.work_order_version_id, work_order_number: row.work_order_number, crew_id: row.crew_id, crew_name: row.crew_name, map_version_id: row.map_version_id, daily_jsa_id: row.daily_jsa_id, status: row.status, submitted_at: row.submitted_at, revision_number: Number(row.revision_number ?? 1), general_notes: row.general_notes };
+  }
+
+  private safeProductionCode(row: QueryResultRow) {
+    return { id: row.id, code: row.code, description: row.description, category: row.category, unit_of_measure: row.unit_of_measure, location_type: row.location_type, requires_asset: row.requires_asset, requires_route: row.requires_route, requires_photo: row.requires_photo, requires_notes: row.requires_notes, requires_quantity: row.requires_quantity, active: row.active };
+  }
+
+  private safeProductionRecord(row: QueryResultRow) {
+    return { id: row.id, daily_report_id: row.daily_production_report_id, production_code_id: row.syncfield_production_code_id, code: row.code, description: row.description, reported_quantity: Number(row.quantity_submitted), unit_of_measure: row.unit_of_measure ?? row.unit, location_type: row.syncfield_location_type, status: row.syncfield_status, record_status: row.status, asset_type: row.asset_type, asset_identifier: row.asset_identifier, from_asset_identifier: row.from_asset_identifier, to_asset_identifier: row.to_asset_identifier, map_page: row.map_page === null ? null : Number(row.map_page), notes: row.production_notes, duplicate_reason: row.duplicate_reason, client_mutation_id: row.client_mutation_id, locked: Boolean(row.locked_at), reported_at: row.created_at };
+  }
+
+  private async safeProductionRecordDetail(client: PoolClient, row: QueryResultRow) {
+    const code = await client.query("SELECT code, description, unit_of_measure FROM syncfield_production_codes WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.syncfield_production_code_id]);
+    return this.safeProductionRecord({ ...row, ...code.rows[0] });
+  }
+
+  private safeAnnotation(row: QueryResultRow) {
+    return { id: row.id, production_record_id: row.production_record_id, map_version_id: row.map_version_id, page_number: Number(row.page_number), annotation_type: row.annotation_type, x_ratio: row.x_ratio === null ? null : Number(row.x_ratio), y_ratio: row.y_ratio === null ? null : Number(row.y_ratio), start_x_ratio: row.start_x_ratio === null ? null : Number(row.start_x_ratio), start_y_ratio: row.start_y_ratio === null ? null : Number(row.start_y_ratio), end_x_ratio: row.end_x_ratio === null ? null : Number(row.end_x_ratio), end_y_ratio: row.end_y_ratio === null ? null : Number(row.end_y_ratio), display_status: row.display_status };
+  }
+
+  private productionTotals(records: QueryResultRow[]) {
+    const totals = new Map<string, { code: string; description: string; quantity: number; unit: string; count: number }>();
+    const status_counts: Record<string, number> = { complete: 0, partial: 0, blocked: 0, rework: 0 };
+    for (const row of records) {
+      const key = row.code;
+      const current = totals.get(key) ?? { code: row.code, description: row.description, quantity: 0, unit: row.unit_of_measure ?? row.unit, count: 0 };
+      current.quantity += Number(row.quantity_submitted);
+      current.count += 1;
+      totals.set(key, current);
+      if (status_counts[row.syncfield_status] !== undefined) status_counts[row.syncfield_status] += 1;
+    }
+    return { by_code: [...totals.values()], record_count: records.length, status_counts };
+  }
+
+  private async buildReportSnapshot(client: PoolClient, report: QueryResultRow) {
+    const records = await this.reportRecords(client, report.tenant_id, report.id);
+    const annotations = await client.query("SELECT * FROM map_annotations WHERE tenant_id = $1 AND production_record_id = ANY($2::uuid[]) AND deleted_at IS NULL", [report.tenant_id, records.map((record) => record.id)]);
+    return { report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), totals: this.productionTotals(records) };
+  }
+
+  private async requireProductionRecord(client: PoolClient, tenantId: string, recordId: string) {
+    const result = await client.query("SELECT * FROM production_records WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, recordId]);
+    if (!result.rows[0]) throw new NotFoundException("production record not found");
+    return result.rows[0];
+  }
+
+  private async requireScopedProductionRecord(client: PoolClient, assignment: MapAssignmentRow, recordId: string) {
+    const result = await client.query("SELECT * FROM production_records WHERE tenant_id = $1 AND id = $2 AND work_order_version_id = $3 AND crew_id = $4 AND partner_organization_id = $5 AND deleted_at IS NULL", [assignment.tenant_id, recordId, assignment.work_order_version_id, assignment.crew_id, assignment.organization_id]);
+    if (!result.rows[0]) throw new NotFoundException("production record not found");
+    return result.rows[0];
+  }
+
+  private async findMutationReceipt(client: PoolClient, request: AuthenticatedRequest, mutationId: string, operation: string) {
+    const result = await client.query("SELECT * FROM field_mutation_receipts WHERE tenant_id = $1 AND actor_user_id = $2 AND mutation_id = $3 AND operation = $4", [request.auth.tenantId, request.auth.userId, mutationId, operation]);
+    return result.rows[0] ?? null;
+  }
+
+  private async recordMutationReceipt(client: PoolClient, request: AuthenticatedRequest, mutationId: string, operation: string, entityType: string, entityId: string, payload: unknown) {
+    const payloadHash = createHash("sha256").update(JSON.stringify(payload ?? {})).digest("hex");
+    await client.query(
+      "INSERT INTO field_mutation_receipts (tenant_id, actor_user_id, mutation_id, operation, entity_type, entity_id, status, payload_hash) VALUES ($1,$2,$3,$4,$5,$6,'synced',$7) ON CONFLICT (tenant_id, actor_user_id, mutation_id, operation) DO NOTHING",
+      [request.auth.tenantId, request.auth.userId, mutationId, operation, entityType, entityId, payloadHash],
+    );
+  }
+
   private async safeJsaDetail(client: PoolClient, row: QueryResultRow) {
     const participants = await client.query("SELECT p.*, w.first_name, w.last_name FROM daily_jsa_participants p JOIN workers w ON w.tenant_id = p.tenant_id AND w.id = p.worker_id WHERE p.tenant_id = $1 AND p.daily_jsa_id = $2 ORDER BY p.created_at ASC", [row.tenant_id, row.id]);
     return { ...this.safeJsa(row), participants: participants.rows.map((p) => ({ worker_id: p.worker_id, name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(), role: p.crew_role, participation_status: p.participation_status, acknowledged: p.acknowledged })) };
@@ -742,6 +1214,12 @@ export class SyncfieldController {
   private positiveInt(value: unknown, message: string): number {
     const number = Number(value);
     if (!Number.isInteger(number) || number <= 0) throw new BadRequestException(message);
+    return number;
+  }
+
+  private positiveNumber(value: unknown, message: string): number {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) throw new BadRequestException(message);
     return number;
   }
 

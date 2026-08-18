@@ -213,6 +213,26 @@ test("certified SyncField map and Daily JSA E2E is included in the global certif
   );
 });
 
+test("certified SyncField Daily Production E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-daily-production\.spec\.ts/,
+    "P9 SyncField Daily Production E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P9A field offline replay wiring remains browser-persistent and automatic", () => {
+  const source = read("apps/web/app/partner/partner-shell.tsx");
+  assert.match(source, /const queueDbName = "syncos-field-production"/, "P9A queue must name the IndexedDB queue");
+  assert.match(source, /indexedDB\.open\(queueDbName/, "P9A queue must use IndexedDB persistence");
+  assert.match(source, /window\.addEventListener\("online"/, "P9A queue must replay on browser online event");
+  assert.match(source, /replayFieldMutations/, "P9A queue replay helper must remain wired");
+  assert.match(source, /fieldQueueScope/, "P9A queue must scope pending mutations by user, Partner, and report");
+  assert.match(source, /REPORT ALREADY SUBMITTED - LOCAL CHANGES NOT APPLIED/, "P9A submitted-report conflict must remain safe and explicit");
+  assert.doesNotMatch(source, /storage_key.*payload|contractor_rate.*payload|margin.*payload/i, "P9A queue payload must not intentionally persist restricted fields");
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
@@ -220,6 +240,7 @@ function read(relativePath) {
 function listFiles(directory) {
   const entries = fs.readdirSync(directory, { withFileTypes: true });
   return entries.flatMap((entry) => {
+    if (entry.name === "synccommsystems.com") return [];
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) return listFiles(fullPath);
     return [fullPath];

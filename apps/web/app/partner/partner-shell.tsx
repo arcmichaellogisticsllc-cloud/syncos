@@ -22,7 +22,9 @@ type Section =
   | "vehicles"
   | "mobilization"
   | "field-map"
-  | "daily-jsa";
+  | "daily-jsa"
+  | "daily-production"
+  | "review-day";
 
 type PartnerContext = {
   user: { id: string; display_name: string };
@@ -108,6 +110,21 @@ type DailyJsa = {
   assignment?: Record<string, unknown>;
   participants?: Array<{ worker_id?: string; name?: string; role?: string; participation_status?: string; acknowledged?: boolean }>;
 };
+type ProductionCode = { id?: string; code?: string; description?: string; unit_of_measure?: string; location_type?: string };
+type ProductionRecord = { id?: string; production_code_id?: string; code?: string; description?: string; reported_quantity?: number; unit_of_measure?: string; location_type?: string; status?: string; asset_identifier?: string; from_asset_identifier?: string; to_asset_identifier?: string; map_page?: number; notes?: string; locked?: boolean };
+type DailyProduction = {
+  id?: string;
+  status?: string;
+  work_date?: string;
+  work_order_version_id?: string;
+  revision_number?: number;
+  gate?: { allowed?: boolean; blockers?: string[] };
+  records?: ProductionRecord[];
+  annotations?: Array<Record<string, unknown>>;
+  totals?: { by_code?: Array<{ code?: string; description?: string; quantity?: number; unit?: string; count?: number }>; record_count?: number; status_counts?: Record<string, number> };
+  annotation_count?: number;
+  submitted_at?: string;
+};
 
 type PortalData = {
   context?: PartnerContext;
@@ -129,6 +146,9 @@ type PortalData = {
   mapAssignment?: MapAssignment | null;
   jsaToday?: DailyJsa | null;
   jsas?: DailyJsa[];
+  productionToday?: DailyProduction | null;
+  productionCodes?: ProductionCode[];
+  productionReports?: DailyProduction[];
   foremanCrew?: Crew | null;
   foremanRoster?: Worker[];
   foremanWorkOrder?: WorkOrder | null;
@@ -153,6 +173,8 @@ const foremanNav = [
   ["Assignment", "/partner/work-orders"],
   ["Field Map", "/partner/field/map"],
   ["Daily JSA", "/partner/jsa"],
+  ["Production", "/partner/production"],
+  ["Review Day", "/partner/production/review"],
   ["Mobilization", "/partner/mobilization"],
 ] as const;
 
@@ -216,7 +238,7 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
               {label}
             </Link>
           ))}
-          <span className="partner-nav-link disabled" aria-disabled="true">Daily Production <small>After start authorization</small></span>
+          {persona === "partner_admin" ? <Link className={section === "daily-production" ? "partner-nav-link active" : "partner-nav-link"} href="/partner/production">Daily Production</Link> : null}
         </nav>
       </aside>
       <section className="partner-main">
@@ -261,7 +283,7 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
 
 async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
   const permissions = readPermissions();
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas] = await Promise.all([
+  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports] = await Promise.all([
     safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
     safeFetch<CompanyProfile>("partner-compliance/me/company-profile"),
     safeFetch<TaxProfile>("partner-compliance/me/w9"),
@@ -274,6 +296,7 @@ async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Pro
     safeFetch<VehicleAssignment[]>("partner-agreements/me/vehicle-assignments", []),
     permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
     permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
+    permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
@@ -288,12 +311,12 @@ async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Pro
   const versionId = str(firstWorkOrder?.id);
   const mobilization = versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas };
+  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports };
 }
 
 async function loadForeman(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
   const permissions = readPermissions();
-  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday] = await Promise.all([
+  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes] = await Promise.all([
     safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
     safeFetch<Crew | null>("partner-workforce/foreman/crew", null),
     safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []),
@@ -302,8 +325,10 @@ async function loadForeman(context: PartnerContext, actions?: PartnerActions): P
     safeFetch<Notice | null>("partner-mobilization/foreman/notice", null),
     permissions.includes("partner_map.read_assigned") ? safeFetch<MapAssignment | null>("syncfield/foreman/map-assignment", null) : null,
     permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>("syncfield/foreman/jsa/today", null) : null,
+    permissions.includes("partner_daily_production.read") ? safeFetch<DailyProduction | null>("syncfield/foreman/production/today", null) : null,
+    permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>("syncfield/foreman/production/codes", []) : [],
   ]);
-  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday };
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes };
 }
 
 async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
@@ -325,6 +350,8 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     if (section === "work-orders" || section === "work-order-detail") return <ForemanAssignment data={data} />;
     if (section === "field-map") return <FieldMapWorkspace data={data} />;
     if (section === "daily-jsa") return <DailyJsaWorkspace data={data} completeJsa={completeJsa} />;
+    if (section === "daily-production") return <DailyProductionWorkspace data={data} />;
+    if (section === "review-day") return <ReviewDayWorkspace data={data} />;
     if (section === "mobilization") return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
   }
 
@@ -359,6 +386,9 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
       return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
     case "daily-jsa":
       return <AdminJsaWorkspace data={data} />;
+    case "daily-production":
+    case "review-day":
+      return <AdminProductionWorkspace data={data} />;
     case "field-map":
       return <FieldMapWorkspace data={data} />;
     default:
@@ -558,6 +588,182 @@ function AdminJsaWorkspace({ data }: { data: PortalData }) {
       </div>
       {!jsas.length ? <EmptyPortal title="No Daily JSAs" body="Completed Foreman safety attestations appear here." /> : null}
     </Panel>
+  );
+}
+
+function DailyProductionWorkspace({ data }: { data: PortalData }) {
+  const report = data.productionToday;
+  const blockers = report?.gate?.blockers ?? [];
+  const codes = data.productionCodes ?? [];
+  const queue = useFieldProductionQueue(data);
+  const fiber = codes.find((code) => code.code === "FIBER") ?? codes.find((code) => code.location_type === "route");
+  const transfer = codes.find((code) => code.code === "TRANSFER") ?? codes.find((code) => code.location_type === "asset");
+  const labor = codes.find((code) => code.code === "LABOR") ?? codes.find((code) => code.location_type === "daily");
+  const localRecords = localProductionRecords(queue.mutations, codes);
+  const visibleRecords = [...(report?.records ?? []), ...localRecords];
+  const visibleTotals = mergeProductionTotals(report?.totals, localRecords);
+  const visibleAnnotationCount = (report?.annotation_count ?? 0) + localRecords.filter((record) => record.location_type !== "daily").length;
+  const [error, setError] = useState<string | null>(null);
+
+  async function quickCreate(kind: "asset" | "route" | "daily") {
+    const code = kind === "asset" ? transfer : kind === "route" ? fiber : labor;
+    if (!code?.id) return;
+    const mutation = {
+      client_mutation_id: crypto.randomUUID(),
+      work_date: report?.work_date,
+      production_code_id: code.id,
+      location_type: kind,
+      reported_quantity: kind === "route" ? 141 : 1,
+      status: "complete",
+      map_page: 1,
+      asset_type: "pole",
+      asset_identifier: "Pole 12301",
+      from_asset_identifier: "Pole 12301",
+      to_asset_identifier: "Pole 12312",
+      x_ratio: 0.42,
+      y_ratio: 0.48,
+      start_x_ratio: 0.42,
+      start_y_ratio: 0.48,
+      end_x_ratio: 0.66,
+      end_y_ratio: 0.52,
+      notes: `${kind} field entry`,
+    };
+    setError(null);
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await queue.enqueue({ operation: "CREATE_PRODUCTION", payload: mutation });
+      return;
+    }
+    try {
+      await syncosFetch("syncfield/foreman/production/records", { method: "POST", body: mutation });
+      location.reload();
+    } catch (caught) {
+      if (isTransientNetworkError(caught)) {
+        await queue.enqueue({ operation: "CREATE_PRODUCTION", payload: mutation });
+        return;
+      }
+      setError(caught instanceof Error ? safeSyncError(caught.message) : "Production save failed.");
+    }
+  }
+  return (
+    <div className="partner-stack">
+      <Panel title="Daily Production" eyebrow={report?.work_date || "Today"}>
+        <StatusRows rows={[
+          ["Report", report?.status ?? "not_started"],
+          ["Gate", blockers.length ? blockers.join(", ") : "ready"],
+          ["Sync", queue.label],
+          ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
+          ["Daily JSA", data.jsaToday?.status ?? "required"],
+        ]} />
+        {error ? <p className="partner-safe-text error-text">{error}</p> : null}
+        {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
+        <div className="field-action-bar">
+          <button className="partner-button primary wide-touch" type="button" onClick={() => void quickCreate("asset")}>+ Asset</button>
+          <button className="partner-button primary wide-touch" type="button" onClick={() => void quickCreate("route")}>+ Route</button>
+          <button className="partner-button wide-touch" type="button" onClick={() => void quickCreate("daily")}>+ Daily</button>
+          <Link className="partner-button wide-touch" href="/partner/production/review">Review Day</Link>
+        </div>
+      </Panel>
+      <Panel title="Today's Production" eyebrow={`${visibleRecords.length} records`}>
+        <ProductionList records={visibleRecords} />
+      </Panel>
+      <Panel title="Daily Totals" eyebrow="Derived from ProductionRecords">
+        <TotalsView totals={visibleTotals} annotationCount={visibleAnnotationCount} />
+      </Panel>
+    </div>
+  );
+}
+
+function ReviewDayWorkspace({ data }: { data: PortalData }) {
+  const report = data.productionToday;
+  const queue = useFieldProductionQueue(data);
+  const unsynced = queue.unsyncedCount;
+  async function submitDay() {
+    if (unsynced) return;
+    await syncosFetch("syncfield/foreman/production/review-day/submit", { method: "POST", body: { work_date: report?.work_date, client_mutation_id: crypto.randomUUID(), general_notes: "Foreman reviewed daily production." } });
+    location.reload();
+  }
+  return (
+    <div className="partner-stack">
+      <Panel title="Review Day" eyebrow={report?.work_date || "Today"}>
+        <StatusRows rows={[
+          ["Report", report?.status ?? "not_started"],
+          ["Daily JSA", data.jsaToday?.status ?? "required"],
+          ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
+          ["Record Count", String(report?.totals?.record_count ?? 0)],
+          ["Map Annotation Count", String(report?.annotation_count ?? 0)],
+          ["Unsynced Mutations", String(unsynced)],
+          ["Sync", queue.label],
+          ["Submitted", report?.submitted_at ?? "Not submitted"],
+        ]} />
+        {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
+        <button className="partner-button primary wide-touch" type="button" disabled={Boolean(unsynced) || report?.status === "submitted"} onClick={() => void submitDay()}>
+          Submit Daily Production
+        </button>
+        {unsynced ? <p className="partner-safe-text">Submission disabled: sync unsynced field mutations first.</p> : null}
+      </Panel>
+      <Panel title="Daily Totals" eyebrow="No billing calculation">
+        <TotalsView totals={report?.totals} annotationCount={report?.annotation_count ?? 0} />
+      </Panel>
+      <Panel title="Production Records" eyebrow="Submitted records become read-only">
+        <ProductionList records={report?.records ?? []} />
+      </Panel>
+    </div>
+  );
+}
+
+function AdminProductionWorkspace({ data }: { data: PortalData }) {
+  return (
+    <Panel title="Daily Production" eyebrow="Partner Admin-safe">
+      <div className="partner-card-grid">
+        {(data.productionReports ?? []).map((report) => (
+          <RecordCard key={report.id} title={report.work_date || "Work date"} status={report.status}>
+            <StatusRows rows={[["Work Order", str(report.work_order_version_id)], ["Submitted", report.submitted_at ?? "Not submitted"], ["Revision", str(report.revision_number) || "1"]]} />
+          </RecordCard>
+        ))}
+      </div>
+      {!(data.productionReports ?? []).length ? <EmptyPortal title="No Daily Production" body="Draft and submitted field reports appear here after Foreman entry." /> : null}
+    </Panel>
+  );
+}
+
+function ProductionList({ records }: { records: ProductionRecord[] }) {
+  if (!records.length) return <EmptyPortal title="No production records" body="Saved Asset, Route, and Daily production records appear here." />;
+  return (
+    <div className="partner-card-grid">
+      {records.map((record) => (
+        <RecordCard key={record.id} title={recordTitle(record)} status={record.status}>
+          <StatusRows rows={[
+            ["Production", record.description || record.code],
+            ["Quantity", `${record.reported_quantity ?? 0} ${record.unit_of_measure ?? ""}`],
+            ["Location", record.location_type],
+            ["Record", record.locked ? "read_only_submitted" : "draft_editable"],
+          ]} />
+        </RecordCard>
+      ))}
+    </div>
+  );
+}
+
+function SyncFailureList({ messages, onRetry }: { messages: string[]; onRetry: () => void }) {
+  return (
+    <div className="partner-sync-failures" role="status" aria-live="polite">
+      {messages.map((message) => <p key={message} className="partner-safe-text error-text">{message}</p>)}
+      <button className="partner-button wide-touch" type="button" onClick={onRetry}>Retry Sync</button>
+    </div>
+  );
+}
+
+function TotalsView({ totals, annotationCount }: { totals?: DailyProduction["totals"]; annotationCount: number }) {
+  return (
+    <StatusRows rows={[
+      ...((totals?.by_code ?? []).map((row) => [row.description || row.code || "Production", `${row.quantity ?? 0} ${row.unit ?? ""}`] as [string, string])),
+      ["Production Records", String(totals?.record_count ?? 0)],
+      ["Complete", String(totals?.status_counts?.complete ?? 0)],
+      ["Partial", String(totals?.status_counts?.partial ?? 0)],
+      ["Blocked", String(totals?.status_counts?.blocked ?? 0)],
+      ["Rework", String(totals?.status_counts?.rework ?? 0)],
+      ["Map Annotations", String(annotationCount)],
+    ]} />
   );
 }
 
@@ -916,13 +1122,15 @@ function activeSectionLabel(section: Section, persona?: Persona) {
     if (section === "work-orders" || section === "work-order-detail") return "Assignment";
     if (section === "field-map") return "Field Map";
     if (section === "daily-jsa") return "Daily JSA";
+    if (section === "daily-production") return "Production";
+    if (section === "review-day") return "Review Day";
     return "Mobilization";
   }
   if (section === "worker-detail") return "Workers";
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day" };
   return labels[section] ?? "Dashboard";
 }
 
@@ -934,6 +1142,8 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "agreement-detail") return "Agreement";
   if (section === "field-map") return "Field Map";
   if (section === "daily-jsa") return "Daily JSA";
+  if (section === "daily-production") return "Daily Production";
+  if (section === "review-day") return "Review Day";
   return activeSectionLabel(section, persona);
 }
 
@@ -980,6 +1190,335 @@ function shortTime(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function recordTitle(record: ProductionRecord) {
+  if (record.location_type === "route") return `${record.from_asset_identifier ?? "Start"} -> ${record.to_asset_identifier ?? "End"}`;
+  if (record.location_type === "asset") return record.asset_identifier || "Asset production";
+  return record.description || record.code || "Daily production";
+}
+
+type OfflineMutationStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT";
+type OfflineMutation = {
+  mutationId: string;
+  operation: "CREATE_PRODUCTION";
+  scopeKey: string;
+  reportId?: string;
+  localEntityId: string;
+  serverEntityId?: string;
+  payload: Record<string, unknown>;
+  status: OfflineMutationStatus;
+  createdAt: string;
+  sequence: number;
+  retryCount: number;
+  lastAttemptAt?: string;
+  lastSafeError?: string;
+  canonical?: Record<string, unknown>;
+};
+
+const queueDbName = "syncos-field-production";
+const queueStoreName = "mutations";
+const legacyQueueKey = "syncos.fieldMutations";
+const maxAutoRetries = 3;
+
+function useFieldProductionQueue(data: PortalData) {
+  const scopeKey = fieldQueueScope(data);
+  const [mutations, setMutations] = useState<OfflineMutation[]>([]);
+  const [online, setOnline] = useState(true);
+
+  useEffect(() => {
+    setOnline(typeof navigator === "undefined" ? true : navigator.onLine);
+  }, []);
+
+  useEffect(() => {
+    if (!scopeKey) return;
+    let cancelled = false;
+    async function load() {
+      await migrateLegacyQueue(scopeKey);
+      const next = await listFieldMutations(scopeKey);
+      if (!cancelled) setMutations(next);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [scopeKey]);
+
+  async function replay() {
+    if (!scopeKey || (typeof navigator !== "undefined" && !navigator.onLine)) return;
+    const result = await replayFieldMutations(scopeKey, setMutations);
+    if (result.syncedCount > 0 && result.remainingUnsynced === 0) location.reload();
+  }
+
+  useEffect(() => {
+    if (!scopeKey) return;
+    const handleOnline = () => {
+      setOnline(true);
+      void replayFieldMutations(scopeKey, setMutations).then((result) => {
+        if (result.syncedCount > 0 && result.remainingUnsynced === 0) location.reload();
+      });
+    };
+    const handleOffline = () => setOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    if (typeof navigator !== "undefined" && navigator.onLine) handleOnline();
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [scopeKey]);
+
+  async function enqueue(entry: { operation: "CREATE_PRODUCTION"; payload: Record<string, unknown> }) {
+    if (!scopeKey) return;
+    const payload = { ...entry.payload, client_mutation_id: str(entry.payload.client_mutation_id) || crypto.randomUUID() };
+    const mutation: OfflineMutation = {
+      mutationId: String(payload.client_mutation_id),
+      operation: entry.operation,
+      scopeKey,
+      reportId: data.productionToday?.id,
+      localEntityId: crypto.randomUUID(),
+      payload,
+      status: "PENDING",
+      createdAt: new Date().toISOString(),
+      sequence: Date.now(),
+      retryCount: 0,
+    };
+    await saveFieldMutation(mutation);
+    setMutations(await listFieldMutations(scopeKey));
+  }
+
+  const unsynced = mutations.filter(isUnsyncedMutation);
+  const failedMessages = [...new Set(mutations.filter((mutation) => mutation.status === "FAILED" || mutation.status === "CONFLICT").map((mutation) => mutation.lastSafeError ?? "Sync failed."))];
+  return {
+    mutations,
+    unsyncedCount: unsynced.length,
+    failedMessages,
+    enqueue,
+    replay,
+    label: syncLabel(mutations, online),
+  };
+}
+
+function syncLabel(mutations: OfflineMutation[], online: boolean) {
+  const failed = mutations.filter((mutation) => mutation.status === "FAILED" || mutation.status === "CONFLICT").length;
+  if (failed) return "sync failed";
+  const syncing = mutations.filter((mutation) => mutation.status === "SYNCING").length;
+  if (syncing) return "syncing";
+  const pending = mutations.filter((mutation) => mutation.status === "PENDING").length;
+  if (pending && !online) return `offline - ${pending} ${pending === 1 ? "change" : "changes"} saved locally`;
+  if (pending) return `syncing ${pending} pending ${pending === 1 ? "change" : "changes"}`;
+  return online ? "synced" : "offline";
+}
+
+function fieldQueueScope(data: PortalData) {
+  const userId = data.context?.user.id;
+  const organizationId = data.context?.organization.id;
+  const report = data.productionToday;
+  const reportScope = report?.id ?? report?.work_date;
+  if (!userId || !organizationId || !reportScope) return "";
+  return ["tenant", tokenTenantId(), "user", userId, "org", organizationId, "report", reportScope].join(":");
+}
+
+function tokenTenantId() {
+  const token = readToken();
+  const payload = token.split(".")[1];
+  if (!payload) return "unknown";
+  try {
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { tenant_id?: string };
+    return decoded.tenant_id ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function replayFieldMutations(scopeKey: string, setMutations: (mutations: OfflineMutation[]) => void) {
+  let syncedCount = 0;
+  const queue = (await listFieldMutations(scopeKey)).filter(isReplayableMutation).sort((left, right) => left.sequence - right.sequence);
+  for (const mutation of queue) {
+    if (mutation.retryCount >= maxAutoRetries) {
+      await saveFieldMutation({ ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." });
+      setMutations(await listFieldMutations(scopeKey));
+      continue;
+    }
+    const syncing = { ...mutation, status: "SYNCING" as const, lastAttemptAt: new Date().toISOString() };
+    await saveFieldMutation(syncing);
+    setMutations(await listFieldMutations(scopeKey));
+    try {
+      const canonical = await syncosFetch<Record<string, unknown>>("syncfield/foreman/production/records", { method: "POST", body: mutation.payload });
+      await saveFieldMutation({ ...syncing, status: "SYNCED", serverEntityId: str(canonical.id), canonical, lastSafeError: undefined });
+      syncedCount += 1;
+      setMutations(await listFieldMutations(scopeKey));
+    } catch (error) {
+      const message = safeSyncError(error instanceof Error ? error.message : "Sync failed.");
+      const status: OfflineMutationStatus = isConflictMessage(message) ? "CONFLICT" : isTransientNetworkError(error) ? "PENDING" : "FAILED";
+      await saveFieldMutation({ ...mutation, status, retryCount: mutation.retryCount + 1, lastAttemptAt: new Date().toISOString(), lastSafeError: message });
+      setMutations(await listFieldMutations(scopeKey));
+      if (status === "PENDING") break;
+    }
+  }
+  const remainingUnsynced = (await listFieldMutations(scopeKey)).filter(isUnsyncedMutation).length;
+  return { syncedCount, remainingUnsynced };
+}
+
+function isReplayableMutation(mutation: OfflineMutation) {
+  return mutation.status === "PENDING" || mutation.status === "FAILED";
+}
+
+function isUnsyncedMutation(mutation: OfflineMutation) {
+  return mutation.status === "PENDING" || mutation.status === "SYNCING" || mutation.status === "FAILED" || mutation.status === "CONFLICT";
+}
+
+function localProductionRecords(mutations: OfflineMutation[], codes: ProductionCode[]): ProductionRecord[] {
+  const codeById = new Map(codes.map((code) => [code.id, code]));
+  return mutations.filter(isUnsyncedMutation).map((mutation) => {
+    const code = codeById.get(str(mutation.payload.production_code_id));
+    return {
+      id: mutation.localEntityId,
+      production_code_id: str(mutation.payload.production_code_id),
+      code: code?.code,
+      description: code?.description ?? "Unsynced production",
+      reported_quantity: Number(mutation.payload.reported_quantity ?? 0),
+      unit_of_measure: code?.unit_of_measure,
+      location_type: str(mutation.payload.location_type),
+      status: mutation.status === "CONFLICT" || mutation.status === "FAILED" ? "blocked" : str(mutation.payload.status) || "complete",
+      asset_identifier: str(mutation.payload.asset_identifier),
+      from_asset_identifier: str(mutation.payload.from_asset_identifier),
+      to_asset_identifier: str(mutation.payload.to_asset_identifier),
+      map_page: mutation.payload.map_page === undefined ? undefined : Number(mutation.payload.map_page),
+      notes: mutation.status === "PENDING" ? "Saved locally; waiting to sync." : mutation.lastSafeError ?? "Syncing saved field entry.",
+      locked: false,
+    };
+  });
+}
+
+function mergeProductionTotals(totals: DailyProduction["totals"], localRecords: ProductionRecord[]): DailyProduction["totals"] {
+  if (!localRecords.length) return totals;
+  const byCode = new Map<string, { code?: string; description?: string; quantity: number; unit?: string; count: number }>();
+  for (const row of totals?.by_code ?? []) byCode.set(row.code ?? row.description ?? crypto.randomUUID(), { ...row, quantity: Number(row.quantity ?? 0), count: Number(row.count ?? 0) });
+  const status_counts: Record<string, number> = { complete: totals?.status_counts?.complete ?? 0, partial: totals?.status_counts?.partial ?? 0, blocked: totals?.status_counts?.blocked ?? 0, rework: totals?.status_counts?.rework ?? 0 };
+  for (const record of localRecords) {
+    const key = record.code ?? record.production_code_id ?? record.description ?? "local";
+    const current = byCode.get(key) ?? { code: record.code, description: record.description, quantity: 0, unit: record.unit_of_measure, count: 0 };
+    current.quantity += Number(record.reported_quantity ?? 0);
+    current.count += 1;
+    byCode.set(key, current);
+    const status = record.status ?? "complete";
+    status_counts[status] = (status_counts[status] ?? 0) + 1;
+  }
+  return { by_code: [...byCode.values()], record_count: (totals?.record_count ?? 0) + localRecords.length, status_counts };
+}
+
+async function migrateLegacyQueue(scopeKey: string) {
+  if (typeof window === "undefined") return;
+  const legacy = window.localStorage.getItem(legacyQueueKey);
+  if (!legacy) return;
+  try {
+    const parsed = JSON.parse(legacy) as Array<{ operation?: string; payload?: Record<string, unknown>; createdAt?: string; retryCount?: number; status?: string }>;
+    for (const entry of parsed) {
+      if (entry.operation !== "CREATE_PRODUCTION" || !entry.payload) continue;
+      const payload = { ...entry.payload, client_mutation_id: str(entry.payload.client_mutation_id) || crypto.randomUUID() };
+      await saveFieldMutation({
+        mutationId: String(payload.client_mutation_id),
+        operation: "CREATE_PRODUCTION",
+        scopeKey,
+        localEntityId: crypto.randomUUID(),
+        payload,
+        status: "PENDING",
+        createdAt: entry.createdAt ?? new Date().toISOString(),
+        sequence: Date.now(),
+        retryCount: Number(entry.retryCount ?? 0),
+      });
+    }
+    window.localStorage.removeItem(legacyQueueKey);
+  } catch {
+    window.localStorage.removeItem(legacyQueueKey);
+  }
+}
+
+async function listFieldMutations(scopeKey: string): Promise<OfflineMutation[]> {
+  if (typeof window === "undefined") return [];
+  const store = await fieldQueueStore();
+  return store.list(scopeKey);
+}
+
+async function saveFieldMutation(mutation: OfflineMutation) {
+  if (typeof window === "undefined") return;
+  const store = await fieldQueueStore();
+  await store.save(mutation);
+}
+
+async function fieldQueueStore(): Promise<{ list(scopeKey: string): Promise<OfflineMutation[]>; save(mutation: OfflineMutation): Promise<void> }> {
+  if (!("indexedDB" in window)) return localStorageQueueStore();
+  return indexedDbQueueStore();
+}
+
+async function indexedDbQueueStore() {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(queueDbName, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(queueStoreName)) {
+        const store = db.createObjectStore(queueStoreName, { keyPath: "mutationId" });
+        store.createIndex("scopeKey", "scopeKey", { unique: false });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB unavailable."));
+  });
+  return {
+    list(scopeKey: string) {
+      return new Promise<OfflineMutation[]>((resolve, reject) => {
+        const request = db.transaction(queueStoreName, "readonly").objectStore(queueStoreName).index("scopeKey").getAll(scopeKey);
+        request.onsuccess = () => resolve((request.result as OfflineMutation[]).sort((left, right) => left.sequence - right.sequence));
+        request.onerror = () => reject(request.error ?? new Error("Field queue read failed."));
+      });
+    },
+    save(mutation: OfflineMutation) {
+      return new Promise<void>((resolve, reject) => {
+        const request = db.transaction(queueStoreName, "readwrite").objectStore(queueStoreName).put(mutation);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error ?? new Error("Field queue write failed."));
+      });
+    },
+  };
+}
+
+function localStorageQueueStore() {
+  const storageKey = "syncos.fieldProductionMutations";
+  return {
+    async list(scopeKey: string) {
+      try {
+        const all = JSON.parse(window.localStorage.getItem(storageKey) || "[]") as OfflineMutation[];
+        return all.filter((mutation) => mutation.scopeKey === scopeKey).sort((left, right) => left.sequence - right.sequence);
+      } catch {
+        return [];
+      }
+    },
+    async save(mutation: OfflineMutation) {
+      const all = JSON.parse(window.localStorage.getItem(storageKey) || "[]") as OfflineMutation[];
+      const next = all.filter((candidate) => candidate.mutationId !== mutation.mutationId);
+      next.push(mutation);
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
+    },
+  };
+}
+
+function isTransientNetworkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|network|load failed|offline/i.test(message);
+}
+
+function isConflictMessage(message: string) {
+  return /submitted|read-only|already submitted/i.test(message);
+}
+
+function safeSyncError(message: string) {
+  if (/submitted|read-only|only draft/i.test(message)) return "REPORT ALREADY SUBMITTED - LOCAL CHANGES NOT APPLIED";
+  if (/production_start_not_authorized/i.test(message)) return "Production start is no longer authorized. Local changes were not applied.";
+  if (/daily_jsa_incomplete/i.test(message)) return "Daily JSA is no longer complete. Local changes were not applied.";
+  if (/permission|forbidden/i.test(message)) return "You do not have permission to sync this field change.";
+  if (/production code/i.test(message)) return "Production code is no longer available for this Work Order.";
+  return message || "Sync failed.";
 }
 
 function rateLabel(rate?: Record<string, unknown>) {

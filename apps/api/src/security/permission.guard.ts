@@ -63,6 +63,18 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_jsa.update_draft",
   "partner_jsa.complete",
   "partner_jsa.read_own",
+  "partner_daily_production.read",
+  "partner_daily_production.create",
+  "partner_daily_production.update_draft",
+  "partner_daily_production.delete_draft",
+  "partner_daily_production.submit",
+  "partner_production_record.create",
+  "partner_production_record.update_draft",
+  "partner_production_record.delete_draft",
+  "partner_production_photo.create",
+  "partner_field_sync.submit",
+  "partner_daily_production.read_org",
+  "partner_production.read_org",
 ]);
 
 @Injectable()

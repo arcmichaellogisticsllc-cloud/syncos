@@ -1843,6 +1843,13 @@ th {
   text-align: center;
 }
 
+.field-action-bar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  margin-top: 14px;
+}
+
 .field-map-canvas {
   align-items: center;
   background:
@@ -1875,6 +1882,16 @@ th {
   color: #4f615b;
   line-height: 1.45;
   margin: 12px 0 0;
+}
+
+.partner-sync-failures {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.error-text {
+  color: #9f1239;
 }
 
 .partner-banner {
@@ -1929,6 +1946,10 @@ th {
 
   .field-map-viewer {
     min-height: 420px;
+  }
+
+  .field-action-bar {
+    grid-template-columns: 1fr;
   }
 
   .partner-list-row,

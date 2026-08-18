@@ -5,6 +5,7 @@ export type WriteActionResult<T> = {
   entityType: string;
   entityId: string;
   eventType?: string;
+  skipEventAudit?: boolean;
   afterState: T;
   beforeState?: Record<string, unknown>;
   additionalEvents?: Array<{
@@ -48,19 +49,21 @@ export async function executeWriteAction<T>(
     const systemActions = result.eventType
       ? [{ actionType: `${eventType}.processed`, payload: { action: input.action } }]
       : input.systemActions;
-    await appendEventAuditAndActions(client, {
-      tenantId: input.tenantId,
-      actorUserId: input.actorUserId,
-      action: input.action,
-      aggregateType: input.aggregateType,
-      entityType: result.entityType,
-      entityId: result.entityId,
-      eventType,
-      beforeState: result.beforeState,
-      afterState: result.afterState as Record<string, unknown>,
-      audit: input.audit,
-      systemActions,
-    });
+    if (!result.skipEventAudit) {
+      await appendEventAuditAndActions(client, {
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        action: input.action,
+        aggregateType: input.aggregateType,
+        entityType: result.entityType,
+        entityId: result.entityId,
+        eventType,
+        beforeState: result.beforeState,
+        afterState: result.afterState as Record<string, unknown>,
+        audit: input.audit,
+        systemActions,
+      });
+    }
 
     for (const event of result.additionalEvents ?? []) {
       await appendEventAuditAndActions(client, {

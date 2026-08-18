@@ -1,6 +1,4 @@
 import crypto from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 
@@ -24,10 +22,13 @@ type Seeded = {
   assignmentId?: string;
 };
 
-test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
+test.describe.serial("P9 SyncField Daily Production, map annotation, offline queue, and submission", () => {
   let client: Client;
   let seeded: Seeded;
   let downstreamCountsBefore: Awaited<ReturnType<typeof downstreamCounts>>;
+  let codes: Record<string, string>;
+  let reportId: string;
+  let submittedRecordId: string;
 
   test.beforeAll(async ({ request }) => {
     const connectionString = process.env.DATABASE_URL;
@@ -38,6 +39,8 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await client.connect();
     seeded = await seedSyncfieldFixture(client, secret);
     await authorizeMobilization(request, seeded);
+    await createAssignedMap(request, seeded);
+    await completeJsa(request, seeded);
     downstreamCountsBefore = await downstreamCounts(client);
   });
 
@@ -45,147 +48,197 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await client?.end();
   });
 
-  test("internal Manager creates immutable private Map Version, Work Zones, and active assignment", async ({ request }) => {
-    const fake = await request.post(apiUrl(`/syncfield/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/map-documents`), {
-      headers: auth(seeded.foremanToken),
-      data: { name: "Forbidden Foreman Upload" },
-    });
-    expect(fake.status()).toBe(403);
+  test("production gate, Work Order codes, and field UI hydrate without rates", async ({ page, request }) => {
+    const missingJsa = await request.post(apiUrl("/syncfield/foreman/production/today?work_date=2026-08-26"), { headers: auth(seeded.foremanToken), data: { client_mutation_id: crypto.randomUUID() } });
+    expect(missingJsa.status()).toBe(400);
 
-    const document = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/map-documents`, {
-      name: "ARL019 Construction Map",
-      customer_document_number: "ARL019",
-      document_type: "construction_map",
-    });
-    seeded.mapDocumentId = document.id;
+    const codeList = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/production/codes");
+    codes = Object.fromEntries(codeList.map((code: Record<string, unknown>) => [String(code.code), String(code.id)]));
+    expect(codes.FIBER).toBeTruthy();
+    expect(codeList[0]).not.toHaveProperty("amount");
+    expect(codeList[0]).not.toHaveProperty("contractor_rate");
 
-    const storageKeyAttempt = await request.post(apiUrl(`/syncfield/organizations/${seeded.orgA}/map-documents/${document.id}/versions`), {
-      headers: auth(seeded.internalToken),
-      data: { file_name: "arl019.pdf", mime_type: "application/pdf", content_base64: pdfBase64(), storage_key: "tenant/public.pdf" },
-    });
-    expect(storageKeyAttempt.status()).toBe(400);
+    const opened = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/today", { work_date: today(), client_mutation_id: crypto.randomUUID(), weather: "Clear" });
+    reportId = opened.id;
+    expect(opened.status).toBe("draft");
+    expect(opened.gate).toBeUndefined();
 
-    const malformed = await request.post(apiUrl(`/syncfield/organizations/${seeded.orgA}/map-documents/${document.id}/versions`), {
-      headers: auth(seeded.internalToken),
-      data: { file_name: "arl019.pdf", mime_type: "application/pdf", content_base64: Buffer.from("%PDF-1.4\nnot finished").toString("base64") },
-    });
-    expect(malformed.status()).toBe(400);
-
-    const version = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/map-documents/${document.id}/versions`, {
-      file_name: "../ARL019 Rev 0.pdf",
-      mime_type: "application/pdf",
-      content_base64: pdfBase64(),
-      revision_number: 1,
-      revision_label: "Rev 0",
-      received_date: "2026-08-17",
-      source_name: "Customer construction package",
-    });
-    seeded.mapVersionId = version.id;
-    expect(version.processing_status).toBe("ready");
-    expect(version.page_count).toBe(2);
-    expect(version.original_filename).toBe("ARL019 Rev 0.pdf");
-    expect(version).not.toHaveProperty("storage_key");
-
-    const file = await client.query("SELECT file_name, storage_key, checksum FROM partner_restricted_file_objects WHERE tenant_id = $1 AND related_entity_id = $2", [seeded.tenantA, version.id]);
-    expect(file.rows[0].file_name).toBe("ARL019 Rev 0.pdf");
-    const bytes = await readFile(path.resolve(process.env.SYNCOS_RESTRICTED_FILE_STORAGE_DIR ?? "/private/tmp/syncos-restricted-files", ...String(file.rows[0].storage_key).split("/")));
-    expect(crypto.createHash("sha256").update(bytes).digest("hex")).toBe(version.file_hash);
-
-    const zone = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/map-versions/${version.id}/work-zones`, {
-      name: "South Ave",
-      page_number: 1,
-      x_ratio: 0.44,
-      y_ratio: 0.58,
-      zoom_level: 1.5,
-    });
-    expect(zone.name).toBe("South Ave");
-
-    const invalidZone = await request.post(apiUrl(`/syncfield/organizations/${seeded.orgA}/map-versions/${version.id}/work-zones`), {
-      headers: auth(seeded.internalToken),
-      data: { name: "Bad", page_number: 9, x_ratio: 1.2, y_ratio: 0.5 },
-    });
-    expect(invalidZone.status()).toBe(400);
-
-    const assignment = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/map-versions/${version.id}/assign`, {
-      crew_id: seeded.crewA,
-      foreman_worker_id: seeded.foremanWorkerId,
-    });
-    seeded.assignmentId = assignment.id;
-    expect(assignment.assignment_status).toBe("active");
-
-    const revisionTwo = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/map-documents/${document.id}/versions`, {
-      file_name: "ARL019 Rev 1.pdf",
-      mime_type: "application/pdf",
-      content_base64: pdfBase64(),
-      revision_number: 2,
-      revision_label: "Rev 1",
-    });
-    const current = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/map-assignment");
-    expect(current.map.version_id).toBe(version.id);
-    expect(current.map.version_id).not.toBe(revisionTwo.id);
-  });
-
-  test("Partner Foreman opens read-only field map and cannot cross scope or see storage internals", async ({ page, request }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
-    await page.goto("/partner/field/map");
-    await expect(page.getByRole("heading", { name: /ARL019 Construction Map Rev 1/i })).toBeVisible();
-    await expect(page.getByText("Read-only field map")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Next PDF page/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Zoom in/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Jump to South Ave/i })).toBeVisible();
-    await expect(page.getByText("Production marks")).toBeVisible();
-    await expect(page.getByText("annotation", { exact: false })).toBeVisible();
-    await expect(page.getByText("storage_key")).toHaveCount(0);
+    await page.goto("/partner/production");
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Asset" })).toBeVisible();
+    await expect(page.locator("a.partner-button", { hasText: "Review Day" })).toBeVisible();
     await expect(page.getByText("Partner Rate")).toHaveCount(0);
+    await expect(page.getByText("contractor_rate")).toHaveCount(0);
 
-    const bytes = await apiJson(request, seeded.foremanToken, "GET", `/syncfield/foreman/map-versions/${seeded.mapVersionId}/bytes`);
-    expect(bytes.content_base64).toBe(pdfBase64());
-    expect(bytes.storage_key).toBeUndefined();
-
-    const cross = await request.get(apiUrl("/syncfield/foreman/map-assignment"), { headers: auth(seeded.tenantBToken) });
+    const cross = await request.get(apiUrl("/syncfield/foreman/production/today"), { headers: auth(seeded.tenantBToken) });
     expect(cross.status()).toBeGreaterThanOrEqual(403);
   });
 
-  test("Foreman completes one Daily JSA for own Crew without changing mobilization or downstream records", async ({ page, request }) => {
-    const beforeReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
+  test("browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once", async ({ page, context, request }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
-    await page.goto("/partner/jsa");
-    await expect(page.getByRole("heading", { name: "Daily JSA", level: 2 })).toBeVisible();
-    await expect(page.getByText("required", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Complete JSA" }).click();
-    await expect(page.getByText("Daily JSA completed.")).toBeVisible();
-    await expect(page.getByText("complete", { exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 820, height: 1040 });
+    await page.goto("/partner/production");
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
 
-    const duplicate = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/jsa/today/complete", {
-      work_location: "P8 Initial Work Area",
-      hazards: ["traffic"],
-      controls: ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed"],
-      foreman_certified: true,
-    });
-    expect(duplicate.status).toBe("completed");
-    const count = await client.query("SELECT count(*)::int AS count FROM daily_jsas WHERE tenant_id = $1 AND work_order_version_id = $2 AND crew_id = $3 AND status <> 'void'", [seeded.tenantA, seeded.workOrderVersionId, seeded.crewA]);
-    expect(count.rows[0].count).toBe(1);
-    const afterReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
-    expect(afterReadiness.overall_status).toBe(beforeReadiness.overall_status);
-    expect(await downstreamCounts(client)).toEqual(downstreamCountsBefore);
+    const before = await productionCountsForReport(client, seeded.tenantA, reportId);
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "+ Asset" }).click();
+    await page.getByRole("button", { name: "+ Route" }).click();
+    await page.getByRole("button", { name: "+ Daily" }).click();
+    await expect(page.getByText("offline - 3 changes saved locally")).toBeVisible();
+
+    const queued = await queuedFieldMutations(page);
+    expect(queued).toHaveLength(3);
+    expect(queued.every((mutation) => mutation.scopeKey.includes(seeded.orgA))).toBe(true);
+    expect(JSON.stringify(queued)).not.toMatch(/contractor_rate|storage_key|margin|driver_license/i);
+
+    const duplicatePayload = queued[0].payload;
+    await createProduction(request, seeded, duplicatePayload);
+
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("synced", { exact: true }).first()).toBeVisible({ timeout: 15000 });
+
+    const after = await productionCountsForReport(client, seeded.tenantA, reportId);
+    expect(after.records).toBe(before.records + 3);
+    expect(after.annotations).toBe(before.annotations + 2);
+    await expect.poll(async () => (await queuedFieldMutations(page)).filter((mutation) => mutation.status !== "SYNCED").length).toBe(0);
+
+    await page.goto("/partner/production/review");
+    await expect(page.getByText("Unsynced Mutations")).toBeVisible();
+    await expect(page.getByText("0").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit Daily Production" })).toBeEnabled();
   });
 
-  test("Partner Admin sees safe JSA history and P9-era field navigation remains QC-safe", async ({ page }) => {
-    await installSession(page, seeded.adminToken, seeded.adminPermissions);
-    await page.goto("/partner/jsa");
-    await expect(page.getByRole("heading", { name: "Daily JSAs" })).toBeVisible();
-    await expect(page.getByText("traffic")).toBeVisible();
-    await expect(page.getByText("internal_notes")).toHaveCount(0);
-    await expect(page.getByText("storage_key")).toHaveCount(0);
+  test("offline replay revalidates lost production-start authorization and keeps failed work traceable", async ({ page, context }) => {
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/partner/production");
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
+    const before = await productionCountsForReport(client, seeded.tenantA, reportId);
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "+ Asset" }).click();
+    await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
+
+    await client.query("UPDATE production_start_authorizations SET authorization_status = 'held' WHERE tenant_id = $1 AND current = true", [seeded.tenantA]);
+    try {
+      await context.setOffline(false);
+      await page.evaluate(() => window.dispatchEvent(new Event("online")));
+      await expect(page.getByText("sync failed")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("Production start is no longer authorized. Local changes were not applied.")).toBeVisible();
+      const after = await productionCountsForReport(client, seeded.tenantA, reportId);
+      expect(after).toEqual(before);
+      const pending = await queuedFieldMutations(page);
+      expect(pending.filter((mutation) => mutation.status === "FAILED")).toHaveLength(1);
+    } finally {
+      await client.query("UPDATE production_start_authorizations SET authorization_status = 'authorized' WHERE tenant_id = $1 AND current = true", [seeded.tenantA]);
+    }
+  });
+
+  test("Asset, Route, and Daily production create authoritative records with subordinate annotations and idempotency", async ({ request }) => {
+    const assetMutation = crypto.randomUUID();
+    const asset = await createProduction(request, seeded, { client_mutation_id: assetMutation, production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.4, y_ratio: 0.5, reported_quantity: 1, status: "complete" });
+    submittedRecordId = asset.id;
+    const assetRetry = await createProduction(request, seeded, { client_mutation_id: assetMutation, production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.4, y_ratio: 0.5, reported_quantity: 1, status: "complete" });
+    expect(assetRetry.id).toBe(asset.id);
+
+    await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.FIBER, location_type: "route", from_asset_identifier: "Pole 12301", to_asset_identifier: "Pole 12312", map_page: 1, start_x_ratio: 0.4, start_y_ratio: 0.5, end_x_ratio: 0.6, end_y_ratio: 0.55, reported_quantity: 141, status: "partial" });
+    await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.LABOR, location_type: "daily", reported_quantity: 8, status: "complete", notes: "Crew labor hours" });
+
+    const detail = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/production/today");
+    expect(detail.records).toHaveLength(6);
+    expect(detail.annotations).toHaveLength(4);
+    expect(detail.totals.record_count).toBe(6);
+    expect(detail.totals.status_counts.complete).toBe(5);
+    expect(detail.totals.by_code.find((row: Record<string, unknown>) => row.code === "FIBER").quantity).toBe(282);
+
+    const badCoordinate = await request.post(apiUrl("/syncfield/foreman/production/records"), {
+      headers: auth(seeded.foremanToken),
+      data: { client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Bad", map_page: 1, x_ratio: 1.4, y_ratio: 0.5, reported_quantity: 1, status: "complete" },
+    });
+    expect(badCoordinate.status()).toBe(400);
+  });
+
+  test("submission creates immutable revision snapshot and blocks ordinary edits without QC or finance", async ({ page, request }) => {
+    const beforeReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
+    const submitted = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/review-day/submit", { work_date: today(), client_mutation_id: crypto.randomUUID(), general_notes: "Submitted by Foreman." });
+    expect(submitted.status).toBe("submitted");
+    expect(submitted.records.every((record: Record<string, unknown>) => record.locked === true)).toBe(true);
+    const revision = await client.query("SELECT snapshot_json FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2", [seeded.tenantA, submitted.id]);
+    expect(revision.rowCount).toBe(1);
+    expect(revision.rows[0].snapshot_json.records).toHaveLength(6);
+
+    const edit = await request.post(apiUrl(`/syncfield/foreman/production/records/${submittedRecordId}`), {
+      headers: auth(seeded.foremanToken),
+      data: { client_mutation_id: crypto.randomUUID(), reported_quantity: 2 },
+    });
+    expect(edit.status()).toBe(400);
+    const addAfterSubmit = await request.post(apiUrl("/syncfield/foreman/production/records"), {
+      headers: auth(seeded.foremanToken),
+      data: { client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 999", map_page: 1, x_ratio: 0.1, y_ratio: 0.1, reported_quantity: 1, status: "complete" },
+    });
+    expect(addAfterSubmit.status()).toBe(400);
+    const afterReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
+    expect(afterReadiness.overall_status).toBe(beforeReadiness.overall_status);
+    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 6 });
 
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 390, height: 860 });
-    await page.goto("/partner");
-    await expect(page.getByText("Daily JSA")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open Field Map" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Production" })).toBeVisible();
+    await page.goto("/partner/production/review");
+    await expect(page.locator("h2").filter({ hasText: "Review Day" })).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit Daily Production" })).toBeDisabled();
     await expect(page.getByText("Customer QC")).toHaveCount(0);
+    await expect(page.getByText("accepted quantity")).toHaveCount(0);
+  });
+
+  test("submitted-report offline conflict does not reopen the report or create production", async ({ page, context }) => {
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/partner/production");
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
+    const before = await productionCountsForReport(client, seeded.tenantA, reportId);
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "+ Daily" }).click();
+    await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.getByText("sync failed")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("REPORT ALREADY SUBMITTED - LOCAL CHANGES NOT APPLIED")).toBeVisible();
+    expect(await productionCountsForReport(client, seeded.tenantA, reportId)).toEqual(before);
+  });
+
+  test("Partner-local queue isolation hides pending field work after account switch", async ({ page, context }) => {
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/partner/production");
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "+ Asset" }).click();
+    await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
+    await installSession(page, seeded.tenantBToken, seeded.adminPermissions);
+    await context.setOffline(false);
+    await page.goto("/partner/production");
+    await expect(page.getByText("offline - 1 change saved locally")).toHaveCount(0);
+  });
+
+  test("Partner Admin receives safe read-only report and duplicate submitted work requires traceability", async ({ request, page }) => {
+    await installSession(page, seeded.adminToken, seeded.adminPermissions);
+    await page.goto("/partner/production");
+    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("contractor_rate")).toHaveCount(0);
+    await expect(page.getByText("storage_key")).toHaveCount(0);
+
+    await completeJsa(request, seeded, "2026-08-26");
+    await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/today", { work_date: "2026-08-26", client_mutation_id: crypto.randomUUID() });
+    const duplicate = await request.post(apiUrl("/syncfield/foreman/production/records"), {
+      headers: auth(seeded.foremanToken),
+      data: { work_date: "2026-08-26", client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework" },
+    });
+    expect(duplicate.status()).toBe(400);
+    const traced = await createProduction(request, seeded, { work_date: "2026-08-26", client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework", duplicate_reason: "Customer requested additional pass." });
+    expect(traced.duplicate_reason).toBe("Customer requested additional pass.");
   });
 });
 
@@ -221,9 +274,9 @@ async function seedSyncfieldFixture(client: Client, secret: string): Promise<See
   const vehicleAssignmentId = crypto.randomUUID();
   const operatorAuthorizationId = crypto.randomUUID();
   const workerIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
-  const adminPermissions = ["partner_context.read", "partner_actions.read", "partner_profile.read", "partner_compliance.summary.read", "partner_compliance.profile.read", "partner_compliance.w9.read", "partner_compliance.payment.read", "partner_compliance.insurance.read", "partner_workforce.worker.read", "partner_workforce.crew.read", "partner_workforce.readiness.read", "partner_agreement.read", "partner_agreement.artifact.read", "partner_work_order.read", "partner_work_order.rate.read", "partner_vehicle_assignment.read", "partner_vehicle_assignment.allocation.read", "partner_mobilization.read", "partner_notice.read", "partner_notice.acknowledge", "partner_map.read", "partner_jsa.read", "partner_jsa_history.read"];
-  const foremanPermissions = ["partner_context.read", "partner_actions.read", "partner_compliance.summary.read", "partner_workforce.foreman_roster.read", "partner_work_order.foreman_summary.read", "partner_mobilization.foreman.read", "partner_notice.foreman.read", "partner_notice.foreman.acknowledge", "partner_map.read_assigned", "partner_jsa.create", "partner_jsa.update_draft", "partner_jsa.complete", "partner_jsa.read_own"];
-  const internalPermissions = ["capacity_provider.read", "partner_mobilization.review", "partner_mobilization.evaluate", "partner_mobilization.approve", "partner_notice.issue", "syncfield_map.create", "syncfield_map.version.upload", "syncfield_map.read", "syncfield_map.assignment.manage", "syncfield_map.work_zone.manage", "syncfield_jsa.read_all"];
+  const adminPermissions = ["partner_context.read", "partner_actions.read", "partner_profile.read", "partner_compliance.summary.read", "partner_compliance.profile.read", "partner_compliance.w9.read", "partner_compliance.payment.read", "partner_compliance.insurance.read", "partner_workforce.worker.read", "partner_workforce.crew.read", "partner_workforce.readiness.read", "partner_agreement.read", "partner_agreement.artifact.read", "partner_work_order.read", "partner_work_order.rate.read", "partner_vehicle_assignment.read", "partner_vehicle_assignment.allocation.read", "partner_mobilization.read", "partner_notice.read", "partner_notice.acknowledge", "partner_map.read", "partner_jsa.read", "partner_jsa_history.read", "partner_daily_production.read_org", "partner_production.read_org"];
+  const foremanPermissions = ["partner_context.read", "partner_actions.read", "partner_compliance.summary.read", "partner_workforce.foreman_roster.read", "partner_work_order.foreman_summary.read", "partner_mobilization.foreman.read", "partner_notice.foreman.read", "partner_notice.foreman.acknowledge", "partner_map.read_assigned", "partner_jsa.create", "partner_jsa.update_draft", "partner_jsa.complete", "partner_jsa.read_own", "partner_daily_production.read", "partner_daily_production.create", "partner_daily_production.update_draft", "partner_daily_production.delete_draft", "partner_daily_production.submit", "partner_production_record.create", "partner_production_record.update_draft", "partner_production_record.delete_draft", "partner_production_photo.create", "partner_field_sync.submit"];
+  const internalPermissions = ["capacity_provider.read", "partner_mobilization.review", "partner_mobilization.evaluate", "partner_mobilization.approve", "partner_notice.issue", "syncfield_map.create", "syncfield_map.version.upload", "syncfield_map.read", "syncfield_map.assignment.manage", "syncfield_map.work_zone.manage", "syncfield_jsa.read_all", "daily_production.read_all", "daily_production.completeness_read"];
   for (const permission of [...adminPermissions, ...foremanPermissions, ...internalPermissions]) await ensurePermission(client, permission);
   await client.query("BEGIN");
   try {
@@ -284,6 +337,54 @@ async function authorizeMobilization(request: APIRequestContext, fixture: Seeded
   expect(notice.production_start.authorization_status).toBe("authorized");
 }
 
+async function createAssignedMap(request: APIRequestContext, fixture: Seeded) {
+  const document = await apiJson(request, fixture.internalToken, "POST", `/syncfield/organizations/${fixture.orgA}/work-order-versions/${fixture.workOrderVersionId}/map-documents`, {
+    name: "ARL019 Construction Map",
+    customer_document_number: "ARL019",
+    document_type: "construction_map",
+  });
+  fixture.mapDocumentId = document.id;
+  const version = await apiJson(request, fixture.internalToken, "POST", `/syncfield/organizations/${fixture.orgA}/map-documents/${document.id}/versions`, {
+    file_name: "ARL019 Rev 0.pdf",
+    mime_type: "application/pdf",
+    content_base64: pdfBase64(),
+    revision_number: 1,
+    revision_label: "Rev 0",
+  });
+  fixture.mapVersionId = version.id;
+  await apiJson(request, fixture.internalToken, "POST", `/syncfield/organizations/${fixture.orgA}/map-versions/${version.id}/work-zones`, {
+    name: "South Ave",
+    page_number: 1,
+    x_ratio: 0.44,
+    y_ratio: 0.58,
+    zoom_level: 1.5,
+  });
+  const assignment = await apiJson(request, fixture.internalToken, "POST", `/syncfield/organizations/${fixture.orgA}/map-versions/${version.id}/assign`, {
+    crew_id: fixture.crewA,
+    foreman_worker_id: fixture.foremanWorkerId,
+  });
+  fixture.assignmentId = assignment.id;
+}
+
+async function completeJsa(request: APIRequestContext, fixture: Seeded, workDate = today()) {
+  const result = await apiJson(request, fixture.foremanToken, "POST", `/syncfield/foreman/jsa/today/complete?work_date=${workDate}`, {
+    work_date: workDate,
+    work_location: "P9 Initial Work Area",
+    hazards: ["traffic"],
+    controls: ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed"],
+    foreman_certified: true,
+  });
+  expect(result.status).toBe("completed");
+}
+
+async function createProduction(request: APIRequestContext, fixture: Seeded, body: Record<string, unknown>) {
+  return apiJson(request, fixture.foremanToken, "POST", "/syncfield/foreman/production/records", { work_date: today(), ...body });
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function seedReadyCompliance(client: Client, tenantId: string, orgId: string, providerId: string) {
   await client.query("INSERT INTO partner_company_profiles (tenant_id,organization_id,capacity_provider_id,legal_business_name,dba_name,state_of_formation,entity_type,primary_contact_name,primary_contact_email,compliance_contact_name,compliance_contact_email,settlement_contact_name,settlement_contact_email,business_address,status) VALUES ($1,$2,$3,'P8 Partner A LLC','P8 A','OH','llc','Admin Contact','admin@p8.test','Compliance Contact','compliance@p8.test','Settlement Contact','settlement@p8.test','{}','verified')", [tenantId, orgId, providerId]);
   await client.query("INSERT INTO partner_tax_profiles (tenant_id,organization_id,capacity_provider_id,legal_name_on_w9,federal_tax_classification,tin_type,tin_last_four,status) VALUES ($1,$2,$3,'P8 Partner A LLC','corporation','ein','1234','verified')", [tenantId, orgId, providerId]);
@@ -304,6 +405,43 @@ async function grantPermissions(client: Client, tenantId: string, roleId: string
 async function downstreamCounts(client: Client) {
   const result = await client.query("SELECT (SELECT count(*)::int FROM production_records) AS production, (SELECT count(*)::int FROM qc_reviews) AS qc, (SELECT count(*)::int FROM billable_items) AS billable, (SELECT count(*)::int FROM settlements) AS settlements, (SELECT count(*)::int FROM contractor_payables) AS payables, (SELECT count(*)::int FROM payments) AS payments");
   return result.rows[0];
+}
+
+async function productionCountsForReport(client: Client, tenantId: string, dailyReportId: string) {
+  const result = await client.query(
+    `
+    SELECT
+      (SELECT count(*)::int FROM production_records WHERE tenant_id = $1 AND daily_production_report_id = $2 AND deleted_at IS NULL) AS records,
+      (SELECT count(*)::int FROM map_annotations ma JOIN production_records pr ON pr.tenant_id = ma.tenant_id AND pr.id = ma.production_record_id WHERE ma.tenant_id = $1 AND pr.daily_production_report_id = $2 AND ma.deleted_at IS NULL) AS annotations
+    `,
+    [tenantId, dailyReportId],
+  );
+  return result.rows[0] as { records: number; annotations: number };
+}
+
+async function queuedFieldMutations(page: Page): Promise<Array<Record<string, any>>> {
+  return page.evaluate(async () => {
+    const open = indexedDB.open("syncos-field-production", 1);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      open.onupgradeneeded = () => {
+        const db = open.result;
+        if (!db.objectStoreNames.contains("mutations")) {
+          const store = db.createObjectStore("mutations", { keyPath: "mutationId" });
+          store.createIndex("scopeKey", "scopeKey", { unique: false });
+        }
+      };
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+    const rows = await new Promise<Array<Record<string, any>>>((resolve, reject) => {
+      const tx = db.transaction("mutations", "readonly");
+      const request = tx.objectStore("mutations").getAll();
+      request.onsuccess = () => resolve(request.result as Array<Record<string, any>>);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return rows;
+  });
 }
 
 async function installSession(page: Page, nextToken: string, nextPermissions: string[]) {
