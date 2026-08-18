@@ -82,6 +82,10 @@ const storageRejectKeys = ["storage_key", "storage_path", "storage_url", "public
 const productionStatuses = new Set(["partial", "complete", "blocked", "rework"]);
 const productionLocationTypes = new Set(["asset", "route", "daily"]);
 const assetTypes = new Set(["pole", "pedestal", "handhole", "vault", "cabinet", "enclosure", "terminal", "riser", "anchor", "other"]);
+const customerQcDecisions = new Set(["accepted", "partially_accepted", "correction_required", "rejected"]);
+const customerQcSources = new Set(["email", "customer_portal", "customer_report", "customer_spreadsheet", "field_qc_report", "api", "manual_recorded_from_customer"]);
+const correctionTypes = new Set(["quantity", "production_code", "location", "asset_identifier", "route_endpoint", "missing_note", "missing_photo", "workmanship", "rework", "other"]);
+const correctionFieldValues = new Set(["reported_quantity", "production_code_id", "asset_identifier", "route_endpoint", "map_location", "notes", "evidence"]);
 const defaultProductionCodes = [
   ["POLE-ATT", "Pole Attachment", "EA", "asset", true, false],
   ["TRANSFER", "Cable Transfer", "EA", "asset", true, false],
@@ -605,6 +609,571 @@ export class SyncfieldController {
         return { entityType: "daily_report", entityId: report.id, beforeState: this.safeDailyProductionSummary(report), afterState: await this.safeDailyProductionDetail(writeClient, submitted.rows[0] ?? report), additionalEvents: [{ action: "daily_report_revision.create", eventType: "daily_report_revision.created", aggregateType: "daily_report_revision", entityType: "daily_report_revision", entityId: revision.rows[0]?.id ?? report.id, afterState: { daily_report_id: report.id, revision_number: 1 } }] };
       });
     });
+  }
+
+  @Get("customer-qc/completeness-queue")
+  @RequirePermission("daily_production.completeness_read")
+  async customerQcCompletenessQueue(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const result = await client.query(
+        `
+        SELECT r.*, c.name AS crew_name, wov.work_order_number, p.name AS project_name, o.name AS partner_name,
+          COALESCE(wo.qc_authority_organization_id, p.qc_authority_organization_id, p.customer_organization_id) AS qc_authority_organization_id,
+          qa.name AS qc_authority_name
+        FROM daily_production_reports r
+        JOIN crews c ON c.tenant_id = r.tenant_id AND c.id = r.crew_id
+        JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
+        JOIN work_orders wo ON wo.tenant_id = r.tenant_id AND wo.id = r.work_order_id
+        JOIN projects p ON p.tenant_id = r.tenant_id AND p.id = r.project_id
+        JOIN organizations o ON o.tenant_id = r.tenant_id AND o.id = r.organization_id
+        LEFT JOIN organizations qa ON qa.tenant_id = r.tenant_id AND qa.id = COALESCE(wo.qc_authority_organization_id, p.qc_authority_organization_id, p.customer_organization_id)
+        WHERE r.tenant_id = $1 AND r.status = 'submitted' AND r.deleted_at IS NULL
+        ORDER BY r.submitted_at DESC NULLS LAST, r.created_at DESC
+        LIMIT 50
+        `,
+        [request.auth.tenantId],
+      );
+      return result.rows.map((row) => this.safeCustomerQcReportSummary(row));
+    });
+  }
+
+  @Post("customer-qc/reports/:reportId/complete")
+  @RequirePermission("customer_qc.completeness_review")
+  async markReportCompleteForCustomerQc(@Req() request: AuthenticatedRequest, @Param("reportId") reportId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      return this.writeWithClient(client, request, "daily_report.completeness_confirm", "daily_report.completeness_confirmed", "daily_report", async (writeClient) => {
+        const before = await this.requireSubmittedDailyReport(writeClient, request.auth.tenantId, reportId);
+        const authorityId = await this.resolveQcAuthority(writeClient, before, this.optionalString(body.qc_authority_organization_id));
+        const updated = await writeClient.query(
+          `
+          UPDATE daily_production_reports
+          SET completeness_status = 'complete', completeness_reviewed_by_user_id = $3, completeness_reviewed_at = now(),
+            completeness_return_reason = NULL, updated_at = now()
+          WHERE tenant_id = $1 AND id = $2
+          RETURNING *
+          `,
+          [request.auth.tenantId, reportId, request.auth.userId],
+        );
+        if (authorityId) {
+          await writeClient.query("UPDATE work_orders SET qc_authority_organization_id = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2", [request.auth.tenantId, before.work_order_id, authorityId]);
+        }
+        return { entityType: "daily_report", entityId: reportId, beforeState: this.safeDailyProductionSummary(before), afterState: { ...this.safeDailyProductionSummary(updated.rows[0]), completeness_status: "complete", qc_authority_organization_id: authorityId } };
+      });
+    });
+  }
+
+  @Post("customer-qc/reports/:reportId/return")
+  @RequirePermission("customer_qc.completeness_review")
+  async returnReportForAdministrativeCompletion(@Req() request: AuthenticatedRequest, @Param("reportId") reportId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      return this.writeWithClient(client, request, "daily_report.completeness_return", "daily_report.completeness_returned", "daily_report", async (writeClient) => {
+        const before = await this.requireSubmittedDailyReport(writeClient, request.auth.tenantId, reportId);
+        const reason = requireString(body.reason, "reason is required");
+        const updated = await writeClient.query(
+          `
+          UPDATE daily_production_reports
+          SET completeness_status = 'returned', completeness_reviewed_by_user_id = $3, completeness_reviewed_at = now(),
+            completeness_return_reason = $4, updated_at = now()
+          WHERE tenant_id = $1 AND id = $2
+          RETURNING *
+          `,
+          [request.auth.tenantId, reportId, request.auth.userId, reason],
+        );
+        return { entityType: "daily_report", entityId: reportId, beforeState: this.safeDailyProductionSummary(before), afterState: { ...this.safeDailyProductionSummary(updated.rows[0]), completeness_status: "returned", reason } };
+      });
+    });
+  }
+
+  @Post("customer-qc/reports/:reportId/cycles")
+  @RequirePermission("customer_qc.decision_record")
+  async createCustomerQcCycle(@Req() request: AuthenticatedRequest, @Param("reportId") reportId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      return this.writeWithClient(client, request, "customer_qc.cycle_create", "customer_qc.cycle_created", "customer_qc_cycle", async (writeClient) => {
+        const report = await this.requireSubmittedDailyReport(writeClient, request.auth.tenantId, reportId);
+        if (report.completeness_status !== "complete") throw new BadRequestException("report must be complete for Customer QC");
+        const mutationId = this.optionalString(body.client_mutation_id);
+        if (mutationId) {
+          const existing = await writeClient.query("SELECT * FROM customer_qc_cycles WHERE tenant_id = $1 AND created_by_user_id = $2 AND client_mutation_id = $3", [request.auth.tenantId, request.auth.userId, mutationId]);
+          if (existing.rows[0]) return { entityType: "customer_qc_cycle", entityId: existing.rows[0].id, afterState: await this.safeCustomerQcCycleDetail(writeClient, existing.rows[0]), skipEventAudit: true };
+        }
+        const revision = await this.currentReportRevision(writeClient, report);
+        const authorityId = await this.resolveQcAuthority(writeClient, report, this.optionalString(body.qc_authority_organization_id));
+        const sourceType = String(body.source_type ?? "manual_recorded_from_customer").toLowerCase();
+        if (!customerQcSources.has(sourceType)) throw new BadRequestException("source_type is invalid");
+        const sourceReference = requireString(body.source_reference, "source_reference is required");
+        const next = await writeClient.query("SELECT COALESCE(MAX(cycle_number), 0) + 1 AS next_cycle FROM customer_qc_cycles WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [request.auth.tenantId, report.id]);
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO customer_qc_cycles (
+            tenant_id, project_id, work_order_id, work_order_version_id, daily_report_id, daily_report_revision_id,
+            partner_organization_id, crew_id, qc_authority_organization_id, cycle_number, status, submitted_to_customer_at,
+            source_type, source_reference, customer_reference_number, general_customer_notes, client_mutation_id, created_by_user_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'awaiting_customer',COALESCE($11, now()),$12,$13,$14,$15,$16,$17)
+          RETURNING *
+          `,
+          [
+            request.auth.tenantId, report.project_id, report.work_order_id, report.work_order_version_id, report.id, revision.id,
+            report.organization_id, report.crew_id, authorityId, Number(next.rows[0].next_cycle), body.submitted_to_customer_at ?? null,
+            sourceType, sourceReference, this.optionalString(body.customer_reference_number), this.optionalString(body.general_customer_notes), mutationId, request.auth.userId,
+          ],
+        );
+        return { entityType: "customer_qc_cycle", entityId: inserted.rows[0].id, afterState: await this.safeCustomerQcCycleDetail(writeClient, inserted.rows[0]) };
+      });
+    });
+  }
+
+  @Post("customer-qc/cycles/:cycleId/decisions")
+  @RequirePermission("customer_qc.decision_record")
+  async recordCustomerQcDecision(@Req() request: AuthenticatedRequest, @Param("cycleId") cycleId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      return this.writeWithClient(client, request, "customer_qc.decision_record", "customer_qc.decision_recorded", "customer_qc_decision", async (writeClient) => {
+        const cycle = await this.requireCustomerQcCycle(writeClient, request.auth.tenantId, cycleId);
+        const mutationId = this.optionalString(body.client_mutation_id);
+        if (mutationId) {
+          const existing = await writeClient.query("SELECT * FROM customer_qc_decisions WHERE tenant_id = $1 AND recorded_by_user_id = $2 AND client_mutation_id = $3", [request.auth.tenantId, request.auth.userId, mutationId]);
+          if (existing.rows[0]) return { entityType: "customer_qc_decision", entityId: existing.rows[0].id, afterState: await this.safeCustomerQcDecisionDetail(writeClient, existing.rows[0]), skipEventAudit: true };
+        }
+        const record = await this.requireCycleProductionRecord(writeClient, cycle, requireString(body.production_record_id, "production_record_id is required"));
+        const decision = requireString(body.decision, "decision is required").toLowerCase();
+        if (!customerQcDecisions.has(decision)) throw new BadRequestException("customer decision is invalid");
+        const acceptedQuantity = body.customer_accepted_quantity === undefined || body.customer_accepted_quantity === null ? null : this.nonNegativeNumber(body.customer_accepted_quantity, "customer_accepted_quantity must be non-negative");
+        if (["accepted", "partially_accepted"].includes(decision) && acceptedQuantity === null) throw new BadRequestException("customer_accepted_quantity is required");
+        const reason = this.optionalString(body.customer_reason_code);
+        if (acceptedQuantity !== null && acceptedQuantity > Number(record.quantity_submitted) && !reason) throw new BadRequestException("accepted quantity above reported requires customer reason");
+        if (decision !== "accepted" && !reason) throw new BadRequestException("customer reason is required");
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO customer_qc_decisions (
+            tenant_id, qc_cycle_id, production_record_id, decision, reported_quantity, customer_accepted_quantity,
+            unit_of_measure, customer_reason_code, customer_comments, correction_required, recorded_by_user_id,
+            source_reference, client_mutation_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          RETURNING *
+          `,
+          [
+            request.auth.tenantId, cycle.id, record.id, decision, record.quantity_submitted, acceptedQuantity,
+            record.unit_of_measure ?? record.unit, reason, this.optionalString(body.customer_comments), ["correction_required", "rejected"].includes(decision), request.auth.userId,
+            this.optionalString(body.source_reference) ?? cycle.source_reference, mutationId,
+          ],
+        );
+        if (["correction_required", "rejected"].includes(decision)) {
+          await this.createCorrectionForDecision(writeClient, request, cycle, inserted.rows[0], record, body);
+        }
+        await this.updateCycleAndReportOutcome(writeClient, cycle);
+        const eventType = this.customerDecisionEventType(decision);
+        return {
+          entityType: "customer_qc_decision",
+          entityId: inserted.rows[0].id,
+          afterState: await this.safeCustomerQcDecisionDetail(writeClient, inserted.rows[0]),
+          additionalEvents: [{
+            action: eventType,
+            eventType,
+            aggregateType: "production_record",
+            entityType: "production_record",
+            entityId: record.id,
+            afterState: {
+              production_record_id: record.id,
+              daily_report_id: cycle.daily_report_id,
+              qc_cycle_id: cycle.id,
+              qc_authority_organization_id: cycle.qc_authority_organization_id,
+              reported_quantity: Number(record.quantity_submitted),
+              customer_accepted_quantity: acceptedQuantity,
+              unit: record.unit_of_measure ?? record.unit,
+              decision,
+            },
+          }],
+        };
+      });
+    });
+  }
+
+  @Get("partner/customer-qc")
+  @RequirePermission("partner_customer_qc.read")
+  async partnerCustomerQc(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerAdmin(client, request, query.organization_id);
+      return this.partnerCustomerQcPayload(client, context.tenant_id, context.organization.id);
+    });
+  }
+
+  @Get("foreman/customer-qc")
+  @RequirePermission("partner_customer_qc.read_own")
+  async foremanCustomerQc(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const crew = await this.requireForemanCrew(client, context);
+      return this.partnerCustomerQcPayload(client, context.tenant_id, context.organization.id, crew.id);
+    });
+  }
+
+  @Post("foreman/corrections/:correctionId/resubmit")
+  @RequirePermission("partner_correction.resubmit")
+  async resubmitCorrection(@Req() request: AuthenticatedRequest, @Param("correctionId") correctionId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const crew = await this.requireForemanCrew(client, context);
+      return this.writeWithClient(client, request, "partner_correction.resubmit", "partner_correction.resubmitted", "production_correction", async (writeClient) => {
+        const correction = await this.requireForemanCorrection(writeClient, context.tenant_id, context.organization.id, crew.id, correctionId);
+        if (!["open", "acknowledged", "in_progress"].includes(correction.status)) throw new BadRequestException("correction is not open for resubmission");
+        const mutationId = this.optionalString(body.client_mutation_id);
+        if (mutationId) {
+          const existing = await writeClient.query("SELECT * FROM production_corrections WHERE tenant_id = $1 AND resubmitted_by_user_id = $2 AND client_mutation_id = $3", [context.tenant_id, request.auth.userId, mutationId]);
+          if (existing.rows[0]) return { entityType: "production_correction", entityId: existing.rows[0].id, afterState: this.safeCorrection(existing.rows[0]), skipEventAudit: true };
+        }
+        this.validateCorrectionAllowedFields(correction, body);
+        const report = await this.requireDailyReportById(writeClient, context.tenant_id, correction.daily_report_id);
+        const nextRevision = Number(report.revision_number ?? 1) + 1;
+        const snapshot = await this.buildCorrectionSnapshot(writeClient, correction, body, nextRevision);
+        const revision = await writeClient.query(
+          `
+          INSERT INTO daily_production_report_revisions (tenant_id, daily_report_id, revision_number, snapshot_json, reason, submitted_by_user_id)
+          VALUES ($1,$2,$3,$4,'customer_correction_resubmitted',$5)
+          RETURNING *
+          `,
+          [context.tenant_id, correction.daily_report_id, nextRevision, snapshot, request.auth.userId],
+        );
+        await writeClient.query("UPDATE daily_production_reports SET revision_number = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2", [context.tenant_id, correction.daily_report_id, nextRevision]);
+        const updated = await writeClient.query(
+          `
+          UPDATE production_corrections
+          SET status = 'awaiting_customer_reinspection', resubmitted_by_user_id = $3, resubmitted_at = now(),
+            client_mutation_id = $4, updated_at = now()
+          WHERE tenant_id = $1 AND id = $2
+          RETURNING *
+          `,
+          [context.tenant_id, correctionId, request.auth.userId, mutationId],
+        );
+        await writeClient.query(
+          `
+          INSERT INTO customer_qc_cycles (
+            tenant_id, project_id, work_order_id, work_order_version_id, daily_report_id, daily_report_revision_id,
+            partner_organization_id, crew_id, qc_authority_organization_id, cycle_number, status, source_type,
+            source_reference, general_customer_notes, created_by_user_id
+          )
+          SELECT tenant_id, project_id, work_order_id, work_order_version_id, daily_report_id, $3,
+            partner_organization_id, crew_id, qc_authority_organization_id,
+            (SELECT COALESCE(MAX(cycle_number), 0) + 1 FROM customer_qc_cycles WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL),
+            'awaiting_reinspection', source_type, source_reference, 'Partner correction resubmitted for Customer reinspection.', $4
+          FROM customer_qc_cycles
+          WHERE tenant_id = $1 AND id = $5
+          RETURNING *
+          `,
+          [context.tenant_id, correction.daily_report_id, revision.rows[0].id, request.auth.userId, correction.qc_cycle_id],
+        );
+        return { entityType: "production_correction", entityId: correctionId, beforeState: this.safeCorrection(correction), afterState: this.safeCorrection(updated.rows[0]) };
+      });
+    });
+  }
+
+  private async requireSubmittedDailyReport(client: PoolClient, tenantId: string, reportId: string) {
+    const result = await client.query(
+      `
+      SELECT r.*, c.name AS crew_name, wov.work_order_number, p.name AS project_name, p.customer_organization_id,
+        o.name AS partner_name, COALESCE(wo.qc_authority_organization_id, p.qc_authority_organization_id, p.customer_organization_id) AS qc_authority_organization_id
+      FROM daily_production_reports r
+      JOIN crews c ON c.tenant_id = r.tenant_id AND c.id = r.crew_id
+      JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
+      JOIN work_orders wo ON wo.tenant_id = r.tenant_id AND wo.id = r.work_order_id
+      JOIN projects p ON p.tenant_id = r.tenant_id AND p.id = r.project_id
+      JOIN organizations o ON o.tenant_id = r.tenant_id AND o.id = r.organization_id
+      WHERE r.tenant_id = $1 AND r.id = $2 AND r.status = 'submitted' AND r.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [tenantId, reportId],
+    );
+    if (!result.rows[0]) throw new NotFoundException("submitted daily production report not found");
+    return result.rows[0];
+  }
+
+  private async currentReportRevision(client: PoolClient, report: QueryResultRow) {
+    const result = await client.query(
+      `
+      SELECT *
+      FROM daily_production_report_revisions
+      WHERE tenant_id = $1 AND daily_report_id = $2
+      ORDER BY revision_number DESC
+      LIMIT 1
+      `,
+      [report.tenant_id, report.id],
+    );
+    if (!result.rows[0]) throw new BadRequestException("submitted report revision is required");
+    return result.rows[0];
+  }
+
+  private async resolveQcAuthority(client: PoolClient, report: QueryResultRow, requestedAuthorityId?: string | null) {
+    const authorityId = requestedAuthorityId ?? report.qc_authority_organization_id ?? report.customer_organization_id;
+    if (!authorityId) throw new BadRequestException("QC authority organization is required");
+    const result = await client.query(
+      `
+      SELECT id
+      FROM organizations
+      WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL AND organization_type <> 'partner'
+      LIMIT 1
+      `,
+      [report.tenant_id, authorityId],
+    );
+    if (!result.rows[0]) throw new BadRequestException("QC authority organization is invalid");
+    return authorityId;
+  }
+
+  private async requireCustomerQcCycle(client: PoolClient, tenantId: string, cycleId: string) {
+    const result = await client.query("SELECT * FROM customer_qc_cycles WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, cycleId]);
+    if (!result.rows[0]) throw new NotFoundException("Customer QC cycle not found");
+    return result.rows[0];
+  }
+
+  private async requireCycleProductionRecord(client: PoolClient, cycle: QueryResultRow, productionRecordId: string) {
+    const result = await client.query(
+      `
+      SELECT pr.*, pc.code, pc.description, pc.unit_of_measure
+      FROM production_records pr
+      JOIN syncfield_production_codes pc ON pc.tenant_id = pr.tenant_id AND pc.id = pr.syncfield_production_code_id
+      WHERE pr.tenant_id = $1 AND pr.id = $2 AND pr.daily_production_report_id = $3
+        AND pr.work_order_version_id = $4 AND pr.partner_organization_id = $5 AND pr.crew_id = $6
+        AND pr.status = 'submitted' AND pr.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [cycle.tenant_id, productionRecordId, cycle.daily_report_id, cycle.work_order_version_id, cycle.partner_organization_id, cycle.crew_id],
+    );
+    if (!result.rows[0]) throw new NotFoundException("production record not found in Customer QC cycle context");
+    return result.rows[0];
+  }
+
+  private async createCorrectionForDecision(client: PoolClient, request: AuthenticatedRequest, cycle: QueryResultRow, decision: QueryResultRow, record: QueryResultRow, body: Record<string, unknown>) {
+    const correctionType = String(body.correction_type ?? (decision.decision === "rejected" ? "rework" : "other")).toLowerCase();
+    if (!correctionTypes.has(correctionType)) throw new BadRequestException("correction_type is invalid");
+    const allowedFields = this.textArray(body.allowed_fields ?? ["notes"], correctionFieldValues, "allowed_fields");
+    const result = await client.query(
+      `
+      INSERT INTO production_corrections (
+        tenant_id, qc_cycle_id, customer_qc_decision_id, daily_report_id, production_record_id, partner_organization_id,
+        crew_id, correction_type, allowed_fields, customer_reason, partner_safe_instructions, due_date, created_by_user_id
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      ON CONFLICT (tenant_id, customer_qc_decision_id) WHERE deleted_at IS NULL AND status <> 'cancelled' DO NOTHING
+      RETURNING *
+      `,
+      [
+        cycle.tenant_id, cycle.id, decision.id, cycle.daily_report_id, record.id, cycle.partner_organization_id, cycle.crew_id,
+        correctionType, allowedFields, requireString(body.customer_reason ?? body.customer_comments ?? body.customer_reason_code, "customer reason is required"),
+        requireString(body.partner_safe_instructions ?? body.customer_comments ?? "Customer correction required.", "partner_safe_instructions is required"),
+        body.due_date ?? null, request.auth.userId,
+      ],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  private async updateCycleAndReportOutcome(client: PoolClient, cycle: QueryResultRow) {
+    const decisions = await client.query("SELECT decision FROM customer_qc_decisions WHERE tenant_id = $1 AND qc_cycle_id = $2 AND current = true AND deleted_at IS NULL", [cycle.tenant_id, cycle.id]);
+    const values = decisions.rows.map((row) => row.decision);
+    if (!values.length) return;
+    let cycleStatus = "accepted";
+    let reportOutcome = "customer_accepted";
+    if (values.includes("correction_required")) {
+      cycleStatus = "awaiting_partner_correction";
+      reportOutcome = "customer_correction_required";
+    } else if (values.includes("rejected")) {
+      cycleStatus = "rejected";
+      reportOutcome = "customer_rejected";
+    } else if (values.includes("partially_accepted")) {
+      cycleStatus = "partially_accepted";
+      reportOutcome = "customer_partially_accepted";
+    }
+    await client.query(
+      "UPDATE customer_qc_cycles SET status = $3, decision_recorded_at = COALESCE(decision_recorded_at, now()), updated_at = now() WHERE tenant_id = $1 AND id = $2",
+      [cycle.tenant_id, cycle.id, cycleStatus],
+    );
+    await client.query(
+      "UPDATE daily_production_reports SET customer_qc_outcome = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2",
+      [cycle.tenant_id, cycle.daily_report_id, reportOutcome],
+    );
+  }
+
+  private customerDecisionEventType(decision: string) {
+    if (decision === "accepted") return "production.customer_accepted";
+    if (decision === "partially_accepted") return "production.customer_partially_accepted";
+    if (decision === "correction_required") return "production.customer_correction_required";
+    return "production.customer_rejected";
+  }
+
+  private async partnerCustomerQcPayload(client: PoolClient, tenantId: string, organizationId: string, crewId?: string) {
+    const params = crewId ? [tenantId, organizationId, crewId] : [tenantId, organizationId];
+    const crewClause = crewId ? "AND r.crew_id = $3" : "";
+    const result = await client.query(
+      `
+      SELECT r.id AS report_id, r.work_date, r.customer_qc_outcome, r.completeness_status, r.revision_number,
+        wov.work_order_number, c.name AS crew_name, cyc.id AS cycle_id, cyc.cycle_number, cyc.status AS cycle_status,
+        qa.name AS qc_authority_name, d.id AS decision_id, d.production_record_id, d.decision,
+        d.reported_quantity, d.customer_accepted_quantity, d.unit_of_measure, d.customer_reason_code,
+        corr.id AS correction_id, corr.status AS correction_status, corr.correction_type, corr.partner_safe_instructions, corr.due_date, corr.allowed_fields,
+        pr.asset_identifier, pr.from_asset_identifier, pr.to_asset_identifier, pc.code, pc.description
+      FROM daily_production_reports r
+      JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
+      JOIN crews c ON c.tenant_id = r.tenant_id AND c.id = r.crew_id
+      LEFT JOIN customer_qc_cycles cyc ON cyc.tenant_id = r.tenant_id AND cyc.daily_report_id = r.id AND cyc.deleted_at IS NULL
+      LEFT JOIN organizations qa ON qa.tenant_id = r.tenant_id AND qa.id = cyc.qc_authority_organization_id
+      LEFT JOIN customer_qc_decisions d ON d.tenant_id = cyc.tenant_id AND d.qc_cycle_id = cyc.id AND d.current = true AND d.deleted_at IS NULL
+      LEFT JOIN production_records pr ON pr.tenant_id = d.tenant_id AND pr.id = d.production_record_id
+      LEFT JOIN syncfield_production_codes pc ON pc.tenant_id = pr.tenant_id AND pc.id = pr.syncfield_production_code_id
+      LEFT JOIN production_corrections corr ON corr.tenant_id = d.tenant_id AND corr.customer_qc_decision_id = d.id AND corr.deleted_at IS NULL
+      WHERE r.tenant_id = $1 AND r.organization_id = $2 ${crewClause}
+        AND r.status = 'submitted' AND r.deleted_at IS NULL
+      ORDER BY r.work_date DESC, cyc.cycle_number DESC NULLS LAST, d.created_at DESC NULLS LAST
+      LIMIT 100
+      `,
+      params,
+    );
+    return result.rows.map((row) => ({
+      report_id: row.report_id,
+      work_date: this.dateOnly(row.work_date),
+      work_order_number: row.work_order_number,
+      crew_name: row.crew_name,
+      report_outcome: row.customer_qc_outcome,
+      completeness_status: row.completeness_status,
+      revision_number: Number(row.revision_number ?? 1),
+      cycle_id: row.cycle_id,
+      cycle_number: row.cycle_number === null ? null : Number(row.cycle_number),
+      cycle_status: row.cycle_status,
+      qc_authority_name: row.qc_authority_name,
+      decision: row.decision ? {
+        id: row.decision_id,
+        production_record_id: row.production_record_id,
+        decision: row.decision,
+        reported_quantity: Number(row.reported_quantity),
+        customer_accepted_quantity: row.customer_accepted_quantity === null ? null : Number(row.customer_accepted_quantity),
+        unit_of_measure: row.unit_of_measure,
+        customer_reason_code: row.customer_reason_code,
+        code: row.code,
+        description: row.description,
+        asset_identifier: row.asset_identifier,
+        from_asset_identifier: row.from_asset_identifier,
+        to_asset_identifier: row.to_asset_identifier,
+      } : null,
+      correction: row.correction_id ? {
+        id: row.correction_id,
+        status: row.correction_status,
+        correction_type: row.correction_type,
+        partner_safe_instructions: row.partner_safe_instructions,
+        due_date: this.dateOnly(row.due_date),
+        allowed_fields: row.allowed_fields ?? [],
+      } : null,
+    }));
+  }
+
+  private async requireForemanCorrection(client: PoolClient, tenantId: string, organizationId: string, crewId: string, correctionId: string) {
+    const result = await client.query(
+      `
+      SELECT *
+      FROM production_corrections
+      WHERE tenant_id = $1 AND id = $2 AND partner_organization_id = $3 AND crew_id = $4 AND deleted_at IS NULL
+      LIMIT 1
+      `,
+      [tenantId, correctionId, organizationId, crewId],
+    );
+    if (!result.rows[0]) throw new NotFoundException("correction not found");
+    return result.rows[0];
+  }
+
+  private validateCorrectionAllowedFields(correction: QueryResultRow, body: Record<string, unknown>) {
+    const allowed = new Set(correction.allowed_fields ?? []);
+    const requested = ["reported_quantity", "production_code_id", "asset_identifier", "route_endpoint", "map_location", "notes", "evidence"].filter((field) => body[field] !== undefined);
+    for (const field of requested) {
+      if (!allowed.has(field)) throw new BadRequestException(`correction field not allowed: ${field}`);
+    }
+    if (!requested.length && !this.optionalString(body.partner_notes)) throw new BadRequestException("correction update is required");
+  }
+
+  private async buildCorrectionSnapshot(client: PoolClient, correction: QueryResultRow, body: Record<string, unknown>, revisionNumber: number) {
+    const report = await this.requireDailyReportById(client, correction.tenant_id, correction.daily_report_id);
+    const production = await this.requireProductionRecord(client, correction.tenant_id, correction.production_record_id);
+    return {
+      revision_number: revisionNumber,
+      reason: "customer_correction_resubmitted",
+      report: this.safeDailyProductionSummary(report),
+      correction: this.safeCorrection(correction),
+      original_production_record_id: production.id,
+      proposed_correction: {
+        reported_quantity: body.reported_quantity === undefined ? null : Number(body.reported_quantity),
+        asset_identifier: this.optionalString(body.asset_identifier),
+        route_endpoint: this.optionalString(body.route_endpoint),
+        notes: this.optionalString(body.notes ?? body.partner_notes),
+      },
+    };
+  }
+
+  private safeCustomerQcReportSummary(row: QueryResultRow) {
+    return {
+      id: row.id,
+      work_date: this.dateOnly(row.work_date),
+      project_name: row.project_name,
+      work_order_number: row.work_order_number,
+      partner_name: row.partner_name,
+      crew_name: row.crew_name,
+      status: row.status,
+      completeness_status: row.completeness_status,
+      customer_qc_outcome: row.customer_qc_outcome,
+      revision_number: Number(row.revision_number ?? 1),
+      submitted_at: row.submitted_at,
+      qc_authority_organization_id: row.qc_authority_organization_id,
+      qc_authority_name: row.qc_authority_name,
+    };
+  }
+
+  private async safeCustomerQcCycleDetail(client: PoolClient, row: QueryResultRow) {
+    const decisions = await client.query("SELECT * FROM customer_qc_decisions WHERE tenant_id = $1 AND qc_cycle_id = $2 AND current = true AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, row.id]);
+    return {
+      id: row.id,
+      daily_report_id: row.daily_report_id,
+      daily_report_revision_id: row.daily_report_revision_id,
+      qc_authority_organization_id: row.qc_authority_organization_id,
+      cycle_number: Number(row.cycle_number),
+      status: row.status,
+      source_type: row.source_type,
+      source_reference: row.source_reference,
+      customer_reference_number: row.customer_reference_number,
+      general_customer_notes: row.general_customer_notes,
+      decisions: decisions.rows.map((decision) => this.safeCustomerQcDecision(decision)),
+    };
+  }
+
+  private async safeCustomerQcDecisionDetail(client: PoolClient, row: QueryResultRow) {
+    const correction = await client.query("SELECT * FROM production_corrections WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND deleted_at IS NULL LIMIT 1", [row.tenant_id, row.id]);
+    return { ...this.safeCustomerQcDecision(row), correction: correction.rows[0] ? this.safeCorrection(correction.rows[0]) : null };
+  }
+
+  private safeCustomerQcDecision(row: QueryResultRow) {
+    return {
+      id: row.id,
+      qc_cycle_id: row.qc_cycle_id,
+      production_record_id: row.production_record_id,
+      decision: row.decision,
+      reported_quantity: Number(row.reported_quantity),
+      customer_accepted_quantity: row.customer_accepted_quantity === null ? null : Number(row.customer_accepted_quantity),
+      unit_of_measure: row.unit_of_measure,
+      customer_reason_code: row.customer_reason_code,
+      customer_comments: row.customer_comments,
+      correction_required: Boolean(row.correction_required),
+      recorded_at: row.recorded_at,
+    };
+  }
+
+  private safeCorrection(row: QueryResultRow) {
+    return {
+      id: row.id,
+      qc_cycle_id: row.qc_cycle_id,
+      customer_qc_decision_id: row.customer_qc_decision_id,
+      daily_report_id: row.daily_report_id,
+      production_record_id: row.production_record_id,
+      correction_type: row.correction_type,
+      allowed_fields: row.allowed_fields ?? [],
+      customer_reason: row.customer_reason,
+      partner_safe_instructions: row.partner_safe_instructions,
+      due_date: this.dateOnly(row.due_date),
+      status: row.status,
+      resubmitted_at: row.resubmitted_at,
+    };
   }
 
   private async requireWorkOrderContext(client: PoolClient, tenantId: string, organizationId: string, versionId: string): Promise<WorkOrderContext> {
@@ -1220,6 +1789,12 @@ export class SyncfieldController {
   private positiveNumber(value: unknown, message: string): number {
     const number = Number(value);
     if (!Number.isFinite(number) || number <= 0) throw new BadRequestException(message);
+    return number;
+  }
+
+  private nonNegativeNumber(value: unknown, message: string): number {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) throw new BadRequestException(message);
     return number;
   }
 

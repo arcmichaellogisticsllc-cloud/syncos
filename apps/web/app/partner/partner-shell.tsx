@@ -24,7 +24,9 @@ type Section =
   | "field-map"
   | "daily-jsa"
   | "daily-production"
-  | "review-day";
+  | "review-day"
+  | "customer-qc"
+  | "corrections";
 
 type PartnerContext = {
   user: { id: string; display_name: string };
@@ -125,6 +127,43 @@ type DailyProduction = {
   annotation_count?: number;
   submitted_at?: string;
 };
+type CustomerQcDecision = {
+  id?: string;
+  production_record_id?: string;
+  decision?: string;
+  reported_quantity?: number;
+  customer_accepted_quantity?: number | null;
+  unit_of_measure?: string;
+  code?: string;
+  description?: string;
+  customer_reason_code?: string | null;
+  customer_comments?: string | null;
+};
+type CustomerCorrection = {
+  id?: string;
+  correction_type?: string;
+  status?: string;
+  partner_safe_instructions?: string;
+  customer_reason?: string;
+  due_date?: string | null;
+  allowed_fields?: string[];
+  production_record_id?: string;
+};
+type CustomerQcItem = {
+  report_id?: string;
+  work_date?: string;
+  revision_number?: number;
+  completeness_status?: string;
+  report_outcome?: string;
+  work_order_number?: string;
+  crew_name?: string;
+  cycle_id?: string;
+  cycle_number?: number | null;
+  cycle_status?: string | null;
+  qc_authority_name?: string | null;
+  decision?: CustomerQcDecision | null;
+  correction?: CustomerCorrection | null;
+};
 
 type PortalData = {
   context?: PartnerContext;
@@ -149,6 +188,7 @@ type PortalData = {
   productionToday?: DailyProduction | null;
   productionCodes?: ProductionCode[];
   productionReports?: DailyProduction[];
+  customerQcReports?: CustomerQcItem[];
   foremanCrew?: Crew | null;
   foremanRoster?: Worker[];
   foremanWorkOrder?: WorkOrder | null;
@@ -165,6 +205,7 @@ const adminNav = [
   ["Vehicles", "/partner/vehicles"],
   ["Mobilization", "/partner/mobilization"],
   ["Daily JSA", "/partner/jsa"],
+  ["Customer QC", "/partner/customer-qc"],
 ] as const;
 
 const foremanNav = [
@@ -175,6 +216,7 @@ const foremanNav = [
   ["Daily JSA", "/partner/jsa"],
   ["Production", "/partner/production"],
   ["Review Day", "/partner/production/review"],
+  ["Corrections", "/partner/corrections"],
   ["Mobilization", "/partner/mobilization"],
 ] as const;
 
@@ -283,7 +325,7 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
 
 async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
   const permissions = readPermissions();
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports] = await Promise.all([
+  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports] = await Promise.all([
     safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
     safeFetch<CompanyProfile>("partner-compliance/me/company-profile"),
     safeFetch<TaxProfile>("partner-compliance/me/w9"),
@@ -297,6 +339,7 @@ async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Pro
     permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
     permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
     permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
+    permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
@@ -311,12 +354,12 @@ async function loadAdmin(context: PartnerContext, actions?: PartnerActions): Pro
   const versionId = str(firstWorkOrder?.id);
   const mobilization = versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports };
+  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports };
 }
 
 async function loadForeman(context: PartnerContext, actions?: PartnerActions): Promise<PortalData> {
   const permissions = readPermissions();
-  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes] = await Promise.all([
+  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, customerQcReports] = await Promise.all([
     safeFetch<ComplianceSummary>("partner-compliance/me/summary"),
     safeFetch<Crew | null>("partner-workforce/foreman/crew", null),
     safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []),
@@ -327,8 +370,9 @@ async function loadForeman(context: PartnerContext, actions?: PartnerActions): P
     permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>("syncfield/foreman/jsa/today", null) : null,
     permissions.includes("partner_daily_production.read") ? safeFetch<DailyProduction | null>("syncfield/foreman/production/today", null) : null,
     permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>("syncfield/foreman/production/codes", []) : [],
+    permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
   ]);
-  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes };
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, customerQcReports };
 }
 
 async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
@@ -352,6 +396,7 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     if (section === "daily-jsa") return <DailyJsaWorkspace data={data} completeJsa={completeJsa} />;
     if (section === "daily-production") return <DailyProductionWorkspace data={data} />;
     if (section === "review-day") return <ReviewDayWorkspace data={data} />;
+    if (section === "customer-qc" || section === "corrections") return <ForemanCorrectionsWorkspace data={data} />;
     if (section === "mobilization") return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
   }
 
@@ -389,6 +434,9 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     case "daily-production":
     case "review-day":
       return <AdminProductionWorkspace data={data} />;
+    case "customer-qc":
+    case "corrections":
+      return <CustomerQcWorkspace data={data} />;
     case "field-map":
       return <FieldMapWorkspace data={data} />;
     default:
@@ -723,6 +771,94 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
       </div>
       {!(data.productionReports ?? []).length ? <EmptyPortal title="No Daily Production" body="Draft and submitted field reports appear here after Foreman entry." /> : null}
     </Panel>
+  );
+}
+
+function CustomerQcWorkspace({ data }: { data: PortalData }) {
+  const reports = data.customerQcReports ?? [];
+  return (
+    <div className="partner-stack">
+      <Panel title="Customer QC" eyebrow="Customer authority decisions">
+        <div className="partner-card-grid">
+          {reports.map((report) => (
+            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_order_number || "Work Order"} · ${report.work_date || "Work date"}`} status={report.report_outcome}>
+              <StatusRows rows={[
+                ["Crew", report.crew_name],
+                ["Completeness", report.completeness_status],
+                ["Submitted Revision", str(report.revision_number)],
+                ["Customer Outcome", report.report_outcome],
+                ["QC Authority", report.qc_authority_name || "Not assigned"],
+                ["Decision", report.decision?.decision || "Pending"],
+                ["Accepted Quantity", report.decision?.customer_accepted_quantity === null || report.decision?.customer_accepted_quantity === undefined ? "Not set" : `${report.decision.customer_accepted_quantity} ${report.decision.unit_of_measure ?? ""}`],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!reports.length ? <EmptyPortal title="No Customer QC decisions" body="Customer QC outcomes appear here after Sync records decisions from the configured QC authority." /> : null}
+      </Panel>
+      <Panel title="Correction History" eyebrow="Partner-safe relay">
+        <CorrectionList reports={reports} />
+      </Panel>
+    </div>
+  );
+}
+
+function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
+  const reports = data.customerQcReports ?? [];
+  return (
+    <div className="partner-stack">
+      <section className="field-status-band" aria-label="Customer correction status">
+        <div>
+          <p className="eyebrow">Corrections</p>
+          <h3>{str(data.foremanWorkOrder?.work_order_number) || "Assigned Work Order"}</h3>
+          <p>Customer decisions and correction instructions for your assigned Crew.</p>
+        </div>
+        <StatusPill label="Open" value={String(openCorrections(reports).length)} />
+      </section>
+      <Panel title="Corrections Required" eyebrow="Customer QC relay">
+        <CorrectionList reports={reports} field />
+      </Panel>
+      <Panel title="Customer QC Status" eyebrow="Own Crew">
+        <div className="partner-card-grid">
+          {reports.map((report) => (
+            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_date || "Work date"} · Rev ${report.revision_number ?? 1}`} status={report.report_outcome}>
+              <StatusRows rows={[
+                ["Work Order", report.work_order_number],
+                ["Completeness", report.completeness_status],
+                ["Customer Outcome", report.report_outcome],
+                ["QC Authority", report.qc_authority_name || "Not assigned"],
+                ["Decision", report.decision?.decision || "Pending"],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!reports.length ? <EmptyPortal title="No Customer QC status" body="Customer decisions for your Crew appear after Sync records them from the QC authority." /> : null}
+      </Panel>
+    </div>
+  );
+}
+
+function CorrectionList({ reports, field = false }: { reports: CustomerQcItem[]; field?: boolean }) {
+  const corrections = openCorrections(reports);
+  if (!corrections.length) return <EmptyPortal title="No open corrections" body="Correction-required Customer decisions appear here with Partner-safe instructions." />;
+  return (
+    <div className="partner-card-grid">
+      {corrections.map(({ report, correction }) => (
+        <RecordCard key={correction.id} title={`${report.work_order_number || "Work Order"} · ${correction.correction_type || "Correction"}`} status={correction.status}>
+          <StatusRows rows={[
+            ["Work Date", report.work_date],
+            ["QC Cycle", report.cycle_number === undefined || report.cycle_number === null ? "Current" : `Cycle ${report.cycle_number}`],
+            ["QC Authority", report.qc_authority_name || "Not assigned"],
+            ["Production", report.decision?.description || report.decision?.code],
+            ["Reported Quantity", report.decision?.reported_quantity === undefined ? "Not set" : `${report.decision.reported_quantity} ${report.decision.unit_of_measure ?? ""}`],
+            ["Customer Instruction", correction.partner_safe_instructions || correction.customer_reason],
+            ["Allowed Fields", (correction.allowed_fields ?? []).join(", ") || "Correction scope required"],
+            ["Due", correction.due_date || "Not set"],
+          ]} />
+          {field ? <p className="partner-safe-text">Save Correction and Resubmit Correction are server-controlled P10 actions. Customer acceptance fields are not editable by Partner users.</p> : null}
+        </RecordCard>
+      ))}
+    </div>
   );
 }
 
@@ -1124,13 +1260,14 @@ function activeSectionLabel(section: Section, persona?: Persona) {
     if (section === "daily-jsa") return "Daily JSA";
     if (section === "daily-production") return "Production";
     if (section === "review-day") return "Review Day";
+    if (section === "corrections" || section === "customer-qc") return "Corrections";
     return "Mobilization";
   }
   if (section === "worker-detail") return "Workers";
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC" };
   return labels[section] ?? "Dashboard";
 }
 
@@ -1144,6 +1281,8 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "daily-jsa") return "Daily JSA";
   if (section === "daily-production") return "Daily Production";
   if (section === "review-day") return "Review Day";
+  if (section === "customer-qc") return "Customer QC";
+  if (section === "corrections") return "Corrections";
   return activeSectionLabel(section, persona);
 }
 
@@ -1160,6 +1299,14 @@ function externalBlockers(readiness?: Readiness | null, compliance?: ComplianceS
   const productionStartStatus = notice?.production_start?.authorization_status ?? notice?.production_start_status;
   if (!productionStartStatus || ["not_authorized", "held", "revoked"].includes(productionStartStatus)) blockers.push({ key: "production_start_not_authorized", message: "Production start is not yet authorized." });
   return blockers;
+}
+
+function openCorrections(reports: CustomerQcItem[]) {
+  const rows: Array<{ report: CustomerQcItem; correction: CustomerCorrection }> = [];
+  for (const report of reports) {
+    if (report.correction && !["resolved", "cancelled"].includes(str(report.correction.status))) rows.push({ report, correction: report.correction });
+  }
+  return rows;
 }
 
 function statusFrom(row: Record<string, unknown> | null | undefined, key: string) {

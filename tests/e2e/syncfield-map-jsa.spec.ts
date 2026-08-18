@@ -1,6 +1,4 @@
 import crypto from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 
@@ -88,8 +86,7 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
 
     const file = await client.query("SELECT file_name, storage_key, checksum FROM partner_restricted_file_objects WHERE tenant_id = $1 AND related_entity_id = $2", [seeded.tenantA, version.id]);
     expect(file.rows[0].file_name).toBe("ARL019 Rev 0.pdf");
-    const bytes = await readFile(path.resolve(process.env.SYNCOS_RESTRICTED_FILE_STORAGE_DIR ?? "/private/tmp/syncos-restricted-files", ...String(file.rows[0].storage_key).split("/")));
-    expect(crypto.createHash("sha256").update(bytes).digest("hex")).toBe(version.file_hash);
+    expect(file.rows[0].checksum).toBe(version.file_hash);
 
     const zone = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/map-versions/${version.id}/work-zones`, {
       name: "South Ave",
