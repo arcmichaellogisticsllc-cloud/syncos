@@ -90,6 +90,7 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_settlement.read",
   "partner_contractor_payable.read",
   "partner_payment_eligibility.read",
+  "partner_payment.read",
 ]);
 
 @Injectable()

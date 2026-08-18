@@ -27,7 +27,8 @@ type Section =
   | "review-day"
   | "customer-qc"
   | "corrections"
-  | "settlements";
+  | "settlements"
+  | "payments";
 
 type PartnerContext = {
   user: { id: string; display_name: string };
@@ -194,6 +195,19 @@ type PartnerSettlement = {
   dispute_deadline?: string | null;
   items?: Array<{ production_code?: string; accepted_quantity?: number; unit?: string; partner_rate?: number; gross_partner_amount?: number }>;
 };
+type PartnerPayment = {
+  contractor_payable_id?: string;
+  payable_number?: string;
+  net_payable_amount?: number;
+  eligible_amount?: number;
+  paid_amount?: number;
+  in_flight_payment_amount?: number;
+  retained_balance_amount?: number;
+  payment_due_at?: string | null;
+  payment_status?: string;
+  pay_when_paid_status?: string;
+  payments?: Array<{ id?: string; amount?: number; status?: string; provider_reference?: string; requested_at?: string }>;
+};
 
 type PortalData = {
   context?: PartnerContext;
@@ -222,6 +236,7 @@ type PortalData = {
   productionDashboard?: ProductionDashboard | null;
   productionHistory?: ProductionDashboard | null;
   partnerSettlements?: PartnerSettlement[];
+  partnerPayments?: PartnerPayment[];
   foremanCrew?: Crew | null;
   foremanRoster?: Worker[];
   foremanWorkOrder?: WorkOrder | null;
@@ -240,6 +255,7 @@ const adminNav = [
   ["Daily JSA", "/partner/jsa"],
   ["Customer QC", "/partner/customer-qc"],
   ["Settlements", "/partner/settlements"],
+  ["Payments", "/partner/payments"],
 ] as const;
 
 const foremanNav = [
@@ -367,7 +383,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const needsWorkOrders = needsDashboard || section === "work-orders" || section === "work-order-detail" || section === "mobilization";
   const needsVehicles = needsDashboard || section === "vehicles";
   const needsMobilization = needsDashboard || section === "mobilization";
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements] = await Promise.all([
+  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments] = await Promise.all([
     needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
     section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
@@ -384,6 +400,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
     (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
     section === "daily-production" && permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
     section === "settlements" && permissions.includes("partner_settlement.read") ? safeFetch<PartnerSettlement[]>("accepted-production-financials/partner/settlements", []) : [],
+    section === "payments" && permissions.includes("partner_payment.read") ? safeFetch<PartnerPayment[]>("payment-retainage-adjustments/partner/payments", []) : [],
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
@@ -399,7 +416,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const versionId = str(selectedWorkOrder?.id);
   const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements };
+  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments };
 }
 
 async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section): Promise<PortalData> {
@@ -439,7 +456,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
 }
 
 function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: () => Promise<void>) {
-    if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements"].includes(section)) {
+    if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments"].includes(section)) {
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
   if (data.context?.persona === "partner_foreman") {
@@ -493,6 +510,8 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
       return <CustomerQcWorkspace data={data} />;
     case "settlements":
       return <PartnerSettlementsWorkspace data={data} />;
+    case "payments":
+      return <PartnerPaymentsWorkspace data={data} />;
     case "field-map":
       return <FieldMapWorkspace data={data} />;
     default:
@@ -947,6 +966,44 @@ function PartnerSettlementsWorkspace({ data }: { data: PortalData }) {
             ))}
           </div>
         ) : <EmptyPortal title="No settlement line items" body="Accepted production line items appear after settlement creation." />}
+      </Panel>
+    </div>
+  );
+}
+
+function PartnerPaymentsWorkspace({ data }: { data: PortalData }) {
+  const payables = data.partnerPayments ?? [];
+  return (
+    <div className="partner-stack">
+      <Panel title="Payments" eyebrow="Partner Admin payment status">
+        <div className="partner-card-grid">
+          {payables.map((payable) => (
+            <RecordCard key={str(payable.contractor_payable_id)} title={str(payable.payable_number)} status={paymentDisplayStatus(payable)}>
+              <StatusRows rows={[
+                ["Net Payable", currency(payable.net_payable_amount)],
+                ["Eligible Amount", currency(payable.eligible_amount)],
+                ["In Flight", currency(payable.in_flight_payment_amount)],
+                ["Paid", currency(payable.paid_amount)],
+                ["Retainage Held", currency(payable.retained_balance_amount)],
+                ["Due Date", str(payable.payment_due_at) || "Awaiting customer funds"],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!payables.length ? <EmptyPortal title="No payment records" body="Payment status appears after eligible Contractor Payables receive controlled internal payment instructions." /> : null}
+      </Panel>
+      <Panel title="Payment Instructions" eyebrow="No Customer rate or bank data">
+        {payables.flatMap((payable) => payable.payments ?? []).length ? (
+          <div className="partner-list">
+            {payables.flatMap((payable) => payable.payments ?? []).map((payment) => (
+              <div className="partner-list-row static" key={str(payment.id)}>
+                <span><strong>{currency(payment.amount)}</strong><small>{str(payment.provider_reference) || "Provider reference pending"}</small></span>
+                <StatusPill label="Status" value={str(payment.status)} />
+                <StatusPill label="Requested" value={shortTime(payment.requested_at)} />
+              </div>
+            ))}
+          </div>
+        ) : <EmptyPortal title="No payment instructions" body="Confirmed and processing payment instructions appear here without provider secrets or raw payment account digits." />}
       </Panel>
     </div>
   );
@@ -1416,7 +1473,7 @@ function activeSectionLabel(section: Section, persona?: Persona) {
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments" };
   return labels[section] ?? "Dashboard";
 }
 
@@ -1433,6 +1490,7 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "customer-qc") return "Customer QC";
   if (section === "corrections") return "Corrections";
   if (section === "settlements") return "Settlements";
+  if (section === "payments") return "Payments";
   return activeSectionLabel(section, persona);
 }
 
@@ -1476,6 +1534,13 @@ function quantityText(quantity: unknown, unit: unknown) {
 function currency(value: unknown) {
   const number = Number(value ?? 0);
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number.isFinite(number) ? number : 0);
+}
+
+function paymentDisplayStatus(payable: PartnerPayment) {
+  if (Number(payable.paid_amount ?? 0) >= Number(payable.net_payable_amount ?? 0) && Number(payable.net_payable_amount ?? 0) > 0) return "paid";
+  if (Number(payable.in_flight_payment_amount ?? 0) > 0) return "payment_processing";
+  if (Number(payable.eligible_amount ?? 0) > Number(payable.paid_amount ?? 0)) return "eligible";
+  return str(payable.pay_when_paid_status) || str(payable.payment_status) || "awaiting_customer_funds";
 }
 
 function workerName(worker?: Record<string, unknown>) {

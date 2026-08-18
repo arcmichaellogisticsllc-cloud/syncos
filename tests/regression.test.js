@@ -260,6 +260,29 @@ test("certified accepted production financials E2E is included in the global cer
   );
 });
 
+test("certified payment retainage adjustments E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/payment-retainage-adjustments\.spec\.ts/,
+    "P13 payment/retainage/adjustment E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P13 payment execution preserves money-movement boundaries", () => {
+  const sources = [
+    read("apps/api/src/routes/payment-retainage-adjustments.controller.ts"),
+    read("apps/web/app/payment-retainage-adjustments/page.tsx"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/payment-retainage-adjustments-p13.md"),
+  ].join("\n");
+  assert.match(sources, /local_test_provider/);
+  assert.match(sources, /Payment Instruction is not payment confirmation|provider_submission_is_confirmation/);
+  assert.match(sources, /retainage_releases/);
+  assert.match(sources, /financial_adjustments/);
+  assert.doesNotMatch(sources, /create real ach|live ach|production provider credential|bank account number/i);
+});
+
 test("P10 Customer QC language preserves customer authority boundary", () => {
   const sources = [
     read("apps/api/src/routes/syncfield.controller.ts"),

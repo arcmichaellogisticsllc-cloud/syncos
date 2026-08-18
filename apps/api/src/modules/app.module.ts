@@ -21,6 +21,7 @@ import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { PayrollController } from "../routes/payroll.controller";
 import { PaymentExecutionController } from "../routes/payment-execution.controller";
+import { PaymentRetainageAdjustmentsController } from "../routes/payment-retainage-adjustments.controller";
 import { PartnerDomainController } from "../routes/partner-domain.controller";
 import { PartnerComplianceController } from "../routes/partner-compliance.controller";
 import { PartnerPersonasController } from "../routes/partner-personas.controller";
@@ -68,6 +69,7 @@ import { DatabaseModule } from "./database.module";
     CapacityController,
     PayrollController,
     PaymentExecutionController,
+    PaymentRetainageAdjustmentsController,
     PartnerComplianceController,
     PartnerDomainController,
     PartnerPersonasController,
