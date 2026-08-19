@@ -11,6 +11,7 @@ import { CashController } from "../routes/cash.controller";
 import { ContractorPayablesController } from "../routes/contractor-payables.controller";
 import { ConstraintsController } from "../routes/constraints.controller";
 import { DashboardsController } from "../routes/dashboards.controller";
+import { ExecutiveCommandController } from "../routes/executive-command.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
 import { CoveragePlansController } from "../routes/coverage-plans.controller";
@@ -86,6 +87,7 @@ import { DatabaseModule } from "./database.module";
     CashController,
     ContractorPayablesController,
     ConstraintsController,
+    ExecutiveCommandController,
     DashboardsController,
     WorkflowsController,
     KpisController,

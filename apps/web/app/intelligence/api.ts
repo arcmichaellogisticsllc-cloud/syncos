@@ -257,6 +257,10 @@ export const defaultOpportunityPermissions = [
   "project_handoff_risk.override",
   "project_handoff_risk.archive",
   "project_handoff_approval.read",
+  "executive_command.read",
+  "executive_command.actions_read",
+  "executive_command.snapshot_recalculate",
+  "executive_command.action_acknowledge",
 ];
 
 export function readToken() {

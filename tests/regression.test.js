@@ -35,7 +35,7 @@ test("regression route and permission coverage exists for completed sprints", ()
 
 test("all sprint smoke commands are wired", () => {
   const packageJson = JSON.parse(read("package.json"));
-  for (let sprint = 1; sprint <= 15; sprint += 1) {
+  for (let sprint = 1; sprint <= 16; sprint += 1) {
     assert.equal(typeof packageJson.scripts[`sprint${sprint}:smoke`], "string", `missing sprint${sprint}:smoke`);
   }
   assert.equal(typeof packageJson.scripts["security:smoke"], "string");
@@ -285,6 +285,30 @@ test("certified Opportunity capacity matching E2E is included in the global cert
     /tests\/e2e\/opportunity-capacity-matching\.spec\.ts/,
     "P15 Opportunity capacity matching E2E must run as part of npm run e2e:certification",
   );
+});
+
+test("certified Executive command throughput E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/executive-command-throughput\.spec\.ts/,
+    "P16 Executive command throughput E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P16 Command Center preserves read-model and no-auto-action boundaries", () => {
+  const sources = [
+    read("apps/api/src/routes/executive-command.controller.ts"),
+    read("packages/shared/src/executive-command.ts"),
+    read("apps/web/app/command-center/page.tsx"),
+    read("docs/product/executive-command-throughput-p16.md"),
+  ].join("\n");
+  assert.match(sources, /executive_command_v1/);
+  assert.match(sources, /executive_action_priority_v1/);
+  assert.match(sources, /read_model_only.*true|read\/decision layer/);
+  assert.match(sources, /customer_ar_partner_ap_collapsed.*false|Customer AR and Partner AP remain separate/);
+  assert.doesNotMatch(sources, /UPDATE opportunities SET|INSERT INTO work_orders|INSERT INTO partner_work_order_crew_assignments|INSERT INTO payments|UPDATE organizations SET|UPDATE contractor_payables SET|UPDATE invoices SET/i);
+  assert.doesNotMatch(sources, /worker_email|worker_name|bank_account|provider_secret|margin_amount|margin_percent/i);
 });
 
 test("P15 Opportunity matching preserves recommendation and assignment boundaries", () => {

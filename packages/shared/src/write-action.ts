@@ -31,6 +31,7 @@ export type ExecuteWriteActionInput<T> = {
   aggregateType: string;
   eventType: string;
   audit?: Omit<CreateAuditLogInput, "tenantId" | "actorUserId" | "action" | "entityType" | "entityId" | "afterState" | "beforeState">;
+  skipSourceInvalidation?: boolean;
   systemActions?: Array<{
     actionType: string;
     payload?: Record<string, unknown>;
@@ -61,6 +62,7 @@ export async function executeWriteAction<T>(
         beforeState: result.beforeState,
         afterState: result.afterState as Record<string, unknown>,
         audit: input.audit,
+        skipSourceInvalidation: input.skipSourceInvalidation,
         systemActions,
       });
     }
@@ -225,6 +227,7 @@ async function appendEventAuditAndActions(
     beforeState?: Record<string, unknown>;
     afterState: Record<string, unknown>;
     audit?: Omit<CreateAuditLogInput, "tenantId" | "actorUserId" | "action" | "entityType" | "entityId" | "afterState" | "beforeState">;
+    skipSourceInvalidation?: boolean;
     systemActions?: Array<{
       actionType: string;
       payload?: Record<string, unknown>;
@@ -295,15 +298,17 @@ async function appendEventAuditAndActions(
     );
   }
 
-  await applyMobilizationSourceInvalidation(client, {
-    eventId: eventResult.rows[0].id,
-    tenantId: input.tenantId,
-    actorUserId: input.actorUserId,
-    eventType: input.eventType,
-    aggregateType: input.aggregateType,
-    aggregateId: input.entityId,
-    afterState: input.afterState,
-  });
+  if (!input.skipSourceInvalidation) {
+    await applyMobilizationSourceInvalidation(client, {
+      eventId: eventResult.rows[0].id,
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      eventType: input.eventType,
+      aggregateType: input.aggregateType,
+      aggregateId: input.entityId,
+      afterState: input.afterState,
+    });
+  }
 }
 
 function structuredLog(category: "Event" | "Audit", message: string, context: Record<string, unknown>) {

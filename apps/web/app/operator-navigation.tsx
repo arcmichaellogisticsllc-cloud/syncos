@@ -32,8 +32,9 @@ export const workspaces: WorkspaceDefinition[] = [
     href: "/",
     scope: "Daily Priorities",
     description: "Today's work, blockers, decisions, and recommendations",
-    permissions: ["dashboard.executive.read", "signal.read", "project.read", "invoice.read"],
+    permissions: ["executive_command.read", "dashboard.executive.read", "signal.read", "project.read", "invoice.read"],
     items: [
+      { label: "Command Center", href: "/command-center", workspace: "Command Center", description: "Executive throughput, blockers, and daily actions.", permission: "executive_command.read" },
       { label: "Executive Dashboard", href: "/executive", workspace: "Command Center", description: "Business health, blockers, cash, and throughput.", permission: "dashboard.executive.read" },
       { label: "Daily Priorities", href: "/", workspace: "Command Center", description: "Today's cross-workspace operating view." },
       { label: "Blockers", href: "/constraints-center", workspace: "Command Center", description: "Constraints requiring attention.", permission: "constraint.read" },
