@@ -109,6 +109,18 @@ async function main() {
     "038_payment_execution_contract_foundation.sql",
     "039_bank_reconciliation_contract_foundation.sql",
     "040_accounting_export_contract_foundation.sql",
+    "041_account_onboarding_contract_foundation.sql",
+    "042_partner_compliance_onboarding_foundation.sql",
+    "043_partner_workforce_credentials_foundation.sql",
+    "044_partner_agreements_work_orders_vehicles_foundation.sql",
+    "045_partner_mobilization_readiness_foundation.sql",
+    "046_syncfield_map_jsa_foundation.sql",
+    "047_syncfield_daily_production_foundation.sql",
+    "048_syncfield_customer_qc_foundation.sql",
+    "049_syncfield_production_exports_closeout.sql",
+    "050_accepted_production_financials.sql",
+    "051_payment_retainage_adjustments.sql",
+    "052_partner_performance_capacity_intelligence.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));
@@ -213,7 +225,7 @@ function encode(value) {
 }
 
 function repositoryContainsCreateTable(tableName) {
-  const files = listFiles(root).filter((file) => !file.includes("node_modules") && !file.includes(".git"));
+  const files = listFiles(root).filter((file) => !file.includes("node_modules") && !file.includes(".git") && !file.includes("synccommsystems.com"));
   return files.some((file) => fs.readFileSync(file, "utf8").includes(`CREATE TABLE ${tableName}`));
 }
 

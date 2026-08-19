@@ -28,7 +28,8 @@ type Section =
   | "customer-qc"
   | "corrections"
   | "settlements"
-  | "payments";
+  | "payments"
+  | "performance";
 
 type PartnerContext = {
   user: { id: string; display_name: string };
@@ -208,6 +209,15 @@ type PartnerPayment = {
   pay_when_paid_status?: string;
   payments?: Array<{ id?: string; amount?: number; status?: string; provider_reference?: string; requested_at?: string }>;
 };
+type PartnerPerformanceSummary = {
+  overall_status?: string;
+  score?: number;
+  confidence?: string;
+  trend?: string;
+  dimensions?: Array<{ dimension?: string; normalized_score?: number; sample_size?: number; reason_code?: string }>;
+  improvement_items?: string[];
+  boundary?: Record<string, boolean>;
+};
 
 type PortalData = {
   context?: PartnerContext;
@@ -237,6 +247,7 @@ type PortalData = {
   productionHistory?: ProductionDashboard | null;
   partnerSettlements?: PartnerSettlement[];
   partnerPayments?: PartnerPayment[];
+  partnerPerformance?: PartnerPerformanceSummary | null;
   foremanCrew?: Crew | null;
   foremanRoster?: Worker[];
   foremanWorkOrder?: WorkOrder | null;
@@ -256,6 +267,7 @@ const adminNav = [
   ["Customer QC", "/partner/customer-qc"],
   ["Settlements", "/partner/settlements"],
   ["Payments", "/partner/payments"],
+  ["Performance", "/partner/performance"],
 ] as const;
 
 const foremanNav = [
@@ -383,7 +395,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const needsWorkOrders = needsDashboard || section === "work-orders" || section === "work-order-detail" || section === "mobilization";
   const needsVehicles = needsDashboard || section === "vehicles";
   const needsMobilization = needsDashboard || section === "mobilization";
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments] = await Promise.all([
+  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
     needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
     section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
@@ -401,6 +413,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
     section === "daily-production" && permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
     section === "settlements" && permissions.includes("partner_settlement.read") ? safeFetch<PartnerSettlement[]>("accepted-production-financials/partner/settlements", []) : [],
     section === "payments" && permissions.includes("partner_payment.read") ? safeFetch<PartnerPayment[]>("payment-retainage-adjustments/partner/payments", []) : [],
+    section === "performance" && permissions.includes("partner_performance.read_own") ? safeFetch<PartnerPerformanceSummary | null>("partner-performance/partner/summary", null) : null,
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
@@ -416,7 +429,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const versionId = str(selectedWorkOrder?.id);
   const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments };
+  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
 }
 
 async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section): Promise<PortalData> {
@@ -456,7 +469,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
 }
 
 function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: () => Promise<void>) {
-    if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments"].includes(section)) {
+    if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments", "performance"].includes(section)) {
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
   if (data.context?.persona === "partner_foreman") {
@@ -512,6 +525,8 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
       return <PartnerSettlementsWorkspace data={data} />;
     case "payments":
       return <PartnerPaymentsWorkspace data={data} />;
+    case "performance":
+      return <PartnerPerformanceWorkspace data={data} />;
     case "field-map":
       return <FieldMapWorkspace data={data} />;
     default:
@@ -1009,6 +1024,52 @@ function PartnerPaymentsWorkspace({ data }: { data: PortalData }) {
   );
 }
 
+function PartnerPerformanceWorkspace({ data }: { data: PortalData }) {
+  const summary = data.partnerPerformance;
+  const dimensions = summary?.dimensions ?? [];
+  return (
+    <div className="partner-stack">
+      <Panel title="Performance Summary" eyebrow="Own organization only">
+        {summary ? (
+          <>
+            <div className="summary-grid">
+              <MetricTile label="Operational Status" value={partnerPerformanceLabel(summary.overall_status)} />
+              <MetricTile label="Score" value={summary.score ?? "Pending"} />
+              <MetricTile label="Confidence" value={partnerPerformanceLabel(summary.confidence)} />
+              <MetricTile label="Trend" value={partnerPerformanceLabel(summary.trend)} />
+            </div>
+            <div className="warning-box">This summary is operational feedback for your organization only. It does not show competitive rankings, internal strategy, Worker rankings, rates, or margin.</div>
+          </>
+        ) : <EmptyPortal title="No performance snapshot" body="Performance summaries appear after Sync recalculates derived Partner intelligence." />}
+      </Panel>
+      <Panel title="Dimensions" eyebrow="Source-derived feedback">
+        {dimensions.length ? (
+          <div className="partner-list">
+            {dimensions.map((dimension) => (
+              <div className="partner-list-row static" key={str(dimension.dimension)}>
+                <span><strong>{partnerPerformanceLabel(dimension.dimension)}</strong><small>Sample {dimension.sample_size ?? 0}</small></span>
+                <StatusPill label="Score" value={String(dimension.normalized_score ?? 0)} />
+                <StatusPill label="Reason" value={partnerPerformanceLabel(dimension.reason_code)} />
+              </div>
+            ))}
+          </div>
+        ) : <EmptyPortal title="No dimension evidence" body="Dimension evidence appears after a score snapshot is calculated." />}
+      </Panel>
+      <Panel title="Improvement Items" eyebrow="Partner-safe">
+        {summary?.improvement_items?.length ? (
+          <div className="partner-list">
+            {summary.improvement_items.map((item) => <div className="partner-list-row static" key={item}><span><strong>{partnerPerformanceLabel(item)}</strong></span></div>)}
+          </div>
+        ) : <EmptyPortal title="No current improvement items" body="Partner-safe improvement items appear when a dimension needs attention." />}
+      </Panel>
+    </div>
+  );
+}
+
+function partnerPerformanceLabel(value: unknown) {
+  return str(value).replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "None";
+}
+
 function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
   const reports = data.customerQcReports ?? [];
   return (
@@ -1473,7 +1534,7 @@ function activeSectionLabel(section: Section, persona?: Persona) {
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments", performance: "Performance" };
   return labels[section] ?? "Dashboard";
 }
 
@@ -1491,6 +1552,7 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "corrections") return "Corrections";
   if (section === "settlements") return "Settlements";
   if (section === "payments") return "Payments";
+  if (section === "performance") return "Performance";
   return activeSectionLabel(section, persona);
 }
 

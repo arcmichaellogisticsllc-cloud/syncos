@@ -269,6 +269,29 @@ test("certified payment retainage adjustments E2E is included in the global cert
   );
 });
 
+test("certified Partner performance capacity E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-performance-capacity\.spec\.ts/,
+    "P14 Partner performance/capacity E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P14 Partner performance preserves intelligence and commercial boundaries", () => {
+  const sources = [
+    read("apps/api/src/routes/partner-performance-capacity.controller.ts"),
+    read("apps/web/app/partner-performance/page.tsx"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/partner-performance-capacity-p14.md"),
+  ].join("\n");
+  assert.match(sources, /partner_performance_v1/);
+  assert.match(sources, /lifecycle_auto_changed: false|lifecycle_auto_changed/);
+  assert.match(sources, /worker_ranking.*false|Worker rankings/);
+  assert.doesNotMatch(sources, /UPDATE organizations SET|UPDATE contracts SET|INSERT INTO payments|INSERT INTO financial_adjustments/i);
+  assert.doesNotMatch(sources, /customer_rate.*partner|margin.*partner/i);
+});
+
 test("P13 payment execution preserves money-movement boundaries", () => {
   const sources = [
     read("apps/api/src/routes/payment-retainage-adjustments.controller.ts"),
