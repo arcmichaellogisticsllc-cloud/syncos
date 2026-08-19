@@ -35,7 +35,7 @@ test("regression route and permission coverage exists for completed sprints", ()
 
 test("all sprint smoke commands are wired", () => {
   const packageJson = JSON.parse(read("package.json"));
-  for (let sprint = 1; sprint <= 16; sprint += 1) {
+  for (let sprint = 1; sprint <= 17; sprint += 1) {
     assert.equal(typeof packageJson.scripts[`sprint${sprint}:smoke`], "string", `missing sprint${sprint}:smoke`);
   }
   assert.equal(typeof packageJson.scripts["security:smoke"], "string");
@@ -294,6 +294,36 @@ test("certified Executive command throughput E2E is included in the global certi
     /tests\/e2e\/executive-command-throughput\.spec\.ts/,
     "P16 Executive command throughput E2E must run as part of npm run e2e:certification",
   );
+});
+
+test("P17 production readiness E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/production-readiness\.spec\.ts/,
+    "P17 production readiness E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P17 remains a release-readiness gate without a synthetic migration", () => {
+  const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
+  assert.equal(migrations.at(-1), "054_executive_command_throughput.sql", "P17 should not create a migration unless a release blocker requires schema");
+  const doc = read("docs/product/production-readiness-p17.md");
+  assert.match(doc, /Production Readiness/);
+  assert.match(doc, /No migration was added/);
+});
+
+test("P17 release boundary checks preserve no-auto-action and no-sensitive-leak rules", () => {
+  const sources = [
+    read("tests/e2e/production-readiness.spec.ts"),
+    read("docs/product/production-readiness-p17.md"),
+    read("docs/product/syncos-release-checklist.md"),
+  ].join("\n");
+  assert.match(sources, /Recommendation != assignment|no automatic award/i);
+  assert.match(sources, /Customer AR.*Partner AP|AR\/AP/i);
+  assert.match(sources, /local_test_provider/);
+  assert.match(sources, /closed-browser cold-start offline/i);
+  assert.doesNotMatch(sources, /production provider secret|real ACH submitted|automatic lifecycle change/i);
 });
 
 test("P16 Command Center preserves read-model and no-auto-action boundaries", () => {
