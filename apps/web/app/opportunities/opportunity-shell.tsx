@@ -6,6 +6,7 @@ const opportunityNav = [
   ["/opportunities/candidates", "Candidate Board", "active"],
   ["/opportunities/pipeline", "Opportunity Pipeline", "active"],
   ["/opportunities/coverage", "Coverage Planning", "active"],
+  ["/opportunities/capacity-matching", "Capacity Matching", "active"],
   ["/opportunities/pursuits", "Pursuit Management", "placeholder"],
 ];
 

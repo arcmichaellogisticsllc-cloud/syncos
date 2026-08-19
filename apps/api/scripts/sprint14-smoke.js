@@ -121,6 +121,7 @@ async function main() {
     "050_accepted_production_financials.sql",
     "051_payment_retainage_adjustments.sql",
     "052_partner_performance_capacity_intelligence.sql",
+    "053_opportunity_capacity_matching.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));

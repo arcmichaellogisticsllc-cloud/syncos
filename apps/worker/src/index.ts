@@ -1,6 +1,6 @@
 import { Queue, Worker, type JobsOptions } from "bullmq";
 import { Pool } from "pg";
-import { runMobilizationExpirationScan, runPartnerPerformanceRecalculationScan } from "@syncos/shared";
+import { runMobilizationExpirationScan, runOpportunityCapacityMatchingScan, runPartnerPerformanceRecalculationScan } from "@syncos/shared";
 
 const connection = {
   ...parseRedisUrl(process.env.REDIS_URL ?? "redis://localhost:6379"),
@@ -108,6 +108,43 @@ export function startPartnerPerformanceScheduler(options: { pool?: Pool; interva
   };
 }
 
+export function startOpportunityCapacityMatchingScheduler(options: { pool?: Pool; intervalMs?: number; batchSize?: number; disabled?: boolean } = {}) {
+  const disabled = options.disabled ?? process.env.SYNCOS_P15_MATCHING_SCAN_DISABLED === "true";
+  const databaseUrl = process.env.DATABASE_URL;
+  if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
+
+  const pool = options.pool ?? new Pool({ connectionString: databaseUrl });
+  const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P15_MATCHING_SCAN_INTERVAL_MS ?? 3_600_000));
+  const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P15_MATCHING_BATCH_SIZE ?? 50), 250));
+  let running = false;
+
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    const client = await pool.connect();
+    try {
+      const result = await runOpportunityCapacityMatchingScan(client, { batchSize });
+      console.log(`opportunity capacity matching scan completed scanned=${result.scannedOpportunities} created=${result.createdPartnerMatches} locked=${result.locked}`);
+    } catch (error) {
+      console.error(`opportunity capacity matching scan failed: ${(error as Error).message}`);
+    } finally {
+      client.release();
+      running = false;
+    }
+  };
+
+  const timer = setInterval(runOnce, intervalMs);
+  timer.unref();
+  void runOnce();
+  return {
+    started: true,
+    stop: async () => {
+      clearInterval(timer);
+      if (!options.pool) await pool.end();
+    },
+  };
+}
+
 function defaultRetryPolicy(): JobsOptions {
   return {
     attempts: 3,
@@ -134,11 +171,13 @@ if (require.main === module) {
   const worker = createFoundationWorker();
   const scheduler = startMobilizationExpirationScheduler();
   const performanceScheduler = startPartnerPerformanceScheduler();
+  const matchingScheduler = startOpportunityCapacityMatchingScheduler();
   worker.on("completed", (job) => console.log(`completed ${job.id}`));
   worker.on("failed", (job, error) => console.error(`failed ${job?.id}: ${error.message}`));
   const shutdown = async () => {
     await scheduler.stop();
     await performanceScheduler.stop();
+    await matchingScheduler.stop();
     await worker.close();
   };
   process.once("SIGINT", () => void shutdown().then(() => process.exit(0)));

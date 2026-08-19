@@ -35,7 +35,7 @@ test("regression route and permission coverage exists for completed sprints", ()
 
 test("all sprint smoke commands are wired", () => {
   const packageJson = JSON.parse(read("package.json"));
-  for (let sprint = 1; sprint <= 14; sprint += 1) {
+  for (let sprint = 1; sprint <= 15; sprint += 1) {
     assert.equal(typeof packageJson.scripts[`sprint${sprint}:smoke`], "string", `missing sprint${sprint}:smoke`);
   }
   assert.equal(typeof packageJson.scripts["security:smoke"], "string");
@@ -276,6 +276,29 @@ test("certified Partner performance capacity E2E is included in the global certi
     /tests\/e2e\/partner-performance-capacity\.spec\.ts/,
     "P14 Partner performance/capacity E2E must run as part of npm run e2e:certification",
   );
+});
+
+test("certified Opportunity capacity matching E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/opportunity-capacity-matching\.spec\.ts/,
+    "P15 Opportunity capacity matching E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P15 Opportunity matching preserves recommendation and assignment boundaries", () => {
+  const sources = [
+    read("apps/api/src/routes/opportunity-capacity-matching.controller.ts"),
+    read("packages/shared/src/opportunity-capacity-matching.ts"),
+    read("apps/web/app/opportunities/capacity-matching/page.tsx"),
+    read("docs/product/opportunity-capacity-matching-p15.md"),
+  ].join("\n");
+  assert.match(sources, /opportunity_capacity_match_v1/);
+  assert.match(sources, /recommendation_is_assignment.*false|Recommendation != assignment/);
+  assert.match(sources, /worker_ranking_created.*false|Worker rankings absent/);
+  assert.doesNotMatch(sources, /UPDATE opportunities SET|INSERT INTO work_orders|INSERT INTO partner_work_order_crew_assignments|INSERT INTO payments|UPDATE partner_performance_snapshots SET score/i);
+  assert.doesNotMatch(sources, /Partner users should see matching|worker_email.*return|worker_name.*return/i);
 });
 
 test("P14 Partner performance preserves intelligence and commercial boundaries", () => {

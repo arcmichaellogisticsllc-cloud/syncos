@@ -17,6 +17,7 @@ import { CoveragePlansController } from "../routes/coverage-plans.controller";
 import { KpisController } from "../routes/kpis.controller";
 import { LearningController } from "../routes/learning.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
+import { OpportunityCapacityMatchingController } from "../routes/opportunity-capacity-matching.controller";
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { PayrollController } from "../routes/payroll.controller";
@@ -64,6 +65,7 @@ import { DatabaseModule } from "./database.module";
     SignalsController,
     RelationshipMapsController,
     OpportunityCandidatesController,
+    OpportunityCapacityMatchingController,
     OpportunitiesController,
     CoveragePlansController,
     ProjectHandoffsController,
