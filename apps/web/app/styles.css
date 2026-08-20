@@ -1,12 +1,13 @@
 :root {
   color-scheme: light;
-  --background: #f6f7f9;
+  --background: #f7f8fa;
   --surface: #ffffff;
-  --border: #d8dee8;
-  --text: #17202a;
-  --muted: #5b6675;
-  --accent: #176b87;
-  --accent-2: #7a5c00;
+  --border: rgba(7, 19, 38, 0.13);
+  --text: #071326;
+  --muted: #536273;
+  --accent: #0457ff;
+  --accent-2: #f6b600;
+  --navy: #001742;
   --ok: #1d7a46;
   --warn: #a05a00;
 }
@@ -19,7 +20,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Barlow, Arial, Helvetica, sans-serif;
   overflow-x: hidden;
 }
 
@@ -38,7 +39,7 @@ a {
 
 .topbar {
   align-items: center;
-  background: #111827;
+  background: var(--navy);
   color: #ffffff;
   display: flex;
   gap: 20px;
@@ -213,6 +214,56 @@ a {
   background: var(--accent);
   border-color: var(--accent);
   color: #ffffff;
+}
+
+.login-shell {
+  align-items: center;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 22px 60px rgba(7, 19, 38, 0.12);
+  display: grid;
+  gap: 18px;
+  max-width: 460px;
+  padding: 28px;
+  width: 100%;
+}
+
+.login-brand {
+  display: grid;
+  gap: 4px;
+}
+
+.login-brand strong {
+  color: var(--navy);
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.login-brand h1 {
+  font-size: 34px;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.login-brand p,
+.login-copy {
+  color: var(--muted);
+  margin: 0;
+}
+
+.login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .operator-link-secondary {
@@ -886,6 +937,30 @@ textarea:focus-visible {
   display: grid;
   font-size: 13px;
   gap: 5px;
+}
+
+.partner-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.partner-form-grid label {
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.partner-form-grid input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 42px;
+  padding: 9px 10px;
+}
+
+.partner-form-grid.compact-form .partner-status-rows {
+  grid-column: 1 / -1;
 }
 
 .wide-table {

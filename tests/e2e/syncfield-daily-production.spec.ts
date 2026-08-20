@@ -144,15 +144,33 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     const assetRetry = await createProduction(request, seeded, { client_mutation_id: assetMutation, production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.4, y_ratio: 0.5, reported_quantity: 1, status: "complete" });
     expect(assetRetry.id).toBe(asset.id);
 
-    await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.FIBER, location_type: "route", from_asset_identifier: "Pole 12301", to_asset_identifier: "Pole 12312", map_page: 1, start_x_ratio: 0.4, start_y_ratio: 0.5, end_x_ratio: 0.6, end_y_ratio: 0.55, reported_quantity: 141, status: "partial" });
+    const decreasing = await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.FIBER, location_type: "route", from_asset_identifier: "Pole 12301", to_asset_identifier: "Pole 12312", map_page: 1, start_x_ratio: 0.4, start_y_ratio: 0.5, end_x_ratio: 0.6, end_y_ratio: 0.55, tick_start_label: "Pole 12301 start", tick_end_label: "Pole 12312 end", reel_cable_id: "REEL-A", fiber_type: "144ct", sequence_start: 14826, sequence_end: 14685, reported_quantity: 141, status: "partial" });
+    expect(decreasing.sequence_direction).toBe("decreasing");
+    expect(decreasing.sequence_calculated_footage).toBe(141);
+    expect(decreasing.sequence_reported_variance).toBe(0);
+    expect(decreasing.sequence_variance_status).toBe("within_tolerance");
+    const increasing = await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.FIBER, location_type: "route", from_asset_identifier: "Pole 12312", to_asset_identifier: "Pole 12323", map_page: 1, start_x_ratio: 0.6, start_y_ratio: 0.55, end_x_ratio: 0.7, end_y_ratio: 0.6, tick_start_label: "Pole 12312 start", tick_end_label: "Pole 12323 end", reel_cable_id: "REEL-B", fiber_type: "144ct", sequence_start: 14685, sequence_end: 14826, reported_quantity: 141, status: "complete" });
+    expect(increasing.sequence_direction).toBe("increasing");
+    expect(increasing.sequence_calculated_footage).toBe(141);
+    const missingVarianceExplanation = await request.post(apiUrl("/syncfield/foreman/production/records"), {
+      headers: auth(seeded.foremanToken),
+      data: { work_date: today(), client_mutation_id: crypto.randomUUID(), production_code_id: codes.FIBER, location_type: "route", from_asset_identifier: "Pole 12323", to_asset_identifier: "Pole 12334", map_page: 1, start_x_ratio: 0.7, start_y_ratio: 0.6, end_x_ratio: 0.8, end_y_ratio: 0.65, sequence_start: 14826, sequence_end: 12131, reported_quantity: 3000, status: "partial" },
+    });
+    expect(missingVarianceExplanation.status()).toBe(400);
+    const varianceReview = await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.FIBER, location_type: "route", from_asset_identifier: "Pole 12323", to_asset_identifier: "Pole 12334", map_page: 1, start_x_ratio: 0.7, start_y_ratio: 0.6, end_x_ratio: 0.8, end_y_ratio: 0.65, tick_start_label: "Pole 12323 start", tick_end_label: "Pole 12334 end", reel_cable_id: "REEL-C", fiber_type: "288ct", sequence_start: 14826, sequence_end: 12131, reported_quantity: 3000, sequence_variance_explanation: "Customer requested additional slack loop footage.", status: "partial" });
+    expect(varianceReview.sequence_calculated_footage).toBe(2695);
+    expect(varianceReview.sequence_reported_variance).toBe(305);
+    expect(varianceReview.sequence_variance_status).toBe("review_required");
     await createProduction(request, seeded, { client_mutation_id: crypto.randomUUID(), production_code_id: codes.LABOR, location_type: "daily", reported_quantity: 8, status: "complete", notes: "Crew labor hours" });
 
     const detail = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/production/today");
-    expect(detail.records).toHaveLength(6);
-    expect(detail.annotations).toHaveLength(4);
-    expect(detail.totals.record_count).toBe(6);
-    expect(detail.totals.status_counts.complete).toBe(5);
-    expect(detail.totals.by_code.find((row: Record<string, unknown>) => row.code === "FIBER").quantity).toBe(282);
+    expect(detail.records).toHaveLength(8);
+    expect(detail.annotations).toHaveLength(6);
+    expect(detail.annotations.filter((row: Record<string, unknown>) => row.annotation_type === "tick_span")).toHaveLength(4);
+    expect(detail.totals.record_count).toBe(8);
+    expect(detail.totals.status_counts.complete).toBe(6);
+    expect(detail.totals.status_counts.partial).toBe(2);
+    expect(detail.totals.by_code.find((row: Record<string, unknown>) => row.code === "FIBER").quantity).toBe(3423);
 
     const badCoordinate = await request.post(apiUrl("/syncfield/foreman/production/records"), {
       headers: auth(seeded.foremanToken),
@@ -168,7 +186,8 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(submitted.records.every((record: Record<string, unknown>) => record.locked === true)).toBe(true);
     const revision = await client.query("SELECT snapshot_json FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2", [seeded.tenantA, submitted.id]);
     expect(revision.rowCount).toBe(1);
-    expect(revision.rows[0].snapshot_json.records).toHaveLength(6);
+    expect(revision.rows[0].snapshot_json.records).toHaveLength(8);
+    expect(revision.rows[0].snapshot_json.records.some((record: Record<string, unknown>) => record.sequence_variance_status === "review_required")).toBe(true);
 
     const edit = await request.post(apiUrl(`/syncfield/foreman/production/records/${submittedRecordId}`), {
       headers: auth(seeded.foremanToken),
@@ -182,7 +201,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(addAfterSubmit.status()).toBe(400);
     const afterReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
     expect(afterReadiness.overall_status).toBe(beforeReadiness.overall_status);
-    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 6 });
+    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 8 });
 
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 390, height: 860 });

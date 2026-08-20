@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { readPermissions, readToken, syncosFetch } from "../intelligence/api";
 
 type Persona = "partner_admin" | "partner_foreman";
@@ -117,7 +117,33 @@ type DailyJsa = {
   participants?: Array<{ worker_id?: string; name?: string; role?: string; participation_status?: string; acknowledged?: boolean }>;
 };
 type ProductionCode = { id?: string; code?: string; description?: string; unit_of_measure?: string; location_type?: string };
-type ProductionRecord = { id?: string; production_code_id?: string; code?: string; description?: string; reported_quantity?: number; unit_of_measure?: string; location_type?: string; status?: string; asset_identifier?: string; from_asset_identifier?: string; to_asset_identifier?: string; map_page?: number; notes?: string; locked?: boolean };
+type ProductionRecord = {
+  id?: string;
+  production_code_id?: string;
+  code?: string;
+  description?: string;
+  reported_quantity?: number;
+  unit_of_measure?: string;
+  location_type?: string;
+  status?: string;
+  asset_identifier?: string;
+  from_asset_identifier?: string;
+  to_asset_identifier?: string;
+  map_page?: number;
+  tick_start_label?: string | null;
+  tick_end_label?: string | null;
+  reel_cable_id?: string | null;
+  fiber_type?: string | null;
+  sequence_start?: number | null;
+  sequence_end?: number | null;
+  sequence_direction?: string | null;
+  sequence_calculated_footage?: number | null;
+  sequence_reported_variance?: number | null;
+  sequence_variance_status?: string | null;
+  sequence_variance_explanation?: string | null;
+  notes?: string;
+  locked?: boolean;
+};
 type DailyProduction = {
   id?: string;
   status?: string;
@@ -784,6 +810,17 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
   const visibleTotals = mergeProductionTotals(report?.totals, localRecords);
   const visibleAnnotationCount = (report?.annotation_count ?? 0) + localRecords.filter((record) => record.location_type !== "daily").length;
   const [error, setError] = useState<string | null>(null);
+  const [spanForm, setSpanForm] = useState({
+    from: "Pole 12301",
+    to: "Pole 12312",
+    reel: "REEL-A",
+    fiberType: "144ct",
+    start: "14826",
+    end: "12131",
+    reported: "2695",
+    explanation: "",
+  });
+  const sequenceCalc = sequencePreview(spanForm.start, spanForm.end, spanForm.reported);
 
   async function quickCreate(kind: "asset" | "route" | "daily") {
     const code = kind === "asset" ? transfer : kind === "route" ? fiber : labor;
@@ -800,14 +837,56 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       asset_identifier: "Pole 12301",
       from_asset_identifier: "Pole 12301",
       to_asset_identifier: "Pole 12312",
+      tick_start_label: "Start Tick",
+      tick_end_label: "End Tick",
       x_ratio: 0.42,
       y_ratio: 0.48,
       start_x_ratio: 0.42,
       start_y_ratio: 0.48,
       end_x_ratio: 0.66,
       end_y_ratio: 0.52,
+      reel_cable_id: kind === "route" ? "REEL-A" : undefined,
+      fiber_type: kind === "route" ? "144ct" : undefined,
+      sequence_start: kind === "route" ? 14826 : undefined,
+      sequence_end: kind === "route" ? 14685 : undefined,
       notes: `${kind} field entry`,
     };
+    await saveProduction(mutation);
+  }
+
+  async function saveFiberSpan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!fiber?.id) return;
+    if (sequenceCalc.status === "review_required" && !spanForm.explanation.trim()) {
+      setError("Sequence variance needs a short field explanation before save.");
+      return;
+    }
+    await saveProduction({
+      client_mutation_id: crypto.randomUUID(),
+      work_date: report?.work_date,
+      production_code_id: fiber.id,
+      location_type: "route",
+      reported_quantity: Number(spanForm.reported),
+      status: sequenceCalc.status === "review_required" ? "partial" : "complete",
+      map_page: 1,
+      from_asset_identifier: spanForm.from,
+      to_asset_identifier: spanForm.to,
+      tick_start_label: `${spanForm.from} start`,
+      tick_end_label: `${spanForm.to} end`,
+      start_x_ratio: 0.42,
+      start_y_ratio: 0.48,
+      end_x_ratio: 0.66,
+      end_y_ratio: 0.52,
+      reel_cable_id: spanForm.reel,
+      fiber_type: spanForm.fiberType,
+      sequence_start: Number(spanForm.start),
+      sequence_end: Number(spanForm.end),
+      sequence_variance_explanation: spanForm.explanation || undefined,
+      notes: "Fiber span entered from field tick and sequence workflow.",
+    });
+  }
+
+  async function saveProduction(mutation: Record<string, unknown>) {
     setError(null);
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       await queue.enqueue({ operation: "CREATE_PRODUCTION", payload: mutation });
@@ -841,6 +920,24 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
           <button className="partner-button wide-touch" type="button" onClick={() => void quickCreate("daily")}>+ Daily</button>
           <Link className="partner-button wide-touch" href="/partner/production/review">Review Day</Link>
         </div>
+      </Panel>
+      <Panel title="Fiber Span" eyebrow="Ticks, poles, sequence">
+        <form className="partner-form-grid compact-form" onSubmit={(event) => void saveFiberSpan(event)}>
+          <label>From pole<input value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
+          <label>To pole<input value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
+          <label>Reel / cable<input value={spanForm.reel} onChange={(event) => setSpanForm({ ...spanForm, reel: event.target.value })} /></label>
+          <label>Fiber type<input value={spanForm.fiberType} onChange={(event) => setSpanForm({ ...spanForm, fiberType: event.target.value })} /></label>
+          <label>Sequence start<input inputMode="decimal" value={spanForm.start} onChange={(event) => setSpanForm({ ...spanForm, start: event.target.value })} /></label>
+          <label>Sequence end<input inputMode="decimal" value={spanForm.end} onChange={(event) => setSpanForm({ ...spanForm, end: event.target.value })} /></label>
+          <label>Reported footage<input inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
+          <label>Variance explanation<input value={spanForm.explanation} onChange={(event) => setSpanForm({ ...spanForm, explanation: event.target.value })} placeholder={sequenceCalc.status === "review_required" ? "Required" : "Optional"} /></label>
+          <StatusRows rows={[
+            ["Calculated Footage", quantityText(sequenceCalc.calculated, "FT")],
+            ["Variance", quantityText(sequenceCalc.variance, "FT")],
+            ["Review", sequenceCalc.status],
+          ]} />
+          <button className="partner-button primary wide-touch" type="submit">Save Fiber Span</button>
+        </form>
       </Panel>
       <Panel title="Today's Production" eyebrow={`${visibleRecords.length} records`}>
         <ProductionList records={visibleRecords} />
@@ -1181,6 +1278,11 @@ function ProductionList({ records }: { records: ProductionRecord[] }) {
             ["Production", record.description || record.code],
             ["Quantity", `${record.reported_quantity ?? 0} ${record.unit_of_measure ?? ""}`],
             ["Location", record.location_type],
+            ["Ticks", [record.tick_start_label, record.tick_end_label].filter(Boolean).join(" -> ")],
+            ["Reel / Cable", record.reel_cable_id || ""],
+            ["Fiber Sequence", fiberSequenceText(record)],
+            ["Sequence Variance", record.sequence_reported_variance === null || record.sequence_reported_variance === undefined ? "" : quantityText(record.sequence_reported_variance, "FT")],
+            ["Sequence Review", record.sequence_variance_status],
             ["Record", record.locked ? "read_only_submitted" : "draft_editable"],
           ]} />
         </RecordCard>
@@ -1510,7 +1612,7 @@ function Panel({ title, eyebrow, children }: { title: string; eyebrow?: string |
   return <section className="partner-panel"><p className="eyebrow">{eyebrow}</p><h3>{title}</h3>{children}</section>;
 }
 
-function RecordCard({ title, status, href, children }: { title: string; status?: string; href?: string; children: React.ReactNode }) {
+function RecordCard({ title, status, href, children }: { title: string; status?: string; href?: string; children: ReactNode }) {
   const body = <><div className="record-card-header"><h4>{title || "Record"}</h4><StatusPill label="Status" value={status} /></div>{children}</>;
   return href ? <Link className="partner-record-card" href={href}>{body}</Link> : <div className="partner-record-card">{body}</div>;
 }
@@ -1635,6 +1737,21 @@ function str(value: unknown): string {
 function quantityText(quantity: unknown, unit: unknown) {
   if (quantity === null || quantity === undefined || quantity === "") return "Pending Customer QC";
   return [str(quantity), str(unit)].filter(Boolean).join(" ");
+}
+
+function sequencePreview(start: string, end: string, reported: string) {
+  const startNumber = Number(start);
+  const endNumber = Number(end);
+  const reportedNumber = Number(reported);
+  if (![startNumber, endNumber, reportedNumber].every(Number.isFinite)) return { calculated: "", variance: "", status: "not_applicable" };
+  const calculated = Math.abs(endNumber - startNumber);
+  const variance = reportedNumber - calculated;
+  return { calculated, variance, status: Math.abs(variance) > 25 ? "review_required" : "within_tolerance" };
+}
+
+function fiberSequenceText(record: ProductionRecord) {
+  if (record.sequence_start === null || record.sequence_start === undefined) return "";
+  return `${record.sequence_start} -> ${record.sequence_end} (${record.sequence_direction || "direction not set"}; calc ${record.sequence_calculated_footage ?? 0} FT)`;
 }
 
 function currency(value: unknown) {
@@ -1860,10 +1977,49 @@ function localProductionRecords(mutations: OfflineMutation[], codes: ProductionC
       from_asset_identifier: str(mutation.payload.from_asset_identifier),
       to_asset_identifier: str(mutation.payload.to_asset_identifier),
       map_page: mutation.payload.map_page === undefined ? undefined : Number(mutation.payload.map_page),
+      tick_start_label: str(mutation.payload.tick_start_label),
+      tick_end_label: str(mutation.payload.tick_end_label),
+      reel_cable_id: str(mutation.payload.reel_cable_id),
+      fiber_type: str(mutation.payload.fiber_type),
+      sequence_start: mutation.payload.sequence_start === undefined ? null : Number(mutation.payload.sequence_start),
+      sequence_end: mutation.payload.sequence_end === undefined ? null : Number(mutation.payload.sequence_end),
+      sequence_direction: sequenceDirection(mutation.payload.sequence_start, mutation.payload.sequence_end),
+      sequence_calculated_footage: sequenceFootage(mutation.payload.sequence_start, mutation.payload.sequence_end),
+      sequence_reported_variance: sequenceVariance(mutation.payload.sequence_start, mutation.payload.sequence_end, mutation.payload.reported_quantity),
+      sequence_variance_status: sequenceVarianceStatus(mutation.payload.sequence_start, mutation.payload.sequence_end, mutation.payload.reported_quantity),
       notes: mutation.status === "PENDING" ? "Saved locally; waiting to sync." : mutation.lastSafeError ?? "Syncing saved field entry.",
       locked: false,
     };
   });
+}
+
+function sequenceFootage(start: unknown, end: unknown) {
+  const startNumber = Number(start);
+  const endNumber = Number(end);
+  if (!Number.isFinite(startNumber) || !Number.isFinite(endNumber)) return null;
+  return Math.abs(endNumber - startNumber);
+}
+
+function sequenceVariance(start: unknown, end: unknown, reported: unknown) {
+  const calculated = sequenceFootage(start, end);
+  const reportedNumber = Number(reported);
+  if (calculated === null || !Number.isFinite(reportedNumber)) return null;
+  return reportedNumber - calculated;
+}
+
+function sequenceVarianceStatus(start: unknown, end: unknown, reported: unknown) {
+  const variance = sequenceVariance(start, end, reported);
+  if (variance === null) return "not_applicable";
+  return Math.abs(variance) > 25 ? "review_required" : "within_tolerance";
+}
+
+function sequenceDirection(start: unknown, end: unknown) {
+  const startNumber = Number(start);
+  const endNumber = Number(end);
+  if (!Number.isFinite(startNumber) || !Number.isFinite(endNumber)) return null;
+  if (endNumber > startNumber) return "increasing";
+  if (endNumber < startNumber) return "decreasing";
+  return "same";
 }
 
 function mergeProductionTotals(totals: DailyProduction["totals"], localRecords: ProductionRecord[]): DailyProduction["totals"] {

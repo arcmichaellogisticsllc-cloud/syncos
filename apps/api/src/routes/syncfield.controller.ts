@@ -88,6 +88,7 @@ const correctionTypes = new Set(["quantity", "production_code", "location", "ass
 const correctionFieldValues = new Set(["reported_quantity", "production_code_id", "asset_identifier", "route_endpoint", "map_location", "notes", "evidence"]);
 const exportArtifactTypes = new Set(["annotated_map_pdf", "daily_production_pdf", "production_csv", "production_closeout_package"]);
 const exportGenerationModes = new Set(["submitted_day", "customer_qc_status", "final_accepted_closeout", "dashboard_export"]);
+const sequenceVarianceToleranceFeet = Number(process.env.SYNCOS_FIELD_SEQUENCE_VARIANCE_TOLERANCE_FT ?? 25);
 const defaultProductionCodes = [
   ["POLE-ATT", "Pole Attachment", "EA", "asset", true, false],
   ["TRANSFER", "Cable Transfer", "EA", "asset", true, false],
@@ -511,6 +512,7 @@ export class SyncfieldController {
         const duplicate = await this.duplicateWarning(writeClient, assignment, report, code, body);
         if (duplicate.requires_reason && !this.optionalString(body.duplicate_reason)) throw new BadRequestException("duplicate reason is required");
         const values = this.validateProductionLocation(body, code, locationType);
+        const sequence = this.sequenceTraceability(body, quantity, code);
         const inserted = await writeClient.query(
           `
           INSERT INTO production_records (
@@ -519,9 +521,12 @@ export class SyncfieldController {
             unit_type, unit, rate_code_id, production_type, qc_status, billable_status, status, daily_production_report_id,
             partner_organization_id, map_document_id, map_version_id, syncfield_production_code_id, syncfield_location_type,
             syncfield_status, asset_type, asset_identifier, from_asset_identifier, to_asset_identifier, map_page,
+            tick_start_x_ratio, tick_start_y_ratio, tick_end_x_ratio, tick_end_y_ratio, tick_start_label, tick_end_label,
+            reel_cable_id, fiber_type, sequence_start, sequence_end, sequence_direction, sequence_calculated_footage,
+            sequence_reported_variance, sequence_variance_status, sequence_variance_explanation,
             duplicate_reason, client_mutation_id, production_notes, created_by, updated_by
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,$7,$9,$10,$10,$10,$11,$11,NULL,'daily_production','not_started','not_billable','draft',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$7,$7)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,$7,$9,$10,$10,$10,$11,$11,NULL,'daily_production','not_started','not_billable','draft',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$7,$7)
           ON CONFLICT (tenant_id, foreman_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL AND daily_production_report_id IS NOT NULL
           DO UPDATE SET updated_at = production_records.updated_at
           RETURNING *, (xmax = 0) AS inserted_new
@@ -530,7 +535,11 @@ export class SyncfieldController {
             assignment.tenant_id, assignment.project_id, assignment.work_order_id, assignment.work_order_version_id, assignment.capacity_provider_id, assignment.crew_id,
             request.auth.userId, assignment.foreman_worker_id, date, quantity, code.unit_of_measure, report.id, assignment.organization_id,
             locationType === "daily" ? null : assignment.map_document_id, locationType === "daily" ? null : assignment.map_version_id, code.id, locationType, status,
-            values.assetType, values.assetIdentifier, values.fromAssetIdentifier, values.toAssetIdentifier, values.mapPage, this.optionalString(body.duplicate_reason), mutationId, this.optionalString(body.notes),
+            values.assetType, values.assetIdentifier, values.fromAssetIdentifier, values.toAssetIdentifier, values.mapPage,
+            values.tickStartX, values.tickStartY, values.tickEndX, values.tickEndY, values.tickStartLabel, values.tickEndLabel,
+            sequence.reelCableId, sequence.fiberType, sequence.sequenceStart, sequence.sequenceEnd, sequence.sequenceDirection,
+            sequence.sequenceCalculatedFootage, sequence.sequenceReportedVariance, sequence.sequenceVarianceStatus, sequence.sequenceVarianceExplanation,
+            this.optionalString(body.duplicate_reason), mutationId, this.optionalString(body.notes),
           ],
         );
         const record = inserted.rows[0];
@@ -1080,7 +1089,10 @@ export class SyncfieldController {
         org.name AS partner_name, r.capacity_provider_id, r.crew_id, c.name AS crew_name, r.foreman_worker_id,
         pr.id AS production_record_id, pr.quantity_submitted AS reported_quantity, pr.syncfield_status AS field_status,
         pr.syncfield_location_type AS location_type, pr.asset_type, pr.asset_identifier, pr.from_asset_identifier,
-        pr.to_asset_identifier, pr.map_page, pr.production_notes, pc.id AS production_code_id, pc.code, pc.description,
+        pr.to_asset_identifier, pr.map_page, pr.tick_start_label, pr.tick_end_label, pr.reel_cable_id, pr.fiber_type,
+        pr.sequence_start, pr.sequence_end, pr.sequence_direction, pr.sequence_calculated_footage,
+        pr.sequence_reported_variance, pr.sequence_variance_status, pr.sequence_variance_explanation,
+        pr.production_notes, pc.id AS production_code_id, pc.code, pc.description,
         COALESCE(pc.unit_of_measure, pr.unit) AS unit_of_measure, ma.id AS map_annotation_id, ma.annotation_type,
         ma.x_ratio, ma.y_ratio, ma.start_x_ratio, ma.start_y_ratio, ma.end_x_ratio, ma.end_y_ratio,
         mv.id AS map_version_id, mv.revision_number AS map_revision_number, mv.revision_label, mv.file_hash AS map_file_hash,
@@ -1243,6 +1255,10 @@ export class SyncfieldController {
       record: row.production_record_id,
       code: row.code,
       reported: Number(row.reported_quantity ?? 0),
+      sequence_start: row.sequence_start === null ? null : Number(row.sequence_start),
+      sequence_end: row.sequence_end === null ? null : Number(row.sequence_end),
+      sequence_calculated_footage: row.sequence_calculated_footage === null ? null : Number(row.sequence_calculated_footage),
+      sequence_variance_status: row.sequence_variance_status,
       decision: row.customer_decision,
       accepted: row.customer_accepted_quantity === null ? null : Number(row.customer_accepted_quantity),
       annotation: row.map_annotation_id,
@@ -1277,10 +1293,12 @@ export class SyncfieldController {
   }
 
   private renderProductionCsv(rows: QueryResultRow[]) {
-    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
+    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "Start Tick", "End Tick", "Reel/Cable", "Fiber Type", "Sequence Start", "Sequence End", "Sequence Direction", "Sequence Footage", "Sequence Variance", "Sequence Variance Status", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
     const body = rows.map((row) => [
       this.dateOnly(row.work_date), row.project_name, row.work_order_number, row.partner_name, row.crew_name, row.foreman_worker_id, row.map_name, row.map_revision_number, row.revision_number,
-      row.asset_type, row.asset_identifier, row.from_asset_identifier, row.to_asset_identifier, row.code, row.description, row.reported_quantity,
+      row.asset_type, row.asset_identifier, row.from_asset_identifier, row.to_asset_identifier, row.tick_start_label, row.tick_end_label, row.reel_cable_id, row.fiber_type,
+      row.sequence_start, row.sequence_end, row.sequence_direction, row.sequence_calculated_footage, row.sequence_reported_variance, row.sequence_variance_status,
+      row.code, row.description, row.reported_quantity,
       row.customer_accepted_quantity === null || row.customer_accepted_quantity === undefined ? "Pending Customer QC" : row.customer_accepted_quantity,
       row.unit_of_measure, row.field_status, row.customer_decision ?? "pending_customer_qc", row.correction_status, row.qc_authority_name, row.decision_recorded_at, row.resubmitted_at, row.production_notes,
     ]);
@@ -1296,7 +1314,7 @@ export class SyncfieldController {
   private annotatedMapPdfLines(rows: QueryResultRow[], generationMode: string) {
     const lines = ["Sync Comm Systems", `Artifact Type: ${generationMode}`, `Project: ${rows[0].project_name}`, `Work Order: ${rows[0].work_order_number}`, `Map Revision: ${rows[0].map_revision_number ?? "not set"}`, "Legend: check complete, partial, warning blocked, rework, Customer Accepted, Customer Correction Required, Customer Rejected, Pending Customer QC"];
     for (const row of rows.filter((candidate) => candidate.map_annotation_id).slice(0, 24)) {
-      lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} ${row.customer_decision ?? "pending_customer_qc"} ${this.annotationCoordinateLabel(row)}`);
+      lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} ${row.customer_decision ?? "pending_customer_qc"} ${this.annotationCoordinateLabel(row)} ${this.sequenceLabel(row)}`);
     }
     return lines;
   }
@@ -1308,8 +1326,13 @@ export class SyncfieldController {
       lines.push(`${row.description}: Reported ${row.reported_quantity} ${row.unit_of_measure}; Customer Accepted ${Number(row.customer_accepted_quantity) ? row.customer_accepted_quantity : "Pending Customer QC"}; Variance ${row.variance}`);
     }
     lines.push("Production Detail");
-    for (const row of rows.slice(0, 30)) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"}`);
+    for (const row of rows.slice(0, 30)) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"} ${this.sequenceLabel(row)}`);
     return lines;
+  }
+
+  private sequenceLabel(row: QueryResultRow) {
+    if (row.sequence_start === null || row.sequence_start === undefined) return "";
+    return `seq ${row.sequence_start}->${row.sequence_end} calc=${row.sequence_calculated_footage} variance=${row.sequence_reported_variance} ${row.sequence_variance_status}`;
   }
 
   private closeoutPdfLines(rows: QueryResultRow[]) {
@@ -2090,13 +2113,62 @@ export class SyncfieldController {
     if (locationType === "asset") {
       const assetType = requireString(body.asset_type, "asset_type is required").toLowerCase();
       if (!assetTypes.has(assetType)) throw new BadRequestException("asset_type is invalid");
-      return { assetType, assetIdentifier: requireString(body.asset_identifier, "asset_identifier is required"), fromAssetIdentifier: null, toAssetIdentifier: null, mapPage, x: this.ratio(body.x_ratio, "x_ratio"), y: this.ratio(body.y_ratio, "y_ratio") };
+      const x = this.ratio(body.x_ratio, "x_ratio");
+      const y = this.ratio(body.y_ratio, "y_ratio");
+      return { assetType, assetIdentifier: requireString(body.asset_identifier, "asset_identifier is required"), fromAssetIdentifier: null, toAssetIdentifier: null, mapPage, x, y, tickStartX: x, tickStartY: y, tickEndX: null, tickEndY: null, tickStartLabel: this.optionalString(body.tick_start_label), tickEndLabel: null };
     }
     if (locationType === "route") {
-      return { assetType: null, assetIdentifier: null, fromAssetIdentifier: requireString(body.from_asset_identifier, "from_asset_identifier is required"), toAssetIdentifier: requireString(body.to_asset_identifier, "to_asset_identifier is required"), mapPage, startX: this.ratio(body.start_x_ratio, "start_x_ratio"), startY: this.ratio(body.start_y_ratio, "start_y_ratio"), endX: this.ratio(body.end_x_ratio, "end_x_ratio"), endY: this.ratio(body.end_y_ratio, "end_y_ratio") };
+      const startX = this.ratio(body.start_x_ratio, "start_x_ratio");
+      const startY = this.ratio(body.start_y_ratio, "start_y_ratio");
+      const endX = this.ratio(body.end_x_ratio, "end_x_ratio");
+      const endY = this.ratio(body.end_y_ratio, "end_y_ratio");
+      return {
+        assetType: null,
+        assetIdentifier: null,
+        fromAssetIdentifier: requireString(body.from_asset_identifier, "from_asset_identifier is required"),
+        toAssetIdentifier: requireString(body.to_asset_identifier, "to_asset_identifier is required"),
+        mapPage,
+        startX,
+        startY,
+        endX,
+        endY,
+        tickStartX: body.tick_start_x_ratio === undefined ? startX : this.ratio(body.tick_start_x_ratio, "tick_start_x_ratio"),
+        tickStartY: body.tick_start_y_ratio === undefined ? startY : this.ratio(body.tick_start_y_ratio, "tick_start_y_ratio"),
+        tickEndX: body.tick_end_x_ratio === undefined ? endX : this.ratio(body.tick_end_x_ratio, "tick_end_x_ratio"),
+        tickEndY: body.tick_end_y_ratio === undefined ? endY : this.ratio(body.tick_end_y_ratio, "tick_end_y_ratio"),
+        tickStartLabel: this.optionalString(body.tick_start_label),
+        tickEndLabel: this.optionalString(body.tick_end_label),
+      };
     }
     if (code.requires_asset || code.requires_route) throw new BadRequestException("map geometry is required for this production code");
-    return { assetType: null, assetIdentifier: null, fromAssetIdentifier: null, toAssetIdentifier: null, mapPage: null };
+    return { assetType: null, assetIdentifier: null, fromAssetIdentifier: null, toAssetIdentifier: null, mapPage: null, tickStartX: null, tickStartY: null, tickEndX: null, tickEndY: null, tickStartLabel: null, tickEndLabel: null };
+  }
+
+  private sequenceTraceability(body: Record<string, unknown>, reportedQuantity: number, code: QueryResultRow) {
+    const sequenceStart = body.sequence_start === undefined || body.sequence_start === null || body.sequence_start === "" ? null : this.nonNegativeNumber(body.sequence_start, "sequence_start must be non-negative");
+    const sequenceEnd = body.sequence_end === undefined || body.sequence_end === null || body.sequence_end === "" ? null : this.nonNegativeNumber(body.sequence_end, "sequence_end must be non-negative");
+    if ((sequenceStart === null) !== (sequenceEnd === null)) throw new BadRequestException("sequence_start and sequence_end must be provided together");
+    const reelCableId = this.optionalString(body.reel_cable_id);
+    const fiberType = this.optionalString(body.fiber_type);
+    if (sequenceStart === null || sequenceEnd === null) {
+      return { reelCableId, fiberType, sequenceStart: null, sequenceEnd: null, sequenceDirection: null, sequenceCalculatedFootage: null, sequenceReportedVariance: null, sequenceVarianceStatus: "not_applicable", sequenceVarianceExplanation: this.optionalString(body.sequence_variance_explanation) };
+    }
+    if (String(code.unit_of_measure).toUpperCase() !== "LF" && String(code.unit_of_measure).toLowerCase() !== "feet") throw new BadRequestException("fiber sequence is only valid for footage production codes");
+    const calculated = Number(Math.abs(sequenceEnd - sequenceStart).toFixed(2));
+    const variance = Number((reportedQuantity - calculated).toFixed(2));
+    const status = Math.abs(variance) > sequenceVarianceToleranceFeet ? "review_required" : "within_tolerance";
+    if (status === "review_required" && !this.optionalString(body.sequence_variance_explanation)) throw new BadRequestException("sequence variance explanation is required");
+    return {
+      reelCableId,
+      fiberType,
+      sequenceStart,
+      sequenceEnd,
+      sequenceDirection: sequenceEnd > sequenceStart ? "increasing" : sequenceEnd < sequenceStart ? "decreasing" : "same",
+      sequenceCalculatedFootage: calculated,
+      sequenceReportedVariance: variance,
+      sequenceVarianceStatus: status,
+      sequenceVarianceExplanation: this.optionalString(body.sequence_variance_explanation),
+    };
   }
 
   private async insertAnnotation(client: PoolClient, request: AuthenticatedRequest, assignment: MapAssignmentRow, record: QueryResultRow, locationType: string, values: Record<string, unknown>, status: string) {
@@ -2108,7 +2180,7 @@ export class SyncfieldController {
       return;
     }
     await client.query(
-      "INSERT INTO map_annotations (tenant_id, production_record_id, map_version_id, page_number, annotation_type, start_x_ratio, start_y_ratio, end_x_ratio, end_y_ratio, display_status, created_by_user_id) VALUES ($1,$2,$3,$4,'route_line',$5,$6,$7,$8,$9,$10)",
+      "INSERT INTO map_annotations (tenant_id, production_record_id, map_version_id, page_number, annotation_type, start_x_ratio, start_y_ratio, end_x_ratio, end_y_ratio, display_status, created_by_user_id) VALUES ($1,$2,$3,$4,'tick_span',$5,$6,$7,$8,$9,$10)",
       [assignment.tenant_id, record.id, assignment.map_version_id, values.mapPage, values.startX, values.startY, values.endX, values.endY, status, request.auth.userId],
     );
   }
@@ -2155,7 +2227,43 @@ export class SyncfieldController {
   }
 
   private safeProductionRecord(row: QueryResultRow) {
-    return { id: row.id, daily_report_id: row.daily_production_report_id, production_code_id: row.syncfield_production_code_id, code: row.code, description: row.description, reported_quantity: Number(row.quantity_submitted), unit_of_measure: row.unit_of_measure ?? row.unit, location_type: row.syncfield_location_type, status: row.syncfield_status, record_status: row.status, asset_type: row.asset_type, asset_identifier: row.asset_identifier, from_asset_identifier: row.from_asset_identifier, to_asset_identifier: row.to_asset_identifier, map_page: row.map_page === null ? null : Number(row.map_page), notes: row.production_notes, duplicate_reason: row.duplicate_reason, client_mutation_id: row.client_mutation_id, locked: Boolean(row.locked_at), reported_at: row.created_at };
+    return {
+      id: row.id,
+      daily_report_id: row.daily_production_report_id,
+      production_code_id: row.syncfield_production_code_id,
+      code: row.code,
+      description: row.description,
+      reported_quantity: Number(row.quantity_submitted),
+      unit_of_measure: row.unit_of_measure ?? row.unit,
+      location_type: row.syncfield_location_type,
+      status: row.syncfield_status,
+      record_status: row.status,
+      asset_type: row.asset_type,
+      asset_identifier: row.asset_identifier,
+      from_asset_identifier: row.from_asset_identifier,
+      to_asset_identifier: row.to_asset_identifier,
+      map_page: row.map_page === null ? null : Number(row.map_page),
+      tick_start_x_ratio: row.tick_start_x_ratio === null || row.tick_start_x_ratio === undefined ? null : Number(row.tick_start_x_ratio),
+      tick_start_y_ratio: row.tick_start_y_ratio === null || row.tick_start_y_ratio === undefined ? null : Number(row.tick_start_y_ratio),
+      tick_end_x_ratio: row.tick_end_x_ratio === null || row.tick_end_x_ratio === undefined ? null : Number(row.tick_end_x_ratio),
+      tick_end_y_ratio: row.tick_end_y_ratio === null || row.tick_end_y_ratio === undefined ? null : Number(row.tick_end_y_ratio),
+      tick_start_label: row.tick_start_label,
+      tick_end_label: row.tick_end_label,
+      reel_cable_id: row.reel_cable_id,
+      fiber_type: row.fiber_type,
+      sequence_start: row.sequence_start === null || row.sequence_start === undefined ? null : Number(row.sequence_start),
+      sequence_end: row.sequence_end === null || row.sequence_end === undefined ? null : Number(row.sequence_end),
+      sequence_direction: row.sequence_direction,
+      sequence_calculated_footage: row.sequence_calculated_footage === null || row.sequence_calculated_footage === undefined ? null : Number(row.sequence_calculated_footage),
+      sequence_reported_variance: row.sequence_reported_variance === null || row.sequence_reported_variance === undefined ? null : Number(row.sequence_reported_variance),
+      sequence_variance_status: row.sequence_variance_status,
+      sequence_variance_explanation: row.sequence_variance_explanation,
+      notes: row.production_notes,
+      duplicate_reason: row.duplicate_reason,
+      client_mutation_id: row.client_mutation_id,
+      locked: Boolean(row.locked_at),
+      reported_at: row.created_at,
+    };
   }
 
   private async safeProductionRecordDetail(client: PoolClient, row: QueryResultRow) {
