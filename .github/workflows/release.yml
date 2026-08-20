@@ -79,6 +79,8 @@ jobs:
         run: npm ci
       - name: Build API
         run: npm run build -w @syncos/api
+      - name: Build Worker
+        run: npm run build -w @syncos/worker
       - name: Build Web
         run: npm run build -w @syncos/web
       - name: Migrate E2E database

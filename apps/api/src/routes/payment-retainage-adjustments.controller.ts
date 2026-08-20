@@ -100,6 +100,9 @@ export class PaymentRetainageAdjustmentsController {
   @Post("payment-instructions/:id/submit")
   @RequirePermission("partner_payment.submit")
   async submitInstruction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
+    if (process.env.NODE_ENV === "production" && process.env.LIVE_AUTOMATED_PARTNER_PAYMENTS !== "true") {
+      throw new BadRequestException("Live automated Partner payment submission is disabled");
+    }
     return this.write(request, "partner_payment.submitted", "partner_payment.submitted", "partner_payment_instruction", async (client) => {
       const instruction = await this.requireInstruction(client, request.auth.tenantId, id);
       if (!["approved", "failed", "returned"].includes(String(instruction.status))) throw new BadRequestException("payment instruction must be approved or retryable");

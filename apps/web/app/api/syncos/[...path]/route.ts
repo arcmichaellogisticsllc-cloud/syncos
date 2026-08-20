@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const apiBaseUrl = process.env.SYNCOS_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100";
+function apiBaseUrl() {
+  if (process.env.SYNCOS_API_BASE_URL) return process.env.SYNCOS_API_BASE_URL;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SYNCOS_API_BASE_URL is required for the production web proxy");
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100";
+}
 
 async function proxy(request: NextRequest, context: { params: { path: string[] } }) {
-  const target = new URL(`${apiBaseUrl}/${context.params.path.join("/")}`);
+  const target = new URL(`${apiBaseUrl()}/${context.params.path.join("/")}`);
   request.nextUrl.searchParams.forEach((value, key) => target.searchParams.set(key, value));
 
   const headers = new Headers();

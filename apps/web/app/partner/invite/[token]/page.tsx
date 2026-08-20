@@ -31,6 +31,7 @@ export default function PartnerInviteAcceptancePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
+  const isForemanInvite = preview?.invitation?.intended_role_key === "partner_foreman";
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +76,7 @@ export default function PartnerInviteAcceptancePage() {
       <section className="partner-main">
         <div className="partner-panel">
           <p className="eyebrow">Sync Comm Systems</p>
-          <h1>Complete company onboarding</h1>
+          <h1>{isForemanInvite ? "Activate SyncOS field access" : "Complete partner onboarding"}</h1>
           {loading ? <p>Loading invitation...</p> : null}
           {error ? <div className="partner-banner error">{error}</div> : null}
           {preview ? (
@@ -87,7 +88,7 @@ export default function PartnerInviteAcceptancePage() {
                     <strong>{preview.invitation?.organization_name ?? "Partner Organization"}</strong>
                     <span>{preview.invitation?.email}</span>
                   </div>
-                  <span className="status-pill">Partner Admin</span>
+                  <span className="status-pill">{isForemanInvite ? "Field Access" : "Partner Admin"}</span>
                 </div>
                 {(preview.checklist?.items ?? []).map((item) => (
                   <div className="partner-list-row" key={item.key ?? item.label}>
@@ -103,7 +104,7 @@ export default function PartnerInviteAcceptancePage() {
                 <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
               </label>
               <button className="primary-button" type="button" onClick={accept} disabled={accepting}>
-                {accepting ? "Opening..." : "Complete Onboarding"}
+                {accepting ? "Opening..." : isForemanInvite ? "Activate Field Access" : "Complete Onboarding"}
               </button>
               <Link href="/partner">I already have access</Link>
             </div>

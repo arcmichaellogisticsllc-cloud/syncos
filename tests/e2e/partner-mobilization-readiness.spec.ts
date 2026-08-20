@@ -5,6 +5,14 @@ import { replayMobilizationSourceInvalidation, runMobilizationExpirationScan } f
 
 let globalClient: Client;
 
+function isoDaysFromNow(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function dateDaysFromNow(days: number) {
+  return isoDaysFromNow(days).slice(0, 10);
+}
+
 type Seeded = {
   tenantA: string;
   tenantB: string;
@@ -66,18 +74,18 @@ test.describe.serial("P6 Partner mobilization readiness and Notice to Proceed", 
     await expectStatus(request, seeded.adminToken, "POST", `/partner-mobilization/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/overrides`, 403, {
       requirement_code: "housing_confirmation",
       reason: "Partner attempted self-override",
-      expires_at: "2026-08-20T12:00:00Z",
+      expires_at: isoDaysFromNow(7),
     });
     await expectStatus(request, seeded.internalToken, "POST", `/partner-mobilization/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/overrides`, 400, {
       requirement_code: "partner_compliance_ready",
       reason: "Cannot override insurance",
-      expires_at: "2026-08-20T12:00:00Z",
+      expires_at: isoDaysFromNow(7),
     });
     await apiJson(request, seeded.internalToken, "POST", `/partner-mobilization/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/overrides`, {
       requirement_code: "housing_confirmation",
       reason: "Administrative hotel confirmation pending; field start not affected",
       external_condition: "Housing confirmation must be completed before travel",
-      expires_at: "2026-08-20T12:00:00Z",
+      expires_at: isoDaysFromNow(7),
       internal_notes: "internal deliberation must not leak",
     });
 
@@ -92,7 +100,7 @@ test.describe.serial("P6 Partner mobilization readiness and Notice to Proceed", 
     await expectStatus(request, seeded.adminToken, "POST", `/partner-mobilization/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/approve`, 403, {});
     const approved = await apiJson(request, seeded.internalToken, "POST", `/partner-mobilization/organizations/${seeded.orgA}/work-order-versions/${seeded.workOrderVersionId}/conditional-approve`, {
       external_conditions: ["Housing confirmation must be completed before travel"],
-      expires_at: "2026-08-20T12:00:00Z",
+      expires_at: isoDaysFromNow(7),
       internal_notes: "internal mobilization note",
     });
     expect(approved.decision).toBe("conditionally_approved");
@@ -289,24 +297,25 @@ test.describe.serial("P6 Partner mobilization readiness and Notice to Proceed", 
       requirement_code: "housing_confirmation",
       reason: "Synthetic administrative override",
       external_condition: "Housing confirmation expires at noon",
-      expires_at: "2026-08-20T12:00:00Z",
+      expires_at: isoDaysFromNow(1),
     });
     const ready = await apiJson(request, fixture.internalToken, "POST", `/partner-mobilization/organizations/${fixture.orgA}/work-order-versions/${fixture.workOrderVersionId}/evaluate`);
     expect(ready.overall_status).toBe("conditional");
     const approved = await apiJson(request, fixture.internalToken, "POST", `/partner-mobilization/organizations/${fixture.orgA}/work-order-versions/${fixture.workOrderVersionId}/conditional-approve`, {
       external_conditions: ["Housing confirmation expires at noon"],
-      expires_at: "2026-08-20T12:00:00Z",
+      expires_at: isoDaysFromNow(1),
     });
     const notice = await issueNotice(request, fixture);
 
-    await client.query("UPDATE partner_insurance_policies SET expiration_date = '2026-08-19' WHERE tenant_id = $1 AND organization_id = $2 AND policy_type = 'commercial_auto'", [fixture.tenantA, fixture.orgA]);
-    await client.query("UPDATE partner_worker_credentials SET expiration_date = '2026-08-19' WHERE tenant_id = $1 AND worker_id = $2 AND credential_type = 'driver_license'", [fixture.tenantA, fixture.workerIds[0]]);
-    await client.query("UPDATE partner_vehicle_assignments SET aerial_inspection_expires_at = '2026-08-19' WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.vehicleAssignmentId]);
+    const expiringDate = dateDaysFromNow(1);
+    await client.query("UPDATE partner_insurance_policies SET expiration_date = $3 WHERE tenant_id = $1 AND organization_id = $2 AND policy_type = 'commercial_auto'", [fixture.tenantA, fixture.orgA, expiringDate]);
+    await client.query("UPDATE partner_worker_credentials SET expiration_date = $3 WHERE tenant_id = $1 AND worker_id = $2 AND credential_type = 'driver_license'", [fixture.tenantA, fixture.workerIds[0], expiringDate]);
+    await client.query("UPDATE partner_vehicle_assignments SET aerial_inspection_expires_at = $3 WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.vehicleAssignmentId, expiringDate]);
 
     const countsBeforeScan = await forbiddenWorkflowCounts(client);
-    const before = await runMobilizationExpirationScan(client as never, { asOf: "2026-08-19T23:00:00Z", batchSize: 20 });
+    const before = await runMobilizationExpirationScan(client as never, { asOf: isoDaysFromNow(0), batchSize: 20 });
     expect(before.emittedEvents).toBe(0);
-    const result = await runMobilizationExpirationScan(client as never, { asOf: "2026-08-21T00:00:00Z", batchSize: 20 });
+    const result = await runMobilizationExpirationScan(client as never, { asOf: isoDaysFromNow(2), batchSize: 20 });
     expect(result.emittedEvents).toBeGreaterThanOrEqual(4);
     await expectHeldBlocked(fixture, countsBeforeScan);
     await expectInvalidationLedgerContains(fixture, "partner_compliance_ready");
@@ -315,7 +324,7 @@ test.describe.serial("P6 Partner mobilization readiness and Notice to Proceed", 
     await expectInvalidationLedgerContains(fixture, "vehicle_aerial_inspection_current");
     await expectInvalidationLedgerContains(fixture, "override_expired");
     await expectInvalidationLedgerContains(fixture, "mobilization_decision_current");
-    const scanAgain = await runMobilizationExpirationScan(client as never, { asOf: "2026-08-21T00:00:00Z", batchSize: 20 });
+    const scanAgain = await runMobilizationExpirationScan(client as never, { asOf: isoDaysFromNow(2), batchSize: 20 });
     expect(scanAgain.emittedEvents).toBeGreaterThanOrEqual(0);
     const invalidations = await client.query("SELECT source_fingerprint, count(*)::int AS count FROM mobilization_source_event_invalidations WHERE tenant_id = $1 AND work_order_version_id = $2 GROUP BY source_fingerprint HAVING count(*) > 1", [fixture.tenantA, fixture.workOrderVersionId]);
     expect(invalidations.rows).toHaveLength(0);

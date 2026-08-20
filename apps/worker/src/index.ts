@@ -9,6 +9,14 @@ const connection = {
 
 export const foundationQueueName = "syncos.foundation";
 
+function createDatabasePool(connectionString: string) {
+  return new Pool({
+    connectionString,
+    max: Number(process.env.WORKER_DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 5 : 3)),
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false" } : undefined,
+  });
+}
+
 export function createFoundationQueue() {
   return new Queue(foundationQueueName, {
     connection,
@@ -39,7 +47,7 @@ export function startMobilizationExpirationScheduler(options: { pool?: Pool; int
   const databaseUrl = process.env.DATABASE_URL;
   if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
 
-  const pool = options.pool ?? new Pool({ connectionString: databaseUrl });
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
   const intervalMs = Math.max(60_000, Number(options.intervalMs ?? process.env.SYNCOS_P6_EXPIRATION_SCAN_INTERVAL_MS ?? 300_000));
   const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P6_EXPIRATION_BATCH_SIZE ?? 50), 250));
   let running = false;
@@ -76,7 +84,7 @@ export function startPartnerPerformanceScheduler(options: { pool?: Pool; interva
   const databaseUrl = process.env.DATABASE_URL;
   if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
 
-  const pool = options.pool ?? new Pool({ connectionString: databaseUrl });
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
   const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P14_PERFORMANCE_SCAN_INTERVAL_MS ?? 3_600_000));
   const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P14_PERFORMANCE_BATCH_SIZE ?? 50), 250));
   let running = false;
@@ -113,7 +121,7 @@ export function startOpportunityCapacityMatchingScheduler(options: { pool?: Pool
   const databaseUrl = process.env.DATABASE_URL;
   if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
 
-  const pool = options.pool ?? new Pool({ connectionString: databaseUrl });
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
   const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P15_MATCHING_SCAN_INTERVAL_MS ?? 3_600_000));
   const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P15_MATCHING_BATCH_SIZE ?? 50), 250));
   let running = false;
@@ -150,7 +158,7 @@ export function startExecutiveCommandScheduler(options: { pool?: Pool; intervalM
   const databaseUrl = process.env.DATABASE_URL;
   if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
 
-  const pool = options.pool ?? new Pool({ connectionString: databaseUrl });
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
   const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P16_COMMAND_SCAN_INTERVAL_MS ?? 3_600_000));
   const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P16_COMMAND_BATCH_SIZE ?? 25), 100));
   let running = false;
@@ -201,6 +209,7 @@ function parseRedisUrl(value: string) {
     port: Number(url.port || 6379),
     username: url.username || undefined,
     password: url.password || undefined,
+    tls: url.protocol === "rediss:" ? {} : undefined,
   };
 }
 

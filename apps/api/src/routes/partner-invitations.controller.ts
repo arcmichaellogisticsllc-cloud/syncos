@@ -139,7 +139,7 @@ export class PartnerInvitationsController {
       );
       return {
         accepted: true,
-        message: "Thanks. Sync Comm Systems will review your Partner inquiry.",
+        message: "Thank you for your interest in partnering with Sync Comm Systems. Our team is reviewing your capabilities and current availability. If there is a fit for current or upcoming work, we'll contact you with next steps.",
         inquiry_id: result.rows[0].id,
         status: result.rows[0].status,
       };
@@ -614,9 +614,10 @@ export class PartnerInvitationsController {
       entityType: "partner_onboarding_invitation",
       entityId: result.rows[0].id,
       afterState: this.safeInvitation(result.rows[0]),
-      metadata: { invitation_source: input.source, local_test_email_adapter: true },
+      metadata: { invitation_source: input.source, email_provider: this.emailProvider() },
     });
-    return { ...this.safeInvitation(result.rows[0]), ...this.localEmail(result.rows[0], token) };
+    const delivery = await this.deliverInvitationEmail(client, result.rows[0], token);
+    return { ...this.safeInvitation({ ...result.rows[0], delivery_status: delivery.email_delivery.delivery_status }), ...delivery };
   }
 
   private async resendInvitationById(client: PoolClient, tenantId: string, actorUserId: string, id: string, organizationId?: string, invitationType?: "partner_admin" | "partner_foreman") {
@@ -656,7 +657,8 @@ export class PartnerInvitationsController {
         metadata: { supersedes_invitation_id: current.id },
       });
       await client.query("COMMIT");
-      return { ...this.safeInvitation(inserted.rows[0], current.organization_name), ...this.localEmail(inserted.rows[0], token) };
+      const delivery = await this.deliverInvitationEmail(client, inserted.rows[0], token);
+      return { ...this.safeInvitation({ ...inserted.rows[0], delivery_status: delivery.email_delivery.delivery_status }, current.organization_name), ...delivery };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -696,19 +698,73 @@ export class PartnerInvitationsController {
     return { ...this.safeInvitation(result.rows[0]), accepted_access_revocation_requires_access_lifecycle: true };
   }
 
-  private localEmail(row: InvitationRow, token: string) {
-    const onboardingUrl = `/partner/invite/${token}`;
+  private async deliverInvitationEmail(client: PoolClient, row: InvitationRow, token: string) {
+    const provider = this.emailProvider();
+    const onboardingUrl = this.invitationUrl(token);
+    if (provider === "disabled") {
+      await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'email_disabled', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+      return this.deliveryResult(row, provider, "FAILED", null, "Outbound invitation email is disabled until a production provider is configured.");
+    }
+    if (provider === "generic_http") {
+      const endpoint = process.env.EMAIL_HTTP_ENDPOINT;
+      const apiKey = process.env.EMAIL_API_KEY;
+      const from = process.env.EMAIL_FROM;
+      if (!endpoint || !apiKey || !from) return this.deliveryResult(row, provider, "FAILED", null, "Production email provider configuration is incomplete.");
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            from,
+            reply_to: process.env.EMAIL_REPLY_TO,
+            to: row.email,
+            subject: row.email_subject,
+            text: `${row.email_preview}\n\n${onboardingUrl}`,
+          }),
+        });
+        const deliveryStatus = response.ok ? "SENT" : "FAILED";
+        await client.query("UPDATE partner_onboarding_invitations SET delivery_status = $3, delivery_reference = $4, updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id, deliveryStatus, `generic_http:${response.status}`]);
+        return this.deliveryResult(row, provider, deliveryStatus, null, response.ok ? null : "Invitation email provider rejected the send request.");
+      } catch {
+        await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'generic_http:error', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+        return this.deliveryResult(row, provider, "FAILED", null, "Invitation email provider request failed.");
+      }
+    }
+    await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'LOCAL_PREPARED', delivery_reference = 'local_test_adapter', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+    return this.deliveryResult(row, "local_test_adapter", "LOCAL_PREPARED", onboardingUrl, null);
+  }
+
+  private deliveryResult(row: InvitationRow, provider: string, deliveryStatus: string, actionUrl: string | null, operatorAction: string | null) {
     return {
-      onboarding_url: onboardingUrl,
+      onboarding_url: actionUrl,
       email: {
         to: row.email,
         subject: row.email_subject,
         preview: row.email_preview,
-        action_url: onboardingUrl,
-        delivery_status: row.delivery_status,
-        provider: "local_test_adapter",
+        action_url: actionUrl,
+        delivery_status: deliveryStatus,
+        provider,
+        operator_action: operatorAction,
+      },
+      email_delivery: {
+        provider,
+        delivery_status: deliveryStatus,
+        raw_token_returned: actionUrl !== null,
       },
     };
+  }
+
+  private emailProvider() {
+    return process.env.EMAIL_PROVIDER ?? "local_test";
+  }
+
+  private invitationUrl(token: string) {
+    const baseUrl = process.env.APPLICATION_BASE_URL;
+    if (!baseUrl) return `/partner/invite/${token}`;
+    return `${baseUrl.replace(/\/$/, "")}/partner/invite/${token}`;
   }
 
   private async checklist(client: PoolClient, tenantId: string, organizationId: string) {
