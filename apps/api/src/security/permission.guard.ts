@@ -92,6 +92,10 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_payment_eligibility.read",
   "partner_payment.read",
   "partner_performance.read_own",
+  "partner_foreman_invitation.create",
+  "partner_foreman_invitation.read",
+  "partner_foreman_invitation.resend",
+  "partner_foreman_invitation.revoke",
 ]);
 
 @Injectable()

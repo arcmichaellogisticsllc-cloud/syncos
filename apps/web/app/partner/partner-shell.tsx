@@ -8,6 +8,7 @@ import { readPermissions, readToken, syncosFetch } from "../intelligence/api";
 type Persona = "partner_admin" | "partner_foreman";
 type Section =
   | "dashboard"
+  | "onboarding"
   | "company"
   | "compliance"
   | "workforce"
@@ -218,10 +219,16 @@ type PartnerPerformanceSummary = {
   improvement_items?: string[];
   boundary?: Record<string, boolean>;
 };
+type OnboardingChecklist = {
+  organization_id?: string;
+  required_complete?: boolean;
+  items?: Array<{ key?: string; label?: string; requirement?: string; complete?: boolean; route?: string; status?: string }>;
+};
 
 type PortalData = {
   context?: PartnerContext;
   actions?: PartnerActions;
+  onboarding?: OnboardingChecklist;
   compliance?: ComplianceSummary;
   company?: CompanyProfile;
   tax?: TaxProfile;
@@ -255,6 +262,7 @@ type PortalData = {
 
 const adminNav = [
   ["Dashboard", "/partner"],
+  ["Onboarding", "/partner/onboarding"],
   ["Company", "/partner/company"],
   ["Compliance", "/partner/compliance"],
   ["Workers", "/partner/workers"],
@@ -388,6 +396,7 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
 async function loadAdmin(context: PartnerContext, actions: PartnerActions | undefined, section: Section, itemId?: string): Promise<PortalData> {
   const permissions = readPermissions();
   const needsDashboard = section === "dashboard";
+  const needsOnboarding = needsDashboard || section === "onboarding";
   const needsCompliance = needsDashboard || section === "compliance";
   const needsCompany = section === "company";
   const needsCrews = needsDashboard || section === "crews" || section === "crew-detail";
@@ -395,7 +404,8 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const needsWorkOrders = needsDashboard || section === "work-orders" || section === "work-order-detail" || section === "mobilization";
   const needsVehicles = needsDashboard || section === "vehicles";
   const needsMobilization = needsDashboard || section === "mobilization";
-  const [compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
+  const [onboarding, compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
+    needsOnboarding ? safeFetch<OnboardingChecklist>("partner-invitations/me/onboarding-checklist") : undefined,
     needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
     section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
@@ -429,7 +439,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const versionId = str(selectedWorkOrder?.id);
   const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
+  return { context, actions, onboarding, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
 }
 
 async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section): Promise<PortalData> {
@@ -469,7 +479,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
 }
 
 function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: () => Promise<void>) {
-    if (data.context?.persona === "partner_foreman" && ["company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments", "performance"].includes(section)) {
+    if (data.context?.persona === "partner_foreman" && ["onboarding", "company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments", "performance"].includes(section)) {
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
   if (data.context?.persona === "partner_foreman") {
@@ -487,6 +497,8 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
   switch (section) {
     case "dashboard":
       return <AdminDashboard data={data} acknowledgeNotice={acknowledgeNotice} />;
+    case "onboarding":
+      return <OnboardingChecklistWorkspace data={data} />;
     case "company":
       return <CompanyWorkspace data={data} permissions={permissions} />;
     case "compliance":
@@ -532,6 +544,36 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     default:
       return <EmptyPortal title="Workspace unavailable" body="This Partner workspace is not available." />;
   }
+}
+
+function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
+  const checklist = data.onboarding;
+  const items = checklist?.items ?? [];
+  return (
+    <div className="partner-stack">
+      <section className="partner-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Onboarding Checklist</p>
+            <h3>Company onboarding</h3>
+          </div>
+          <StatusPill label="Required" value={checklist?.required_complete ? "complete" : "incomplete"} />
+        </div>
+        <div className="partner-list">
+          {items.map((item) => (
+            <Link key={item.key ?? item.label} className="partner-list-row" href={item.route ?? "/partner"}>
+              <div>
+                <strong>{item.label}</strong>
+                <span>{item.requirement}</span>
+              </div>
+              <StatusPill label={item.complete ? "Complete" : "Open"} value={item.status} />
+            </Link>
+          ))}
+        </div>
+        {!items.length ? <EmptyPortal title="No checklist available" body="The onboarding checklist appears after the Partner Admin invitation is accepted." /> : null}
+      </section>
+    </div>
+  );
 }
 
 function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowledgeNotice: () => Promise<void> }) {
@@ -1530,16 +1572,18 @@ function activeSectionLabel(section: Section, persona?: Persona) {
     if (section === "corrections" || section === "customer-qc") return "Corrections";
     return "Mobilization";
   }
+  if (section === "onboarding") return "Onboarding";
   if (section === "worker-detail") return "Workers";
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
-  const labels: Record<string, string> = { dashboard: "Dashboard", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments", performance: "Performance" };
+  const labels: Record<string, string> = { dashboard: "Dashboard", onboarding: "Onboarding", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments", performance: "Performance" };
   return labels[section] ?? "Dashboard";
 }
 
 function pageTitle(section: Section, persona?: Persona) {
   if (persona === "partner_foreman" && section === "dashboard") return "Today";
+  if (section === "onboarding") return "Onboarding Checklist";
   if (section === "work-order-detail") return persona === "partner_foreman" ? "Assignment" : "Work Order";
   if (section === "worker-detail") return "Worker";
   if (section === "crew-detail") return "Crew";

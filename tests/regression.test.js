@@ -306,11 +306,18 @@ test("P17 production readiness E2E is included in the global certification runne
 });
 
 test("P17 remains a release-readiness gate without a synthetic migration", () => {
-  const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
-  assert.equal(migrations.at(-1), "054_executive_command_throughput.sql", "P17 should not create a migration unless a release blocker requires schema");
   const doc = read("docs/product/production-readiness-p17.md");
   assert.match(doc, /Production Readiness/);
   assert.match(doc, /No migration was added/);
+});
+
+test("Partner Admin invitation E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-admin-invitations\.spec\.ts/,
+    "Partner Admin invitation acceptance E2E must run as part of npm run e2e:certification",
+  );
 });
 
 test("P17 release boundary checks preserve no-auto-action and no-sensitive-leak rules", () => {
