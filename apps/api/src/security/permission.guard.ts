@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import type { PermissionKey } from "@syncos/permissions";
 import { DATABASE_POOL } from "../modules/database.module";
 import { IS_PUBLIC_ROUTE } from "./public.decorator";
+import { AUTHENTICATED_ONLY_ROUTE } from "./authenticated-only.decorator";
 import { REQUIRED_PERMISSION } from "./require-permission.decorator";
 
 const partnerScopedPermissions = new Set<PermissionKey>([
@@ -107,6 +108,9 @@ export class PermissionGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_ROUTE, [context.getHandler(), context.getClass()]) === true) {
+      return true;
+    }
+    if (this.reflector.getAllAndOverride<boolean>(AUTHENTICATED_ONLY_ROUTE, [context.getHandler(), context.getClass()]) === true) {
       return true;
     }
 

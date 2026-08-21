@@ -409,6 +409,25 @@ export class PartnerInvitationsController {
     });
   }
 
+  @Get()
+  @RequirePermission("partner_invitation.read")
+  async listInvitations(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const result = await client.query<InvitationRow>(
+        `
+        SELECT i.*, o.name AS organization_name
+        FROM partner_onboarding_invitations i
+        JOIN organizations o ON o.tenant_id = i.tenant_id AND o.id = i.organization_id
+        WHERE i.tenant_id = $1
+        ORDER BY i.created_at DESC
+        LIMIT 100
+        `,
+        [request.auth.tenantId],
+      );
+      return { invitations: result.rows.map((row) => this.safeInvitation(row, row.organization_name)) };
+    });
+  }
+
   @Post()
   @RequirePermission("partner_invitation.create")
   async createInvitation(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
@@ -513,7 +532,7 @@ export class PartnerInvitationsController {
           crew_id: invitation.crew_id,
           role_key: invitation.intended_role_key,
           token: sessionToken,
-          next_path: invitation.invitation_type === "partner_foreman" ? "/partner/today" : "/partner/onboarding",
+          next_path: invitation.invitation_type === "partner_foreman" ? "/partner/field/today" : "/partner/onboarding",
           checklist: invitation.invitation_type === "partner_admin" ? await this.checklist(client, invitation.tenant_id, invitation.organization_id) : null,
         };
       } catch (error) {

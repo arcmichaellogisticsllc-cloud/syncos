@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { Client } from "pg";
 
@@ -10,6 +11,10 @@ type Fixture = {
   crewId: string;
   membershipId: string;
   internalToken: string;
+  executiveToken: string;
+  operationsToken: string;
+  financeToken: string;
+  limitedToken: string;
   partnerAdminToken: string;
   foremanToken: string;
 };
@@ -220,6 +225,91 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
     const leakRows = await client.query("SELECT count(*)::int AS count FROM audit_logs WHERE tenant_id = $1 AND (before_state::text LIKE $2 OR after_state::text LIKE $2 OR metadata::text LIKE $2)", [fixture.tenantId, `%${token}%`]);
     expect(leakRows.rows[0].count).toBe(0);
   });
+
+  test("authenticated routing context is safe, server-trusted, and persona-aware", async ({ request }) => {
+    const unauthenticated = await request.get(apiUrl("/auth/me"));
+    expect(unauthenticated.status()).toBe(401);
+
+    const executive = await apiJson(request, fixture.executiveToken, "GET", "/auth/me");
+    expect(executive.routing.workspace).toBe("/command-center");
+    expect(executive.boundary.routing_uses_server_trusted_roles).toBe(true);
+
+    const operations = await apiJson(request, fixture.operationsToken, "GET", "/auth/me");
+    expect(operations.routing.workspace).toBe("/operations");
+
+    const finance = await apiJson(request, fixture.financeToken, "GET", "/auth/me");
+    expect(finance.routing.workspace).toBe("/finance");
+
+    const partnerAdmin = await apiJson(request, fixture.partnerAdminToken, "GET", "/auth/me");
+    expect(partnerAdmin.routing.workspace).toBe("/partner");
+    expect(partnerAdmin.partner_context.persona).toBe("partner_admin");
+    expect(JSON.stringify(partnerAdmin)).not.toMatch(/customer_rate|margin|bank|provider_secret|token_hash|driver_license|home_address/i);
+
+    const foreman = await apiJson(request, fixture.foremanToken, "GET", "/auth/me");
+    expect(foreman.routing.workspace).toBe("/partner/field/today");
+    expect(foreman.partner_context.persona).toBe("partner_foreman");
+    expect(JSON.stringify(foreman)).not.toMatch(/invoice|settlement|customer_rate|margin|bank|provider_secret|token_hash/i);
+
+    const limited = await apiJson(request, fixture.limitedToken, "GET", "/auth/me");
+    expect(limited.routing.workspace).toBe("/");
+    expect(limited.routing.workspace).not.toBe("/command-center");
+  });
+
+  test("Partner Network workspace remains internal-only and preserves the human gate", async ({ request }) => {
+    const inquiries = await apiJson(request, fixture.internalToken, "GET", "/partner-invitations/inquiries");
+    expect(Array.isArray(inquiries.inquiries)).toBe(true);
+    const invitations = await apiJson(request, fixture.internalToken, "GET", "/partner-invitations");
+    expect(Array.isArray(invitations.invitations)).toBe(true);
+    expect(JSON.stringify(invitations)).not.toMatch(/token_hash|onboarding_url/i);
+
+    await expectStatus(request, fixture.partnerAdminToken, "GET", "/partner-invitations/inquiries", {}, 403);
+    await expectStatus(request, fixture.foremanToken, "GET", "/partner-invitations/inquiries", {}, 403);
+    await expectStatus(request, fixture.partnerAdminToken, "GET", "/partner-invitations/onboarding-workspace", {}, 403);
+
+    const email = `gate-${crypto.randomUUID()}@example.com`;
+    const inquiryId = await seedScopedInquiry(client, fixture, email);
+    await expectStatus(request, fixture.internalToken, "POST", `/partner-invitations/inquiries/${inquiryId}/invite`, { organization_id: fixture.organizationId }, 409);
+    await apiJson(request, fixture.internalToken, "POST", `/partner-invitations/inquiries/${inquiryId}/contact`, { note: "Human conversation recorded before qualification." });
+    await apiJson(request, fixture.internalToken, "POST", `/partner-invitations/inquiries/${inquiryId}/qualify`, {
+      decision: "QUALIFIED",
+      organization_id: fixture.organizationId,
+      territory_verified: true,
+      capability_verified: true,
+      crew_count_verified: true,
+      availability_verified: true,
+      equipment_verified: true,
+      note: "Qualified by Sync Admin.",
+    });
+    const invited = await apiJson(request, fixture.internalToken, "POST", `/partner-invitations/inquiries/${inquiryId}/invite`, { organization_id: fixture.organizationId });
+    expect(invited.status).toBe("SENT");
+    expect(invited.invitation_source).toBe("PUBLIC_INQUIRY");
+  });
+
+  test("focused UI files encode login simplification, nav fail-closed, and Foreman Today route", async () => {
+    const login = fs.readFileSync("apps/web/app/login/page.tsx", "utf8");
+    expect(login).toContain("Sign in to SyncOS");
+    expect(login).toContain("SyncOS access token");
+    expect(login).toContain("workspaceRouteFor");
+    expect(login).toContain("Become a Sync Partner");
+    expect(login).not.toContain("SyncOS Field Access");
+    expect(login).not.toContain("Email or access token");
+    expect(login).not.toContain("mobile app is released");
+
+    const nav = fs.readFileSync("apps/web/app/operator-navigation.tsx", "utf8");
+    expect(nav).toContain("Partner Network");
+    expect(nav).toContain("/partner-network");
+    expect(nav).toContain("Loading workspaces");
+    expect(nav).toContain("return false");
+    expect(nav).not.toContain("if (!permissions.length) return true");
+
+    const partnerNetwork = fs.readFileSync("apps/web/app/partner-network/page.tsx", "utf8");
+    expect(partnerNetwork).toContain("Inquiry-driven invitation remains locked until a human qualification decision is recorded.");
+    expect(partnerNetwork).toContain("Manual invitation bypasses public inquiry only.");
+    expect(partnerNetwork).toContain("partner-invitations/onboarding-workspace");
+
+    const today = fs.readFileSync("apps/web/app/partner/field/today/page.tsx", "utf8");
+    expect(today).toContain('section="dashboard"');
+  });
 });
 
 async function seedInviteFixture(client: Client, secret: string): Promise<Fixture> {
@@ -230,10 +320,22 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
   const internalRoleId = crypto.randomUUID();
   const partnerRoleId = crypto.randomUUID();
   const foremanRoleId = crypto.randomUUID();
+  const executiveRoleId = crypto.randomUUID();
+  const operationsRoleId = crypto.randomUUID();
+  const financeRoleId = crypto.randomUUID();
+  const limitedRoleId = crypto.randomUUID();
   const foremanOnlyUserId = crypto.randomUUID();
   const foremanOnlyTenantUserId = crypto.randomUUID();
   const partnerAdminUserId = crypto.randomUUID();
   const partnerAdminTenantUserId = crypto.randomUUID();
+  const executiveUserId = crypto.randomUUID();
+  const executiveTenantUserId = crypto.randomUUID();
+  const operationsUserId = crypto.randomUUID();
+  const operationsTenantUserId = crypto.randomUUID();
+  const financeUserId = crypto.randomUUID();
+  const financeTenantUserId = crypto.randomUUID();
+  const limitedUserId = crypto.randomUUID();
+  const limitedTenantUserId = crypto.randomUUID();
   const organizationId = crypto.randomUUID();
   const otherOrganizationId = crypto.randomUUID();
   const providerId = crypto.randomUUID();
@@ -259,18 +361,74 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
     "partner_profile.read",
     "partner_actions.read",
     "partner_compliance.summary.read",
+    "executive_command.read",
+    "project.read",
+    "invoice.read",
+    "limited.read",
   ];
   await client.query("BEGIN");
   try {
     for (const permission of permissions) await client.query("INSERT INTO permissions (key,name) VALUES ($1,$1) ON CONFLICT (key) DO NOTHING", [permission]);
     await client.query("INSERT INTO tenants (id,name,slug) VALUES ($1,$2,$3)", [tenantId, "Invite Tenant", `invite-${suffix}`]);
-    await client.query("INSERT INTO users (id,email,display_name,status) VALUES ($1,$2,'Invite Internal','active'),($3,$4,'Partner Admin','active'),($5,$6,'Foreman Only','active')", [internalUserId, `invite-internal-${suffix}@syncos.test`, partnerAdminUserId, `partner-admin-${suffix}@syncos.test`, foremanOnlyUserId, `foreman-only-${suffix}@syncos.test`]);
-    await client.query("INSERT INTO tenant_users (id,tenant_id,user_id,status) VALUES ($1,$2,$3,'active'),($4,$2,$5,'active'),($6,$2,$7,'active')", [internalTenantUserId, tenantId, internalUserId, partnerAdminTenantUserId, partnerAdminUserId, foremanOnlyTenantUserId, foremanOnlyUserId]);
-    await client.query("INSERT INTO roles (id,tenant_id,name,system_key) VALUES ($1,$2,'Invite Internal','invite_internal'),($3,$2,'Partner Admin','partner_admin'),($4,$2,'Partner Foreman','partner_foreman')", [internalRoleId, tenantId, partnerRoleId, foremanRoleId]);
+    await client.query(
+      `
+      INSERT INTO users (id,email,display_name,status) VALUES
+        ($1,$2,'Invite Internal','active'),
+        ($3,$4,'Partner Admin','active'),
+        ($5,$6,'Foreman Only','active'),
+        ($7,$8,'Executive Router','active'),
+        ($9,$10,'Operations Router','active'),
+        ($11,$12,'Finance Router','active'),
+        ($13,$14,'Limited Router','active')
+      `,
+      [internalUserId, `invite-internal-${suffix}@syncos.test`, partnerAdminUserId, `partner-admin-${suffix}@syncos.test`, foremanOnlyUserId, `foreman-only-${suffix}@syncos.test`, executiveUserId, `executive-${suffix}@syncos.test`, operationsUserId, `operations-${suffix}@syncos.test`, financeUserId, `finance-${suffix}@syncos.test`, limitedUserId, `limited-${suffix}@syncos.test`],
+    );
+    await client.query(
+      `
+      INSERT INTO tenant_users (id,tenant_id,user_id,status) VALUES
+        ($1,$2,$3,'active'),
+        ($4,$2,$5,'active'),
+        ($6,$2,$7,'active'),
+        ($8,$2,$9,'active'),
+        ($10,$2,$11,'active'),
+        ($12,$2,$13,'active'),
+        ($14,$2,$15,'active')
+      `,
+      [internalTenantUserId, tenantId, internalUserId, partnerAdminTenantUserId, partnerAdminUserId, foremanOnlyTenantUserId, foremanOnlyUserId, executiveTenantUserId, executiveUserId, operationsTenantUserId, operationsUserId, financeTenantUserId, financeUserId, limitedTenantUserId, limitedUserId],
+    );
+    await client.query(
+      `
+      INSERT INTO roles (id,tenant_id,name,system_key) VALUES
+        ($1,$2,'Invite Internal','invite_internal'),
+        ($3,$2,'Partner Admin','partner_admin'),
+        ($4,$2,'Partner Foreman','partner_foreman'),
+        ($5,$2,'Executive','executive'),
+        ($6,$2,'Operations Manager','operations_manager'),
+        ($7,$2,'Finance Manager','finance_manager'),
+        ($8,$2,'Limited User','limited_user')
+      `,
+      [internalRoleId, tenantId, partnerRoleId, foremanRoleId, executiveRoleId, operationsRoleId, financeRoleId, limitedRoleId],
+    );
     for (const permission of permissions) await grant(client, tenantId, internalRoleId, permission);
+    await grant(client, tenantId, executiveRoleId, "executive_command.read");
+    await grant(client, tenantId, operationsRoleId, "project.read");
+    await grant(client, tenantId, financeRoleId, "invoice.read");
+    await grant(client, tenantId, limitedRoleId, "limited.read");
     for (const permission of ["partner_context.read", "partner_profile.read", "partner_actions.read", "partner_compliance.summary.read", "partner_foreman_invitation.create", "partner_foreman_invitation.read", "partner_foreman_invitation.resend", "partner_foreman_invitation.revoke"]) await grant(client, tenantId, partnerRoleId, permission);
     for (const permission of ["partner_context.read", "partner_actions.read", "partner_compliance.summary.read"]) await grant(client, tenantId, foremanRoleId, permission);
-    await client.query("INSERT INTO user_roles (tenant_id,tenant_user_id,role_id,scope_type,scope_id) VALUES ($1,$2,$3,'tenant',$1),($1,$4,$5,'organization',$6),($1,$7,$8,'organization',$6)", [tenantId, internalTenantUserId, internalRoleId, partnerAdminTenantUserId, partnerRoleId, organizationId, foremanOnlyTenantUserId, foremanRoleId]);
+    await client.query(
+      `
+      INSERT INTO user_roles (tenant_id,tenant_user_id,role_id,scope_type,scope_id) VALUES
+        ($1,$2,$3,'tenant',$1),
+        ($1,$4,$5,'organization',$6),
+        ($1,$7,$8,'organization',$6),
+        ($1,$9,$10,'tenant',$1),
+        ($1,$11,$12,'tenant',$1),
+        ($1,$13,$14,'tenant',$1),
+        ($1,$15,$16,'tenant',$1)
+      `,
+      [tenantId, internalTenantUserId, internalRoleId, partnerAdminTenantUserId, partnerRoleId, organizationId, foremanOnlyTenantUserId, foremanRoleId, executiveTenantUserId, executiveRoleId, operationsTenantUserId, operationsRoleId, financeTenantUserId, financeRoleId, limitedTenantUserId, limitedRoleId],
+    );
     await seedOrganization(client, tenantId, organizationId, providerId, "Invite Partner");
     await seedOrganization(client, tenantId, otherOrganizationId, otherProviderId, "Other Partner");
     await seedForemanWorker(client, { tenantId, organizationId, workerId, crewId, membershipId } as Fixture, workerId, crewId, membershipId, providerId);
@@ -283,6 +441,10 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
       crewId,
       membershipId,
       internalToken: signToken(internalUserId, tenantId, secret),
+      executiveToken: signToken(executiveUserId, tenantId, secret),
+      operationsToken: signToken(operationsUserId, tenantId, secret),
+      financeToken: signToken(financeUserId, tenantId, secret),
+      limitedToken: signToken(limitedUserId, tenantId, secret),
       partnerAdminToken: signToken(partnerAdminUserId, tenantId, secret),
       foremanToken: signToken(foremanOnlyUserId, tenantId, secret),
     };

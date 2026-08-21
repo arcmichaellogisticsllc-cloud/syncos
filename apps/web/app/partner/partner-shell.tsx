@@ -305,7 +305,7 @@ const adminNav = [
 ] as const;
 
 const foremanNav = [
-  ["Today", "/partner"],
+  ["Today", "/partner/field/today"],
   ["Crew", "/partner/crews"],
   ["Assignment", "/partner/work-orders"],
   ["Field Map", "/partner/field/map"],

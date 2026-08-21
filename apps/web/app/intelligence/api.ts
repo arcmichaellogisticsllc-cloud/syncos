@@ -5,6 +5,25 @@ export type SyncRecord = Record<string, unknown>;
 const tokenKey = "syncos.apiToken";
 const permissionKey = "syncos.permissions";
 
+export type AuthContext = {
+  user_id: string;
+  tenant_id: string;
+  roles: string[];
+  role_names?: string[];
+  permissions: string[];
+  partner_context?: {
+    persona?: "partner_admin" | "partner_foreman";
+    organization_id?: string;
+    organization_name?: string;
+    worker_id?: string;
+    crew_id?: string;
+  } | null;
+  routing?: {
+    workspace?: string;
+    policy?: string;
+  };
+};
+
 export const defaultSignalPermissions = [
   "signal.read",
   "signal.create",
@@ -275,7 +294,7 @@ export function saveToken(token: string) {
 export function readPermissions() {
   if (typeof window === "undefined") return [];
   const stored = window.localStorage.getItem(permissionKey);
-  if (!stored) return defaultSignalPermissions;
+  if (!stored) return [];
   return stored
     .split(",")
     .map((permission) => permission.trim())
@@ -286,8 +305,34 @@ export function savePermissions(permissions: string[]) {
   window.localStorage.setItem(permissionKey, permissions.join(","));
 }
 
+export function clearAuthContext() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(permissionKey);
+}
+
 export function hasPermission(permissions: string[], permission: string) {
   return permissions.includes(permission);
+}
+
+export async function loadAuthContext(token = readToken()) {
+  const context = await syncosFetch<AuthContext>("auth/me", { token });
+  savePermissions(context.permissions ?? []);
+  return context;
+}
+
+export function workspaceRouteFor(context: AuthContext) {
+  if (context.routing?.workspace) return context.routing.workspace;
+  const permissions = context.permissions ?? [];
+  const roles = context.roles ?? [];
+  const internal = roles.some((role) => !["partner_admin", "partner_foreman"].includes(role));
+  const has = (permission: string) => permissions.includes(permission);
+  if (internal && (has("executive_command.read") || has("dashboard.executive.read"))) return "/command-center";
+  if (internal && (has("project.read") || has("work_order.read") || has("production.read") || has("qc_review.read"))) return "/operations";
+  if (internal && (has("billable_item.read") || has("invoice.read") || has("cash_receipt.read") || has("settlement.read") || has("contractor_payable.read"))) return "/finance";
+  if (!internal && context.partner_context?.persona === "partner_foreman") return "/partner/field/today";
+  if (!internal && context.partner_context?.persona === "partner_admin") return "/partner";
+  if (has("partner_context.read")) return context.partner_context?.persona === "partner_foreman" ? "/partner/field/today" : "/partner";
+  return "/";
 }
 
 export async function syncosFetch<T>(path: string, options: { method?: string; body?: unknown; token?: string } = {}): Promise<T> {
