@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, InternalServerErrorException, NotFoundException, Param, Post, Req } from "@nestjs/common";
-import { createAuthToken } from "@syncos/auth";
+import { createAuthToken, hashPassword, validatePassword } from "@syncos/auth";
 import { appendAuditLog } from "@syncos/shared";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
@@ -469,6 +469,7 @@ export class PartnerInvitationsController {
   async acceptInvitation(@Body() body: Record<string, unknown>) {
     const token = this.requiredString(body.token, "token is required");
     const displayName = typeof body.display_name === "string" && body.display_name.trim() ? body.display_name.trim() : null;
+    const password = this.requiredPassword(body.password);
     return this.withClient(async (client) => {
       await client.query("BEGIN");
       try {
@@ -477,7 +478,7 @@ export class PartnerInvitationsController {
         if (invitation.invitation_type === "partner_foreman") {
           await this.requireCurrentForemanMembership(client, invitation.tenant_id, invitation.organization_id, String(invitation.worker_id), String(invitation.crew_id), String(invitation.foreman_membership_id));
         }
-        const user = await this.createOrAttachUser(client, invitation, displayName);
+        const user = await this.createOrAttachUser(client, invitation, displayName, password);
         const tenantUser = await this.ensureTenantUser(client, invitation.tenant_id, user.id);
         const role = await this.requireRole(client, invitation.tenant_id, invitation.intended_role_key);
         await client.query(
@@ -863,20 +864,23 @@ export class PartnerInvitationsController {
     return { key, label, requirement, complete, route, status: status ? String(status) : "not_started" };
   }
 
-  private async createOrAttachUser(client: PoolClient, invitation: InvitationRow, displayName: string | null) {
-    const existing = await client.query<{ id: string; display_name: string | null; status: string }>("SELECT id, display_name, status FROM users WHERE email = $1", [invitation.email]);
+  private async createOrAttachUser(client: PoolClient, invitation: InvitationRow, displayName: string | null, password: string) {
+    const existing = await client.query<{ id: string; display_name: string | null; status: string; password_hash: string | null }>("SELECT id, display_name, status, password_hash FROM users WHERE email = $1", [invitation.email]);
     if (existing.rows[0] && !["active", "invited"].includes(existing.rows[0].status)) throw new ForbiddenException("Existing user is not eligible for invitation acceptance");
+    const passwordHash = hashPassword(password);
+    const shouldSetPassword = !existing.rows[0]?.password_hash;
     const result = await client.query<{ id: string; display_name: string | null }>(
       `
-      INSERT INTO users (email, display_name, status)
-      VALUES ($1, $2, 'active')
+      INSERT INTO users (email, display_name, password_hash, status)
+      VALUES ($1, $2, $3, 'active')
       ON CONFLICT (email) DO UPDATE
       SET display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), users.display_name),
+          password_hash = CASE WHEN $4::boolean THEN EXCLUDED.password_hash ELSE users.password_hash END,
           status = CASE WHEN users.status = 'invited' THEN 'active' ELSE users.status END,
           updated_at = now()
       RETURNING id, display_name
       `,
-      [invitation.email, displayName ?? invitation.primary_contact_name],
+      [invitation.email, displayName ?? invitation.primary_contact_name, passwordHash, shouldSetPassword],
     );
     return { id: result.rows[0].id, display_name: result.rows[0].display_name ?? invitation.primary_contact_name };
   }
@@ -1132,6 +1136,13 @@ export class PartnerInvitationsController {
     const text = this.requiredString(value, message);
     if (text.length > max) throw new BadRequestException(`${message.replace(" is required", "")} is too long`);
     return text;
+  }
+
+  private requiredPassword(value: unknown) {
+    const password = this.requiredString(value, "password is required");
+    const error = validatePassword(password);
+    if (error) throw new BadRequestException(error);
+    return password;
   }
 
   private optionalLimitedString(value: unknown, max: number) {

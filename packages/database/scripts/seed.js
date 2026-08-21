@@ -1,6 +1,12 @@
 const { Client } = require("pg");
 const crypto = require("node:crypto");
 
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto.scryptSync(password, salt, 64).toString("base64url");
+  return `scrypt$${salt}$${hash}`;
+}
+
 const roles = [
   "Executive",
   "Growth Director",
@@ -826,7 +832,7 @@ async function main() {
       );
     }
 
-    const passwordHash = crypto.createHash("sha256").update("local-dev-password").digest("hex");
+    const passwordHash = hashPassword("local-dev-password");
     const userResult = await client.query(
       `
       INSERT INTO users (email, display_name, password_hash)

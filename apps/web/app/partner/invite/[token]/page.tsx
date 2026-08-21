@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { savePermissions, saveToken, syncosFetch } from "../../../intelligence/api";
+import { loadAuthContext, savePermissions, saveToken, syncosFetch } from "../../../intelligence/api";
 
 type InvitePreview = {
   invitation?: {
@@ -28,6 +28,8 @@ export default function PartnerInviteAcceptancePage() {
   const token = useMemo(() => String(params?.token ?? ""), [params]);
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -58,12 +60,20 @@ export default function PartnerInviteAcceptancePage() {
 
   async function accept() {
     try {
+      if (password.length < 12 || password.length > 128) {
+        setError("Use a password between 12 and 128 characters.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Password confirmation must match.");
+        return;
+      }
       setAccepting(true);
       setError(null);
-      const accepted = await syncosFetch<AcceptResult>("partner-invitations/accept", { method: "POST", token: "", body: { token, display_name: displayName } });
+      const accepted = await syncosFetch<AcceptResult>("partner-invitations/accept", { method: "POST", token: "", body: { token, display_name: displayName, password } });
       saveToken(accepted.token);
-      const permissions = await syncosFetch<{ permissions: string[] }>("auth/me/permissions", { token: accepted.token });
-      savePermissions(permissions.permissions);
+      const context = await loadAuthContext(accepted.token);
+      savePermissions(context.permissions);
       window.location.assign(accepted.next_path || "/partner/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invitation acceptance failed.");
@@ -102,6 +112,14 @@ export default function PartnerInviteAcceptancePage() {
               <label className="form-field">
                 <span>Display name</span>
                 <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+              </label>
+              <label className="form-field">
+                <span>Password</span>
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} />
+              </label>
+              <label className="form-field">
+                <span>Confirm password</span>
+                <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} />
               </label>
               <button className="primary-button" type="button" onClick={accept} disabled={accepting}>
                 {accepting ? "Opening..." : isForemanInvite ? "Activate Field Access" : "Complete Onboarding"}

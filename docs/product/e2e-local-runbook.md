@@ -35,7 +35,7 @@ npm run build -w @syncos/api
 Start API:
 
 ```bash
-DATABASE_URL=postgres:///syncos_e2e_demo AUTH_JWT_SECRET=e2e-secret-for-local-testing PORT=3137 npm run start -w @syncos/api
+DATABASE_URL=postgres:///syncos_e2e_demo AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min PORT=3137 npm run start -w @syncos/api
 ```
 
 ## Start Web
@@ -49,37 +49,37 @@ WEB_BASE_URL=http://localhost:3138 SYNCOS_API_BASE_URL=http://localhost:3137 POR
 ## Run Browser E2E
 
 ```bash
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:route-matrix
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:route-matrix
 ```
 
 Critical skeletons:
 
 ```bash
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:critical
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:critical
 ```
 
 Full foundation suite:
 
 ```bash
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e
 ```
 
 Expanded certification groups:
 
 ```bash
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:hydration
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:personas
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:lifecycle
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:boundaries
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:timeline-audit
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:certification
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:hydration
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:personas
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:lifecycle
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:boundaries
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:timeline-audit
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:certification
 ```
 
 Debug:
 
 ```bash
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:headed
-DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:debug
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:headed
+DATABASE_URL=postgres:///syncos_e2e_demo API_BASE_URL=http://localhost:3137 WEB_BASE_URL=http://localhost:3138 AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:debug
 ```
 
 ## Artifact Locations

@@ -13,7 +13,7 @@ Pass criteria:
 
 ## Preconditions
 
-- Tester has a valid SyncOS token.
+- Tester is signed in to SyncOS with coverage permissions.
 - Tester has coverage permissions required for the actions being tested.
 - At least one awarded opportunity exists.
 - Backend coverage routes are available.

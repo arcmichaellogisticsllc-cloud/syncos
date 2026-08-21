@@ -356,7 +356,7 @@ export async function syncosFetch<T>(path: string, options: { method?: string; b
 
 function readableError(status: number, data: unknown) {
   const message = typeof data === "object" && data && "message" in data ? String((data as { message?: unknown }).message) : "";
-  if (status === 401) return "Sign in with a valid SyncOS token to continue.";
+  if (status === 401) return "Sign in with a valid SyncOS account to continue.";
   if (status === 403) return "You do not have permission to perform this action.";
   if (message.includes("evidence")) return "This signal cannot be verified until evidence is attached.";
   if (message.includes("tenant")) return "This related record does not belong to your organization.";

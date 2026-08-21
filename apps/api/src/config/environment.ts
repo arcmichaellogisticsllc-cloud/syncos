@@ -5,6 +5,8 @@ export type EnvironmentValidationResult = {
   warnings: string[];
 };
 
+const authJwtSecretMinLength = 32;
+
 const allowedNodeEnvs = new Set(["development", "test", "production"]);
 const productionEmailProviders = new Set(["generic_http", "disabled"]);
 
@@ -35,7 +37,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Envir
   if (!allowedNodeEnvs.has(nodeEnv)) errors.push("NODE_ENV must be one of development, test, production");
   if (!env.DATABASE_URL) errors.push("DATABASE_URL is required");
   if (!env.AUTH_JWT_SECRET) errors.push("AUTH_JWT_SECRET is required");
-  if (env.AUTH_JWT_SECRET && env.AUTH_JWT_SECRET.length < 16) errors.push("AUTH_JWT_SECRET must be at least 16 characters");
+  if (env.AUTH_JWT_SECRET && env.AUTH_JWT_SECRET.length < authJwtSecretMinLength) errors.push(`AUTH_JWT_SECRET must be at least ${authJwtSecretMinLength} characters`);
   if (nodeEnv === "production") {
     requireHttpsUrl(errors, "API_BASE_URL", env.API_BASE_URL ?? env.PUBLIC_API_URL);
     requireHttpsUrl(errors, "APPLICATION_BASE_URL", env.APPLICATION_BASE_URL);

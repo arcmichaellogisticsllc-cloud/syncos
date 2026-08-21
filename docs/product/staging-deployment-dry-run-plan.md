@@ -37,10 +37,10 @@ npm run build -w @syncos/worker
 npm run build -w @syncos/web
 dropdb syncos_staging_plan --if-exists
 createdb syncos_staging_plan
-DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run db:migrate
-DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run db:seed
-DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run seed:e2e-demo
-DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=e2e-secret-for-local-testing npm run e2e:seed-smoke
+DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run db:migrate
+DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run db:seed
+DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run seed:e2e-demo
+DATABASE_URL=postgres:///syncos_staging_plan AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min npm run e2e:seed-smoke
 npm run e2e:ci:release -- --reporter=line
 ```
 

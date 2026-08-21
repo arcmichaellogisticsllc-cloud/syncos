@@ -182,7 +182,7 @@ API_BASE_URL=http://localhost:3137 \
 WEB_BASE_URL=http://localhost:3138 \
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3137 \
 SYNCOS_API_BASE_URL=http://localhost:3137 \
-AUTH_JWT_SECRET=e2e-secret-for-local-testing \
+AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min \
 DATABASE_URL=postgres:///syncos_e2e_release \
 npm run start -w @syncos/api
 ```
@@ -211,7 +211,7 @@ curl -fsS -I http://localhost:3138
 ```bash
 API_BASE_URL=http://localhost:3137 \
 WEB_BASE_URL=http://localhost:3138 \
-AUTH_JWT_SECRET=e2e-secret-for-local-testing \
+AUTH_JWT_SECRET=syncos-local-e2e-secret-32-chars-min \
 DATABASE_URL=postgres:///syncos_e2e_release \
 npm run e2e:ci:release
 ```

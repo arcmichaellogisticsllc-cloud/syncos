@@ -2,25 +2,34 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { clearAuthContext, loadAuthContext, saveToken, workspaceRouteFor } from "../intelligence/api";
+import { clearAuthContext, saveToken, syncosFetch, workspaceRouteFor, type AuthContext } from "../intelligence/api";
+
+type LoginResult = {
+  token: string;
+  context: AuthContext;
+};
 
 export default function LoginPage() {
-  const [token, setToken] = useState("");
-  const [message, setMessage] = useState("Enter your SyncOS access token to continue.");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("Enter your email and password to continue.");
   const [loading, setLoading] = useState(false);
 
   async function signIn() {
-    if (!token.trim()) {
-      setMessage("Enter a SyncOS access token to continue.");
+    if (!email.trim() || !password) {
+      setMessage("Enter your email and password to continue.");
       return;
     }
     setLoading(true);
     clearAuthContext();
     try {
-      const nextToken = token.trim();
-      saveToken(nextToken);
-      const context = await loadAuthContext(nextToken);
-      window.location.assign(workspaceRouteFor(context));
+      const result = await syncosFetch<LoginResult>("auth/login", {
+        method: "POST",
+        token: "",
+        body: { email, password },
+      });
+      saveToken(result.token);
+      window.location.assign(workspaceRouteFor(result.context));
     } catch (error) {
       clearAuthContext();
       setMessage(error instanceof Error ? error.message : "Sign in failed.");
@@ -54,8 +63,12 @@ export default function LoginPage() {
           </div>
           <p className="login-copy">Access your workspace securely.</p>
           <label className="form-field login-field">
-            <span>SyncOS access token</span>
-            <input value={token} onChange={(event) => setToken(event.target.value)} autoComplete="username" />
+            <span>Email</span>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" inputMode="email" />
+          </label>
+          <label className="form-field login-field">
+            <span>Password</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={12} maxLength={128} />
           </label>
           <p id="login-note" className="login-copy">{message}</p>
           <div className="login-actions">

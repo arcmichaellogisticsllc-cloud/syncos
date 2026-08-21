@@ -7,6 +7,11 @@ type Fixture = {
   tenantId: string;
   organizationId: string;
   otherOrganizationId: string;
+  executiveEmail: string;
+  operationsEmail: string;
+  financeEmail: string;
+  partnerAdminEmail: string;
+  foremanEmail: string;
   workerId: string;
   crewId: string;
   membershipId: string;
@@ -110,24 +115,27 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
 
     const resent = await apiJson(request, fixture.internalToken, "POST", `/partner-invitations/${invitation.id}/resend`);
     expect(resent.status).toBe("SENT");
-    await expectStatus(request, "", "POST", "/partner-invitations/accept", { token }, 409);
+    await expectStatus(request, "", "POST", "/partner-invitations/accept", { token, password: testPassword() }, 409);
     await apiJson(request, fixture.internalToken, "POST", `/partner-invitations/${resent.id}/revoke`, { reason: "wrong contact" });
-    await expectStatus(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(resent) }, 409);
+    await expectStatus(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(resent), password: testPassword() }, 409);
 
     const existingEmail = `existing-${crypto.randomUUID()}@example.com`;
     const existingUserId = crypto.randomUUID();
-    await client.query("INSERT INTO users (id,email,display_name,status) VALUES ($1,$2,'Existing User','active')", [existingUserId, existingEmail]);
+    const existingPasswordHash = hashPassword("Existing-user-password-2026");
+    await client.query("INSERT INTO users (id,email,display_name,password_hash,status) VALUES ($1,$2,'Existing User',$3,'active')", [existingUserId, existingEmail, existingPasswordHash]);
     const existingInvite = await apiJson(request, fixture.internalToken, "POST", "/partner-invitations", {
       organization_id: fixture.organizationId,
       primary_contact_name: "Existing User",
       email: existingEmail,
       role_key: "partner_admin",
     });
-    const accepted = await apiJson(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(existingInvite), display_name: "Accepted Partner Admin" });
+    const accepted = await apiJson(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(existingInvite), display_name: "Accepted Partner Admin", password: testPassword() });
     expect(accepted.user.id).toBe(existingUserId);
     expect(accepted.role_key).toBe("partner_admin");
     expect(accepted.organization_id).toBe(fixture.organizationId);
     expect(accepted.next_path).toBe("/partner/onboarding");
+    const existingAfter = await client.query("SELECT password_hash FROM users WHERE id = $1", [existingUserId]);
+    expect(existingAfter.rows[0].password_hash).toBe(existingPasswordHash);
 
     const checklist = await apiJson(request, accepted.token, "GET", "/partner-invitations/me/onboarding-checklist");
     expect(checklist.boundaries.checklist_is_navigation_only).toBe(true);
@@ -143,8 +151,8 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
     });
     const raceToken = tokenFrom(raceInvite);
     const raceResults = await Promise.all([
-      request.post(apiUrl("/partner-invitations/accept"), { data: { token: raceToken }, headers: jsonHeaders("") }),
-      request.post(apiUrl("/partner-invitations/accept"), { data: { token: raceToken }, headers: jsonHeaders("") }),
+      request.post(apiUrl("/partner-invitations/accept"), { data: { token: raceToken, password: testPassword() }, headers: jsonHeaders("") }),
+      request.post(apiUrl("/partner-invitations/accept"), { data: { token: raceToken, password: testPassword() }, headers: jsonHeaders("") }),
     ]);
     expect(raceResults.filter((response) => response.status() < 400)).toHaveLength(1);
     const acceptedRows = await client.query("SELECT count(*)::int AS count FROM partner_onboarding_invitations WHERE id = $1 AND status = 'ACCEPTED'", [raceInvite.id]);
@@ -176,7 +184,7 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
       email: `wrong-org-${crypto.randomUUID()}@example.com`,
     }, 403);
 
-    const accepted = await apiJson(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(invitation), display_name: "Field Foreman" });
+    const accepted = await apiJson(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(invitation), display_name: "Field Foreman", password: testPassword() });
     expect(accepted.role_key).toBe("partner_foreman");
     expect(accepted.worker_id).toBe(fixture.workerId);
     expect(accepted.crew_id).toBe(fixture.crewId);
@@ -196,7 +204,7 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
       email: `stale-foreman-${crypto.randomUUID()}@example.com`,
     });
     await client.query("UPDATE partner_crew_memberships SET status = 'ended', effective_end_date = current_date, updated_at = now() WHERE id = $1", [staleMembershipId]);
-    await expectStatus(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(staleInvite) }, 403);
+    await expectStatus(request, "", "POST", "/partner-invitations/accept", { token: tokenFrom(staleInvite), password: testPassword() }, 403);
   });
 
   test("onboarding workspace, approval boundary, analytics, and token-leak controls stay internal", async ({ request }) => {
@@ -255,6 +263,62 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
     expect(limited.routing.workspace).not.toBe("/command-center");
   });
 
+  test("production login uses email and password, then routes by server-trusted persona", async ({ request }) => {
+    const bad = await request.post(apiUrl("/auth/login"), {
+      data: { email: fixture.executiveEmail, password: "wrong-password-value" },
+      headers: jsonHeaders(""),
+    });
+    expect(bad.status()).toBe(401);
+    const badBody = await bad.text();
+    expect(badBody).toContain("Invalid email or password");
+
+    const unknown = await request.post(apiUrl("/auth/login"), {
+      data: { email: `missing-${crypto.randomUUID()}@example.com`, password: testPassword() },
+      headers: jsonHeaders(""),
+    });
+    expect(unknown.status()).toBe(401);
+    expect(await unknown.text()).toContain("Invalid email or password");
+
+    const overlong = await request.post(apiUrl("/auth/login"), {
+      data: { email: fixture.executiveEmail, password: "x".repeat(129) },
+      headers: jsonHeaders(""),
+    });
+    expect(overlong.status()).toBe(401);
+
+    const executive = await apiJson(request, "", "POST", "/auth/login", { email: fixture.executiveEmail, password: testPassword() });
+    expect(executive.token).toMatch(/\./);
+    expect(executive.context.routing.workspace).toBe("/command-center");
+    expect(JSON.stringify(executive)).not.toMatch(/password_hash|token_hash/i);
+
+    const operations = await apiJson(request, "", "POST", "/auth/login", { email: fixture.operationsEmail, password: testPassword() });
+    expect(operations.context.routing.workspace).toBe("/operations");
+
+    const finance = await apiJson(request, "", "POST", "/auth/login", { email: fixture.financeEmail, password: testPassword() });
+    expect(finance.context.routing.workspace).toBe("/finance");
+
+    const partnerAdmin = await apiJson(request, "", "POST", "/auth/login", { email: fixture.partnerAdminEmail, password: testPassword() });
+    expect(partnerAdmin.context.routing.workspace).toBe("/partner");
+    expect(partnerAdmin.context.partner_context.persona).toBe("partner_admin");
+
+    const foreman = await apiJson(request, "", "POST", "/auth/login", { email: fixture.foremanEmail, password: testPassword() });
+    expect(foreman.context.routing.workspace).toBe("/partner/field/today");
+    expect(foreman.context.partner_context.persona).toBe("partner_foreman");
+
+    const stored = await client.query("SELECT password_hash FROM users WHERE email = $1", [fixture.executiveEmail]);
+    expect(stored.rows[0].password_hash).toMatch(/^scrypt\$/);
+    expect(stored.rows[0].password_hash).not.toContain(testPassword());
+
+    const throttleEmail = `throttle-${crypto.randomUUID()}@example.com`;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await request.post(apiUrl("/auth/login"), {
+        data: { email: throttleEmail, password: testPassword() },
+        headers: jsonHeaders(""),
+      });
+      expect(response.status()).toBe(401);
+      expect(await response.text()).toContain("Invalid email or password");
+    }
+  });
+
   test("Partner Network workspace remains internal-only and preserves the human gate", async ({ request }) => {
     const inquiries = await apiJson(request, fixture.internalToken, "GET", "/partner-invitations/inquiries");
     expect(Array.isArray(inquiries.inquiries)).toBe(true);
@@ -288,12 +352,19 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
   test("focused UI files encode login simplification, nav fail-closed, and Foreman Today route", async () => {
     const login = fs.readFileSync("apps/web/app/login/page.tsx", "utf8");
     expect(login).toContain("Sign in to SyncOS");
-    expect(login).toContain("SyncOS access token");
+    expect(login).toContain("Email");
+    expect(login).toContain("Password");
+    expect(login).toContain("auth/login");
     expect(login).toContain("workspaceRouteFor");
     expect(login).toContain("Become a Sync Partner");
+    expect(login).not.toContain("SyncOS access token");
     expect(login).not.toContain("SyncOS Field Access");
     expect(login).not.toContain("Email or access token");
     expect(login).not.toContain("mobile app is released");
+
+    const invite = fs.readFileSync("apps/web/app/partner/invite/[token]/page.tsx", "utf8");
+    expect(invite).toContain("Confirm password");
+    expect(invite).toContain("loadAuthContext");
 
     const nav = fs.readFileSync("apps/web/app/operator-navigation.tsx", "utf8");
     expect(nav).toContain("Partner Network");
@@ -334,9 +405,15 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
   const operationsTenantUserId = crypto.randomUUID();
   const financeUserId = crypto.randomUUID();
   const financeTenantUserId = crypto.randomUUID();
-  const limitedUserId = crypto.randomUUID();
-  const limitedTenantUserId = crypto.randomUUID();
-  const organizationId = crypto.randomUUID();
+    const limitedUserId = crypto.randomUUID();
+    const limitedTenantUserId = crypto.randomUUID();
+    const seededPasswordHash = hashPassword(testPassword());
+    const partnerAdminEmail = `partner-admin-${suffix}@syncos.test`;
+    const foremanEmail = `foreman-only-${suffix}@syncos.test`;
+    const executiveEmail = `executive-${suffix}@syncos.test`;
+    const operationsEmail = `operations-${suffix}@syncos.test`;
+    const financeEmail = `finance-${suffix}@syncos.test`;
+    const organizationId = crypto.randomUUID();
   const otherOrganizationId = crypto.randomUUID();
   const providerId = crypto.randomUUID();
   const otherProviderId = crypto.randomUUID();
@@ -372,16 +449,16 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
     await client.query("INSERT INTO tenants (id,name,slug) VALUES ($1,$2,$3)", [tenantId, "Invite Tenant", `invite-${suffix}`]);
     await client.query(
       `
-      INSERT INTO users (id,email,display_name,status) VALUES
-        ($1,$2,'Invite Internal','active'),
-        ($3,$4,'Partner Admin','active'),
-        ($5,$6,'Foreman Only','active'),
-        ($7,$8,'Executive Router','active'),
-        ($9,$10,'Operations Router','active'),
-        ($11,$12,'Finance Router','active'),
-        ($13,$14,'Limited Router','active')
+      INSERT INTO users (id,email,display_name,password_hash,status) VALUES
+        ($1,$2,'Invite Internal',$15,'active'),
+        ($3,$4,'Partner Admin',$15,'active'),
+        ($5,$6,'Foreman Only',$15,'active'),
+        ($7,$8,'Executive Router',$15,'active'),
+        ($9,$10,'Operations Router',$15,'active'),
+        ($11,$12,'Finance Router',$15,'active'),
+        ($13,$14,'Limited Router',$15,'active')
       `,
-      [internalUserId, `invite-internal-${suffix}@syncos.test`, partnerAdminUserId, `partner-admin-${suffix}@syncos.test`, foremanOnlyUserId, `foreman-only-${suffix}@syncos.test`, executiveUserId, `executive-${suffix}@syncos.test`, operationsUserId, `operations-${suffix}@syncos.test`, financeUserId, `finance-${suffix}@syncos.test`, limitedUserId, `limited-${suffix}@syncos.test`],
+      [internalUserId, `invite-internal-${suffix}@syncos.test`, partnerAdminUserId, partnerAdminEmail, foremanOnlyUserId, foremanEmail, executiveUserId, executiveEmail, operationsUserId, operationsEmail, financeUserId, financeEmail, limitedUserId, `limited-${suffix}@syncos.test`, seededPasswordHash],
     );
     await client.query(
       `
@@ -437,6 +514,11 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
       tenantId,
       organizationId,
       otherOrganizationId,
+      executiveEmail,
+      operationsEmail,
+      financeEmail,
+      partnerAdminEmail,
+      foremanEmail,
       workerId,
       crewId,
       membershipId,
@@ -545,4 +627,14 @@ function signToken(userId: string, tenantId: string, secret: string) {
   const payload = Buffer.from(JSON.stringify({ sub: userId, tenant_id: tenantId, iat: Math.floor(Date.now() / 1000) })).toString("base64url");
   const signature = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${signature}`;
+}
+
+function testPassword() {
+  return "SyncOS-test-password-2026";
+}
+
+function hashPassword(password: string) {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto.scryptSync(password, salt, 64).toString("base64url");
+  return `scrypt$${salt}$${hash}`;
 }

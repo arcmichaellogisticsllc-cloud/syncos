@@ -10,6 +10,8 @@
   --navy: #001742;
   --ok: #1d7a46;
   --warn: #a05a00;
+  --font-display: Oswald, Barlow, Arial, Helvetica, sans-serif;
+  --font-body: Barlow, Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -20,7 +22,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--text);
-  font-family: Barlow, Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
   overflow-x: hidden;
 }
 
@@ -218,7 +220,7 @@ a {
 
 .login-shell {
   background:
-    linear-gradient(90deg, rgba(2, 7, 20, 0.94), rgba(17, 24, 39, 0.8), rgba(17, 24, 39, 0.28)),
+    linear-gradient(90deg, rgba(2, 7, 20, 0.96), rgba(17, 24, 39, 0.82), rgba(17, 24, 39, 0.24)),
     url("/brand/fiber-splicing-field.png") center/cover no-repeat;
   color: #ffffff;
   min-height: 100vh;
@@ -232,7 +234,8 @@ a {
   display: flex;
   justify-content: space-between;
   min-height: 86px;
-  padding: 0 24px;
+  padding-left: max(24px, calc((100% - 1180px) / 2));
+  padding-right: max(24px, calc((100% - 1180px) / 2));
 }
 
 .login-header::after {
@@ -256,10 +259,10 @@ a {
 }
 
 .login-logo-link img {
-  height: 68px;
+  height: 72px;
   object-fit: contain;
   object-position: left center;
-  width: clamp(220px, 24vw, 340px);
+  width: clamp(230px, 24vw, 340px);
 }
 
 .login-header-action {
@@ -269,10 +272,13 @@ a {
   box-shadow: 5px 5px 0 rgba(2, 7, 20, 0.22);
   color: #ffffff;
   display: inline-flex;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
   justify-content: center;
   min-height: 46px;
-  padding: 0 18px;
+  padding: 0.78rem 1.12rem;
+  text-align: center;
 }
 
 .login-hero {
@@ -282,8 +288,8 @@ a {
   grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
   margin: 0 auto;
   min-height: calc(100vh - 86px);
-  padding: 64px 24px 48px;
-  width: min(1180px, 100%);
+  padding: 6rem 0 3rem;
+  width: min(1180px, calc(100% - 32px));
 }
 
 .login-hero-copy {
@@ -295,25 +301,31 @@ a {
 .login-eyebrow,
 .login-brand strong {
   color: var(--accent-2);
-  font-size: 13px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .login-hero-copy h1 {
   color: #ffffff;
-  font-size: clamp(48px, 7vw, 92px);
-  line-height: 0.98;
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 7.2vw, 6.35rem);
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.04;
   margin: 0;
-  max-width: 760px;
+  max-width: 880px;
 }
 
 .login-hero-copy p {
   color: rgba(255, 255, 255, 0.86);
-  font-size: 20px;
-  line-height: 1.45;
+  font-size: 1.18rem;
+  font-weight: 500;
+  line-height: 1.55;
   margin: 0;
-  max-width: 720px;
+  max-width: 760px;
 }
 
 .login-proof-strip {
@@ -339,7 +351,7 @@ a {
   box-shadow: 0 22px 60px rgba(2, 7, 20, 0.3);
   color: var(--text);
   display: grid;
-  gap: 18px;
+  gap: 1rem;
   padding: 30px;
   width: 100%;
 }
@@ -357,16 +369,18 @@ a {
 
 .login-brand h2 {
   color: var(--text);
-  font-size: 34px;
+  font-family: var(--font-display);
+  font-size: clamp(2.15rem, 4vw, 3.5rem);
+  font-weight: 700;
   letter-spacing: 0;
-  line-height: 1;
+  line-height: 1.04;
   margin: 3px 0 0;
 }
 
 .login-copy {
   color: var(--muted);
   font-size: 16px;
-  line-height: 1.35;
+  line-height: 1.55;
   margin: 0;
 }
 
@@ -377,7 +391,8 @@ a {
 
 .login-field span {
   color: var(--text);
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-weight: 700;
 }
 
 .login-field input {
@@ -404,15 +419,18 @@ a {
 
 .new-partner-cta span {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .login-submit,
 .login-secondary {
   border-radius: 0;
   box-shadow: 5px 5px 0 rgba(2, 7, 20, 0.22);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
   min-height: 46px;
-  padding: 0 18px;
+  padding: 0.78rem 1.12rem;
 }
 
 .login-secondary {

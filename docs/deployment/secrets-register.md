@@ -5,7 +5,7 @@ Do not commit real values. Store secrets in the deployment provider secret manag
 | Name | Classification | Used by | Notes |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | SECRET | API, worker, migrations | Production URL must require SSL. |
-| `AUTH_JWT_SECRET` | SECRET | API | Minimum 16 chars; rotate with session impact plan. |
+| `AUTH_JWT_SECRET` | SECRET | API | Minimum 32 chars; rotate with session impact plan. |
 | `REDIS_URL` | SECRET | Worker | Required by current worker health queue. |
 | `EMAIL_API_KEY` | SECRET | API | Required for `EMAIL_PROVIDER=generic_http`. |
 | `EMAIL_HTTP_ENDPOINT` | NON-SECRET CONFIG | API | Provider endpoint, HTTPS only. |

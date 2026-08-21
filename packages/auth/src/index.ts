@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
 
+export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MAX_LENGTH = 128;
+export const AUTH_JWT_SECRET_MIN_LENGTH = 32;
+
 export type AuthenticatedPrincipal = {
   tenantId: string;
   userId: string;
@@ -66,4 +70,34 @@ export function verifyAuthToken(token: string, secret: string): AuthTokenClaims 
   }
 
   return claims;
+}
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto.scryptSync(password, salt, 64).toString("base64url");
+  return `scrypt$${salt}$${hash}`;
+}
+
+export function validatePassword(password: string): string | null {
+  if (!password) return "password is required";
+  if (password.length < PASSWORD_MIN_LENGTH) return `password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  if (password.length > PASSWORD_MAX_LENGTH) return `password must be at most ${PASSWORD_MAX_LENGTH} characters`;
+  return null;
+}
+
+export function verifyPassword(password: string, storedHash: string | null | undefined): boolean {
+  if (!storedHash) return false;
+  const parts = storedHash.split("$");
+  if (parts.length === 3 && parts[0] === "scrypt") {
+    const [, salt, expectedHash] = parts;
+    const actual = Buffer.from(crypto.scryptSync(password, salt, 64).toString("base64url"));
+    const expected = Buffer.from(expectedHash);
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  }
+  if (/^[a-f0-9]{64}$/i.test(storedHash)) {
+    const actual = Buffer.from(crypto.createHash("sha256").update(password).digest("hex"));
+    const expected = Buffer.from(storedHash);
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  }
+  return false;
 }

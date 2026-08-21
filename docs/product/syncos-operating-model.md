@@ -64,8 +64,9 @@ Authentication is not authorization, and authentication is not workspace routing
 Current v0.9.0-rc1 authentication reality:
 
 - invitation acceptance uses `/partner/invite/[token]`;
-- normal sign-in uses a SyncOS access token until production email/password authentication is implemented;
-- password UI must not be presented as functional until a real backend password flow exists.
+- normal sign-in uses email and password through `/auth/login`;
+- SyncOS stores the returned session token internally after successful authentication;
+- users should never be asked to paste an access token as the normal sign-in pattern.
 
 ## C. SyncOS
 
