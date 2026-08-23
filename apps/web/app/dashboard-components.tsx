@@ -1,22 +1,29 @@
 import type { ReactNode } from "react";
 import { formatValue, type DashboardData, valueAt } from "./dashboard-data";
-import { OperatorNavigation } from "./operator-navigation";
+import { OperatorAccountControl, OperatorNavigation, OperatorSubnavigation } from "./operator-navigation";
 
 export function CommandShell({ title, purpose, children }: { title: string; purpose: string; children: ReactNode }) {
   return (
     <main className="shell">
       <header className="topbar">
         <div className="brand-block">
-          <div className="brand">SyncOS</div>
-          <div className="brand-subtitle">Telecom operations command center</div>
+          <a className="app-logo-link" href="/command-center" aria-label="SyncOS home">
+            <img src="/brand/sync-comm-systems-logo.png" alt="Sync Comm Systems" />
+          </a>
+          <div>
+            <div className="brand">SyncOS</div>
+            <div className="brand-subtitle">Telecom Operations Platform</div>
+          </div>
         </div>
         <OperatorNavigation />
+        <OperatorAccountControl />
       </header>
       <section className="content">
         <div className="page-header">
           <h1>{title}</h1>
           <p>{purpose}</p>
         </div>
+        <OperatorSubnavigation />
         {children}
       </section>
     </main>

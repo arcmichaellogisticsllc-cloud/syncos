@@ -5,6 +5,13 @@ const path = require("node:path");
 
 const namespace = "syncos-browser-e2e-cedar-ridge";
 const tenantId = uuid("tenant:arc-syncos-demo");
+const demoPassword = "SyncOS-demo-password-2026";
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto.scryptSync(password, salt, 64).toString("base64url");
+  return `scrypt$${salt}$${hash}`;
+}
 
 const ids = Object.freeze({
   tenant: tenantId,
@@ -17,9 +24,30 @@ const ids = Object.freeze({
   contactDana: uuid("contact:dana-lewis"),
   contactMorgan: uuid("contact:morgan-ellis"),
   contactLuis: uuid("contact:luis-moreno"),
+  partnerAdminUser: uuid("demo-user:blue-splice-partner-admin"),
+  partnerAdminTenantUser: uuid("demo-tenant-user:blue-splice-partner-admin"),
+  partnerForemanUser: uuid("demo-user:blue-splice-foreman"),
+  partnerForemanTenantUser: uuid("demo-tenant-user:blue-splice-foreman"),
+  partnerAdminRole: uuid("demo-role:partner-admin"),
+  partnerForemanRole: uuid("demo-role:partner-foreman"),
   provider: uuid("capacity-provider:blue-splice"),
   crew: uuid("crew:blue-splice-crew-a"),
   worker: uuid("worker:alex-rivera"),
+  partnerContract: uuid("partner-contract:blue-splice-master"),
+  partnerAgreementVersion: uuid("partner-agreement-version:blue-splice-v1"),
+  workOrderVersion: uuid("partner-work-order-version:wo-cr-001-v1"),
+  crewAssignment: uuid("partner-work-order-crew-assignment:blue-splice-wo-cr-001"),
+  foremanMembership: uuid("partner-crew-membership:alex-rivera-foreman"),
+  foremanWorkerLink: uuid("partner-worker-user-link:alex-rivera"),
+  mapFile: uuid("map-file:wo-cr-001-original"),
+  mapDocument: uuid("map-document:wo-cr-001"),
+  mapVersion: uuid("map-version:wo-cr-001-rev1"),
+  mapPage: uuid("map-page:wo-cr-001-rev1-p1"),
+  mapAssignment: uuid("map-assignment:wo-cr-001-blue-splice"),
+  mobilizationReadiness: uuid("mobilization-readiness:wo-cr-001-blue-splice"),
+  mobilizationDecision: uuid("mobilization-decision:wo-cr-001-blue-splice"),
+  noticeToProceed: uuid("notice-to-proceed:wo-cr-001-blue-splice"),
+  productionStartAuthorization: uuid("production-start:wo-cr-001-blue-splice"),
   contract: uuid("contract:cedar-ridge-phase-1"),
   rateSchedule: uuid("rate-schedule:cedar-ridge-phase-1"),
   rateCode: uuid("rate-code:fiber-foot"),
@@ -213,6 +241,7 @@ async function main() {
     await seedTenant(client);
     await seedPersonas(client);
     await seedCanonicalRecords(client);
+    await seedPartnerBrowserReviewAccess(client);
     await cleanupGeneratedActionStateRecords(client);
     await seedActionStateRecords(client);
     await client.query("COMMIT");
@@ -238,11 +267,12 @@ async function seedTenant(client) {
 async function seedPersonas(client) {
   const allPermissions = await client.query("SELECT key FROM permissions ORDER BY key");
   const permissionKeys = allPermissions.rows.map((row) => row.key);
+  const passwordHash = hashPassword(demoPassword);
   for (const [slug, roleName, email, displayName, families] of personas) {
     const userId = uuid(`persona-user:${slug}`);
     const tenantUserId = uuid(`tenant-user:${slug}`);
     const roleId = uuid(`persona-role:${slug}`);
-    await upsert(client, "users", { id: userId, email, display_name: displayName, status: "active" });
+    await upsert(client, "users", { id: userId, email, display_name: displayName, password_hash: passwordHash, status: "active" });
     await upsert(client, "tenant_users", { id: tenantUserId, tenant_id: ids.tenant, user_id: userId, status: "active" });
     await upsert(client, "roles", { id: roleId, tenant_id: ids.tenant, name: roleName, description: `Browser E2E ${roleName}`, system_key: `e2e_${slug.replace(/-/g, "_")}` });
     const selected = families.includes("*") ? permissionKeys : permissionKeys.filter((key) => families.some((family) => family.startsWith(".") ? key.endsWith(family) : family.endsWith(".") ? key.startsWith(family) : key === family));
@@ -262,6 +292,264 @@ async function seedPersonas(client) {
       [ids.tenant, tenantUserId, roleId],
     );
   }
+}
+
+async function seedPartnerBrowserReviewAccess(client) {
+  const admin = uuid("persona-user:system-admin");
+  const passwordHash = hashPassword(demoPassword);
+  const rolePermissions = {
+    partner_admin: [
+      "partner_context.read",
+      "partner_profile.read",
+      "partner_actions.read",
+      "partner_compliance.summary.read",
+      "partner_compliance.profile.read",
+      "partner_compliance.profile.submit",
+      "partner_compliance.w9.read",
+      "partner_compliance.w9.submit",
+      "partner_compliance.payment.read",
+      "partner_compliance.payment.submit",
+      "partner_compliance.insurance.read",
+      "partner_compliance.insurance.submit",
+      "partner_compliance.evidence.read",
+      "partner_workforce.worker.read",
+      "partner_workforce.worker.create",
+      "partner_workforce.worker.update",
+      "partner_workforce.worker.submit",
+      "partner_workforce.headshot.read",
+      "partner_workforce.headshot.submit",
+      "partner_workforce.credential.read",
+      "partner_workforce.credential.submit",
+      "partner_workforce.crew.read",
+      "partner_workforce.crew.create",
+      "partner_workforce.crew.update",
+      "partner_workforce.membership.manage",
+      "partner_workforce.foreman.assign",
+      "partner_foreman_invitation.create",
+      "partner_foreman_invitation.read",
+      "partner_foreman_invitation.resend",
+      "partner_foreman_invitation.revoke",
+      "partner_workforce.readiness.read",
+      "partner_workforce.attestation.submit",
+      "partner_agreement.read",
+      "partner_agreement.sign",
+      "partner_agreement.artifact.read",
+      "partner_work_order.read",
+      "partner_work_order.rate.read",
+      "partner_work_order.sign",
+      "partner_work_order.artifact.read",
+      "partner_vehicle_assignment.read",
+      "partner_vehicle_assignment.sign",
+      "partner_vehicle_assignment.artifact.read",
+      "partner_vehicle_assignment.allocation.read",
+      "partner_mobilization.read",
+      "partner_notice.read",
+      "partner_notice.acknowledge",
+      "partner_map.read",
+      "partner_jsa.read",
+      "partner_jsa_history.read",
+      "partner_daily_production.read_org",
+      "partner_production.read_org",
+      "partner_customer_qc.read",
+      "partner_customer_qc.corrections_read",
+      "partner_customer_qc.history_read",
+      "partner_production_dashboard.read",
+      "partner_production_export.read",
+      "partner_production_export.generate",
+      "partner_settlement.read",
+      "partner_contractor_payable.read",
+      "partner_payment_eligibility.read",
+      "partner_payment.read",
+    ],
+    partner_foreman: [
+      "partner_context.read",
+      "partner_actions.read",
+      "partner_compliance.summary.read",
+      "partner_workforce.foreman_roster.read",
+      "partner_work_order.foreman_summary.read",
+      "partner_mobilization.foreman.read",
+      "partner_notice.foreman.read",
+      "partner_notice.foreman.acknowledge",
+      "partner_map.read_assigned",
+      "partner_jsa.create",
+      "partner_jsa.update_draft",
+      "partner_jsa.complete",
+      "partner_jsa.read_own",
+      "partner_daily_production.read",
+      "partner_daily_production.create",
+      "partner_daily_production.update_draft",
+      "partner_daily_production.delete_draft",
+      "partner_daily_production.submit",
+      "partner_production_record.create",
+      "partner_production_record.update_draft",
+      "partner_production_record.delete_draft",
+      "partner_production_photo.create",
+      "partner_field_sync.submit",
+      "partner_customer_qc.read_own",
+      "partner_correction.read_own",
+      "partner_correction.update_allowed",
+      "partner_correction.resubmit",
+      "partner_production_history.read_own",
+      "partner_production_export.read_own",
+    ],
+  };
+
+  await upsert(client, "users", { id: ids.partnerAdminUser, email: "partner.admin@syncos.test", display_name: "Blue Splice Partner Admin", password_hash: passwordHash, status: "active" });
+  await upsert(client, "users", { id: ids.partnerForemanUser, email: "foreman@syncos.test", display_name: "Alex Rivera", password_hash: passwordHash, status: "active" });
+  await upsert(client, "tenant_users", { id: ids.partnerAdminTenantUser, tenant_id: ids.tenant, user_id: ids.partnerAdminUser, status: "active" });
+  await upsert(client, "tenant_users", { id: ids.partnerForemanTenantUser, tenant_id: ids.tenant, user_id: ids.partnerForemanUser, status: "active" });
+
+  await upsert(client, "roles", { id: ids.partnerAdminRole, tenant_id: ids.tenant, name: "Partner Admin", description: "Demo Partner Admin for browser review", system_key: "partner_admin" });
+  await upsert(client, "roles", { id: ids.partnerForemanRole, tenant_id: ids.tenant, name: "Partner Foreman", description: "Demo Partner Foreman for browser review", system_key: "partner_foreman" });
+  await grantRolePermissions(client, ids.partnerAdminRole, rolePermissions.partner_admin);
+  await grantRolePermissions(client, ids.partnerForemanRole, rolePermissions.partner_foreman);
+
+  await client.query(
+    `
+    INSERT INTO user_roles (tenant_id, tenant_user_id, role_id, scope_type, scope_id)
+    VALUES ($1,$2,$3,'organization',$4),($1,$5,$6,'organization',$4)
+    ON CONFLICT (tenant_user_id, role_id, scope_type, scope_id) DO NOTHING
+    `,
+    [ids.tenant, ids.partnerAdminTenantUser, ids.partnerAdminRole, ids.orgProvider, ids.partnerForemanTenantUser, ids.partnerForemanRole],
+  );
+
+  await upsert(client, "workers", {
+    id: ids.worker,
+    tenant_id: ids.tenant,
+    capacity_provider_id: ids.provider,
+    crew_id: ids.crew,
+    organization_id: ids.orgProvider,
+    first_name: "Alex",
+    last_name: "Rivera",
+    worker_role: "foreman",
+    status: "active",
+    review_status: "approved",
+    reviewed_by_user_id: admin,
+    reviewed_at: "2026-01-12T12:00:00Z",
+  });
+  await upsert(client, "partner_crew_memberships", {
+    id: ids.foremanMembership,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    capacity_provider_id: ids.provider,
+    crew_id: ids.crew,
+    worker_id: ids.worker,
+    membership_role: "foreman",
+    primary_membership: true,
+    effective_start_date: "2026-01-15",
+    status: "active",
+    assigned_by_user_id: admin,
+  });
+  await upsert(client, "partner_worker_user_links", {
+    id: ids.foremanWorkerLink,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    worker_id: ids.worker,
+    tenant_user_id: ids.partnerForemanTenantUser,
+    status: "active",
+    linked_by_user_id: admin,
+  });
+
+  await upsert(client, "contracts", {
+    id: ids.partnerContract,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    partner_organization_id: ids.orgProvider,
+    capacity_provider_id: ids.provider,
+    name: "Blue Splice Master Partner Agreement",
+    contract_number: "MSA-BS-001",
+    contract_type: "partner_master_agreement",
+    status: "active",
+    agreement_lifecycle_status: "effective",
+    agreement_effective_date: "2026-01-10",
+  });
+  await upsert(client, "partner_agreement_versions", {
+    id: ids.partnerAgreementVersion,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    capacity_provider_id: ids.provider,
+    contract_id: ids.partnerContract,
+    version_number: 1,
+    status: "effective",
+    issued_date: "2026-01-10",
+    effective_date: "2026-01-10",
+    executed_at: "2026-01-10T12:00:00Z",
+    created_by_user_id: admin,
+  });
+  await upsert(client, "partner_work_order_versions", {
+    id: ids.workOrderVersion,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    capacity_provider_id: ids.provider,
+    project_id: ids.project,
+    work_order_id: ids.workOrder,
+    version_number: 1,
+    governing_agreement_version_id: ids.partnerAgreementVersion,
+    assigned_crew_id: ids.crew,
+    rate_schedule_id: ids.rateSchedule,
+    rate_code_id: ids.rateCode,
+    work_order_number: "WO-CR-001",
+    scope_summary: "Cedar Ridge Segment A fiber construction.",
+    primary_work_area: "Cedar Ridge Segment A",
+    map_work_package_ref: "MAP-CR-001",
+    production_unit: "feet",
+    performance_target: 250,
+    status: "active",
+    issued_date: "2026-01-12",
+    effective_date: "2026-01-15",
+    created_by_user_id: admin,
+  });
+  await upsert(client, "partner_work_order_crew_assignments", {
+    id: ids.crewAssignment,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    capacity_provider_id: ids.provider,
+    work_order_id: ids.workOrder,
+    work_order_version_id: ids.workOrderVersion,
+    crew_id: ids.crew,
+    status: "active",
+    assigned_by_user_id: admin,
+  });
+  await client.query(
+    `
+    UPDATE work_orders
+    SET partner_organization_id = $3,
+        partner_rate_schedule_id = $4,
+        governing_agreement_version_id = $5,
+        partner_execution_status = 'active',
+        partner_effective_date = '2026-01-15'
+    WHERE tenant_id = $1 AND id = $2
+    `,
+    [ids.tenant, ids.workOrder, ids.orgProvider, ids.rateSchedule, ids.partnerAgreementVersion],
+  );
+
+  const mapBytes = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer << /Size 4 /Root 1 0 R >>\nstartxref\n186\n%%EOF", "latin1");
+  const mapStorageKey = `${ids.tenant}/${ids.orgProvider}/maps/demo-wo-cr-001.pdf`;
+  writeRestrictedFile(mapStorageKey, mapBytes);
+  await upsert(client, "partner_restricted_file_objects", {
+    id: ids.mapFile,
+    tenant_id: ids.tenant,
+    organization_id: ids.orgProvider,
+    capacity_provider_id: ids.provider,
+    category: "syncfield_map_original_pdf",
+    related_entity_type: "syncfield_map_version",
+    related_entity_id: ids.mapVersion,
+    file_name: "demo-wo-cr-001.pdf",
+    mime_type: "application/pdf",
+    size_bytes: mapBytes.length,
+    checksum: crypto.createHash("sha256").update(mapBytes).digest("hex"),
+    storage_key: mapStorageKey,
+    uploaded_by_user_id: admin,
+  });
+  await upsert(client, "syncfield_map_documents", { id: ids.mapDocument, tenant_id: ids.tenant, project_id: ids.project, work_order_id: ids.workOrder, name: "Cedar Ridge Segment A Construction Print", customer_document_number: "CR-MAP-001", document_type: "construction_map", status: "active", created_by_user_id: admin });
+  await upsert(client, "syncfield_map_versions", { id: ids.mapVersion, tenant_id: ids.tenant, map_document_id: ids.mapDocument, revision_number: 1, revision_label: "Issued for construction", received_date: "2026-01-12", source_name: "Cedar Ridge Utility Authority", source_received_from: "Dana Lewis", original_filename: "demo-wo-cr-001.pdf", original_file_object_id: ids.mapFile, file_hash: crypto.createHash("sha256").update(mapBytes).digest("hex"), page_count: 1, processing_status: "ready", status: "ready", uploaded_by_user_id: admin });
+  await upsert(client, "syncfield_map_pages", { id: ids.mapPage, tenant_id: ids.tenant, map_version_id: ids.mapVersion, page_number: 1, pdf_width: 612, pdf_height: 792, rotation: 0, processing_status: "ready" });
+  await upsert(client, "syncfield_map_assignments", { id: ids.mapAssignment, tenant_id: ids.tenant, project_id: ids.project, work_order_id: ids.workOrder, work_order_version_id: ids.workOrderVersion, organization_id: ids.orgProvider, capacity_provider_id: ids.provider, crew_assignment_id: ids.crewAssignment, crew_id: ids.crew, foreman_worker_id: ids.worker, map_document_id: ids.mapDocument, map_version_id: ids.mapVersion, assignment_status: "active", assigned_by_user_id: admin, current: true });
+
+  await upsert(client, "mobilization_readiness_evaluations", { id: ids.mobilizationReadiness, tenant_id: ids.tenant, project_id: ids.project, work_order_id: ids.workOrder, work_order_version_id: ids.workOrderVersion, organization_id: ids.orgProvider, capacity_provider_id: ids.provider, crew_assignment_id: ids.crewAssignment, crew_id: ids.crew, map_work_package_ref: "MAP-CR-001", project_timezone: "America/New_York", overall_status: "ready", passed_check_count: 6, blocker_count: 0, warning_count: 0, current: true, triggered_by: "explicit_request", actor_user_id: admin });
+  await upsert(client, "mobilization_decisions", { id: ids.mobilizationDecision, tenant_id: ids.tenant, project_id: ids.project, work_order_id: ids.workOrder, work_order_version_id: ids.workOrderVersion, organization_id: ids.orgProvider, capacity_provider_id: ids.provider, crew_assignment_id: ids.crewAssignment, crew_id: ids.crew, readiness_evaluation_id: ids.mobilizationReadiness, decision: "approved_to_mobilize", authorized_by_user_id: admin, current: true });
+  await upsert(client, "notice_to_proceed_versions", { id: ids.noticeToProceed, tenant_id: ids.tenant, notice_number: "NTP-CR-001", version_number: 1, project_id: ids.project, work_order_id: ids.workOrder, work_order_version_id: ids.workOrderVersion, organization_id: ids.orgProvider, capacity_provider_id: ids.provider, crew_assignment_id: ids.crewAssignment, crew_id: ids.crew, readiness_evaluation_id: ids.mobilizationReadiness, mobilization_decision_id: ids.mobilizationDecision, production_start_status: "authorized", planned_mobilization_date: "2026-01-15", production_start_date: "2026-01-15", production_start_time: "07:00", timezone: "America/New_York", initial_map_work_package_ref: "MAP-CR-001", initial_work_area: "Cedar Ridge Segment A", external_instructions: "Demo work package for browser review only.", external_conditions: [], issued_by_user_id: admin, status: "authorized", current: true });
+  await upsert(client, "production_start_authorizations", { id: ids.productionStartAuthorization, tenant_id: ids.tenant, notice_id: ids.noticeToProceed, project_id: ids.project, work_order_id: ids.workOrder, work_order_version_id: ids.workOrderVersion, organization_id: ids.orgProvider, crew_assignment_id: ids.crewAssignment, crew_id: ids.crew, authorization_status: "authorized", start_date: "2026-01-15", start_time: "07:00", timezone: "America/New_York", map_work_package_ref: "MAP-CR-001", work_area: "Cedar Ridge Segment A", authorized_by_user_id: admin, current: true });
 }
 
 async function cleanupGeneratedActionStateRecords(client) {
@@ -569,6 +857,28 @@ async function upsert(client, table, row) {
   );
 }
 
+async function grantRolePermissions(client, roleId, permissionKeys) {
+  for (const key of permissionKeys) {
+    await client.query(
+      `
+      INSERT INTO role_permissions (tenant_id, role_id, permission_id)
+      SELECT $1, $2, id FROM permissions WHERE key = $3
+      ON CONFLICT (role_id, permission_id) DO NOTHING
+      `,
+      [ids.tenant, roleId, key],
+    );
+  }
+}
+
+function writeRestrictedFile(storageKey, bytes) {
+  const root = process.env.SYNCOS_RESTRICTED_FILE_STORAGE_DIR ?? "/private/tmp/syncos-restricted-files";
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(resolvedRoot, ...storageKey.split("/"));
+  if (!resolvedPath.startsWith(`${resolvedRoot}${path.sep}`)) throw new Error("demo storage key resolved outside restricted file root");
+  fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+  fs.writeFileSync(resolvedPath, bytes);
+}
+
 function isJsonbField(key) {
   return ["metadata", "path", "override_reasons", "warnings", "blockers"].includes(key);
 }
@@ -584,7 +894,15 @@ function uuid(value) {
 function writeManifest() {
   const records = {
     tenant: { id: ids.tenant, name: "ARC SyncOS Demo Tenant" },
-    personas: Object.fromEntries(personas.map(([slug, roleName, email]) => [slug, { userId: uuid(`persona-user:${slug}`), email, roleName }])),
+    credentials: {
+      password: demoPassword,
+      notes: "Synthetic local/staging browser-review credentials only. Do not use this password in production.",
+    },
+    personas: {
+      ...Object.fromEntries(personas.map(([slug, roleName, email]) => [slug, { userId: uuid(`persona-user:${slug}`), email, roleName }])),
+      "partner-admin": { userId: ids.partnerAdminUser, email: "partner.admin@syncos.test", roleName: "Partner Admin", organization: "Blue Splice Fiber Services", route: "/partner" },
+      "partner-foreman": { userId: ids.partnerForemanUser, email: "foreman@syncos.test", roleName: "Partner Foreman", organization: "Blue Splice Fiber Services", route: "/partner/field/today" },
+    },
     records: {
       signal: route("Signal", ids.signal, "Cedar Ridge Fiber Expansion RFP Discovered", "/intelligence/signals/:id", "growth-operator"),
       organization: route("Organization", ids.orgCustomer, "Cedar Ridge Utility Authority", "/intelligence/organizations/:id", "growth-operator"),

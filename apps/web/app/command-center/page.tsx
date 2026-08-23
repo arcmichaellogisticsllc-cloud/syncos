@@ -87,7 +87,7 @@ function CommandContent({ snapshot, actions, blockers }: { snapshot: Record<stri
       <section className="workspace-panel top-actions">
         <div className="panel-title-row">
           <h2>Top Actions Today</h2>
-          <a className="secondary-button" href="/command-center">Open</a>
+          <a className="secondary-button" href="/recommendations-center">Review Recommendations</a>
         </div>
         <div className="action-list">
           {topActions.map((action) => <ActionRow key={String(action.id)} action={action} />)}

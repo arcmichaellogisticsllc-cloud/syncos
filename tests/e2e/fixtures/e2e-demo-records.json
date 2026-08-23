@@ -3,6 +3,10 @@
     "id": "8b4ceb5b-5614-5b83-bfc4-16c793832202",
     "name": "ARC SyncOS Demo Tenant"
   },
+  "credentials": {
+    "password": "SyncOS-demo-password-2026",
+    "notes": "Synthetic local/staging browser-review credentials only. Do not use this password in production."
+  },
   "personas": {
     "system-admin": {
       "userId": "703dc310-056a-575d-9906-c8c74d0d5a00",
@@ -63,6 +67,20 @@
       "userId": "4d231c8a-14b6-5da9-aa31-605db6e00d71",
       "email": "e2e.billing.manager@syncos.test",
       "roleName": "Billing Manager"
+    },
+    "partner-admin": {
+      "userId": "6a411273-1898-5ac6-ace4-7286de5b64c6",
+      "email": "partner.admin@syncos.test",
+      "roleName": "Partner Admin",
+      "organization": "Blue Splice Fiber Services",
+      "route": "/partner"
+    },
+    "partner-foreman": {
+      "userId": "0aa6d25e-d1c0-530e-a6c7-95f6e8b8456d",
+      "email": "foreman@syncos.test",
+      "roleName": "Partner Foreman",
+      "organization": "Blue Splice Fiber Services",
+      "route": "/partner/field/today"
     }
   },
   "records": {

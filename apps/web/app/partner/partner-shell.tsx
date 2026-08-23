@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { readPermissions, readToken, syncosFetch } from "../intelligence/api";
+import { clearAuthContext, readPermissions, readToken, sessionEmailFromToken, syncosFetch } from "../intelligence/api";
 
 type Persona = "partner_admin" | "partner_foreman";
 type Section =
@@ -319,6 +319,7 @@ const foremanNav = [
 export function PartnerShell({ section, itemId }: { section: Section; itemId?: string }) {
   const [state, setState] = useState<{ loading: boolean; error?: string; denied?: boolean; data: PortalData }>({ loading: true, data: {} });
   const [message, setMessage] = useState<string | null>(null);
+  const [sessionEmail, setSessionEmail] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +345,10 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
     };
   }, [section, itemId]);
 
+  useEffect(() => {
+    setSessionEmail(sessionEmailFromToken());
+  }, []);
+
   const data = state.data;
   const persona = data.context?.persona;
   const nav = persona === "partner_foreman" ? foremanNav : adminNav;
@@ -365,10 +370,15 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
   return (
     <main className="partner-portal-shell">
       <aside className="partner-sidebar" aria-label="Partner navigation">
-        <div>
-          <p className="eyebrow">Partner Portal</p>
-          <h1>{data.context?.organization.name ?? "SyncOS Partner"}</h1>
-          <p className="partner-persona">{personaLabel(persona)}</p>
+        <div className="partner-brand-block">
+          <a className="partner-logo-link" href="/partner" aria-label="SyncOS Partner home">
+            <img src="/brand/sync-comm-systems-logo.png" alt="Sync Comm Systems" />
+          </a>
+          <div>
+            <p className="eyebrow">SyncOS</p>
+            <h1>{data.context?.organization.name ?? "SyncOS Partner"}</h1>
+            <p className="partner-persona">{personaLabel(persona)}</p>
+          </div>
         </div>
         <nav className="partner-nav">
           {nav.map(([label, href]) => (
@@ -378,6 +388,21 @@ export function PartnerShell({ section, itemId }: { section: Section; itemId?: s
           ))}
           {persona === "partner_admin" ? <Link className={section === "daily-production" ? "partner-nav-link active" : "partner-nav-link"} href="/partner/production">Daily Production</Link> : null}
         </nav>
+        <div className="partner-account-control">
+          <div>
+            <span>{sessionEmail || "Signed in"}</span>
+            <strong>{personaLabel(persona)}</strong>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              clearAuthContext();
+              window.location.assign("/login");
+            }}
+          >
+            Log Out
+          </button>
+        </div>
       </aside>
       <section className="partner-main">
         {state.loading ? <LoadingPortal /> : state.denied ? <DeniedPortal message={state.error} /> : state.error ? <ErrorPortal message={state.error} /> : (

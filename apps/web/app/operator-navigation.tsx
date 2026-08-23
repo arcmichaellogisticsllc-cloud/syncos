@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { hasPermission, loadAuthContext, readPermissions, readToken } from "./intelligence/api";
+import { clearAuthContext, hasPermission, loadAuthContext, readPermissions, readToken, sessionEmailFromToken } from "./intelligence/api";
 
 export type WorkspaceStatus = "active" | "available" | "planned";
 
@@ -141,6 +141,60 @@ export const workspaces: WorkspaceDefinition[] = [
 ];
 
 export function OperatorNavigation() {
+  const { permissions, error, visibleWorkspaces, activeWorkspace } = useOperatorNavigationState();
+
+  if (permissions === null) {
+    return <div className="nav-safe-state" role="status">Loading workspaces...</div>;
+  }
+
+  if (!visibleWorkspaces.length) {
+    return <div className="nav-safe-state" role="status">{error || "No permitted workspaces."}</div>;
+  }
+
+  return (
+    <div className="operator-navigation">
+      <nav className="nav workspace-nav-primary" aria-label="Workspace navigation">
+        {visibleWorkspaces.map((workspace) => workspace.status === "planned" ? (
+          <span className="nav-disabled" key={workspace.label} title={workspace.description}>
+            <span>{workspace.label}</span>
+            <small>{workspace.scope}</small>
+          </span>
+        ) : (
+          <Link href={workspace.href} key={workspace.label} title={workspace.description} aria-current={workspace.label === activeWorkspace.label ? "page" : undefined}>
+            <span>{workspace.label}</span>
+            <small>{workspace.scope}</small>
+          </Link>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+export function OperatorSubnavigation() {
+  const pathname = usePathname();
+  const { permissions, visibleWorkspaces, activeWorkspace } = useOperatorNavigationState();
+  const subnavItems = activeWorkspace.items.filter((item) => canSeeItem(item, permissions));
+
+  if (permissions === null || !visibleWorkspaces.length || subnavItems.length <= 1) return null;
+
+  return (
+    <nav className="workspace-subnav" aria-label={`${activeWorkspace.label} workspace navigation`}>
+      <div className="workspace-subnav-label">
+        <span>{activeWorkspace.label}</span>
+        <small>{activeWorkspace.description}</small>
+      </div>
+      <div className="workspace-subnav-links">
+        {subnavItems.map((item) => item.status === "planned" ? (
+          <span className="workspace-subnav-disabled" key={item.label} title={item.description}>{item.label}</span>
+        ) : (
+          <Link href={item.href} key={item.label} title={item.description} aria-current={isActiveRoute(pathname ?? "/", item.href) ? "page" : undefined}>{item.label}</Link>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function useOperatorNavigationState() {
   const pathname = usePathname();
   const [permissions, setPermissions] = useState<string[] | null>(null);
   const [error, setError] = useState("");
@@ -177,40 +231,52 @@ export function OperatorNavigation() {
       .sort((left, right) => right.score - left.score)[0]?.workspace;
     return matched ?? visibleWorkspaces.find((workspace) => workspace.status !== "planned") ?? visibleWorkspaces[0] ?? workspaces[0];
   }, [pathname, visibleWorkspaces]);
-  const subnavItems = activeWorkspace.items.filter((item) => canSeeItem(item, permissions));
+  return { permissions, error, visibleWorkspaces, activeWorkspace };
+}
 
-  if (permissions === null) {
-    return <div className="nav-safe-state" role="status">Loading workspaces...</div>;
+export function OperatorAccountControl() {
+  const [session, setSession] = useState<{ email: string; label: string } | null>(null);
+
+  useEffect(() => {
+    const token = readToken();
+    if (!token) {
+      setSession(null);
+      return;
+    }
+    loadAuthContext(token)
+      .then((context) => {
+        const roleLabel = context.partner_context?.persona === "partner_foreman"
+          ? "Foreman"
+          : context.partner_context?.persona === "partner_admin"
+            ? "Partner Admin"
+            : context.role_names?.[0] ?? context.roles?.[0] ?? "SyncOS User";
+        setSession({ email: sessionEmailFromToken(token) || "Signed in", label: roleLabel });
+      })
+      .catch(() => setSession(null));
+  }, []);
+
+  function signOut() {
+    clearAuthContext();
+    window.location.assign("/login");
   }
 
-  if (!visibleWorkspaces.length) {
-    return <div className="nav-safe-state" role="status">{error || "No permitted workspaces."}</div>;
+  if (!session) {
+    return (
+      <Link className="account-login-link" href="/login">
+        Sign In
+      </Link>
+    );
   }
 
   return (
-    <div className="operator-navigation">
-      <nav className="nav workspace-nav-primary" aria-label="Workspace navigation">
-        {visibleWorkspaces.map((workspace) => workspace.status === "planned" ? (
-          <span className="nav-disabled" key={workspace.label} title={workspace.description}>
-            <span>{workspace.label}</span>
-            <small>{workspace.scope}</small>
-          </span>
-        ) : (
-          <Link href={workspace.href} key={workspace.label} title={workspace.description} aria-current={workspace.label === activeWorkspace.label ? "page" : undefined}>
-            <span>{workspace.label}</span>
-            <small>{workspace.scope}</small>
-          </Link>
-        ))}
-      </nav>
-      {subnavItems.length > 0 ? (
-        <nav className="workspace-subnav" aria-label={`${activeWorkspace.label} workspace navigation`}>
-          {subnavItems.map((item) => item.status === "planned" ? (
-            <span className="workspace-subnav-disabled" key={item.label} title={item.description}>{item.label}</span>
-          ) : (
-            <Link href={item.href} key={item.label} title={item.description} aria-current={isActiveRoute(pathname ?? "/", item.href) ? "page" : undefined}>{item.label}</Link>
-          ))}
-        </nav>
-      ) : null}
+    <div className="account-control" aria-label="Account controls">
+      <div className="account-identity">
+        <span>{session.label}</span>
+        <strong>{session.email}</strong>
+      </div>
+      <button className="logout-button" type="button" onClick={signOut}>
+        Log Out
+      </button>
     </div>
   );
 }

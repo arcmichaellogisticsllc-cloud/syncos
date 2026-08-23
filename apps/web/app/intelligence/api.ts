@@ -307,7 +307,20 @@ export function savePermissions(permissions: string[]) {
 
 export function clearAuthContext() {
   if (typeof window === "undefined") return;
+  window.localStorage.removeItem(tokenKey);
   window.localStorage.removeItem(permissionKey);
+}
+
+export function sessionEmailFromToken(token = readToken()) {
+  const payload = token.split(".")[1];
+  if (!payload) return "";
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(atob(normalized)) as { email?: unknown };
+    return typeof decoded.email === "string" ? decoded.email : "";
+  } catch {
+    return "";
+  }
 }
 
 export function hasPermission(permissions: string[], permission: string) {
