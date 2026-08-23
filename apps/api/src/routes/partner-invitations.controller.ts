@@ -533,7 +533,7 @@ export class PartnerInvitationsController {
           crew_id: invitation.crew_id,
           role_key: invitation.intended_role_key,
           token: sessionToken,
-          next_path: invitation.invitation_type === "partner_foreman" ? "/partner/field/today" : "/partner/onboarding",
+          next_path: invitation.invitation_type === "partner_foreman" ? "/syncfield/today" : "/partner/onboarding",
           checklist: invitation.invitation_type === "partner_admin" ? await this.checklist(client, invitation.tenant_id, invitation.organization_id) : null,
         };
       } catch (error) {

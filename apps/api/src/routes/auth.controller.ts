@@ -202,7 +202,7 @@ export class AuthController {
         AND tu.user_id = $2
         AND tu.status = 'active'
         AND tu.deleted_at IS NULL
-      ORDER BY CASE r.system_key WHEN 'partner_foreman' THEN 1 ELSE 2 END, o.name
+      ORDER BY CASE r.system_key WHEN 'partner_admin' THEN 1 ELSE 2 END, o.name
       LIMIT 1
       `,
       [tenantId, userId],
@@ -239,12 +239,12 @@ export class AuthController {
     if (internal && (has("executive_command.read") || has("dashboard.executive.read"))) return "/command-center";
     if (internal && (has("project.read") || has("work_order.read") || has("production.read") || has("qc_review.read"))) return "/operations";
     if (internal && (has("billable_item.read") || has("invoice.read") || has("cash_receipt.read") || has("settlement.read") || has("contractor_payable.read"))) return "/finance";
-    if (!internal && partnerContext?.persona === "partner_foreman") return "/partner/field/today";
-    if (!internal && partnerContext?.persona === "partner_admin") return "/partner";
+    if (!internal && roles.includes("partner_admin")) return "/partner";
+    if (!internal && roles.includes("partner_foreman")) return "/syncfield/today";
     if (has("executive_command.read")) return "/command-center";
     if (has("project.read") || has("work_order.read")) return "/operations";
     if (has("invoice.read") || has("billable_item.read")) return "/finance";
-    if (has("partner_context.read")) return partnerContext?.persona === "partner_foreman" ? "/partner/field/today" : "/partner";
+    if (has("partner_context.read")) return roles.includes("partner_foreman") && !roles.includes("partner_admin") ? "/syncfield/today" : "/partner";
     return "/";
   }
 

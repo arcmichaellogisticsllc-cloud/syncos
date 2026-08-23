@@ -178,7 +178,7 @@ Post-login routing is deterministic and derived from server-trusted authenticate
 | Internal Operations | `/operations` | Project, Work Order, production, or QC permissions route to the operations workspace. |
 | Internal Finance | `/finance` | Billing, invoice, cash, settlement, or payable permissions route to finance. |
 | Partner Admin | `/partner` | External Partner Admins route to Partner Portal and onboarding/readiness. |
-| Partner Foreman | `/partner/field/today` | External Foremen route to SyncField Today. |
+| Partner Foreman | `/syncfield/today` | External Foremen route to SyncField Today. |
 | Limited user | first permitted workspace or `/` | Unknown users do not default to Command Center. |
 
 Role precedence:
@@ -272,17 +272,40 @@ Manual Partner invitation may bypass the public inquiry. It does not bypass onbo
 
 ## Workspace Boundaries
 
+Partner Portal is the company-level workspace for Partner Admins. SyncField is the field-execution workspace for Foremen. Organizational affiliation controls data scope, but it does not determine the field product URL.
+
+SyncField route rules:
+
+- `/syncfield/today` is the canonical Foreman landing route for all field Foremen.
+- `/partner/field/today` remains a compatibility redirect only.
+- `/partner/field/map` remains a compatibility redirect only.
+- Partner Admin routes remain under `/partner`.
+- A Partner Admin may access SyncField only if that user also has a canonical active Foreman Worker/Crew assignment.
+- Partner Admin + Foreman dual-role users default to `/partner` for company oversight and may explicitly enter `/syncfield/today` when a valid Foreman assignment exists.
+- Sync-owned Foremen and Partner Foremen share the SyncField product model. Current v0.9 implementation is fully certified for Partner Foremen and structurally reuses Organization, Worker, Crew, membership, and assignment objects; explicit Sync-owned workforce representation remains a documented production-model extension before Sync employee crews are piloted.
+
 Foreman:
 
 - Today;
-- assigned Work Order;
-- JSA;
-- map;
+- Workload navigation with the actual Work Order shown inside the page;
+- JSA as a required Today/Production action, not primary navigation;
+- Map as a primary navigation item;
 - ticks / span;
+- pole / asset;
 - footage;
 - fiber sequence;
 - evidence;
 - submit / correct assigned work.
+
+Foreman v0.9 crew/workload rules:
+
+- Foreman can view the assigned Crew roster.
+- Foreman can mark daily participation through the Daily JSA participant record.
+- Foreman can report a crew issue note through Daily JSA notes.
+- Foreman cannot add/remove Workers or self-assign new Work Orders.
+- Foreman must choose an explicit active assignment context when multiple Crew/Workload assignments exist.
+- SyncOS may recommend likely current assignment, but it must not silently decide where production is recorded.
+- Foreman sees no money, customer invoices, settlement approval, payment execution, company-sensitive compliance documents, Worker PII beyond safe roster fields, or internal review controls.
 
 Partner Admin:
 
@@ -302,3 +325,23 @@ Partner users do not receive internal Demand, Partner Network admin, Capacity Ma
 ## Post-Pilot Demand Intake Limitation
 
 Customer/service inquiry ingestion from the public website into a SyncOS demand inbox is not part of the current focused patch. That remains a post-pilot demand intake integration unless an existing Opportunity workflow is explicitly connected later.
+
+## Current Product Limit Register
+
+Corrected in the focused SyncField routing patch:
+
+- Multi-assignment Foreman context is no longer allowed to resolve silently. SyncField lists active assignments and requires an explicit assignment when more than one active Crew/Workload context exists.
+- Partner Foreman routing now uses `/syncfield/today`; `/partner/field/today` and `/partner/field/map` are compatibility redirects only.
+- Partner Admin + Foreman users land in Partner Portal by default; SyncField is an explicit field-mode entry and is still authorized by Foreman Worker/Crew assignment.
+- Foreman crew management is intentionally scoped to roster visibility, daily participation, and crew issue notes. Add/remove authority remains Partner Admin / Sync Admin controlled.
+
+Remaining documented limitations:
+
+- Configurable forms: SyncOS supports fixed workflow forms for JSA, production, correction, and certified operational flows. It does not yet include a configurable Fulcrum-style form-template builder.
+- Material inventory: SyncField captures reel/cable ID, fiber type, sequence start/end, calculated footage, and variance. It does not yet manage full warehouse inventory, reel depletion, or automated material reconciliation.
+- Offline cold start: offline replay is supported after SyncField is loaded. Closed-browser cold-start offline shell availability is not guaranteed.
+- Customer demand intake: Partner inquiry feeds SyncOS. Public customer/service requests are not yet a SyncOS demand inbox.
+- Authentication expansion: email/password login is the production login model. Password reset, SSO, and magic-link authentication remain future enhancements unless separately implemented and certified.
+- External infrastructure: DNS/TLS, managed database, object storage, email provider, monitoring, backups, and edge protection require staging/production operator provisioning before live rollout.
+- Public inquiry edge protection: repository-side validation exists, but broad public exposure requires configured WAF/rate-limit/bot protection at the hosting edge.
+- Full global certification: focused route/build/type/unit validation is required after this patch, and full `e2e:certification` remains the release gate before commit/release approval.

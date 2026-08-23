@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -76,8 +76,97 @@ type DailyProductionReportRow = QueryResultRow & {
 
 const partnerProviderTypes = new Set(["subcontractor", "crew_provider"]);
 const mapDocumentTypes = new Set(["construction_map", "work_package", "permit_map", "other"]);
-const hazardValues = new Set(["traffic", "energized_utilities", "overhead_utilities", "fall_exposure", "bucket_aerial_lift", "pole_hazards", "unsafe_pole", "guy_anchor", "trip_hazards", "public_exposure", "weather", "equipment_movement", "blocked_access", "animals", "other"]);
-const controlValues = new Set(["ppe_reviewed", "traffic_control_reviewed", "fall_protection_reviewed", "equipment_inspection_complete", "emergency_procedures_reviewed", "rescue_procedures_reviewed", "communication_confirmed", "exclusion_zone_established", "stop_work_authority_reviewed", "utilities_reviewed", "aerial_hazards_reviewed", "incident_reporting_reviewed"]);
+const hazardValues = new Set([
+  "traffic",
+  "energized_utilities",
+  "overhead_utilities",
+  "underground_utilities",
+  "fall_exposure",
+  "bucket_aerial_lift",
+  "pole_hazards",
+  "unsafe_pole",
+  "guy_anchor",
+  "trip_hazards",
+  "public_exposure",
+  "weather",
+  "equipment_movement",
+  "blocked_access",
+  "animals",
+  "other",
+  "heat_stress",
+  "cold_stress",
+  "chemical_exposure",
+  "rf_exposure",
+  "noise_exposure",
+  "rough_terrain",
+  "environmental",
+  "lead_asbestos",
+  "site_security",
+  "inner_city",
+  "night_work",
+  "rural",
+  "locked_access",
+  "lighting_required",
+  "trash_debris_dunnage",
+]);
+const controlValues = new Set([
+  "ppe_reviewed",
+  "traffic_control_reviewed",
+  "fall_protection_reviewed",
+  "equipment_inspection_complete",
+  "emergency_procedures_reviewed",
+  "rescue_procedures_reviewed",
+  "communication_confirmed",
+  "exclusion_zone_established",
+  "stop_work_authority_reviewed",
+  "utilities_reviewed",
+  "aerial_hazards_reviewed",
+  "incident_reporting_reviewed",
+  "hard_hat",
+  "safety_glasses",
+  "hearing_protection",
+  "respirator_protection",
+  "gloves",
+  "rf_site_safety_awareness",
+  "competent_climber",
+  "equipment_operation_training",
+  "first_aid_cpr",
+  "fall_protection_plan",
+  "lockout_tagout",
+  "confined_space",
+  "competent_person_identified",
+  "proper_signage",
+  "cones_tapers",
+  "drop_zone",
+  "barriers_barricades",
+  "storm_drains_protected",
+  "gfci",
+  "electrical_ppe",
+  "electrical_equipment_inspection",
+  "electrical_tools_tested",
+  "underground_utilities_located",
+  "utilities_potholed",
+  "drill_equipment_grounded",
+  "drilling_fluid_containment",
+  "certified_equipment_operators",
+  "startup_inspections",
+  "excavation_trench_inspection",
+  "shore_bench_slope_shield",
+  "egress_every_25ft",
+  "eye_wash_station",
+  "rubber_boots_gloves",
+  "wash_basin_hose",
+  "dust_control",
+  "formwork_stability",
+  "muster_area",
+  "ladders_good_condition",
+  "first_aid_kit_supplied",
+  "fire_extinguishers_inspected",
+  "msds_available",
+  "mobile_equipment_good_condition",
+  "general_neatness",
+]);
+const participationStatuses = new Set(["present", "absent", "not_applicable"]);
 const storageRejectKeys = ["storage_key", "storage_path", "storage_url", "public_url", "raw_url", "object_key", "bucket", "url", "path"];
 const productionStatuses = new Set(["partial", "complete", "blocked", "rework"]);
 const productionLocationTypes = new Set(["asset", "route", "daily"]);
@@ -256,12 +345,21 @@ export class SyncfieldController {
 
   @Get("foreman/map-assignment")
   @RequirePermission("partner_map.read_assigned")
-  async foremanMapAssignment(@Req() request: AuthenticatedRequest) {
+  async foremanMapAssignment(@Req() request: AuthenticatedRequest, @Query("assignment_id") assignmentId?: string) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const crew = await this.requireForemanCrew(client, context);
-      const assignment = await this.latestForemanAssignment(client, context.tenant_id, context.organization.id, crew.id, crew.worker_id);
-      return assignment ? this.safeAssignmentDetail(client, await this.hydrateAssignment(client, assignment)) : null;
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
+      return this.safeAssignmentDetail(client, assignment);
+    });
+  }
+
+  @Get("foreman/assignments")
+  @RequirePermission("partner_map.read_assigned")
+  async foremanAssignments(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignments = await this.activeForemanAssignments(client, context);
+      return Promise.all(assignments.map((assignment) => this.safeAssignmentDetail(client, assignment)));
     });
   }
 
@@ -302,10 +400,10 @@ export class SyncfieldController {
 
   @Get("foreman/jsa/today")
   @RequirePermission("partner_jsa.read_own")
-  async foremanJsaToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate?: string) {
+  async foremanJsaToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate?: string, @Query("assignment_id") assignmentId?: string) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
       const date = this.workDate(workDate);
       const current = await this.findJsa(client, assignment, date);
       return current ? this.safeJsaDetail(client, current) : { status: "required", work_date: date, assignment: this.safeAssignmentContext(assignment) };
@@ -317,7 +415,7 @@ export class SyncfieldController {
   async createForemanJsa(@Req() request: AuthenticatedRequest, @Query("work_date") workDate: string | undefined, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(workDate ?? String(body.work_date ?? ""));
       const workLocation = requireString(body.work_location ?? assignment.primary_work_area ?? assignment.map_work_package_ref, "work_location is required");
       return this.writeWithClient(client, request, "daily_jsa.create", "daily_jsa.created", "daily_jsa", async (writeClient) => {
@@ -350,7 +448,7 @@ export class SyncfieldController {
   async completeForemanJsa(@Req() request: AuthenticatedRequest, @Query("work_date") workDate: string | undefined, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(workDate ?? String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "daily_jsa.complete", "daily_jsa.completed", "daily_jsa", async (writeClient) => {
         const current = await this.findJsa(writeClient, assignment, date) ?? await this.createDraftJsa(writeClient, request, assignment, date, body);
@@ -393,12 +491,68 @@ export class SyncfieldController {
     });
   }
 
-  @Get("foreman/production/today")
-  @RequirePermission("partner_daily_production.read")
-  async foremanProductionToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate?: string) {
+  @Patch("foreman/jsa/today/participants/:workerId")
+  @RequirePermission("partner_jsa.complete")
+  async updateForemanJsaParticipant(@Req() request: AuthenticatedRequest, @Param("workerId") workerId: string, @Query("work_date") workDate: string | undefined, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
+      const date = this.workDate(workDate ?? String(body.work_date ?? ""));
+      const participationStatus = requireString(body.participation_status, "participation_status is required");
+      if (!participationStatuses.has(participationStatus)) throw new BadRequestException("participation_status is invalid");
+      return this.writeWithClient(client, request, "daily_jsa.participant.update", "daily_jsa.participant_updated", "daily_jsa_participant", async (writeClient) => {
+        const current = await this.findJsa(writeClient, assignment, date) ?? await this.createDraftJsa(writeClient, request, assignment, date, body);
+        const before = await writeClient.query(
+          `
+          SELECT p.*, w.first_name, w.last_name
+          FROM daily_jsa_participants p
+          JOIN workers w ON w.tenant_id = p.tenant_id AND w.id = p.worker_id
+          WHERE p.tenant_id = $1
+            AND p.daily_jsa_id = $2
+            AND p.worker_id = $3
+          LIMIT 1
+          `,
+          [assignment.tenant_id, current.id, workerId],
+        );
+        if (!before.rows[0]) throw new NotFoundException("JSA participant not found for current Crew");
+        const note = this.optionalString(body.issue_note);
+        const updated = await writeClient.query(
+          `
+          UPDATE daily_jsa_participants
+          SET participation_status = $4,
+              acknowledged = CASE WHEN $4 = 'present' THEN acknowledged ELSE false END
+          WHERE tenant_id = $1 AND daily_jsa_id = $2 AND worker_id = $3
+          RETURNING *
+          `,
+          [assignment.tenant_id, current.id, workerId, participationStatus],
+        );
+        if (note) {
+          await writeClient.query(
+            `
+            UPDATE daily_jsas
+            SET notes = trim(both E'\n' FROM concat_ws(E'\n', notes, $3::text)),
+                updated_at = now()
+            WHERE tenant_id = $1 AND id = $2
+            `,
+            [assignment.tenant_id, current.id, `Crew issue: ${note}`],
+          );
+        }
+        return {
+          entityType: "daily_jsa_participant",
+          entityId: updated.rows[0].id,
+          beforeState: this.safeJsaParticipant(before.rows[0]),
+          afterState: this.safeJsaParticipant({ ...updated.rows[0], first_name: before.rows[0].first_name, last_name: before.rows[0].last_name }),
+        };
+      });
+    });
+  }
+
+  @Get("foreman/production/today")
+  @RequirePermission("partner_daily_production.read")
+  async foremanProductionToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate?: string, @Query("assignment_id") assignmentId?: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
       const date = this.workDate(workDate);
       const report = await this.findDailyReport(client, assignment, date);
       if (!report) return { status: "not_started", work_date: date, gate: await this.productionGate(client, assignment, date), assignment: this.safeAssignmentContext(assignment), records: [], annotations: [], totals: [] };
@@ -429,10 +583,10 @@ export class SyncfieldController {
 
   @Get("foreman/production/codes")
   @RequirePermission("partner_daily_production.read")
-  async foremanProductionCodes(@Req() request: AuthenticatedRequest) {
+  async foremanProductionCodes(@Req() request: AuthenticatedRequest, @Query("assignment_id") assignmentId?: string) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
       await this.ensureDefaultProductionCodes(client, assignment);
       const result = await client.query(
         `
@@ -454,7 +608,7 @@ export class SyncfieldController {
   async openForemanProductionToday(@Req() request: AuthenticatedRequest, @Query("work_date") workDate: string | undefined, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(workDate ?? String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "daily_report.create", "daily_report.created", "daily_report", async (writeClient) => {
         const existing = await this.findDailyReport(writeClient, assignment, date);
@@ -491,7 +645,7 @@ export class SyncfieldController {
   async createForemanProductionRecord(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "production.record", "production.recorded", "production_record", async (writeClient) => {
         await this.assertProductionGate(writeClient, assignment, date);
@@ -559,7 +713,7 @@ export class SyncfieldController {
   async updateForemanProductionRecord(@Req() request: AuthenticatedRequest, @Param("recordId") recordId: string, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       return this.writeWithClient(client, request, "production.update", "production.updated", "production_record", async (writeClient) => {
         const before = await this.requireScopedProductionRecord(writeClient, assignment, recordId);
         const report = await this.requireDailyReportById(writeClient, assignment.tenant_id, before.daily_production_report_id);
@@ -592,7 +746,7 @@ export class SyncfieldController {
   async submitForemanProductionDay(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
-      const assignment = await this.requireForemanOperationalAssignment(client, context);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "daily_report.submit", "daily_report.submitted", "daily_report", async (writeClient) => {
         await this.assertProductionGate(writeClient, assignment, date);
@@ -1915,6 +2069,26 @@ export class SyncfieldController {
     return result.rows[0] ?? null;
   }
 
+  private async activeForemanAssignments(client: PoolClient, context: PartnerContext) {
+    const crew = await this.requireForemanCrew(client, context);
+    const result = await client.query(
+      `
+      SELECT a.*
+      FROM syncfield_map_assignments a
+      WHERE a.tenant_id = $1
+        AND a.organization_id = $2
+        AND a.crew_id = $3
+        AND a.foreman_worker_id = $4
+        AND a.current = true
+        AND a.assignment_status = 'active'
+        AND a.deleted_at IS NULL
+      ORDER BY a.created_at DESC
+      `,
+      [context.tenant_id, context.organization.id, crew.id, crew.worker_id],
+    );
+    return Promise.all(result.rows.map((row) => this.hydrateAssignment(client, row)));
+  }
+
   private async hydrateAssignment(client: PoolClient, assignment: QueryResultRow): Promise<MapAssignmentRow> {
     const result = await client.query(
       `
@@ -1965,11 +2139,16 @@ export class SyncfieldController {
     return { file_name: file.file_name, mime_type: file.mime_type, size_bytes: Number(file.size_bytes), checksum: file.checksum, content_base64: bytes.toString("base64") };
   }
 
-  private async requireForemanOperationalAssignment(client: PoolClient, context: PartnerContext) {
-    const crew = await this.requireForemanCrew(client, context);
-    const assignment = await this.latestForemanAssignment(client, context.tenant_id, context.organization.id, crew.id, crew.worker_id);
-    if (!assignment) throw new NotFoundException("assigned map not found");
-    return this.hydrateAssignment(client, assignment);
+  private async requireForemanOperationalAssignment(client: PoolClient, context: PartnerContext, requestedAssignmentId?: string | null) {
+    const assignments = await this.activeForemanAssignments(client, context);
+    if (!assignments.length) throw new NotFoundException("assigned map not found");
+    if (requestedAssignmentId) {
+      const selected = assignments.find((assignment) => assignment.assignment_id === requestedAssignmentId || assignment.id === requestedAssignmentId);
+      if (!selected) throw new NotFoundException("assigned map not found");
+      return selected;
+    }
+    if (assignments.length > 1) throw new BadRequestException("multiple active SyncField assignments require explicit assignment_id");
+    return assignments[0];
   }
 
   private async findJsa(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
@@ -2322,7 +2501,18 @@ export class SyncfieldController {
 
   private async safeJsaDetail(client: PoolClient, row: QueryResultRow) {
     const participants = await client.query("SELECT p.*, w.first_name, w.last_name FROM daily_jsa_participants p JOIN workers w ON w.tenant_id = p.tenant_id AND w.id = p.worker_id WHERE p.tenant_id = $1 AND p.daily_jsa_id = $2 ORDER BY p.created_at ASC", [row.tenant_id, row.id]);
-    return { ...this.safeJsa(row), participants: participants.rows.map((p) => ({ worker_id: p.worker_id, name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(), role: p.crew_role, participation_status: p.participation_status, acknowledged: p.acknowledged })) };
+    return { ...this.safeJsa(row), participants: participants.rows.map((p) => this.safeJsaParticipant(p)) };
+  }
+
+  private safeJsaParticipant(row: QueryResultRow) {
+    return {
+      id: row.id,
+      worker_id: row.worker_id,
+      name: `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim(),
+      role: row.crew_role,
+      participation_status: row.participation_status,
+      acknowledged: row.acknowledged,
+    };
   }
 
   private async requirePartnerAdmin(client: PoolClient, request: AuthenticatedRequest, requestedOrganizationId?: string): Promise<PartnerContext> {

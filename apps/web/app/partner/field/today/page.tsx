@@ -1,5 +1,5 @@
-import { PartnerShell } from "../../partner-shell";
+import { redirect } from "next/navigation";
 
 export default function PartnerForemanTodayPage() {
-  return <PartnerShell section="dashboard" />;
+  redirect("/syncfield/today");
 }

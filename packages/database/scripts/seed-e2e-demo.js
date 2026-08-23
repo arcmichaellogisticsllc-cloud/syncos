@@ -901,7 +901,7 @@ function writeManifest() {
     personas: {
       ...Object.fromEntries(personas.map(([slug, roleName, email]) => [slug, { userId: uuid(`persona-user:${slug}`), email, roleName }])),
       "partner-admin": { userId: ids.partnerAdminUser, email: "partner.admin@syncos.test", roleName: "Partner Admin", organization: "Blue Splice Fiber Services", route: "/partner" },
-      "partner-foreman": { userId: ids.partnerForemanUser, email: "foreman@syncos.test", roleName: "Partner Foreman", organization: "Blue Splice Fiber Services", route: "/partner/field/today" },
+      "partner-foreman": { userId: ids.partnerForemanUser, email: "foreman@syncos.test", roleName: "Partner Foreman", organization: "Blue Splice Fiber Services", route: "/syncfield/today" },
     },
     records: {
       signal: route("Signal", ids.signal, "Cedar Ridge Fiber Expansion RFP Discovered", "/intelligence/signals/:id", "growth-operator"),

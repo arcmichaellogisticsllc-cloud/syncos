@@ -80,7 +80,7 @@
       "email": "foreman@syncos.test",
       "roleName": "Partner Foreman",
       "organization": "Blue Splice Fiber Services",
-      "route": "/partner/field/today"
+      "route": "/syncfield/today"
     }
   },
   "records": {

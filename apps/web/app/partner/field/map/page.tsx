@@ -1,5 +1,5 @@
-import { PartnerShell } from "../../partner-shell";
+import { redirect } from "next/navigation";
 
 export default function PartnerFieldMapPage() {
-  return <PartnerShell section="field-map" />;
+  redirect("/syncfield/map");
 }

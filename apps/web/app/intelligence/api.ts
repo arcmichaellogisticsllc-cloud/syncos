@@ -342,9 +342,9 @@ export function workspaceRouteFor(context: AuthContext) {
   if (internal && (has("executive_command.read") || has("dashboard.executive.read"))) return "/command-center";
   if (internal && (has("project.read") || has("work_order.read") || has("production.read") || has("qc_review.read"))) return "/operations";
   if (internal && (has("billable_item.read") || has("invoice.read") || has("cash_receipt.read") || has("settlement.read") || has("contractor_payable.read"))) return "/finance";
-  if (!internal && context.partner_context?.persona === "partner_foreman") return "/partner/field/today";
-  if (!internal && context.partner_context?.persona === "partner_admin") return "/partner";
-  if (has("partner_context.read")) return context.partner_context?.persona === "partner_foreman" ? "/partner/field/today" : "/partner";
+  if (!internal && roles.includes("partner_admin")) return "/partner";
+  if (!internal && roles.includes("partner_foreman")) return "/syncfield/today";
+  if (has("partner_context.read")) return roles.includes("partner_foreman") && !roles.includes("partner_admin") ? "/syncfield/today" : "/partner";
   return "/";
 }
 

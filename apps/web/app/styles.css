@@ -2460,6 +2460,87 @@ th {
   border-color: #0046d7;
 }
 
+.syncfield-shell {
+  background: #f5f7fa;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.syncfield-sidebar {
+  background: #071326;
+  color: #ffffff;
+}
+
+.syncfield-sidebar::before {
+  background: linear-gradient(180deg, var(--accent-2) 0 14%, var(--accent) 14% 100%);
+}
+
+.syncfield-sidebar .eyebrow {
+  color: var(--accent-2);
+}
+
+.syncfield-sidebar h1,
+.syncfield-sidebar .partner-persona,
+.syncfield-sidebar .partner-account-control strong {
+  color: #ffffff;
+}
+
+.syncfield-sidebar .partner-persona,
+.syncfield-sidebar .partner-account-control span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.syncfield-sidebar .partner-nav-link {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  min-height: 52px;
+}
+
+.syncfield-sidebar .partner-nav-link.active,
+.syncfield-sidebar .partner-nav-link:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.syncfield-sidebar .partner-account-control {
+  border-top-color: rgba(255, 255, 255, 0.18);
+}
+
+.syncfield-shell .partner-main {
+  max-width: 1180px;
+}
+
+.syncfield-assignment-strip {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid rgba(11, 26, 51, 0.12);
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 12px 28px rgba(11, 26, 51, 0.07);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+}
+
+.syncfield-assignment-strip strong,
+.syncfield-assignment-strip span {
+  display: block;
+}
+
+.syncfield-assignment-strip span {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.syncfield-assignment-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .partner-page-header,
 .field-status-band {
   align-items: center;
@@ -2507,6 +2588,38 @@ th {
   position: sticky;
   top: 0;
   z-index: 2;
+}
+
+.syncfield-roster-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.syncfield-roster-row {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.syncfield-roster-row strong,
+.syncfield-roster-row span {
+  display: block;
+}
+
+.syncfield-roster-row span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-top: 3px;
+}
+
+.compact-actions {
+  flex-wrap: nowrap;
 }
 
 .partner-panel,
@@ -2710,6 +2823,46 @@ th {
   width: 100%;
 }
 
+.field-jsa-form textarea {
+  min-height: 92px;
+}
+
+.field-jsa-check-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.field-jsa-check-grid label,
+.field-jsa-certify {
+  align-items: flex-start;
+  background: #f8faf9;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  color: #0b1728;
+  display: flex;
+  gap: 10px;
+  line-height: 1.35;
+  padding: 12px;
+}
+
+.field-jsa-check-grid input,
+.field-jsa-certify input {
+  margin-top: 3px;
+}
+
+.field-jsa-other {
+  color: #0b1728;
+  display: grid;
+  font-weight: 800;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.field-jsa-certify {
+  margin: 12px 0;
+}
+
 .field-map-shell {
   display: grid;
   gap: 18px;
@@ -2868,6 +3021,28 @@ th {
     grid-template-columns: repeat(auto-fit, minmax(144px, 1fr));
   }
 
+  .syncfield-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .syncfield-sidebar {
+    gap: 14px;
+  }
+
+  .syncfield-sidebar .partner-brand-block {
+    align-items: center;
+    grid-template-columns: auto 1fr;
+  }
+
+  .syncfield-sidebar .partner-logo-link img {
+    height: 48px;
+    width: 150px;
+  }
+
+  .syncfield-sidebar .partner-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .partner-dashboard-grid,
   .mobilization-lanes {
     grid-template-columns: 1fr;
@@ -2921,9 +3096,28 @@ th {
 
   .partner-page-header,
   .field-status-band,
-  .field-map-header {
+  .field-map-header,
+  .syncfield-assignment-strip {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .syncfield-assignment-options {
+    justify-content: stretch;
+  }
+
+  .syncfield-sidebar .partner-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .syncfield-roster-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .compact-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .field-map-viewer {
