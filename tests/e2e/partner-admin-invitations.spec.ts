@@ -12,6 +12,7 @@ type Fixture = {
   financeEmail: string;
   partnerAdminEmail: string;
   foremanEmail: string;
+  dualRoleEmail: string;
   workerId: string;
   crewId: string;
   membershipId: string;
@@ -22,6 +23,7 @@ type Fixture = {
   limitedToken: string;
   partnerAdminToken: string;
   foremanToken: string;
+  dualRoleToken: string;
 };
 
 test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls", () => {
@@ -254,9 +256,17 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
     expect(JSON.stringify(partnerAdmin)).not.toMatch(/customer_rate|margin|bank|provider_secret|token_hash|driver_license|home_address/i);
 
     const foreman = await apiJson(request, fixture.foremanToken, "GET", "/auth/me");
-    expect(foreman.routing.workspace).toBe("/partner/field/today");
+    expect(foreman.routing.workspace).toBe("/syncfield/today");
     expect(foreman.partner_context.persona).toBe("partner_foreman");
     expect(JSON.stringify(foreman)).not.toMatch(/invoice|settlement|customer_rate|margin|bank|provider_secret|token_hash/i);
+
+    const dualRole = await apiJson(request, fixture.dualRoleToken, "GET", "/auth/me");
+    expect(dualRole.routing.workspace).toBe("/partner");
+    expect(dualRole.partner_context.persona).toBe("partner_admin");
+    expect(dualRole.roles).toContain("partner_admin");
+    expect(dualRole.roles).toContain("partner_foreman");
+    expect(dualRole.permissions).toContain("partner_map.read_assigned");
+    expect(JSON.stringify(dualRole)).not.toMatch(/invoice|settlement|customer_rate|margin|bank|provider_secret|token_hash/i);
 
     const limited = await apiJson(request, fixture.limitedToken, "GET", "/auth/me");
     expect(limited.routing.workspace).toBe("/");
@@ -301,8 +311,13 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
     expect(partnerAdmin.context.partner_context.persona).toBe("partner_admin");
 
     const foreman = await apiJson(request, "", "POST", "/auth/login", { email: fixture.foremanEmail, password: testPassword() });
-    expect(foreman.context.routing.workspace).toBe("/partner/field/today");
+    expect(foreman.context.routing.workspace).toBe("/syncfield/today");
     expect(foreman.context.partner_context.persona).toBe("partner_foreman");
+
+    const dualRole = await apiJson(request, "", "POST", "/auth/login", { email: fixture.dualRoleEmail, password: testPassword() });
+    expect(dualRole.context.routing.workspace).toBe("/partner");
+    expect(dualRole.context.partner_context.persona).toBe("partner_admin");
+    expect(dualRole.context.roles).toContain("partner_foreman");
 
     const stored = await client.query("SELECT password_hash FROM users WHERE email = $1", [fixture.executiveEmail]);
     expect(stored.rows[0].password_hash).toMatch(/^scrypt\$/);
@@ -378,8 +393,11 @@ test.describe.serial("P18 Partner inquiry, invitation, and onboarding controls",
     expect(partnerNetwork).toContain("Manual invitation bypasses public inquiry only.");
     expect(partnerNetwork).toContain("partner-invitations/onboarding-workspace");
 
-    const today = fs.readFileSync("apps/web/app/partner/field/today/page.tsx", "utf8");
+    const today = fs.readFileSync("apps/web/app/syncfield/today/page.tsx", "utf8");
     expect(today).toContain('section="dashboard"');
+    expect(today).toContain('product="syncfield"');
+    const legacyToday = fs.readFileSync("apps/web/app/partner/field/today/page.tsx", "utf8");
+    expect(legacyToday).toContain('redirect("/syncfield/today")');
   });
 });
 
@@ -407,9 +425,12 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
   const financeTenantUserId = crypto.randomUUID();
     const limitedUserId = crypto.randomUUID();
     const limitedTenantUserId = crypto.randomUUID();
+    const dualRoleUserId = crypto.randomUUID();
+    const dualRoleTenantUserId = crypto.randomUUID();
     const seededPasswordHash = hashPassword(testPassword());
     const partnerAdminEmail = `partner-admin-${suffix}@syncos.test`;
     const foremanEmail = `foreman-only-${suffix}@syncos.test`;
+    const dualRoleEmail = `partner-admin-foreman-${suffix}@syncos.test`;
     const executiveEmail = `executive-${suffix}@syncos.test`;
     const operationsEmail = `operations-${suffix}@syncos.test`;
     const financeEmail = `finance-${suffix}@syncos.test`;
@@ -438,6 +459,9 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
     "partner_profile.read",
     "partner_actions.read",
     "partner_compliance.summary.read",
+    "partner_map.read_assigned",
+    "partner_jsa.read_own",
+    "partner_daily_production.read",
     "executive_command.read",
     "project.read",
     "invoice.read",
@@ -456,9 +480,10 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
         ($7,$8,'Executive Router',$15,'active'),
         ($9,$10,'Operations Router',$15,'active'),
         ($11,$12,'Finance Router',$15,'active'),
-        ($13,$14,'Limited Router',$15,'active')
+        ($13,$14,'Limited Router',$15,'active'),
+        ($16,$17,'Partner Admin Foreman',$15,'active')
       `,
-      [internalUserId, `invite-internal-${suffix}@syncos.test`, partnerAdminUserId, partnerAdminEmail, foremanOnlyUserId, foremanEmail, executiveUserId, executiveEmail, operationsUserId, operationsEmail, financeUserId, financeEmail, limitedUserId, `limited-${suffix}@syncos.test`, seededPasswordHash],
+      [internalUserId, `invite-internal-${suffix}@syncos.test`, partnerAdminUserId, partnerAdminEmail, foremanOnlyUserId, foremanEmail, executiveUserId, executiveEmail, operationsUserId, operationsEmail, financeUserId, financeEmail, limitedUserId, `limited-${suffix}@syncos.test`, seededPasswordHash, dualRoleUserId, dualRoleEmail],
     );
     await client.query(
       `
@@ -469,9 +494,10 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
         ($8,$2,$9,'active'),
         ($10,$2,$11,'active'),
         ($12,$2,$13,'active'),
-        ($14,$2,$15,'active')
+        ($14,$2,$15,'active'),
+        ($16,$2,$17,'active')
       `,
-      [internalTenantUserId, tenantId, internalUserId, partnerAdminTenantUserId, partnerAdminUserId, foremanOnlyTenantUserId, foremanOnlyUserId, executiveTenantUserId, executiveUserId, operationsTenantUserId, operationsUserId, financeTenantUserId, financeUserId, limitedTenantUserId, limitedUserId],
+      [internalTenantUserId, tenantId, internalUserId, partnerAdminTenantUserId, partnerAdminUserId, foremanOnlyTenantUserId, foremanOnlyUserId, executiveTenantUserId, executiveUserId, operationsTenantUserId, operationsUserId, financeTenantUserId, financeUserId, limitedTenantUserId, limitedUserId, dualRoleTenantUserId, dualRoleUserId],
     );
     await client.query(
       `
@@ -492,7 +518,7 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
     await grant(client, tenantId, financeRoleId, "invoice.read");
     await grant(client, tenantId, limitedRoleId, "limited.read");
     for (const permission of ["partner_context.read", "partner_profile.read", "partner_actions.read", "partner_compliance.summary.read", "partner_foreman_invitation.create", "partner_foreman_invitation.read", "partner_foreman_invitation.resend", "partner_foreman_invitation.revoke"]) await grant(client, tenantId, partnerRoleId, permission);
-    for (const permission of ["partner_context.read", "partner_actions.read", "partner_compliance.summary.read"]) await grant(client, tenantId, foremanRoleId, permission);
+    for (const permission of ["partner_context.read", "partner_actions.read", "partner_compliance.summary.read", "partner_map.read_assigned", "partner_jsa.read_own", "partner_daily_production.read"]) await grant(client, tenantId, foremanRoleId, permission);
     await client.query(
       `
       INSERT INTO user_roles (tenant_id,tenant_user_id,role_id,scope_type,scope_id) VALUES
@@ -502,9 +528,11 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
         ($1,$9,$10,'tenant',$1),
         ($1,$11,$12,'tenant',$1),
         ($1,$13,$14,'tenant',$1),
-        ($1,$15,$16,'tenant',$1)
+        ($1,$15,$16,'tenant',$1),
+        ($1,$17,$5,'organization',$6),
+        ($1,$17,$8,'organization',$6)
       `,
-      [tenantId, internalTenantUserId, internalRoleId, partnerAdminTenantUserId, partnerRoleId, organizationId, foremanOnlyTenantUserId, foremanRoleId, executiveTenantUserId, executiveRoleId, operationsTenantUserId, operationsRoleId, financeTenantUserId, financeRoleId, limitedTenantUserId, limitedRoleId],
+      [tenantId, internalTenantUserId, internalRoleId, partnerAdminTenantUserId, partnerRoleId, organizationId, foremanOnlyTenantUserId, foremanRoleId, executiveTenantUserId, executiveRoleId, operationsTenantUserId, operationsRoleId, financeTenantUserId, financeRoleId, limitedTenantUserId, limitedRoleId, dualRoleTenantUserId],
     );
     await seedOrganization(client, tenantId, organizationId, providerId, "Invite Partner");
     await seedOrganization(client, tenantId, otherOrganizationId, otherProviderId, "Other Partner");
@@ -519,6 +547,7 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
       financeEmail,
       partnerAdminEmail,
       foremanEmail,
+      dualRoleEmail,
       workerId,
       crewId,
       membershipId,
@@ -529,6 +558,7 @@ async function seedInviteFixture(client: Client, secret: string): Promise<Fixtur
       limitedToken: signToken(limitedUserId, tenantId, secret),
       partnerAdminToken: signToken(partnerAdminUserId, tenantId, secret),
       foremanToken: signToken(foremanOnlyUserId, tenantId, secret),
+      dualRoleToken: signToken(dualRoleUserId, tenantId, secret),
     };
   } catch (error) {
     await client.query("ROLLBACK");

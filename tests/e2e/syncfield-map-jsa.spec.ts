@@ -120,12 +120,14 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     const current = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/map-assignment");
     expect(current.map.version_id).toBe(version.id);
     expect(current.map.version_id).not.toBe(revisionTwo.id);
+    const assignments = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/assignments");
+    expect(assignments).toEqual(expect.arrayContaining([expect.objectContaining({ id: current.id, map: expect.objectContaining({ version_id: version.id }) })]));
   });
 
   test("Partner Foreman opens read-only field map and cannot cross scope or see storage internals", async ({ page, request }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
-    await page.goto("/partner/field/map");
+    await page.goto("/syncfield/map");
     await expect(page.getByRole("heading", { name: /ARL019 Construction Map Rev 1/i })).toBeVisible();
     await expect(page.getByText("Read-only field map")).toBeVisible();
     await expect(page.getByRole("button", { name: /Next PDF page/i })).toBeVisible();
@@ -147,14 +149,23 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
   test("Foreman completes one Daily JSA for own Crew without changing mobilization or downstream records", async ({ page, request }) => {
     const beforeReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
-    await page.goto("/partner/jsa");
+    await page.goto("/syncfield/jsa");
     await expect(page.getByRole("heading", { name: "Daily JSA", level: 2 })).toBeVisible();
     await expect(page.getByText("required", { exact: true })).toBeVisible();
+    const participant = await apiJson(request, seeded.foremanToken, "PATCH", `/syncfield/foreman/jsa/today/participants/${seeded.foremanWorkerId}`, {
+      assignment_id: seeded.assignmentId,
+      participation_status: "absent",
+      issue_note: "Foreman test participation note",
+    });
+    expect(participant.worker_id).toBe(seeded.foremanWorkerId);
+    expect(participant.participation_status).toBe("absent");
+    await page.getByLabel(/I reviewed this JSA with the Crew/).check();
     await page.getByRole("button", { name: "Complete JSA" }).click();
     await expect(page.getByText("Daily JSA completed.")).toBeVisible();
     await expect(page.getByText("complete", { exact: true })).toBeVisible();
 
     const duplicate = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/jsa/today/complete", {
+      assignment_id: seeded.assignmentId,
       work_location: "P8 Initial Work Area",
       hazards: ["traffic"],
       controls: ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed"],
@@ -178,10 +189,10 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
 
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 390, height: 860 });
-    await page.goto("/partner");
+    await page.goto("/syncfield/today");
     await expect(page.getByText("Daily JSA")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open Field Map" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Production" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open Map" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
     await expect(page.getByText("Customer QC")).toHaveCount(0);
   });
 });
@@ -310,8 +321,13 @@ async function installSession(page: Page, nextToken: string, nextPermissions: st
   }, { tokenValue: nextToken, permissionValue: nextPermissions });
 }
 
-async function apiJson(request: APIRequestContext, bearer: string, method: "GET" | "POST", route: string, body?: unknown) {
-  const response = method === "GET" ? await request.get(apiUrl(route), { headers: auth(bearer) }) : await request.post(apiUrl(route), { headers: auth(bearer), data: body });
+async function apiJson(request: APIRequestContext, bearer: string, method: "GET" | "POST" | "PATCH", route: string, body?: unknown) {
+  const response =
+    method === "GET"
+      ? await request.get(apiUrl(route), { headers: auth(bearer) })
+      : method === "PATCH"
+        ? await request.patch(apiUrl(route), { headers: auth(bearer), data: body })
+        : await request.post(apiUrl(route), { headers: auth(bearer), data: body });
   expect(response.status(), `${method} ${route}: ${await response.text()}`).toBeLessThan(400);
   return response.json();
 }

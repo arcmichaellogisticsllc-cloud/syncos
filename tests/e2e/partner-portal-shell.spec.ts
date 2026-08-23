@@ -57,6 +57,10 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("Collections")).toHaveCount(0);
     await expect(page.getByText("margin")).toHaveCount(0);
     await expect(page.getByText("internal_notes")).toHaveCount(0);
+
+    await page.goto("/syncfield/today");
+    await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
+    await expect(page.getByText("SyncField requires an active Foreman assignment.")).toBeVisible();
   });
 
   test("Partner Admin workspaces expose safe company, workforce, agreement, vehicle, and mobilization views", async ({ page }) => {
@@ -103,7 +107,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await page.goto("/partner");
     await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Crew" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Assignment" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Workload" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Company" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Compliance" })).toHaveCount(0);
     await expect(page.getByText("P7-0 Worker")).toBeVisible();
@@ -114,8 +118,14 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("not available to Foreman users")).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 860 });
-    await page.goto("/partner/mobilization");
-    await expect(page.getByRole("heading", { name: "Mobilization" })).toBeVisible();
+    await page.goto("/syncfield/today");
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Map" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Command Center" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Finance" })).toHaveCount(0);
+    await page.goto("/partner/field/today");
+    await expect(page).toHaveURL(/\/syncfield\/today$/);
     await expect(page.getByText("Initial Work Area", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Acknowledge Notice" }).first().click();
     await expect(page.getByText("Notice acknowledgment recorded as receipt only.")).toBeVisible();
