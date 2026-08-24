@@ -214,6 +214,7 @@ const softDeleteTables = new Set([
   "settlement_items",
   "settlements",
 ]);
+const tableColumnCache = new Map();
 
 const personas = [
   ["system-admin", "System Admin", "e2e.system.admin@syncos.test", "E2E System Admin", ["*"]],
@@ -873,10 +874,12 @@ async function seedActionStateRecords(client) {
 }
 
 async function upsert(client, table, row) {
+  const columnsForTable = await tableColumns(client, table);
   const seededRow = softDeleteTables.has(table) && row.deleted_at === undefined ? { ...row, deleted_at: null } : row;
   const entries = Object.entries(seededRow).filter(([, value]) => value !== undefined);
-  const columns = entries.map(([key]) => key);
-  const values = entries.map(([key, value]) => isJsonbField(key) && value !== null ? JSON.stringify(value) : value);
+  const filteredEntries = entries.filter(([key]) => columnsForTable.has(key));
+  const columns = filteredEntries.map(([key]) => key);
+  const values = filteredEntries.map(([key, value]) => normalizeSeedValue(table, key, isJsonbField(key) && value !== null ? JSON.stringify(value) : value));
   const placeholders = columns.map((_, index) => `$${index + 1}`);
   const updates = columns.filter((column) => column !== "id").map((column) => `${column} = EXCLUDED.${column}`);
   await client.query(
@@ -884,6 +887,18 @@ async function upsert(client, table, row) {
      ON CONFLICT (id) DO UPDATE SET ${updates.join(", ")}`,
     values,
   );
+}
+
+function normalizeSeedValue(table, key, value) {
+  return value;
+}
+
+async function tableColumns(client, table) {
+  if (tableColumnCache.has(table)) return tableColumnCache.get(table);
+  const result = await client.query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1", [table]);
+  const columns = new Set(result.rows.map((row) => row.column_name));
+  tableColumnCache.set(table, columns);
+  return columns;
 }
 
 async function grantRolePermissions(client, roleId, permissionKeys) {

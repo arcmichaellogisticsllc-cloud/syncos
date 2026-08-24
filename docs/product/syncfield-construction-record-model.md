@@ -174,18 +174,25 @@ Coil/slack observations do not alter reported quantity, accepted quantity, Billa
 
 ## Coil / Slack Commercial Treatment
 
-Status: not implemented.
+Status: implemented as a separate commercial-policy layer.
 
-Recorded coil is not commercial policy. SyncOS does not yet decide whether coil is:
+Recorded coil is not commercial policy. SyncOS records construction truth first, then resolves customer and Partner commercial treatment independently through versioned policy.
+
+Canonical treatments:
 
 - billable as footage;
 - included in route rate;
-- a separate pay item;
+- separate pay item;
 - non-billable;
-- payable to Partner;
-- excluded from Partner compensation.
+- unconfirmed.
 
-Those questions belong to a later commercial-policy slice.
+Default is unconfirmed. Unconfirmed coil does not create customer BillableItems, Partner settlement items, contractor payables, or payment eligibility. It creates internal clarification work only.
+
+Customer policy and Partner policy are separate. A customer may pay coil as footage while a Partner contract includes the same coil in the route rate. The reverse is also structurally supported.
+
+Commercial policies lock source evidence, effective dates, version, and counterparty scope. Financial source rows generated from accepted production reference the exact policy version used.
+
+Base accepted quantity is preserved. If 3,000 FT of route is accepted and 540 FT of coil is customer-billable, SyncOS creates a separate customer coil supplement source rather than rewriting accepted route quantity to 3,540 FT.
 
 ## Submission And Revision History
 

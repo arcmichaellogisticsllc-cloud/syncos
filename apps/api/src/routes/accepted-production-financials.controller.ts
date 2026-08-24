@@ -9,6 +9,11 @@ import { requireString } from "./intelligence.types";
 type Row = QueryResultRow & Record<string, unknown>;
 
 const billableStatuses = ["voided", "archived"];
+const coilTreatments = new Set(["billable_as_footage", "included_in_route_rate", "separate_pay_item", "non_billable", "unconfirmed"]);
+const coilPartyTypes = new Set(["customer", "partner"]);
+const coilSourceTypes = new Set(["customer_rate_sheet", "partner_rate_sheet", "msa", "work_order", "change_order", "customer_email", "partner_agreement", "written_direction", "other"]);
+const coilTypes = new Set(["front_easement", "rear_easement", "express_splice", "butt_splice", "riser_slack", "general_slack", "customer_required", "field_condition", "other"]);
+const easementTypes = new Set(["front", "rear", "unknown", "not_applicable"]);
 
 @Controller("accepted-production-financials")
 export class AcceptedProductionFinancialsController {
@@ -63,7 +68,11 @@ export class AcceptedProductionFinancialsController {
       const accepted = await this.requireAcceptedProduction(client, request.auth.tenantId, this.optionalString(body.customer_qc_decision_id));
       const source = await this.ensureFinancialSource(client, request.auth.tenantId, request.auth.userId, accepted);
       const existing = await client.query("SELECT * FROM billable_items WHERE tenant_id = $1 AND accepted_production_source_id = $2 AND deleted_at IS NULL AND status <> ALL($3::text[]) LIMIT 1", [request.auth.tenantId, source.id, billableStatuses]);
-      if (existing.rows[0]) return { entityType: "billable_item", entityId: existing.rows[0].id, afterState: this.safeBillable(existing.rows[0]) };
+      if (existing.rows[0]) {
+        await this.ensureCustomerCoilSupplementSources(client, request, accepted);
+        await this.createCustomerCoilBillables(client, request);
+        return { entityType: "billable_item", entityId: existing.rows[0].id, afterState: this.safeBillable(existing.rows[0]) };
+      }
       if (!source.customer_rate_code_id || Number(source.customer_rate ?? 0) <= 0) {
         const exception = await this.createException(client, request, "missing_customer_rate", accepted, "BILLING EXCEPTION - MISSING CUSTOMER RATE");
         return { entityType: "financial_exception", entityId: exception.id, eventType: "financial_exception.created", afterState: exception };
@@ -105,6 +114,8 @@ export class AcceptedProductionFinancialsController {
         ],
       );
       await client.query("UPDATE accepted_production_financial_sources SET billable_item_id = $1, financial_status = 'billable_created', updated_at = now() WHERE tenant_id = $2 AND id = $3", [billable.rows[0].id, request.auth.tenantId, source.id]);
+      await this.ensureCustomerCoilSupplementSources(client, request, accepted);
+      await this.createCustomerCoilBillables(client, request);
       return { entityType: "billable_item", entityId: billable.rows[0].id, afterState: this.safeBillable(billable.rows[0]) };
     });
   }
@@ -220,6 +231,9 @@ export class AcceptedProductionFinancialsController {
   @RequirePermission("partner_settlement.create")
   async createPartnerSettlement(@Req() request: AuthenticatedRequest, @Body() body: Row) {
     return this.write(request, "partner_settlement.created", "partner_settlement.created", "settlement", async (client) => {
+      if (!Array.isArray(body.accepted_production_source_ids) || !body.accepted_production_source_ids.length) {
+        await this.ensurePartnerCoilSupplementSourcesForEligibleAcceptedProduction(client, request);
+      }
       const sources = await this.sourcesForSettlement(client, request.auth.tenantId, body);
       if (!sources.length) throw new BadRequestException("accepted production sources are required");
       if (sources.some((row) => !row.partner_rate_code_id || Number(row.partner_rate ?? 0) <= 0)) {
@@ -265,6 +279,74 @@ export class AcceptedProductionFinancialsController {
         await client.query("UPDATE accepted_production_financial_sources SET settlement_item_id = $1, financial_status = 'settled', updated_at = now() WHERE tenant_id = $2 AND id = $3", [item.rows[0].id, request.auth.tenantId, source.id]);
       }
       return { entityType: "settlement", entityId: settlement.rows[0].id, afterState: this.safePartnerSettlement(settlement.rows[0]) };
+    });
+  }
+
+  @Get("coil-policies")
+  @RequirePermission("billing.read")
+  async coilPolicies(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const values: unknown[] = [request.auth.tenantId];
+      const where = ["tenant_id = $1", "deleted_at IS NULL"];
+      for (const [key, column] of [["work_order_id", "work_order_id"], ["party_type", "party_type"], ["status", "status"]] as const) {
+        if (query[key]) {
+          values.push(String(query[key]).toLowerCase());
+          where.push(`${column} = $${values.length}`);
+        }
+      }
+      const result = await client.query(`SELECT * FROM syncfield_coil_commercial_policies WHERE ${where.join(" AND ")} ORDER BY work_order_id, party_type, effective_from DESC, version DESC LIMIT 250`, values);
+      return result.rows.map((row) => this.safeCoilPolicy(row));
+    });
+  }
+
+  @Get("coil-commercial-summary")
+  @RequirePermission("billing.read")
+  async coilCommercialSummary(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const workOrderId = this.optionalString(query.work_order_id);
+      const values: unknown[] = [request.auth.tenantId];
+      const where = ["co.tenant_id = $1", "co.deleted_at IS NULL", "co.status <> 'void'"];
+      if (workOrderId) {
+        values.push(workOrderId);
+        where.push(`co.work_order_id = $${values.length}`);
+      }
+      const result = await client.query(
+        `
+        SELECT co.id, co.work_order_id, co.production_record_id, co.asset_identifier, co.coil_type, co.easement_type,
+          co.actual_length_ft, co.required_length_ft,
+          cs.commercial_treatment AS customer_treatment, cs.policy_version AS customer_policy_version, cs.customer_extended_amount AS customer_amount,
+          ps.commercial_treatment AS partner_treatment, ps.policy_version AS partner_policy_version, ps.partner_extended_amount AS partner_amount
+        FROM syncfield_coil_observations co
+        LEFT JOIN accepted_production_financial_sources cs ON cs.tenant_id = co.tenant_id
+          AND cs.coil_observation_id = co.id
+          AND cs.source_kind = 'customer_coil_supplement'
+          AND cs.deleted_at IS NULL
+          AND cs.financial_status <> 'void'
+        LEFT JOIN accepted_production_financial_sources ps ON ps.tenant_id = co.tenant_id
+          AND ps.coil_observation_id = co.id
+          AND ps.source_kind = 'partner_coil_supplement'
+          AND ps.deleted_at IS NULL
+          AND ps.financial_status <> 'void'
+        WHERE ${where.join(" AND ")}
+        ORDER BY co.production_date DESC, co.asset_identifier
+        LIMIT 250
+        `,
+        values,
+      );
+      return result.rows.map((row) => ({
+        ...row,
+        customer_treatment: row.customer_treatment ?? "unconfirmed",
+        partner_treatment: row.partner_treatment ?? "unconfirmed",
+      }));
+    });
+  }
+
+  @Post("coil-policies")
+  @RequirePermission("billing.create_billable")
+  async createCoilPolicy(@Req() request: AuthenticatedRequest, @Body() body: Row) {
+    return this.write(request, "coil_commercial_policy.created", "coil_commercial_policy.created", "syncfield_coil_commercial_policy", async (client) => {
+      const policy = await this.insertCoilPolicy(client, request, body);
+      return { entityType: "syncfield_coil_commercial_policy", entityId: policy.id, afterState: this.safeCoilPolicy(policy) };
     });
   }
 
@@ -485,7 +567,7 @@ export class AcceptedProductionFinancialsController {
   }
 
   private async ensureFinancialSource(client: PoolClient, tenantId: string, userId: string, accepted: Row) {
-    const existing = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, accepted.customer_qc_decision_id]);
+    const existing = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND source_kind = 'accepted_production' AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, accepted.customer_qc_decision_id]);
     if (existing.rows[0]) return existing.rows[0];
     const customerRate = await this.resolveRate(client, tenantId, accepted.customer_rate_schedule_id, accepted.production_code, accepted.unit_of_measure, "customer");
     const partnerRate = await this.resolveRate(client, tenantId, accepted.partner_rate_schedule_id, accepted.production_code, accepted.unit_of_measure, "partner");
@@ -496,10 +578,10 @@ export class AcceptedProductionFinancialsController {
       INSERT INTO accepted_production_financial_sources (
         tenant_id, project_id, work_order_id, partner_organization_id, capacity_provider_id, crew_id, production_record_id,
         customer_qc_cycle_id, customer_qc_decision_id, production_code_id, production_code, production_description,
-        accepted_quantity, unit_of_measure, customer_rate_code_id, customer_rate_schedule_id, customer_rate, customer_extended_amount,
+        source_kind, accepted_quantity, unit_of_measure, customer_rate_code_id, customer_rate_schedule_id, customer_rate, customer_extended_amount,
         partner_rate_code_id, partner_rate_schedule_id, partner_rate, partner_extended_amount, source_fingerprint, created_by_user_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'accepted_production',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
       RETURNING *
       `,
       [
@@ -556,8 +638,305 @@ export class AcceptedProductionFinancialsController {
       const result = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, body.accepted_production_source_ids]);
       return result.rows;
     }
-    const result = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND billable_item_id IS NOT NULL AND settlement_item_id IS NULL AND deleted_at IS NULL AND financial_status <> 'void' ORDER BY created_at LIMIT 100", [tenantId]);
+    const result = await client.query(
+      `
+      SELECT *
+      FROM accepted_production_financial_sources
+      WHERE tenant_id = $1
+        AND settlement_item_id IS NULL
+        AND deleted_at IS NULL
+        AND financial_status <> 'void'
+        AND (
+          (source_kind = 'accepted_production' AND billable_item_id IS NOT NULL)
+          OR source_kind = 'partner_coil_supplement'
+        )
+      ORDER BY created_at
+      LIMIT 100
+      `,
+      [tenantId],
+    );
     return result.rows;
+  }
+
+  private async insertCoilPolicy(client: PoolClient, request: AuthenticatedRequest, body: Row) {
+    const workOrderId = requireString(body.work_order_id, "work_order_id is required");
+    const partyType = this.normalizedValue(body.party_type, "party_type", coilPartyTypes);
+    const treatment = this.normalizedValue(body.treatment ?? "unconfirmed", "treatment", coilTreatments);
+    const sourceType = this.normalizedValue(body.source_type ?? "other", "source_type", coilSourceTypes);
+    const workOrder = await this.workOrderCommercialContext(client, request.auth.tenantId, workOrderId);
+    const counterpartyId = this.optionalString(body.counterparty_organization_id) ?? (partyType === "customer" ? String(workOrder.customer_organization_id) : String(workOrder.partner_organization_id ?? workOrder.assigned_organization_id));
+    if (partyType === "customer" && counterpartyId !== String(workOrder.customer_organization_id)) throw new BadRequestException("customer coil policy counterparty must match Work Order customer");
+    if (partyType === "partner" && counterpartyId !== String(workOrder.partner_organization_id ?? workOrder.assigned_organization_id)) throw new BadRequestException("partner coil policy counterparty must match Work Order Partner");
+    const productionCodeId = this.optionalString(body.production_code_id);
+    const separateProductionCodeId = this.optionalString(body.separate_production_code_id);
+    if (treatment === "separate_pay_item" && !separateProductionCodeId) throw new BadRequestException("separate_production_code_id is required for separate pay item treatment");
+    const coilType = this.optionalEnum(body.coil_type, "coil_type", coilTypes);
+    const easementType = this.optionalEnum(body.easement_type, "easement_type", easementTypes);
+    const effectiveFrom = this.optionalString(body.effective_from) ?? this.today();
+    const effectiveTo = this.optionalString(body.effective_to);
+    if (treatment !== "unconfirmed" && !this.optionalString(body.source_reference) && !this.optionalString(body.notes) && !this.optionalString(body.source_file_object_id)) throw new BadRequestException("source evidence is required for confirmed coil commercial policy");
+    const supersedes = this.optionalString(body.supersedes_policy_id);
+    if (supersedes) {
+      const prior = await this.requireRecord(client, "syncfield_coil_commercial_policies", request.auth.tenantId, supersedes, "coil policy to supersede not found");
+      if (prior.work_order_id !== workOrderId || prior.party_type !== partyType) throw new BadRequestException("superseded policy scope must match");
+    }
+    const overlap = await client.query(
+      `
+      SELECT id
+      FROM syncfield_coil_commercial_policies
+      WHERE tenant_id = $1
+        AND work_order_id = $2
+        AND party_type = $3
+        AND counterparty_organization_id = $4
+        AND production_code_id IS NOT DISTINCT FROM $5::uuid
+        AND coil_type IS NOT DISTINCT FROM $6::text
+        AND easement_type IS NOT DISTINCT FROM $7::text
+        AND status = 'active'
+        AND deleted_at IS NULL
+        AND ($8::date <= COALESCE(effective_to, '9999-12-31'::date))
+        AND (COALESCE($9::date, '9999-12-31'::date) >= effective_from)
+        AND ($10::uuid IS NULL OR id <> $10::uuid)
+      LIMIT 1
+      `,
+      [request.auth.tenantId, workOrderId, partyType, counterpartyId, productionCodeId, coilType, easementType, effectiveFrom, effectiveTo, supersedes],
+    );
+    if (overlap.rows[0]) throw new BadRequestException("overlapping active coil commercial policy denied");
+    const version = Number(body.version ?? (supersedes ? Number((await this.requireRecord(client, "syncfield_coil_commercial_policies", request.auth.tenantId, supersedes, "coil policy to supersede not found")).version ?? 1) + 1 : 1));
+    const inserted = await client.query(
+      `
+      INSERT INTO syncfield_coil_commercial_policies (
+        tenant_id, project_id, work_order_id, party_type, counterparty_organization_id, production_code_id, coil_type, easement_type,
+        treatment, separate_production_code_id, effective_from, effective_to, version, source_type, source_file_object_id,
+        source_reference, notes, created_by_user_id
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      RETURNING *
+      `,
+      [
+        request.auth.tenantId,
+        workOrder.project_id,
+        workOrderId,
+        partyType,
+        counterpartyId,
+        productionCodeId,
+        coilType,
+        easementType,
+        treatment,
+        separateProductionCodeId,
+        effectiveFrom,
+        effectiveTo,
+        version,
+        sourceType,
+        this.optionalString(body.source_file_object_id),
+        this.optionalString(body.source_reference),
+        this.optionalString(body.notes),
+        request.auth.userId,
+      ],
+    );
+    if (supersedes) {
+      await client.query("UPDATE syncfield_coil_commercial_policies SET status = 'superseded', effective_to = LEAST(COALESCE(effective_to, $1::date), $1::date), superseded_by_policy_id = $2 WHERE tenant_id = $3 AND id = $4", [this.addDays(effectiveFrom, -1), inserted.rows[0].id, request.auth.tenantId, supersedes]);
+    }
+    return inserted.rows[0];
+  }
+
+  private async ensureCustomerCoilSupplementSources(client: PoolClient, request: AuthenticatedRequest, accepted: Row) {
+    await this.ensureCoilSupplementSources(client, request, accepted, "customer");
+  }
+
+  private async ensurePartnerCoilSupplementSourcesForEligibleAcceptedProduction(client: PoolClient, request: AuthenticatedRequest) {
+    const rows = await this.acceptedProductionRows(client, request.auth.tenantId, {});
+    const billableBaseSources = await client.query(
+      "SELECT customer_qc_decision_id FROM accepted_production_financial_sources WHERE tenant_id = $1 AND source_kind = 'accepted_production' AND billable_item_id IS NOT NULL AND settlement_item_id IS NULL AND deleted_at IS NULL AND financial_status <> 'void'",
+      [request.auth.tenantId],
+    );
+    const billableDecisionIds = new Set(billableBaseSources.rows.map((row) => String(row.customer_qc_decision_id)));
+    for (const accepted of rows.filter((row) => billableDecisionIds.has(String(row.customer_qc_decision_id)))) {
+      await this.ensureCoilSupplementSources(client, request, accepted, "partner");
+    }
+  }
+
+  private async ensureCoilSupplementSources(client: PoolClient, request: AuthenticatedRequest, accepted: Row, partyType: "customer" | "partner") {
+    const coils = await client.query(
+      "SELECT * FROM syncfield_coil_observations WHERE tenant_id = $1 AND production_record_id = $2 AND deleted_at IS NULL AND status = 'submitted' AND COALESCE(actual_length_ft,0) > 0 ORDER BY created_at",
+      [request.auth.tenantId, accepted.production_record_id],
+    );
+    for (const coil of coils.rows) {
+      const policy = await this.resolveCoilPolicy(client, request.auth.tenantId, accepted, coil, partyType);
+      if (!policy || policy.treatment === "unconfirmed") {
+        await this.createException(client, request, "coil_commercial_clarification", { ...accepted, coil_observation_id: coil.id }, "COMMERCIAL CLARIFICATION REQUIRED - COIL POLICY UNCONFIRMED");
+        continue;
+      }
+      if (policy.treatment === "included_in_route_rate" || policy.treatment === "non_billable") continue;
+      const sourceKind = partyType === "customer" ? "customer_coil_supplement" : "partner_coil_supplement";
+      const existing = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND source_kind = $2 AND coil_observation_id = $3 AND customer_qc_decision_id = $4 AND deleted_at IS NULL AND financial_status <> 'void'", [request.auth.tenantId, sourceKind, coil.id, accepted.customer_qc_decision_id]);
+      if (existing.rows[0]) continue;
+      const quantity = Number(coil.actual_length_ft);
+      const productionCode = policy.treatment === "separate_pay_item" ? await this.productionCodeById(client, request.auth.tenantId, policy.separate_production_code_id) : { id: accepted.production_code_id, code: accepted.production_code, description: `${accepted.production_description ?? accepted.production_code} coil footage`, unit_of_measure: accepted.unit_of_measure };
+      const rate = await this.resolveRate(client, request.auth.tenantId, partyType === "customer" ? accepted.customer_rate_schedule_id : accepted.partner_rate_schedule_id, productionCode.code, productionCode.unit_of_measure, partyType);
+      if (!rate || Number(rate.rate ?? 0) <= 0) {
+        await this.createException(client, request, "missing_coil_rate_mapping", { ...accepted, coil_observation_id: coil.id }, `MISSING ${partyType.toUpperCase()} COIL RATE MAPPING`);
+        continue;
+      }
+      const customerRateId = partyType === "customer" ? rate.id : null;
+      const partnerRateId = partyType === "partner" ? rate.id : null;
+      const amount = this.roundMoney(quantity * Number(rate.rate));
+      const fingerprint = this.sourceFingerprint([sourceKind, accepted.customer_qc_decision_id, coil.id, policy.id, policy.version, quantity]);
+      await client.query(
+        `
+        INSERT INTO accepted_production_financial_sources (
+          tenant_id, project_id, work_order_id, partner_organization_id, capacity_provider_id, crew_id, production_record_id,
+          customer_qc_cycle_id, customer_qc_decision_id, production_code_id, production_code, production_description, source_kind,
+          coil_observation_id, customer_coil_policy_id, partner_coil_policy_id, commercial_treatment, policy_version,
+          accepted_quantity, unit_of_measure, customer_rate_code_id, customer_rate_schedule_id, customer_rate, customer_extended_amount,
+          partner_rate_code_id, partner_rate_schedule_id, partner_rate, partner_extended_amount, rate_revision_locked_at, source_fingerprint, created_by_user_id
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30)
+        ON CONFLICT DO NOTHING
+        `,
+        [
+          request.auth.tenantId,
+          accepted.project_id,
+          accepted.work_order_id,
+          accepted.partner_organization_id,
+          accepted.capacity_provider_id,
+          accepted.crew_id,
+          accepted.production_record_id,
+          accepted.customer_qc_cycle_id,
+          accepted.customer_qc_decision_id,
+          productionCode.id,
+          productionCode.code,
+          `${productionCode.description ?? productionCode.code} - Coil commercial supplement`,
+          sourceKind,
+          coil.id,
+          partyType === "customer" ? policy.id : null,
+          partyType === "partner" ? policy.id : null,
+          policy.treatment,
+          policy.version,
+          quantity,
+          productionCode.unit_of_measure,
+          customerRateId,
+          partyType === "customer" ? rate.rate_schedule_id : null,
+          partyType === "customer" ? rate.rate : null,
+          partyType === "customer" ? amount : null,
+          partnerRateId,
+          partyType === "partner" ? rate.rate_schedule_id : null,
+          partyType === "partner" ? rate.rate : null,
+          partyType === "partner" ? amount : null,
+          fingerprint,
+          request.auth.userId,
+        ],
+      );
+    }
+  }
+
+  private async createCustomerCoilBillables(client: PoolClient, request: AuthenticatedRequest) {
+    const sources = await client.query(
+      "SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND source_kind = 'customer_coil_supplement' AND billable_item_id IS NULL AND deleted_at IS NULL AND financial_status = 'eligible' ORDER BY created_at LIMIT 100",
+      [request.auth.tenantId],
+    );
+    for (const source of sources.rows) {
+      if (!source.customer_rate_code_id || Number(source.customer_rate ?? 0) <= 0) continue;
+      const workOrder = await this.workOrderCommercialContext(client, request.auth.tenantId, String(source.work_order_id));
+      const billable = await client.query(
+        `
+        INSERT INTO billable_items (
+          tenant_id, project_id, work_order_id, production_record_id, customer_qc_decision_id, accepted_production_source_id,
+          customer_organization_id, capacity_provider_id, crew_id, status, readiness_status, readiness_score, readiness_band,
+          approved_quantity, billable_quantity, unit, rate_code_id, rate_description, unit_rate, rate_source, rate_confidence,
+          estimated_billable_amount, net_billable_amount, customer_acceptance_status, billing_package_status, documentation_status,
+          rate_schedule_id, rate_schedule_version, rate_effective_date, currency, source_fingerprint, created_by, updated_by
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'ready_for_settlement','ready_for_settlement',100,'ready_for_settlement',
+          $10,$10,$11,$12,$13,$14,'customer_rate','confirmed',$15,$15,'accepted','ready','ready',$16,$17,$18,'USD',$19,$20,$20)
+        ON CONFLICT DO NOTHING
+        RETURNING *
+        `,
+        [
+          request.auth.tenantId,
+          source.project_id,
+          source.work_order_id,
+          source.production_record_id,
+          source.customer_qc_decision_id,
+          source.id,
+          workOrder.customer_organization_id,
+          source.capacity_provider_id,
+          source.crew_id,
+          source.accepted_quantity,
+          source.unit_of_measure,
+          source.customer_rate_code_id,
+          source.production_description,
+          source.customer_rate,
+          source.customer_extended_amount,
+          source.customer_rate_schedule_id,
+          `policy:${source.customer_coil_policy_id}:v${source.policy_version}`,
+          this.today(),
+          source.source_fingerprint,
+          request.auth.userId,
+        ],
+      );
+      if (billable.rows[0]) await client.query("UPDATE accepted_production_financial_sources SET billable_item_id = $1, financial_status = 'billable_created', updated_at = now() WHERE tenant_id = $2 AND id = $3", [billable.rows[0].id, request.auth.tenantId, source.id]);
+    }
+  }
+
+  private async resolveCoilPolicy(client: PoolClient, tenantId: string, accepted: Row, coil: Row, partyType: "customer" | "partner") {
+    const counterparty = partyType === "customer" ? accepted.customer_organization_id : accepted.partner_organization_id;
+    const result = await client.query(
+      `
+      SELECT *
+      FROM syncfield_coil_commercial_policies
+      WHERE tenant_id = $1
+        AND work_order_id = $2
+        AND party_type = $3
+        AND counterparty_organization_id = $4
+        AND (production_code_id IS NULL OR production_code_id = $5)
+        AND (coil_type IS NULL OR coil_type = $6)
+        AND (easement_type IS NULL OR easement_type = $7)
+        AND effective_from <= $8
+        AND COALESCE(effective_to, '9999-12-31'::date) >= $8
+        AND status = 'active'
+        AND deleted_at IS NULL
+      ORDER BY
+        CASE WHEN production_code_id IS NOT NULL THEN 1 ELSE 0 END DESC,
+        CASE WHEN coil_type IS NOT NULL THEN 1 ELSE 0 END DESC,
+        CASE WHEN easement_type IS NOT NULL THEN 1 ELSE 0 END DESC,
+        effective_from DESC,
+        version DESC
+      LIMIT 1
+      `,
+      [tenantId, accepted.work_order_id, partyType, counterparty, accepted.production_code_id, coil.coil_type, coil.easement_type, coil.production_date],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  private async workOrderCommercialContext(client: PoolClient, tenantId: string, workOrderId: string) {
+    const result = await client.query(
+      `
+      SELECT wo.*, p.customer_organization_id
+      FROM work_orders wo
+      JOIN projects p ON p.tenant_id = wo.tenant_id AND p.id = wo.project_id
+      WHERE wo.tenant_id = $1 AND wo.id = $2
+      `,
+      [tenantId, workOrderId],
+    );
+    if (!result.rows[0]) throw new NotFoundException("work order not found");
+    return result.rows[0];
+  }
+
+  private async productionCodeById(client: PoolClient, tenantId: string, id: unknown) {
+    const result = await client.query("SELECT id, code, description, unit_of_measure FROM syncfield_production_codes WHERE tenant_id = $1 AND id = $2", [tenantId, id]);
+    if (!result.rows[0]) throw new BadRequestException("separate production code not found");
+    return result.rows[0];
+  }
+
+  private normalizedValue(value: unknown, label: string, allowed: Set<string>) {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (!allowed.has(normalized)) throw new BadRequestException(`${label} is invalid`);
+    return normalized;
+  }
+
+  private optionalEnum(value: unknown, label: string, allowed: Set<string>) {
+    if (value === undefined || value === null || value === "") return null;
+    return this.normalizedValue(value, label, allowed);
   }
 
   private async allocatePaymentApplication(client: PoolClient, tenantId: string, userId: string, application: Row, invoice: Row, amount: number) {
@@ -638,6 +1017,10 @@ export class AcceptedProductionFinancialsController {
   private safePayable(row: Row) {
     const { customer_rate, margin, margin_amount, margin_percent, ...safe } = row;
     return safe;
+  }
+
+  private safeCoilPolicy(row: Row) {
+    return row;
   }
 
   private sourceFingerprint(parts: unknown[]) {

@@ -8,6 +8,8 @@ type Fixture = {
   partnerOrg: string;
   customerOrg: string;
   fiberDecision: string;
+  coilDecision: string;
+  workOrder: string;
   pendingDecision: string;
   extraDecision: string;
   internalToken: string;
@@ -101,6 +103,51 @@ test.describe.serial("P12 accepted production financials", () => {
     expect(cross.status()).toBeGreaterThanOrEqual(403);
   });
 
+  test("Customer and Partner coil commercial policies are independent and preserve base accepted quantity", async ({ request }) => {
+    const customerPolicy = await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/coil-policies", {
+      work_order_id: fixture.workOrder,
+      party_type: "CUSTOMER",
+      counterparty_organization_id: fixture.customerOrg,
+      coil_type: "GENERAL_SLACK",
+      treatment: "BILLABLE_AS_FOOTAGE",
+      effective_from: "2026-08-01",
+      source_type: "CUSTOMER_RATE_SHEET",
+      source_reference: "Customer Rate Sheet Rev 3",
+    });
+    const partnerPolicy = await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/coil-policies", {
+      work_order_id: fixture.workOrder,
+      party_type: "PARTNER",
+      counterparty_organization_id: fixture.partnerOrg,
+      coil_type: "GENERAL_SLACK",
+      treatment: "INCLUDED_IN_ROUTE_RATE",
+      effective_from: "2026-08-01",
+      source_type: "PARTNER_RATE_SHEET",
+      source_reference: "Partner Rate Sheet Rev 1",
+    });
+    expect(customerPolicy.treatment).toBe("billable_as_footage");
+    expect(partnerPolicy.treatment).toBe("included_in_route_rate");
+
+    await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/billables/convert", { customer_qc_decision_id: fixture.coilDecision });
+    const billables = await client.query("SELECT billable_quantity, net_billable_amount, accepted_production_source_id FROM billable_items WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND deleted_at IS NULL ORDER BY billable_quantity", [fixture.tenantA, fixture.coilDecision]);
+    expect(billables.rows.map((row) => Number(row.billable_quantity)).sort((a, b) => a - b)).toEqual([540, 3000]);
+    expect(billables.rows.reduce((sum, row) => sum + Number(row.net_billable_amount), 0)).toBeCloseTo(3327.6, 2);
+
+    const base = await client.query("SELECT accepted_quantity FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND source_kind = 'accepted_production'", [fixture.tenantA, fixture.coilDecision]);
+    expect(Number(base.rows[0].accepted_quantity)).toBe(3000);
+    const coilSource = await client.query("SELECT accepted_quantity, commercial_treatment, customer_coil_policy_id, partner_coil_policy_id FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND source_kind = 'customer_coil_supplement'", [fixture.tenantA, fixture.coilDecision]);
+    expect(Number(coilSource.rows[0].accepted_quantity)).toBe(540);
+    expect(coilSource.rows[0].commercial_treatment).toBe("billable_as_footage");
+    expect(coilSource.rows[0].customer_coil_policy_id).toBe(customerPolicy.id);
+    expect(coilSource.rows[0].partner_coil_policy_id).toBeNull();
+
+    const settlement = await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/partner-settlements/create", { period_start: "2026-08-24", period_end: "2026-08-30" });
+    expect(Number(settlement.net_settlement_amount)).toBe(2100);
+    const settlementItems = await client.query("SELECT quantity, accepted_production_source_id FROM settlement_items WHERE tenant_id = $1 AND settlement_id = $2 AND deleted_at IS NULL", [fixture.tenantA, settlement.id]);
+    expect(settlementItems.rows.map((row) => Number(row.quantity))).toEqual([3000]);
+    const partnerCoilSource = await client.query("SELECT count(*)::int AS count FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND source_kind = 'partner_coil_supplement'", [fixture.tenantA, fixture.coilDecision]);
+    expect(partnerCoilSource.rows[0].count).toBe(0);
+  });
+
   test("Missing Partner rate creates settlement exception but does not block Customer Billable", async ({ request }) => {
     await client.query("UPDATE rate_codes SET contractor_rate = NULL WHERE tenant_id = $1 AND code = 'FIBER'", [fixture.tenantA]);
     await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/billables/convert", { customer_qc_decision_id: fixture.extraDecision });
@@ -152,9 +199,13 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
   const partnerSchedule = crypto.randomUUID();
   const fiberCode = crypto.randomUUID();
   const workOrderVersion = crypto.randomUUID();
+  const crewAssignment = crypto.randomUUID();
   const mapFile = crypto.randomUUID();
   const mapDocument = crypto.randomUUID();
   const mapVersion = crypto.randomUUID();
+  const mapAssignment = crypto.randomUUID();
+  const assetObservation = crypto.randomUUID();
+  const mapPage = crypto.randomUUID();
   const dailyJsa = crypto.randomUUID();
   const foremanWorker = crypto.randomUUID();
   const report = crypto.randomUUID();
@@ -163,9 +214,12 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
   const fiberProduction = crypto.randomUUID();
   const pendingProduction = crypto.randomUUID();
   const extraProduction = crypto.randomUUID();
+  const coilProduction = crypto.randomUUID();
   const fiberDecision = crypto.randomUUID();
   const pendingDecision = crypto.randomUUID();
   const extraDecision = crypto.randomUUID();
+  const coilDecision = crypto.randomUUID();
+  const coilObservation = crypto.randomUUID();
   const permissions = [
     "billing.read", "billing.create_billable", "billing.create_invoice", "billing.issue_invoice", "cash_receipt.record", "payment_application.create",
     "partner_settlement.read", "partner_settlement.create", "partner_contractor_payable.read", "partner_payment_eligibility.read", "contractor_payable.create",
@@ -196,9 +250,12 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("INSERT INTO partner_worker_user_links (tenant_id,organization_id,worker_id,tenant_user_id,status) VALUES ($1,$2,$3,$4,'active')", [tenantA, partnerOrg, foremanWorker, foremanTenantUser]);
     await client.query("INSERT INTO work_orders (id,tenant_id,project_id,assigned_capacity_provider_id,assigned_crew_id,title,work_type,expected_units,unit_type,status,work_order_name,work_order_number,assigned_organization_id,partner_organization_id,customer_rate_schedule_id,partner_rate_schedule_id,governing_agreement_version_id,partner_execution_status,partner_effective_date,unit,planned_quantity,qc_authority_organization_id) VALUES ($1,$2,$3,$4,$5,'P12 WO','fiber',3000,'feet','assigned','P12 WO','WO-P12',$6,$6,$7,$8,$9,'active','2026-08-01','feet',3000,$10)", [workOrder, tenantA, project, provider, crew, partnerOrg, customerSchedule, partnerSchedule, agreementVersion, customerOrg]);
     await client.query("INSERT INTO partner_work_order_versions (id,tenant_id,organization_id,capacity_provider_id,project_id,work_order_id,governing_agreement_version_id,assigned_crew_id,rate_schedule_id,work_order_number,scope_summary,map_work_package_ref,production_unit,status,effective_date,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'WO-P12','P12 scope','MAP-P12','feet','active','2026-08-01',$10)", [workOrderVersion, tenantA, partnerOrg, provider, project, workOrder, agreementVersion, crew, partnerSchedule, internalUser]);
+    await client.query("INSERT INTO partner_work_order_crew_assignments (id,tenant_id,organization_id,capacity_provider_id,work_order_id,work_order_version_id,crew_id,status,assigned_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8)", [crewAssignment, tenantA, partnerOrg, provider, workOrder, workOrderVersion, crew, internalUser]);
     await client.query("INSERT INTO partner_restricted_file_objects (id,tenant_id,organization_id,capacity_provider_id,category,related_entity_type,related_entity_id,file_name,mime_type,size_bytes,checksum,storage_key,uploaded_by_user_id) VALUES ($1,$2,$3,$4,'syncfield_map_original_pdf','syncfield_map_version',$5,'p12-map.pdf','application/pdf',16,'p12-original-map-checksum',$6,$7)", [mapFile, tenantA, partnerOrg, provider, mapVersion, `${tenantA}/${partnerOrg}/p12-map.pdf`, internalUser]);
     await client.query("INSERT INTO syncfield_map_documents (id,tenant_id,project_id,work_order_id,name,customer_document_number,status,created_by_user_id) VALUES ($1,$2,$3,$4,'P12 Map','P12-MAP','active',$5)", [mapDocument, tenantA, project, workOrder, internalUser]);
     await client.query("INSERT INTO syncfield_map_versions (id,tenant_id,map_document_id,revision_number,revision_label,original_filename,original_file_object_id,file_hash,page_count,processing_status,status,uploaded_by_user_id) VALUES ($1,$2,$3,1,'Rev 1','p12-map.pdf',$4,'p12-original-map-checksum',1,'ready','ready',$5)", [mapVersion, tenantA, mapDocument, mapFile, internalUser]);
+    await client.query("INSERT INTO syncfield_map_pages (id,tenant_id,map_version_id,page_number,pdf_width,pdf_height) VALUES ($1,$2,$3,1,612,792)", [mapPage, tenantA, mapVersion]);
+    await client.query("INSERT INTO syncfield_map_assignments (id,tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_assignment_id,crew_id,foreman_worker_id,map_document_id,map_version_id,assignment_status,assigned_by_user_id,current) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active',$13,true)", [mapAssignment, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crewAssignment, crew, foremanWorker, mapDocument, mapVersion, internalUser]);
     await client.query("INSERT INTO daily_jsas (id,tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,map_version_id,status,work_location,foreman_certified,submitted_by_user_id,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'2026-08-25',$11,'completed','P12 work area',true,$10,now())", [dailyJsa, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crew, foremanWorker, foremanUser, mapVersion]);
     await client.query("INSERT INTO daily_production_reports (id,tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,map_document_id,map_version_id,daily_jsa_id,status,submitted_at,submitted_by_user_id,revision_number,completeness_status,customer_qc_outcome) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'2026-08-25',$11,$12,$13,'submitted',now(),$10,1,'complete','customer_partially_accepted')", [report, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crew, foremanWorker, foremanUser, mapDocument, mapVersion, dailyJsa]);
     await client.query("INSERT INTO daily_production_report_revisions (id,tenant_id,daily_report_id,revision_number,snapshot_json,reason,submitted_by_user_id) VALUES ($1,$2,$3,1,'{}','submitted',$4)", [revision, tenantA, report, foremanUser]);
@@ -206,13 +263,16 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
     await insertProduction(client, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crew, foremanWorker, foremanUser, report, fiberProduction, fiberCode, 141);
     await insertProduction(client, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crew, foremanWorker, foremanUser, report, pendingProduction, fiberCode, 12);
     await insertProduction(client, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crew, foremanWorker, foremanUser, report, extraProduction, fiberCode, 10);
-    await client.query("INSERT INTO customer_qc_decisions (id,tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,customer_reason_code,recorded_by_user_id,source_reference) VALUES ($1,$2,$3,$4,'accepted',141,141,'feet','customer_acceptance',$5,'customer-report'),($6,$2,$3,$7,'correction_required',12,NULL,'feet','missing_evidence',$5,'customer-report'),($8,$2,$3,$9,'accepted',10,10,'feet','customer_acceptance',$5,'customer-report')", [fiberDecision, tenantA, cycle, fiberProduction, internalUser, pendingDecision, pendingProduction, extraDecision, extraProduction]);
+    await insertProduction(client, tenantA, project, workOrder, workOrderVersion, partnerOrg, provider, crew, foremanWorker, foremanUser, report, coilProduction, fiberCode, 3000);
+    await client.query("INSERT INTO syncfield_asset_observations (id,tenant_id,organization_id,project_id,work_order_id,assignment_id,crew_id,foreman_worker_id,production_date,map_document_id,map_version_id,map_page_id,asset_identifier,asset_type,pdf_x,pdf_y,input_tick,output_tick,tick_unit,reel_cable_id,fiber_type,status,daily_report_id,submitted_revision_id,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,'15-12-4','pole',0.5,0.5,14826,14676,'ft','R-327','96CT','submitted',$12,$13,$14)", [assetObservation, tenantA, partnerOrg, project, workOrder, mapAssignment, crew, foremanWorker, mapDocument, mapVersion, mapPage, report, revision, foremanUser]);
+    await client.query("INSERT INTO syncfield_coil_observations (id,tenant_id,organization_id,project_id,work_order_id,assignment_id,crew_id,foreman_worker_id,production_date,map_document_id,map_version_id,map_page_id,asset_observation_id,production_record_id,daily_report_id,submitted_revision_id,asset_identifier,easement_type,coil_type,required_length_ft,actual_length_ft,variance_status,rule_source,rule_source_reference,reel_cable_id,fiber_type,status,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$12,$13,$14,$15,'15-12-4','front','general_slack',540,540,'within_expectation','work_order_rule','Commercial policy test coil','R-327','96CT','submitted',$16)", [coilObservation, tenantA, partnerOrg, project, workOrder, mapAssignment, crew, foremanWorker, mapDocument, mapVersion, mapPage, assetObservation, coilProduction, report, revision, foremanUser]);
+    await client.query("INSERT INTO customer_qc_decisions (id,tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,customer_reason_code,recorded_by_user_id,source_reference) VALUES ($1,$2,$3,$4,'accepted',141,141,'feet','customer_acceptance',$5,'customer-report'),($6,$2,$3,$7,'correction_required',12,NULL,'feet','missing_evidence',$5,'customer-report'),($8,$2,$3,$9,'accepted',10,10,'feet','customer_acceptance',$5,'customer-report'),($10,$2,$3,$11,'accepted',3000,3000,'feet','customer_acceptance',$5,'customer-report')", [fiberDecision, tenantA, cycle, fiberProduction, internalUser, pendingDecision, pendingProduction, extraDecision, extraProduction, coilDecision, coilProduction]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   }
-  return { tenantA, tenantB, partnerOrg, customerOrg, fiberDecision, pendingDecision, extraDecision, internalToken: token(internalUser, tenantA, secret), partnerToken: token(partnerUser, tenantA, secret), foremanToken: token(foremanUser, tenantA, secret), tenantBToken: token(tenantBUser, tenantB, secret) };
+  return { tenantA, tenantB, partnerOrg, customerOrg, fiberDecision, coilDecision, workOrder, pendingDecision, extraDecision, internalToken: token(internalUser, tenantA, secret), partnerToken: token(partnerUser, tenantA, secret), foremanToken: token(foremanUser, tenantA, secret), tenantBToken: token(tenantBUser, tenantB, secret) };
 }
 
 async function insertProduction(client: Client, tenantId: string, projectId: string, workOrderId: string, workOrderVersionId: string, orgId: string, providerId: string, crewId: string, foremanWorkerId: string, foremanUserId: string, reportId: string, recordId: string, codeId: string, quantity: number) {

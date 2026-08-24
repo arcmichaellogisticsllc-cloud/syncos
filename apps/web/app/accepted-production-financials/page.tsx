@@ -19,8 +19,30 @@ type Dashboard = Record<string, unknown> & {
   open_exception_count?: number;
 };
 
+type CoilPolicy = Record<string, unknown> & {
+  id?: string;
+  party_type?: string;
+  treatment?: string;
+  coil_type?: string;
+  easement_type?: string;
+  source_reference?: string;
+  version?: number;
+};
+
+type CoilSummary = Record<string, unknown> & {
+  id?: string;
+  work_order_id?: string;
+  asset_identifier?: string;
+  coil_type?: string;
+  actual_length_ft?: number;
+  customer_treatment?: string;
+  partner_treatment?: string;
+};
+
 export default function AcceptedProductionFinancialsPage() {
-  const [state, setState] = useState<{ loading: boolean; error?: string; dashboard?: Dashboard }>({ loading: true });
+  const [state, setState] = useState<{ loading: boolean; error?: string; dashboard?: Dashboard; policies?: CoilPolicy[]; coils?: CoilSummary[] }>({ loading: true });
+  const [form, setForm] = useState<Record<string, string>>({ party_type: "customer", treatment: "unconfirmed", effective_from: new Date().toISOString().slice(0, 10), source_type: "work_order" });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,8 +52,12 @@ export default function AcceptedProductionFinancialsPage() {
         return;
       }
       try {
-        const dashboard = await syncosFetch<Dashboard>("accepted-production-financials/dashboard");
-        if (!cancelled) setState({ loading: false, dashboard });
+        const [dashboard, policies, coils] = await Promise.all([
+          syncosFetch<Dashboard>("accepted-production-financials/dashboard"),
+          syncosFetch<CoilPolicy[]>("accepted-production-financials/coil-policies"),
+          syncosFetch<CoilSummary[]>("accepted-production-financials/coil-commercial-summary"),
+        ]);
+        if (!cancelled) setState({ loading: false, dashboard, policies, coils });
       } catch (error) {
         if (!cancelled) setState({ loading: false, error: error instanceof Error ? error.message : "Financial dashboard failed." });
       }
@@ -41,6 +67,37 @@ export default function AcceptedProductionFinancialsPage() {
       cancelled = true;
     };
   }, []);
+
+  async function createPolicy() {
+    setSaving(true);
+    try {
+      await syncosFetch("accepted-production-financials/coil-policies", {
+        method: "POST",
+        body: {
+          work_order_id: form.work_order_id,
+          party_type: form.party_type,
+          counterparty_organization_id: form.counterparty_organization_id || undefined,
+          coil_type: form.coil_type || undefined,
+          easement_type: form.easement_type || undefined,
+          treatment: form.treatment,
+          separate_production_code_id: form.separate_production_code_id || undefined,
+          effective_from: form.effective_from,
+          source_type: form.source_type,
+          source_reference: form.source_reference || undefined,
+          notes: form.notes || undefined,
+        },
+      });
+      const [policies, coils] = await Promise.all([
+        syncosFetch<CoilPolicy[]>("accepted-production-financials/coil-policies"),
+        syncosFetch<CoilSummary[]>("accepted-production-financials/coil-commercial-summary"),
+      ]);
+      setState((current) => ({ ...current, policies, coils }));
+    } catch (error) {
+      setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Coil policy save failed." }));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (state.loading) return <main className="workspace-page"><section className="workspace-panel loading-state">Loading accepted-production financials...</section></main>;
   if (state.error) return <main className="workspace-page"><section className="workspace-panel error-state"><h1>Access denied</h1><p>{state.error}</p></section></main>;
@@ -80,6 +137,39 @@ export default function AcceptedProductionFinancialsPage() {
       <section className="workspace-panel warning-box">
         Settlement is not payment. Contractor Payable is not payment. Customer cash is applied to Customer invoices and only creates Partner pay-when-paid eligibility.
       </section>
+      <section className="workspace-panel">
+        <h2>Coil Commercial Policy</h2>
+        <p className="muted-copy">Recorded coil is construction truth. These policies determine customer billing and Partner compensation separately after accepted production.</p>
+        <div className="form-grid">
+          <label>Work Order ID<input value={form.work_order_id ?? ""} onChange={(event) => setForm({ ...form, work_order_id: event.target.value })} /></label>
+          <label>Counterparty Organization ID<input value={form.counterparty_organization_id ?? ""} onChange={(event) => setForm({ ...form, counterparty_organization_id: event.target.value })} /></label>
+          <label>Party<select value={form.party_type ?? "customer"} onChange={(event) => setForm({ ...form, party_type: event.target.value })}><option value="customer">Customer</option><option value="partner">Partner</option></select></label>
+          <label>Treatment<select value={form.treatment ?? "unconfirmed"} onChange={(event) => setForm({ ...form, treatment: event.target.value })}><option value="unconfirmed">Unconfirmed</option><option value="billable_as_footage">Billable as footage</option><option value="included_in_route_rate">Included in route rate</option><option value="separate_pay_item">Separate pay item</option><option value="non_billable">Non-billable</option></select></label>
+          <label>Coil Type<input value={form.coil_type ?? ""} onChange={(event) => setForm({ ...form, coil_type: event.target.value })} placeholder="front_easement, general_slack..." /></label>
+          <label>Easement<input value={form.easement_type ?? ""} onChange={(event) => setForm({ ...form, easement_type: event.target.value })} placeholder="front, rear..." /></label>
+          <label>Separate Production Code ID<input value={form.separate_production_code_id ?? ""} onChange={(event) => setForm({ ...form, separate_production_code_id: event.target.value })} /></label>
+          <label>Effective From<input type="date" value={form.effective_from ?? ""} onChange={(event) => setForm({ ...form, effective_from: event.target.value })} /></label>
+          <label>Source Type<input value={form.source_type ?? ""} onChange={(event) => setForm({ ...form, source_type: event.target.value })} /></label>
+          <label>Source Reference<input value={form.source_reference ?? ""} onChange={(event) => setForm({ ...form, source_reference: event.target.value })} /></label>
+          <label>Notes<textarea value={form.notes ?? ""} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+        </div>
+        <button className="primary-button" type="button" disabled={saving || !form.work_order_id} onClick={createPolicy}>{saving ? "Saving..." : "Save Coil Policy"}</button>
+        <div className="wide-table">
+          <table>
+            <thead><tr><th>Party</th><th>Coil Type</th><th>Easement</th><th>Treatment</th><th>Version</th><th>Source</th></tr></thead>
+            <tbody>{(state.policies ?? []).map((policy) => <tr key={String(policy.id)}><td>{label(policy.party_type)}</td><td>{label(policy.coil_type)}</td><td>{label(policy.easement_type)}</td><td>{label(policy.treatment)}</td><td>{String(policy.version ?? "")}</td><td>{String(policy.source_reference ?? "")}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </section>
+      <section className="workspace-panel">
+        <h2>Coil Commercial Review</h2>
+        <div className="wide-table">
+          <table>
+            <thead><tr><th>Work Order</th><th>Pole / Asset</th><th>Coil Type</th><th>Actual</th><th>Customer Treatment</th><th>Partner Treatment</th></tr></thead>
+            <tbody>{(state.coils ?? []).map((coil) => <tr key={String(coil.id)}><td>{String(coil.work_order_id ?? "")}</td><td>{String(coil.asset_identifier ?? "")}</td><td>{label(coil.coil_type)}</td><td>{quantity(coil.actual_length_ft)}</td><td>{label(coil.customer_treatment)}</td><td>{label(coil.partner_treatment)}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </section>
     </main>
   );
 }
@@ -91,4 +181,13 @@ function Metric({ label, value }: { label: string; value: unknown }) {
 function money(value: unknown) {
   const number = Number(value ?? 0);
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number.isFinite(number) ? number : 0);
+}
+
+function quantity(value: unknown) {
+  const number = Number(value ?? 0);
+  return `${Number.isFinite(number) ? number.toLocaleString() : "0"} FT`;
+}
+
+function label(value: unknown) {
+  return String(value ?? "unconfirmed").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
