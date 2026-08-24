@@ -8,6 +8,8 @@ Core rule:
 
 Customer engineering print -> MapDocument / MapVersion / MapPage -> DesignSegment -> Pole/Asset Observations -> SpanCompletion / Redline -> ProductionRecord -> Submission -> Customer QC -> accepted production.
 
+Coil/slack observations are operational material truth attached to pole/asset observations. Recorded coil does not mean billable coil.
+
 ## DesignSegment
 
 `syncfield_design_segments` represents planned construction work on an exact immutable map version and page.
@@ -105,8 +107,56 @@ Reported quantity remains explicit. SyncField must not silently set reported qua
 - design length;
 - redline geometry;
 - pole tick difference;
+- coil/slack length;
 - screen pixels;
 - map distance.
+
+## Coil / Slack Operational Truth
+
+`syncfield_coil_observations` stores required and actual coil/slack conditions at a pole or asset. It is a child of `syncfield_asset_observations` because one pole observation may legitimately carry multiple coil conditions, such as front-easement slack and express-splice slack.
+
+Each coil observation is scoped by tenant, performing organization, Project, Work Order, assignment, Crew, Foreman Worker, production date, exact MapDocument, MapVersion, and MapPage. It may link to a DesignSegment, SpanCompletion, and ProductionRecord when that relationship is available.
+
+Supported operational types:
+
+- front easement;
+- rear easement;
+- express splice;
+- butt splice;
+- riser slack;
+- general slack;
+- customer required;
+- field condition;
+- other.
+
+Supported easement context:
+
+- front;
+- rear;
+- unknown;
+- not applicable.
+
+Required and actual length are separate fields:
+
+- `required_length_ft` records the expected operational requirement;
+- `actual_length_ft` records what was installed;
+- `variance_ft` is calculated as actual minus required;
+- `variance_status` is operational only.
+
+Initial defaults are suggestions:
+
+- front easement defaults to 150 FT;
+- rear easement defaults to 80 FT.
+
+Those defaults are not universal law. They are prefill values that the Foreman confirms or overrides. The source of a required value is recorded as project rule, Work Order rule, customer design, customer direction, field requirement, manual, or other.
+
+Input/output tick difference may be displayed beside coil data, but SyncField does not assume `ABS(output_tick - input_tick)` equals coil length. The values can differ because ticks may include slack, risers, splice routing, loops, and other cable usage.
+
+Daily summaries may show:
+
+reported production + recorded actual coil/slack = estimated cable consumption.
+
+Estimated cable consumption is material traceability only. It is not reported production, Customer accepted quantity, billable quantity, settlement quantity, payable quantity, or payment eligibility.
 
 ## Customer QC Boundary
 
@@ -120,6 +170,23 @@ Finance derives from accepted ProductionRecord lineage only.
 
 Redlines alone cannot create BillableItems. Pole ticks alone cannot create Partner settlements or contractor payables. Customer rates and Partner rates remain separate downstream policy.
 
+Coil/slack observations do not alter reported quantity, accepted quantity, BillableItems, InvoiceItems, Partner settlements, contractor payables, or payments.
+
+## Coil / Slack Commercial Treatment
+
+Status: not implemented.
+
+Recorded coil is not commercial policy. SyncOS does not yet decide whether coil is:
+
+- billable as footage;
+- included in route rate;
+- a separate pay item;
+- non-billable;
+- payable to Partner;
+- excluded from Partner compensation.
+
+Those questions belong to a later commercial-policy slice.
+
 ## Submission And Revision History
 
 Before submission, draft construction components may be edited in the active assignment context.
@@ -129,7 +196,8 @@ After daily production submission:
 - ProductionRecords are locked by existing production behavior;
 - related Pole/Asset Observations are marked submitted;
 - related SpanCompletions are marked submitted;
-- the daily production revision snapshot includes records, annotations, span completions, and asset observations.
+- related Coil/Slack Observations are marked submitted;
+- the daily production revision snapshot includes records, annotations, span completions, asset observations, and coil/slack observations.
 
 The system must be able to answer what the Foreman originally submitted, what ticks were submitted, and what redline geometry was submitted. Corrections must preserve submitted history rather than silently rewriting it.
 
@@ -138,6 +206,8 @@ The system must be able to answer what the Foreman originally submitted, what ti
 SyncField supports offline replay after the application is already loaded.
 
 For completed spans, the field client sends one idempotent SpanCompletion mutation with nested From and To pole observations. The API creates and links those observations inside the same server transaction, so replay does not create orphan observations or duplicate completions.
+
+Coil/slack observations use the same field queue and `clientMutationId` idempotency model. Offline replay must create one server effect for each coil observation mutation.
 
 Closed-browser cold-start offline shell support remains outside this slice.
 
@@ -148,9 +218,10 @@ Annotated exports may render:
 - redline SpanCompletions;
 - pole/asset markers;
 - compact input/output tick labels;
+- compact coil/slack callouts where readable;
 - source MapVersion lineage and fingerprint status.
 
-Structured exports include traceability fields for design segment, From/To assets, design length, reported quantity, input/output ticks, reel/cable, fiber type, design deviation, deviation reason, and map version/page.
+Structured exports include traceability fields for design segment, From/To assets, design length, reported quantity, input/output ticks, coil type, easement type, required coil, actual coil, coil variance, coil rule/source, reel/cable, fiber type, design deviation, deviation reason, and map version/page.
 
 CSV export remains formula-injection protected.
 
@@ -166,10 +237,10 @@ Internal Operations users with map/work-zone permissions may prepare DesignSegme
 
 The following remain outside this slice:
 
-- coil/slack length;
-- front/rear easement coil rules;
 - coil billability;
 - Partner coil compensation;
+- customer coil commercial policy;
+- Partner coil commercial policy;
 - material inventory;
 - GIS;
 - PostGIS;

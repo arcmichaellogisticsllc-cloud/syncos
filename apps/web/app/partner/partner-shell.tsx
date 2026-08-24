@@ -133,6 +133,26 @@ type AssetObservation = {
   notes?: string | null;
   status?: string;
 };
+type CoilObservation = {
+  id?: string;
+  asset_observation_id?: string;
+  design_segment_id?: string | null;
+  span_completion_id?: string | null;
+  production_record_id?: string | null;
+  asset_identifier?: string;
+  easement_type?: string;
+  coil_type?: string;
+  required_length_ft?: number | null;
+  actual_length_ft?: number | null;
+  variance_ft?: number | null;
+  variance_status?: string;
+  rule_source?: string;
+  rule_source_reference?: string | null;
+  reel_cable_id?: string | null;
+  fiber_type?: string | null;
+  commercial_treatment?: string;
+  status?: string;
+};
 type SpanCompletion = {
   id?: string;
   design_segment_id?: string | null;
@@ -212,7 +232,13 @@ type DailyProduction = {
   gate?: { allowed?: boolean; blockers?: string[] };
   records?: ProductionRecord[];
   annotations?: Array<Record<string, unknown>>;
-  totals?: { by_code?: Array<{ code?: string; description?: string; quantity?: number; unit?: string; count?: number }>; record_count?: number; status_counts?: Record<string, number> };
+  coil_observations?: CoilObservation[];
+  totals?: {
+    by_code?: Array<{ code?: string; description?: string; quantity?: number; unit?: string; count?: number }>;
+    record_count?: number;
+    status_counts?: Record<string, number>;
+    coils?: { coil_observation_count?: number; required_coil_ft?: number; actual_coil_ft?: number; variance_count?: number; commercial_treatment?: string };
+  };
   annotation_count?: number;
   submitted_at?: string;
 };
@@ -254,7 +280,7 @@ type CustomerQcItem = {
   correction?: CustomerCorrection | null;
 };
 type ProductionDashboard = {
-  headline?: Record<string, number>;
+  headline?: Record<string, number | string>;
   reported_vs_accepted?: Array<Record<string, unknown>>;
   production_by_crew?: Array<Record<string, unknown>>;
   production_by_work_order?: Array<Record<string, unknown>>;
@@ -332,6 +358,7 @@ type PortalData = {
   productionCodes?: ProductionCode[];
   designSegments?: DesignSegment[];
   assetObservations?: AssetObservation[];
+  coilObservations?: CoilObservation[];
   spanCompletions?: SpanCompletion[];
   productionReports?: DailyProduction[];
   customerQcReports?: CustomerQcItem[];
@@ -636,7 +663,7 @@ async function loadForeman(context: PartnerContext, actions: PartnerActions | un
   if (foremanAssignments.length > 1 && !selectedAssignment) {
     return { context, actions, foremanAssignments, selectedAssignment: null };
   }
-  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, spanCompletions, customerQcReports, productionHistory] = await Promise.all([
+  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, coilObservations, spanCompletions, customerQcReports, productionHistory] = await Promise.all([
     needsToday ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCrew ? safeFetch<Crew | null>("partner-workforce/foreman/crew", null) : null,
     needsCrew ? safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []) : [],
@@ -649,11 +676,12 @@ async function loadForeman(context: PartnerContext, actions: PartnerActions | un
     needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>(`syncfield/foreman/production/codes${assignmentQuery}`, []) : [],
     needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<DesignSegment[]>(`syncfield/foreman/design-segments${assignmentQuery}`, []) : [],
     needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<AssetObservation[]>(`syncfield/foreman/asset-observations${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<CoilObservation[]>(`syncfield/foreman/coil-observations${assignmentQuery}`, []) : [],
     needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<SpanCompletion[]>(`syncfield/foreman/span-completions${assignmentQuery}`, []) : [],
     (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
     needsProductionHistory && permissions.includes("partner_production_history.read_own") ? safeFetch<ProductionDashboard | null>("syncfield/foreman/production-history", null) : null,
   ]);
-  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, spanCompletions, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, coilObservations, spanCompletions, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
 }
 
 async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
@@ -879,6 +907,7 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
   const designSegments = data.designSegments ?? [];
   const spanCompletions = data.spanCompletions ?? [];
   const observations = data.assetObservations ?? [];
+  const coils = data.coilObservations ?? [];
   return (
     <div className="field-map-shell">
       <section className="field-map-header" aria-label="Field map context">
@@ -935,6 +964,7 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
           ["Planned Segments", String(designSegments.length)],
           ["Completed Redlines", String(spanCompletions.length)],
           ["Pole Observations", String(observations.length)],
+          ["Coil / Slack", `${coils.length} records · ${quantityText(coilActualTotal(coils), "FT")} actual`],
         ]} />
         <div className="field-construction-list" aria-label="Visible construction spans">
           {designSegments.slice(0, 4).map((segment) => (
@@ -951,6 +981,7 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
           ))}
         </div>
         <p className="partner-safe-text">Yellow planned segments, red completion overlays, and annotation marks are construction evidence. ProductionRecord remains the reported quantity authority.</p>
+        <p className="partner-safe-text">Recorded coil/slack is material traceability only. It does not create billable production, settlement, payable, or payment eligibility.</p>
         <Link className="partner-button wide-touch" href="/syncfield/production">Open Production</Link>
       </Panel>
     </div>
@@ -1237,6 +1268,9 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
   const visibleRecords = [...(report?.records ?? []), ...localRecords];
   const visibleTotals = mergeProductionTotals(report?.totals, localRecords);
   const visibleAnnotationCount = (report?.annotation_count ?? 0) + localRecords.filter((record) => record.location_type !== "daily").length;
+  const coilObservations = uniqueCoils([...(data.coilObservations ?? []), ...(report?.coil_observations ?? [])]);
+  const assetObservations = data.assetObservations ?? [];
+  const selectedAssetObservation = assetObservations[0];
   const [error, setError] = useState<string | null>(null);
   const [spanForm, setSpanForm] = useState({
     designSegmentId: selectedDesignSegment?.id ?? "",
@@ -1253,8 +1287,22 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
     reported: "2695",
     explanation: "",
   });
+  const [coilForm, setCoilForm] = useState({
+    assetObservationId: selectedAssetObservation?.id ?? "",
+    easementType: "front",
+    coilType: "front_easement",
+    required: "150",
+    actual: "150",
+    reel: "R-327",
+    fiberType: "96CT",
+    ruleSource: "work_order_rule",
+    sourceReference: "Default front easement slack requirement",
+    notes: "",
+  });
   const sequenceCalc = sequencePreview(spanForm.start, spanForm.end, spanForm.reported);
   const selectedSegment = designSegments.find((segment) => segment.id === spanForm.designSegmentId) ?? selectedDesignSegment;
+  const selectedCoilAsset = assetObservations.find((observation) => observation.id === coilForm.assetObservationId) ?? selectedAssetObservation;
+  const coilVariance = coilVariancePreview(coilForm.required, coilForm.actual);
 
   async function quickCreate(kind: "asset" | "route" | "daily") {
     const code = kind === "asset" ? transfer : kind === "route" ? fiber : labor;
@@ -1367,6 +1415,47 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
     await saveConstructionMutation("CREATE_SPAN_COMPLETION", spanMutation);
   }
 
+  async function saveCoilObservation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCoilAsset?.id) {
+      setError("Create or select a pole observation before recording coil/slack.");
+      return;
+    }
+    if (coilForm.coilType === "other" && !coilForm.notes.trim()) {
+      setError("Notes are required for OTHER coil/slack type.");
+      return;
+    }
+    await saveConstructionMutation("CREATE_COIL_OBSERVATION", {
+      client_mutation_id: crypto.randomUUID(),
+      assignment_id: data.selectedAssignment?.id,
+      work_date: report?.work_date,
+      asset_observation_id: selectedCoilAsset.id,
+      design_segment_id: selectedCoilAsset.design_segment_id ?? selectedSegment?.id,
+      asset_identifier: selectedCoilAsset.asset_identifier,
+      easement_type: coilForm.easementType,
+      coil_type: coilForm.coilType,
+      required_length_ft: coilForm.required.trim() ? Number(coilForm.required) : undefined,
+      actual_length_ft: coilForm.actual.trim() ? Number(coilForm.actual) : undefined,
+      rule_source: coilForm.ruleSource,
+      rule_source_reference: coilForm.sourceReference,
+      reel_cable_id: coilForm.reel,
+      fiber_type: coilForm.fiberType,
+      notes: coilForm.notes || undefined,
+    });
+  }
+
+  function setCoilType(nextType: string) {
+    const defaults = coilDefaults(nextType);
+    setCoilForm({
+      ...coilForm,
+      coilType: nextType,
+      easementType: defaults.easementType,
+      required: defaults.required,
+      ruleSource: defaults.ruleSource,
+      sourceReference: defaults.sourceReference,
+    });
+  }
+
   async function saveProduction(mutation: Record<string, unknown>) {
     await saveConstructionMutation("CREATE_PRODUCTION", mutation);
   }
@@ -1455,6 +1544,54 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
         </form>
         {!designSegments.length ? <p className="partner-safe-text">No planned design segments are prepared for this map revision yet. Use Fiber Span for manual field production until Sync Operations prepares the print.</p> : null}
       </Panel>
+      <Panel title="Coil / Slack" eyebrow="Construction material truth only">
+        <form className="partner-form-grid compact-form" onSubmit={(event) => void saveCoilObservation(event)}>
+          <label>Pole / asset<select value={coilForm.assetObservationId} onChange={(event) => setCoilForm({ ...coilForm, assetObservationId: event.target.value })}>
+            {assetObservations.map((observation) => <option key={observation.id} value={observation.id}>{observation.asset_identifier || observation.id}</option>)}
+          </select></label>
+          <label>Easement<select value={coilForm.easementType} onChange={(event) => setCoilForm({ ...coilForm, easementType: event.target.value })}>
+            <option value="front">Front</option>
+            <option value="rear">Rear</option>
+            <option value="unknown">Unknown</option>
+            <option value="not_applicable">Not applicable</option>
+          </select></label>
+          <label>Coil / slack type<select value={coilForm.coilType} onChange={(event) => setCoilType(event.target.value)}>
+            <option value="front_easement">Front easement</option>
+            <option value="rear_easement">Rear easement</option>
+            <option value="express_splice">Express splice</option>
+            <option value="butt_splice">Butt splice</option>
+            <option value="riser_slack">Riser slack</option>
+            <option value="general_slack">General slack</option>
+            <option value="customer_required">Customer required</option>
+            <option value="field_condition">Field condition</option>
+            <option value="other">Other</option>
+          </select></label>
+          <label>Required FT<input inputMode="decimal" value={coilForm.required} onChange={(event) => setCoilForm({ ...coilForm, required: event.target.value })} /></label>
+          <label>Actual FT<input inputMode="decimal" value={coilForm.actual} onChange={(event) => setCoilForm({ ...coilForm, actual: event.target.value })} /></label>
+          <label>Reel / cable<input value={coilForm.reel} onChange={(event) => setCoilForm({ ...coilForm, reel: event.target.value })} /></label>
+          <label>Fiber type<input value={coilForm.fiberType} onChange={(event) => setCoilForm({ ...coilForm, fiberType: event.target.value })} /></label>
+          <label>Rule source<select value={coilForm.ruleSource} onChange={(event) => setCoilForm({ ...coilForm, ruleSource: event.target.value })}>
+            <option value="project_rule">Project rule</option>
+            <option value="work_order_rule">Work Order rule</option>
+            <option value="customer_design">Customer design</option>
+            <option value="customer_direction">Customer direction</option>
+            <option value="field_requirement">Field requirement</option>
+            <option value="manual">Manual</option>
+            <option value="other">Other</option>
+          </select></label>
+          <label>Source / notes<input value={coilForm.sourceReference} onChange={(event) => setCoilForm({ ...coilForm, sourceReference: event.target.value })} /></label>
+          <label>Field notes<textarea value={coilForm.notes} onChange={(event) => setCoilForm({ ...coilForm, notes: event.target.value })} placeholder={coilForm.coilType === "other" ? "Required for OTHER" : "Optional field condition notes"} /></label>
+          <StatusRows rows={[
+            ["Input / Output Tick", selectedCoilAsset ? `${selectedCoilAsset.input_tick ?? "not set"} / ${selectedCoilAsset.output_tick ?? "not set"}` : "Create pole observation first"],
+            ["Tick Difference", selectedCoilAsset?.tick_difference === null || selectedCoilAsset?.tick_difference === undefined ? "unknown" : quantityText(selectedCoilAsset.tick_difference, "FT")],
+            ["Coil Variance", quantityText(coilVariance.variance, "FT")],
+            ["Variance Status", coilVariance.status],
+            ["Commercial Treatment", "not configured"],
+          ]} />
+          <button className="partner-button primary wide-touch" type="submit" disabled={!selectedCoilAsset?.id}>Save Coil / Slack</button>
+        </form>
+        {!assetObservations.length ? <p className="partner-safe-text">Record a pole observation through completed span workflow before adding coil/slack.</p> : null}
+      </Panel>
       <Panel title="Today's Production" eyebrow={`${visibleRecords.length} records`}>
         <ProductionList records={visibleRecords} />
       </Panel>
@@ -1463,10 +1600,20 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
           ["Planned Segments", String(designSegments.length)],
           ["Redlines", String((data.spanCompletions ?? []).length)],
           ["Pole Observations", String((data.assetObservations ?? []).length)],
+          ["Coil / Slack", `${coilObservations.length} records`],
+          ["Actual Coil", quantityText(coilActualTotal(coilObservations), "FT")],
         ]} />
+        <div className="field-construction-list" aria-label="Coil and slack evidence">
+          {coilObservations.slice(0, 4).map((coil) => (
+            <div className="field-construction-list-item coil" key={coil.id}>
+              <span>{str(coil.coil_type).replace(/_/g, " ")}</span>
+              <strong>{coil.asset_identifier || "Asset"} · actual {quantityText(coil.actual_length_ft, "FT")}</strong>
+            </div>
+          ))}
+        </div>
       </Panel>
       <Panel title="Daily Totals" eyebrow="Derived from ProductionRecords">
-        <TotalsView totals={visibleTotals} annotationCount={visibleAnnotationCount} />
+        <TotalsView totals={visibleTotals} annotationCount={visibleAnnotationCount} coilActual={coilActualTotal(coilObservations)} />
       </Panel>
     </div>
   );
@@ -1538,6 +1685,8 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
           ["Closeout", str(dashboard?.closeout?.status) || "in_progress"],
           ["Missing Reports", str(dashboard?.missing_reports?.status) || "insufficient_schedule_data"],
           ["Artifacts", str(dashboard?.closeout?.artifact_count) || "0"],
+          ["Recorded Coil / Slack", quantityText(dashboard?.headline?.recorded_coil_slack_ft ?? 0, "FT")],
+          ["Coil Commercial Treatment", str(dashboard?.headline?.coil_commercial_treatment) || "not configured"],
         ]} />
       </Panel>
       <Panel title="Reported vs Customer Accepted" eyebrow="Unit-aware totals">
@@ -1823,11 +1972,17 @@ function SyncFailureList({ messages, onRetry }: { messages: string[]; onRetry: (
   );
 }
 
-function TotalsView({ totals, annotationCount }: { totals?: DailyProduction["totals"]; annotationCount: number }) {
+function TotalsView({ totals, annotationCount, coilActual = 0 }: { totals?: DailyProduction["totals"]; annotationCount: number; coilActual?: number }) {
+  const reported = (totals?.by_code ?? []).reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
+  const apiCoilActual = Number(totals?.coils?.actual_coil_ft ?? 0);
+  const actualCoil = apiCoilActual || coilActual;
   return (
     <StatusRows rows={[
       ...((totals?.by_code ?? []).map((row) => [row.description || row.code || "Production", `${row.quantity ?? 0} ${row.unit ?? ""}`] as [string, string])),
       ["Production Records", String(totals?.record_count ?? 0)],
+      ["Recorded Coil / Slack", quantityText(actualCoil, "FT")],
+      ["Estimated Cable Consumption", quantityText(reported + actualCoil, "FT")],
+      ["Coil Commercial Treatment", totals?.coils?.commercial_treatment ?? "not configured"],
       ["Complete", String(totals?.status_counts?.complete ?? 0)],
       ["Partial", String(totals?.status_counts?.partial ?? 0)],
       ["Blocked", String(totals?.status_counts?.blocked ?? 0)],
@@ -2327,6 +2482,30 @@ function sequencePreview(start: string, end: string, reported: string) {
   return { calculated, variance, status: Math.abs(variance) > 25 ? "review_required" : "within_tolerance" };
 }
 
+function coilDefaults(coilType: string) {
+  if (coilType === "front_easement") return { easementType: "front", required: "150", ruleSource: "work_order_rule", sourceReference: "Default front easement slack requirement" };
+  if (coilType === "rear_easement") return { easementType: "rear", required: "80", ruleSource: "work_order_rule", sourceReference: "Default rear easement slack requirement" };
+  return { easementType: "unknown", required: "", ruleSource: "manual", sourceReference: "Manual field requirement" };
+}
+
+function coilVariancePreview(required: string, actual: string) {
+  const requiredNumber = Number(required);
+  const actualNumber = Number(actual);
+  if (![requiredNumber, actualNumber].every(Number.isFinite)) return { variance: "", status: "unknown" };
+  const variance = Number((actualNumber - requiredNumber).toFixed(2));
+  return { variance, status: Math.abs(variance) > 5 ? "variance" : "within_expectation" };
+}
+
+function coilActualTotal(coils: CoilObservation[]) {
+  return Number(coils.reduce((sum, coil) => sum + Number(coil.actual_length_ft ?? 0), 0).toFixed(2));
+}
+
+function uniqueCoils(coils: CoilObservation[]) {
+  const byId = new Map<string, CoilObservation>();
+  coils.forEach((coil, index) => byId.set(str(coil.id) || `${coil.asset_identifier ?? "asset"}:${coil.coil_type ?? "coil"}:${index}`, coil));
+  return [...byId.values()];
+}
+
 function fiberSequenceText(record: ProductionRecord) {
   if (record.sequence_start === null || record.sequence_start === undefined) return "";
   return `${record.sequence_start} -> ${record.sequence_end} (${record.sequence_direction || "direction not set"}; calc ${record.sequence_calculated_footage ?? 0} FT)`;
@@ -2372,7 +2551,7 @@ function recordTitle(record: ProductionRecord) {
 }
 
 type OfflineMutationStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT";
-type FieldMutationOperation = "CREATE_PRODUCTION" | "CREATE_ASSET_OBSERVATION" | "CREATE_SPAN_COMPLETION";
+type FieldMutationOperation = "CREATE_PRODUCTION" | "CREATE_ASSET_OBSERVATION" | "CREATE_SPAN_COMPLETION" | "CREATE_COIL_OBSERVATION";
 type OfflineMutation = {
   mutationId: string;
   operation: FieldMutationOperation;
@@ -2534,6 +2713,7 @@ async function replayFieldMutations(scopeKey: string, setMutations: (mutations: 
 function fieldMutationEndpoint(operation: FieldMutationOperation) {
   if (operation === "CREATE_ASSET_OBSERVATION") return "syncfield/foreman/asset-observations";
   if (operation === "CREATE_SPAN_COMPLETION") return "syncfield/foreman/span-completions";
+  if (operation === "CREATE_COIL_OBSERVATION") return "syncfield/foreman/coil-observations";
   return "syncfield/foreman/production/records";
 }
 

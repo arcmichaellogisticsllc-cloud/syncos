@@ -31,6 +31,9 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
   let submittedRecordId: string;
   let designSegmentId: string;
   let spanCompletionId: string;
+  let frontAssetObservationId: string;
+  let frontCoilId: string;
+  let rearCoilId: string;
 
   test.beforeAll(async ({ request }) => {
     const connectionString = process.env.DATABASE_URL;
@@ -290,8 +293,129 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(span.quantity_submitted).toBe(141);
     expect(span.from_asset_observation_id).toBeTruthy();
     expect(span.to_asset_observation_id).toBeTruthy();
+    frontAssetObservationId = span.from_asset_observation_id;
     expect(span.redline_geometry.points).toHaveLength(3);
     expect(span.design_deviation).toBe(false);
+
+    const frontCoilMutationId = crypto.randomUUID();
+    const frontCoil = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/coil-observations", {
+      client_mutation_id: frontCoilMutationId,
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      asset_observation_id: span.from_asset_observation_id,
+      design_segment_id: designSegmentId,
+      span_completion_id: span.id,
+      production_record_id: span.production_record_id,
+      easement_type: "FRONT",
+      coil_type: "FRONT_EASEMENT",
+      required_length_ft: 150,
+      actual_length_ft: 150,
+      reel_cable_id: "R-327",
+      fiber_type: "96CT",
+      rule_source: "WORK_ORDER_RULE",
+      rule_source_reference: "Default front easement slack requirement",
+      notes: "Front easement coil installed at pole 15-12-2.",
+    });
+    frontCoilId = frontCoil.id;
+    expect(frontCoil.asset_identifier).toBe("15-12-2");
+    expect(frontCoil.required_length_ft).toBe(150);
+    expect(frontCoil.actual_length_ft).toBe(150);
+    expect(frontCoil.variance_ft).toBe(0);
+    expect(frontCoil.variance_status).toBe("within_expectation");
+    expect(frontCoil.commercial_treatment).toBe("not_configured");
+
+    const retryFrontCoil = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/coil-observations", {
+      client_mutation_id: frontCoilMutationId,
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      asset_observation_id: span.from_asset_observation_id,
+      coil_type: "FRONT_EASEMENT",
+      required_length_ft: 150,
+      actual_length_ft: 150,
+    });
+    expect(retryFrontCoil.id).toBe(frontCoil.id);
+
+    const rearCoil = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/coil-observations", {
+      client_mutation_id: crypto.randomUUID(),
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      asset_observation_id: span.to_asset_observation_id,
+      design_segment_id: designSegmentId,
+      span_completion_id: span.id,
+      production_record_id: span.production_record_id,
+      easement_type: "REAR",
+      coil_type: "REAR_EASEMENT",
+      required_length_ft: 80,
+      actual_length_ft: 82,
+      reel_cable_id: "R-327",
+      fiber_type: "96CT",
+      rule_source: "WORK_ORDER_RULE",
+      rule_source_reference: "Default rear easement slack requirement",
+      notes: "Rear easement coil varied by two feet.",
+    });
+    rearCoilId = rearCoil.id;
+    expect(rearCoil.asset_identifier).toBe("15-12-4");
+    expect(rearCoil.variance_ft).toBe(2);
+    expect(rearCoil.variance_status).toBe("within_expectation");
+
+    const expressSplice = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/coil-observations", {
+      client_mutation_id: crypto.randomUUID(),
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      asset_observation_id: span.from_asset_observation_id,
+      design_segment_id: designSegmentId,
+      span_completion_id: span.id,
+      production_record_id: span.production_record_id,
+      easement_type: "NOT_APPLICABLE",
+      coil_type: "EXPRESS_SPLICE",
+      required_length_ft: 250,
+      actual_length_ft: 250,
+      rule_source: "CUSTOMER_DESIGN",
+      rule_source_reference: "Design note at splice location",
+    });
+    expect(expressSplice.asset_identifier).toBe("15-12-2");
+
+    const otherWithoutNotes = await request.post(apiUrl("/syncfield/foreman/coil-observations"), {
+      headers: auth(seeded.foremanToken),
+      data: {
+        client_mutation_id: crypto.randomUUID(),
+        assignment_id: seeded.assignmentId,
+        work_date: today(),
+        asset_observation_id: span.from_asset_observation_id,
+        coil_type: "OTHER",
+        required_length_ft: 10,
+        actual_length_ft: 10,
+      },
+    });
+    expect(otherWithoutNotes.status()).toBe(400);
+
+    const partnerAdminCoilWrite = await request.post(apiUrl("/syncfield/foreman/coil-observations"), {
+      headers: auth(seeded.adminToken),
+      data: {
+        client_mutation_id: crypto.randomUUID(),
+        assignment_id: seeded.assignmentId,
+        work_date: today(),
+        asset_observation_id: span.from_asset_observation_id,
+        coil_type: "FRONT_EASEMENT",
+        required_length_ft: 150,
+        actual_length_ft: 150,
+      },
+    });
+    expect(partnerAdminCoilWrite.status()).toBe(403);
+
+    const crossTenantCoilWrite = await request.post(apiUrl("/syncfield/foreman/coil-observations"), {
+      headers: auth(seeded.tenantBToken),
+      data: {
+        client_mutation_id: crypto.randomUUID(),
+        assignment_id: seeded.assignmentId,
+        work_date: today(),
+        asset_observation_id: span.from_asset_observation_id,
+        coil_type: "FRONT_EASEMENT",
+        required_length_ft: 150,
+        actual_length_ft: 150,
+      },
+    });
+    expect(crossTenantCoilWrite.status()).toBeGreaterThanOrEqual(400);
 
     const retry = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/span-completions", spanBody);
     expect(retry.id).toBe(span.id);
@@ -319,6 +443,9 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(detail.annotations).toHaveLength(7);
     expect(detail.span_completions.some((row: Record<string, unknown>) => row.id === spanCompletionId)).toBe(true);
     expect(detail.asset_observations.some((row: Record<string, unknown>) => row.input_tick === 14826 && row.output_tick === 14780)).toBe(true);
+    expect(detail.coil_observations.some((row: Record<string, unknown>) => row.id === frontCoilId && row.actual_length_ft === 150)).toBe(true);
+    expect(detail.coil_observations.some((row: Record<string, unknown>) => row.id === rearCoilId && row.variance_ft === 2)).toBe(true);
+    expect(detail.totals.coils.actual_coil_ft).toBe(482);
     expect(detail.totals.by_code.find((row: Record<string, unknown>) => row.code === "FIBER").quantity).toBe(3564);
     expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 9 });
 
@@ -328,6 +455,8 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await expect(page.getByText("COMPLETED REDLINE", { exact: true })).toBeVisible();
     await expect(page.locator(".field-construction-list-item.design").getByText("15-12-2 -> 15-12-4")).toBeVisible();
     await expect(page.locator(".field-construction-list-item.redline").getByText("15-12-2 -> 15-12-4")).toBeVisible();
+    await expect(page.getByText("Coil / Slack")).toBeVisible();
+    await expect(page.getByText("482 FT actual")).toBeVisible();
   });
 
   test("submission creates immutable revision snapshot and blocks ordinary edits without QC or finance", async ({ page, request }) => {
@@ -341,16 +470,19 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(revision.rows[0].snapshot_json.records.some((record: Record<string, unknown>) => record.sequence_variance_status === "review_required")).toBe(true);
     expect(revision.rows[0].snapshot_json.span_completions.some((span: Record<string, unknown>) => span.id === spanCompletionId)).toBe(true);
     expect(revision.rows[0].snapshot_json.asset_observations.some((observation: Record<string, unknown>) => observation.input_tick === 14826 && observation.output_tick === 14780)).toBe(true);
+    expect(revision.rows[0].snapshot_json.coil_observations.some((coil: Record<string, unknown>) => coil.id === frontCoilId && coil.actual_length_ft === 150)).toBe(true);
     const lockedChildren = await client.query(
       `
       SELECT
         (SELECT count(*)::int FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND status = 'submitted' AND submitted_revision_id IS NOT NULL) AS observations,
-        (SELECT count(*)::int FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND completion_status = 'submitted' AND submitted_revision_id IS NOT NULL) AS spans
+        (SELECT count(*)::int FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND completion_status = 'submitted' AND submitted_revision_id IS NOT NULL) AS spans,
+        (SELECT count(*)::int FROM syncfield_coil_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND status = 'submitted' AND submitted_revision_id IS NOT NULL) AS coils
       `,
       [seeded.tenantA, submitted.id],
     );
     expect(lockedChildren.rows[0].observations).toBeGreaterThanOrEqual(4);
     expect(lockedChildren.rows[0].spans).toBe(1);
+    expect(lockedChildren.rows[0].coils).toBe(3);
 
     const edit = await request.post(apiUrl(`/syncfield/foreman/production/records/${submittedRecordId}`), {
       headers: auth(seeded.foremanToken),
@@ -362,6 +494,11 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
       data: { client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 999", map_page: 1, x_ratio: 0.1, y_ratio: 0.1, reported_quantity: 1, status: "complete" },
     });
     expect(addAfterSubmit.status()).toBe(400);
+    const coilAfterSubmit = await request.post(apiUrl("/syncfield/foreman/coil-observations"), {
+      headers: auth(seeded.foremanToken),
+      data: { client_mutation_id: crypto.randomUUID(), assignment_id: seeded.assignmentId, work_date: today(), asset_observation_id: frontAssetObservationId, coil_type: "FRONT_EASEMENT", required_length_ft: 150, actual_length_ft: 150 },
+    });
+    expect(coilAfterSubmit.status()).toBe(400);
     const afterReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
     expect(afterReadiness.overall_status).toBe(beforeReadiness.overall_status);
     expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 9 });

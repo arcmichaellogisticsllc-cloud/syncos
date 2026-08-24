@@ -3243,6 +3243,10 @@ th {
   border-left: 5px solid #d72626;
 }
 
+.field-construction-list-item.coil {
+  border-left: 5px solid #0f766e;
+}
+
 .legend-line {
   display: inline-block;
   height: 0;

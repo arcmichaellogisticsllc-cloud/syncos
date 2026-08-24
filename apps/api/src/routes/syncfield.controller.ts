@@ -183,6 +183,10 @@ const designGeometryTypes = new Set(["pdf_point", "pdf_line", "pdf_polyline"]);
 const assetObservationTypes = new Set(["pole", "pedestal", "handhole", "vault", "cabinet", "splice_point", "terminal", "riser", "anchor", "other"]);
 const spanCompletionStatuses = new Set(["draft", "completed", "submitted", "void"]);
 const deviationReasons = new Set(["field_obstruction", "customer_direction", "engineering_change", "pole_unavailable", "make_ready_condition", "route_change", "other"]);
+const coilTypes = new Set(["front_easement", "rear_easement", "express_splice", "butt_splice", "riser_slack", "general_slack", "customer_required", "field_condition", "other"]);
+const easementTypes = new Set(["front", "rear", "unknown", "not_applicable"]);
+const coilRuleSources = new Set(["project_rule", "work_order_rule", "customer_design", "customer_direction", "field_requirement", "manual", "other"]);
+const coilVarianceToleranceFeet = Number(process.env.SYNCOS_FIELD_COIL_VARIANCE_TOLERANCE_FT ?? 5);
 const sequenceVarianceToleranceFeet = Number(process.env.SYNCOS_FIELD_SEQUENCE_VARIANCE_TOLERANCE_FT ?? 25);
 const defaultProductionCodes = [
   ["POLE-ATT", "Pole Attachment", "EA", "asset", true, false],
@@ -533,6 +537,87 @@ export class SyncfieldController {
         );
         await this.recordMutationReceipt(writeClient, request, mutationId, "create_asset_observation", "syncfield_asset_observation", inserted.rows[0].id, body);
         return { entityType: "syncfield_asset_observation", entityId: inserted.rows[0].id, afterState: this.safeAssetObservation(inserted.rows[0]) };
+      });
+    });
+  }
+
+  @Get("foreman/coil-observations")
+  @RequirePermission("partner_map.read_assigned")
+  async foremanCoilObservations(@Req() request: AuthenticatedRequest, @Query("assignment_id") assignmentId?: string, @Query("work_date") workDate?: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
+      const values: unknown[] = [assignment.tenant_id, assignment.assignment_id];
+      const where = ["tenant_id = $1", "assignment_id = $2", "deleted_at IS NULL"];
+      if (workDate) {
+        values.push(this.workDate(workDate));
+        where.push(`production_date = $${values.length}`);
+      }
+      const result = await client.query(`SELECT * FROM syncfield_coil_observations WHERE ${where.join(" AND ")} ORDER BY production_date DESC, created_at ASC`, values);
+      return result.rows.map((row) => this.safeCoilObservation(row));
+    });
+  }
+
+  @Post("foreman/coil-observations")
+  @RequirePermission("partner_production_record.create")
+  async createForemanCoilObservation(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
+      const date = this.workDate(String(body.work_date ?? ""));
+      return this.writeWithClient(client, request, "coil_observation.create", "coil_observation.created", "syncfield_coil_observation", async (writeClient) => {
+        await this.assertProductionGate(writeClient, assignment, date);
+        const report = await this.findDailyReport(writeClient, assignment, date) ?? await this.createReportInline(writeClient, request, assignment, date, body);
+        if (report.status !== "draft") throw new BadRequestException("submitted report is read-only");
+        const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+        const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "create_coil_observation");
+        if (receipt?.entity_id) {
+          const existing = await this.requireCoilObservation(writeClient, assignment.tenant_id, receipt.entity_id);
+          return { entityType: "syncfield_coil_observation", entityId: existing.id, afterState: this.safeCoilObservation(existing), skipEventAudit: true };
+        }
+        const assetObservation = await this.requireScopedAssetObservation(writeClient, assignment, requireString(body.asset_observation_id, "asset_observation_id is required"), report.id);
+        const designSegment = this.optionalString(body.design_segment_id)
+          ? await this.requireDesignSegmentForAssignment(writeClient, assignment, String(body.design_segment_id))
+          : assetObservation.design_segment_id ? await this.requireDesignSegmentForAssignment(writeClient, assignment, String(assetObservation.design_segment_id)) : null;
+        const spanCompletion = this.optionalString(body.span_completion_id) ? await this.requireScopedSpanCompletion(writeClient, assignment, String(body.span_completion_id), report.id) : null;
+        const productionRecord = this.optionalString(body.production_record_id) ? await this.requireScopedDraftProductionRecord(writeClient, assignment, String(body.production_record_id), report.id) : spanCompletion?.production_record_id ? await this.requireScopedDraftProductionRecord(writeClient, assignment, String(spanCompletion.production_record_id), report.id) : null;
+        const coilType = requireString(body.coil_type, "coil_type is required").toLowerCase();
+        if (!coilTypes.has(coilType)) throw new BadRequestException("coil_type is invalid");
+        const easementType = (this.optionalString(body.easement_type) ?? this.defaultEasementForCoilType(coilType)).toLowerCase();
+        if (!easementTypes.has(easementType)) throw new BadRequestException("easement_type is invalid");
+        const ruleSource = (this.optionalString(body.rule_source) ?? "manual").toLowerCase();
+        if (!coilRuleSources.has(ruleSource)) throw new BadRequestException("rule_source is invalid");
+        if (coilType === "other" && !this.optionalString(body.notes)) throw new BadRequestException("notes are required for OTHER coil type");
+        if (ruleSource === "other" && !this.optionalString(body.rule_source_reference)) throw new BadRequestException("rule_source_reference is required for OTHER rule source");
+        const requiredLength = this.optionalNumber(body.required_length_ft, "required_length_ft must be non-negative");
+        const actualLength = this.optionalNumber(body.actual_length_ft, "actual_length_ft must be non-negative");
+        const tolerance = this.optionalNumber(body.tolerance_ft, "tolerance_ft must be non-negative") ?? coilVarianceToleranceFeet;
+        const varianceStatus = this.coilVarianceStatus(requiredLength, actualLength, tolerance);
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO syncfield_coil_observations (
+            tenant_id, organization_id, project_id, work_order_id, assignment_id, crew_id, foreman_worker_id,
+            production_date, map_document_id, map_version_id, map_page_id, asset_observation_id, design_segment_id,
+            span_completion_id, production_record_id, daily_report_id, asset_identifier, easement_type, coil_type,
+            required_length_ft, actual_length_ft, variance_status, tolerance_ft, rule_source, rule_source_reference,
+            reel_cable_id, fiber_type, notes, created_by_user_id, client_mutation_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+          ON CONFLICT (tenant_id, created_by_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL AND deleted_at IS NULL
+          DO UPDATE SET updated_at = syncfield_coil_observations.updated_at
+          RETURNING *
+          `,
+          [
+            assignment.tenant_id, assignment.organization_id, assignment.project_id, assignment.work_order_id, assignment.assignment_id,
+            assignment.crew_id, assignment.foreman_worker_id, date, assignment.map_document_id, assignment.map_version_id, assetObservation.map_page_id,
+            assetObservation.id, designSegment?.id ?? null, spanCompletion?.id ?? null, productionRecord?.id ?? null, report.id,
+            assetObservation.asset_identifier, easementType, coilType, requiredLength, actualLength, varianceStatus, tolerance, ruleSource,
+            this.optionalString(body.rule_source_reference), this.optionalString(body.reel_cable_id) ?? assetObservation.reel_cable_id,
+            this.optionalString(body.fiber_type) ?? assetObservation.fiber_type, this.optionalString(body.notes), request.auth.userId, mutationId,
+          ],
+        );
+        await this.recordMutationReceipt(writeClient, request, mutationId, "create_coil_observation", "syncfield_coil_observation", inserted.rows[0].id, body);
+        return { entityType: "syncfield_coil_observation", entityId: inserted.rows[0].id, afterState: this.safeCoilObservation(inserted.rows[0]) };
       });
     });
   }
@@ -1035,6 +1120,7 @@ export class SyncfieldController {
         if (revision.rows[0]?.id) {
           await writeClient.query("UPDATE syncfield_asset_observations SET status = 'submitted', submitted_revision_id = $3, updated_at = now() WHERE tenant_id = $1 AND daily_report_id = $2 AND status = 'draft' AND deleted_at IS NULL", [assignment.tenant_id, report.id, revision.rows[0].id]);
           await writeClient.query("UPDATE syncfield_span_completions SET completion_status = 'submitted', submitted_revision_id = $3, updated_at = now() WHERE tenant_id = $1 AND daily_report_id = $2 AND completion_status IN ('draft','completed') AND deleted_at IS NULL", [assignment.tenant_id, report.id, revision.rows[0].id]);
+          await writeClient.query("UPDATE syncfield_coil_observations SET status = 'submitted', submitted_revision_id = $3, updated_at = now() WHERE tenant_id = $1 AND daily_report_id = $2 AND status = 'draft' AND deleted_at IS NULL", [assignment.tenant_id, report.id, revision.rows[0].id]);
         }
         const submitted = await writeClient.query("UPDATE daily_production_reports SET status = 'submitted', submitted_at = now(), submitted_by_user_id = $3, general_notes = COALESCE($4, general_notes), updated_at = now() WHERE tenant_id = $1 AND id = $2 AND status = 'draft' RETURNING *", [assignment.tenant_id, report.id, request.auth.userId, this.optionalString(body.general_notes)]);
         await this.recordMutationReceipt(writeClient, request, mutationId, "submit_daily_report", "daily_report", report.id, body);
@@ -1387,6 +1473,7 @@ export class SyncfieldController {
     const corrections = rows.filter((row) => row.customer_decision === "correction_required");
     const rejected = rows.filter((row) => row.customer_decision === "rejected");
     const blockedRework = rows.filter((row) => ["blocked", "rework"].includes(String(row.field_status)));
+    const recordedCoilFt = rows.reduce((sum, row) => sum + Number(row.actual_coil_ft ?? 0), 0);
     return {
       headline: {
         submitted_reports: new Set(rows.map((row) => row.daily_report_id)).size,
@@ -1395,6 +1482,8 @@ export class SyncfieldController {
         correction_required: corrections.length,
         rejected: rejected.length,
         blocked_rework: blockedRework.length,
+        recorded_coil_slack_ft: Number(recordedCoilFt.toFixed(2)),
+        coil_commercial_treatment: "not_configured",
       },
       reported_vs_accepted: byCode,
       production_by_crew: byCrew,
@@ -1520,6 +1609,9 @@ export class SyncfieldController {
         sc.from_asset_identifier AS span_from_asset_identifier, sc.to_asset_identifier AS span_to_asset_identifier,
         ds.design_label, ds.design_length_ft, fo.input_tick AS from_input_tick, fo.output_tick AS from_output_tick,
         too.input_tick AS to_input_tick, too.output_tick AS to_output_tick,
+        coil.coil_observation_count, coil.coil_asset_identifiers, coil.easement_types, coil.coil_types,
+        coil.required_coil_ft, coil.actual_coil_ft, coil.coil_variance_ft, coil.coil_variance_statuses,
+        coil.coil_rule_sources, coil.coil_rule_source_references, coil.coil_reel_cable_ids, coil.coil_fiber_types,
         mv.id AS map_version_id, mv.revision_number AS map_revision_number, mv.revision_label, mv.file_hash AS map_file_hash,
         md.name AS map_name, ld.decision AS customer_decision, ld.customer_accepted_quantity,
         ld.customer_reason_code, ld.customer_comments, ld.qc_authority_organization_id, qa.name AS qc_authority_name,
@@ -1550,6 +1642,25 @@ export class SyncfieldController {
       LEFT JOIN syncfield_design_segments ds ON ds.tenant_id = sc.tenant_id AND ds.id = sc.design_segment_id
       LEFT JOIN syncfield_asset_observations fo ON fo.tenant_id = sc.tenant_id AND fo.id = sc.from_asset_observation_id
       LEFT JOIN syncfield_asset_observations too ON too.tenant_id = sc.tenant_id AND too.id = sc.to_asset_observation_id
+      LEFT JOIN LATERAL (
+        SELECT
+          count(*)::int AS coil_observation_count,
+          string_agg(DISTINCT co.asset_identifier, '; ' ORDER BY co.asset_identifier) AS coil_asset_identifiers,
+          string_agg(DISTINCT co.easement_type, '; ' ORDER BY co.easement_type) AS easement_types,
+          string_agg(DISTINCT co.coil_type, '; ' ORDER BY co.coil_type) AS coil_types,
+          sum(co.required_length_ft) AS required_coil_ft,
+          sum(co.actual_length_ft) AS actual_coil_ft,
+          sum(co.variance_ft) AS coil_variance_ft,
+          string_agg(DISTINCT co.variance_status, '; ' ORDER BY co.variance_status) AS coil_variance_statuses,
+          string_agg(DISTINCT co.rule_source, '; ' ORDER BY co.rule_source) AS coil_rule_sources,
+          string_agg(DISTINCT co.rule_source_reference, '; ' ORDER BY co.rule_source_reference) AS coil_rule_source_references,
+          string_agg(DISTINCT co.reel_cable_id, '; ' ORDER BY co.reel_cable_id) AS coil_reel_cable_ids,
+          string_agg(DISTINCT co.fiber_type, '; ' ORDER BY co.fiber_type) AS coil_fiber_types
+        FROM syncfield_coil_observations co
+        WHERE co.tenant_id = pr.tenant_id
+          AND co.production_record_id = pr.id
+          AND co.deleted_at IS NULL
+      ) coil ON true
       WHERE ${where.join(" AND ")}
       ORDER BY r.work_date DESC, r.submitted_at DESC NULLS LAST, pr.created_at ASC
       LIMIT 500
@@ -1697,6 +1808,11 @@ export class SyncfieldController {
       from_output_tick: row.from_output_tick === null ? null : Number(row.from_output_tick),
       to_input_tick: row.to_input_tick === null ? null : Number(row.to_input_tick),
       to_output_tick: row.to_output_tick === null ? null : Number(row.to_output_tick),
+      coil_count: row.coil_observation_count === null ? null : Number(row.coil_observation_count),
+      required_coil_ft: row.required_coil_ft === null ? null : Number(row.required_coil_ft),
+      actual_coil_ft: row.actual_coil_ft === null ? null : Number(row.actual_coil_ft),
+      coil_variance_ft: row.coil_variance_ft === null ? null : Number(row.coil_variance_ft),
+      coil_types: row.coil_types,
     }));
     return createHash("sha256").update(JSON.stringify({ artifactType, generationMode, query, facts })).digest("hex");
   }
@@ -1728,7 +1844,7 @@ export class SyncfieldController {
   }
 
   private renderProductionCsv(rows: QueryResultRow[]) {
-    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Design Segment ID", "Design Label", "Design Length FT", "Span Completion ID", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "From Input Tick", "From Output Tick", "To Input Tick", "To Output Tick", "Start Tick", "End Tick", "Reel/Cable", "Fiber Type", "Sequence Start", "Sequence End", "Sequence Direction", "Sequence Footage", "Sequence Variance", "Sequence Variance Status", "Design Deviation", "Deviation Reason", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
+    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Design Segment ID", "Design Label", "Design Length FT", "Span Completion ID", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "From Input Tick", "From Output Tick", "To Input Tick", "To Output Tick", "Start Tick", "End Tick", "Reel/Cable", "Fiber Type", "Sequence Start", "Sequence End", "Sequence Direction", "Sequence Footage", "Sequence Variance", "Sequence Variance Status", "Coil Asset Identifier", "Easement Type", "Coil Type", "Required Coil FT", "Actual Coil FT", "Coil Variance FT", "Coil Variance Status", "Coil Rule Source", "Coil Rule Source Reference", "Coil Reel/Cable", "Coil Fiber Type", "Commercial Treatment", "Design Deviation", "Deviation Reason", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
     const body = rows.map((row) => [
       this.dateOnly(row.work_date), row.project_name, row.work_order_number, row.partner_name, row.crew_name, row.foreman_worker_id, row.map_name, row.map_revision_number, row.revision_number,
       row.design_segment_id, row.design_label, row.design_length_ft, row.span_completion_id,
@@ -1736,6 +1852,8 @@ export class SyncfieldController {
       row.from_input_tick, row.from_output_tick, row.to_input_tick, row.to_output_tick,
       row.tick_start_label, row.tick_end_label, row.reel_cable_id, row.fiber_type,
       row.sequence_start, row.sequence_end, row.sequence_direction, row.sequence_calculated_footage, row.sequence_reported_variance, row.sequence_variance_status,
+      row.coil_asset_identifiers, row.easement_types, row.coil_types, row.required_coil_ft, row.actual_coil_ft, row.coil_variance_ft, row.coil_variance_statuses,
+      row.coil_rule_sources, row.coil_rule_source_references, row.coil_reel_cable_ids, row.coil_fiber_types, row.coil_observation_count ? "not_configured" : "",
       row.design_deviation, row.deviation_reason,
       row.code, row.description, row.reported_quantity,
       row.customer_accepted_quantity === null || row.customer_accepted_quantity === undefined ? "Pending Customer QC" : row.customer_accepted_quantity,
@@ -1757,6 +1875,7 @@ export class SyncfieldController {
     }
     for (const row of rows.filter((candidate) => candidate.span_completion_id).slice(0, 12)) {
       lines.push(`REDLINE ${row.span_from_asset_identifier ?? row.from_asset_identifier}->${row.span_to_asset_identifier ?? row.to_asset_identifier} design=${row.design_label ?? row.design_segment_id ?? "unmatched"} IN/OUT ${row.from_input_tick ?? ""}/${row.from_output_tick ?? ""} to ${row.to_input_tick ?? ""}/${row.to_output_tick ?? ""}`);
+      if (row.coil_observation_count) lines.push(`COIL ${row.coil_asset_identifiers ?? ""} ${row.coil_types ?? ""} required=${row.required_coil_ft ?? ""} actual=${row.actual_coil_ft ?? ""} variance=${row.coil_variance_ft ?? ""}`);
     }
     return lines;
   }
@@ -1767,14 +1886,21 @@ export class SyncfieldController {
     for (const row of this.aggregateProduction(rows, (entry) => `${entry.code}:${entry.unit_of_measure}`)) {
       lines.push(`${row.description}: Reported ${row.reported_quantity} ${row.unit_of_measure}; Customer Accepted ${Number(row.customer_accepted_quantity) ? row.customer_accepted_quantity : "Pending Customer QC"}; Variance ${row.variance}`);
     }
+    const coilActual = rows.reduce((sum, row) => sum + Number(row.actual_coil_ft ?? 0), 0);
+    if (coilActual) lines.push(`Recorded coil/slack: ${Number(coilActual.toFixed(2))} FT; Commercial treatment: not configured`);
     lines.push("Production Detail");
-    for (const row of rows.slice(0, 30)) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"} ${this.sequenceLabel(row)}`);
+    for (const row of rows.slice(0, 30)) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"} ${this.sequenceLabel(row)} ${this.coilLabel(row)}`);
     return lines;
   }
 
   private sequenceLabel(row: QueryResultRow) {
     if (row.sequence_start === null || row.sequence_start === undefined) return "";
     return `seq ${row.sequence_start}->${row.sequence_end} calc=${row.sequence_calculated_footage} variance=${row.sequence_reported_variance} ${row.sequence_variance_status}`;
+  }
+
+  private coilLabel(row: QueryResultRow) {
+    if (!row.coil_observation_count) return "";
+    return `coil actual=${row.actual_coil_ft ?? "unknown"} required=${row.required_coil_ft ?? "unknown"} status=${row.coil_variance_statuses ?? "unknown"} commercial=not_configured`;
   }
 
   private closeoutPdfLines(rows: QueryResultRow[]) {
@@ -2616,6 +2742,12 @@ export class SyncfieldController {
     return result.rows[0];
   }
 
+  private async requireCoilObservation(client: PoolClient, tenantId: string, coilObservationId: string) {
+    const result = await client.query("SELECT * FROM syncfield_coil_observations WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, coilObservationId]);
+    if (!result.rows[0]) throw new NotFoundException("coil observation not found");
+    return result.rows[0];
+  }
+
   private async requireScopedAssetObservation(client: PoolClient, assignment: MapAssignmentRow, observationId: string, reportId: string) {
     const result = await client.query(
       `
@@ -2628,6 +2760,21 @@ export class SyncfieldController {
       [assignment.tenant_id, observationId, assignment.assignment_id, assignment.crew_id, assignment.organization_id, reportId],
     );
     if (!result.rows[0]) throw new NotFoundException("asset observation not found for active assignment");
+    return result.rows[0];
+  }
+
+  private async requireScopedSpanCompletion(client: PoolClient, assignment: MapAssignmentRow, spanCompletionId: string, reportId: string) {
+    const result = await client.query(
+      `
+      SELECT *
+      FROM syncfield_span_completions
+      WHERE tenant_id = $1 AND id = $2 AND assignment_id = $3 AND crew_id = $4 AND organization_id = $5
+        AND daily_report_id = $6 AND deleted_at IS NULL AND completion_status IN ('draft','completed')
+      LIMIT 1
+      `,
+      [assignment.tenant_id, spanCompletionId, assignment.assignment_id, assignment.crew_id, assignment.organization_id, reportId],
+    );
+    if (!result.rows[0]) throw new NotFoundException("span completion not found for active assignment");
     return result.rows[0];
   }
 
@@ -2877,7 +3024,8 @@ export class SyncfieldController {
     const annotations = await client.query("SELECT * FROM map_annotations WHERE tenant_id = $1 AND production_record_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, records.map((record) => record.id)]);
     const spans = await client.query("SELECT * FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, row.id]);
     const observations = await client.query("SELECT * FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, row.id]);
-    return { ...this.safeDailyProductionSummary(row), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), totals: this.productionTotals(records), annotation_count: annotations.rowCount ?? 0 };
+    const coils = await client.query("SELECT * FROM syncfield_coil_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, row.id]);
+    return { ...this.safeDailyProductionSummary(row), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), coil_observations: coils.rows.map((coil) => this.safeCoilObservation(coil)), totals: { ...this.productionTotals(records), coils: this.coilTotals(coils.rows) }, annotation_count: annotations.rowCount ?? 0 };
   }
 
   private safeDailyProductionSummary(row: QueryResultRow) {
@@ -3034,6 +3182,47 @@ export class SyncfieldController {
     };
   }
 
+  private safeCoilObservation(row: QueryResultRow) {
+    const required = row.required_length_ft === null || row.required_length_ft === undefined ? null : Number(row.required_length_ft);
+    const actual = row.actual_length_ft === null || row.actual_length_ft === undefined ? null : Number(row.actual_length_ft);
+    return {
+      id: row.id,
+      organization_id: row.organization_id,
+      project_id: row.project_id,
+      work_order_id: row.work_order_id,
+      assignment_id: row.assignment_id,
+      crew_id: row.crew_id,
+      foreman_worker_id: row.foreman_worker_id,
+      production_date: this.dateOnly(row.production_date),
+      map_document_id: row.map_document_id,
+      map_version_id: row.map_version_id,
+      map_page_id: row.map_page_id,
+      asset_observation_id: row.asset_observation_id,
+      design_segment_id: row.design_segment_id,
+      span_completion_id: row.span_completion_id,
+      production_record_id: row.production_record_id,
+      daily_report_id: row.daily_report_id,
+      submitted_revision_id: row.submitted_revision_id,
+      asset_identifier: row.asset_identifier,
+      easement_type: row.easement_type,
+      coil_type: row.coil_type,
+      required_length_ft: required,
+      actual_length_ft: actual,
+      variance_ft: row.variance_ft === null || row.variance_ft === undefined ? (required === null || actual === null ? null : Number((actual - required).toFixed(2))) : Number(row.variance_ft),
+      variance_status: row.variance_status,
+      tolerance_ft: row.tolerance_ft === null || row.tolerance_ft === undefined ? null : Number(row.tolerance_ft),
+      rule_source: row.rule_source,
+      rule_source_reference: row.rule_source_reference,
+      reel_cable_id: row.reel_cable_id,
+      fiber_type: row.fiber_type,
+      notes: row.notes,
+      status: row.status,
+      commercial_treatment: "not_configured",
+      client_mutation_id: row.client_mutation_id,
+      created_at: row.created_at,
+    };
+  }
+
   private productionTotals(records: QueryResultRow[]) {
     const totals = new Map<string, { code: string; description: string; quantity: number; unit: string; count: number }>();
     const status_counts: Record<string, number> = { complete: 0, partial: 0, blocked: 0, rework: 0 };
@@ -3048,12 +3237,36 @@ export class SyncfieldController {
     return { by_code: [...totals.values()], record_count: records.length, status_counts };
   }
 
+  private coilVarianceStatus(required: number | null, actual: number | null, tolerance: number) {
+    if (required === null || actual === null) return "unknown";
+    return Math.abs(actual - required) <= tolerance ? "within_expectation" : "variance";
+  }
+
+  private defaultEasementForCoilType(coilType: string) {
+    if (coilType === "front_easement") return "front";
+    if (coilType === "rear_easement") return "rear";
+    return "unknown";
+  }
+
+  private coilTotals(coils: QueryResultRow[]) {
+    const actual = coils.reduce((sum, row) => sum + Number(row.actual_length_ft ?? 0), 0);
+    const required = coils.reduce((sum, row) => sum + Number(row.required_length_ft ?? 0), 0);
+    return {
+      coil_observation_count: coils.length,
+      required_coil_ft: Number(required.toFixed(2)),
+      actual_coil_ft: Number(actual.toFixed(2)),
+      variance_count: coils.filter((row) => row.variance_status === "variance").length,
+      commercial_treatment: "not_configured",
+    };
+  }
+
   private async buildReportSnapshot(client: PoolClient, report: QueryResultRow) {
     const records = await this.reportRecords(client, report.tenant_id, report.id);
     const annotations = await client.query("SELECT * FROM map_annotations WHERE tenant_id = $1 AND production_record_id = ANY($2::uuid[]) AND deleted_at IS NULL", [report.tenant_id, records.map((record) => record.id)]);
     const spans = await client.query("SELECT * FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
     const observations = await client.query("SELECT * FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
-    return { report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), totals: this.productionTotals(records) };
+    const coils = await client.query("SELECT * FROM syncfield_coil_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
+    return { report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), coil_observations: coils.rows.map((coil) => this.safeCoilObservation(coil)), totals: { ...this.productionTotals(records), coils: this.coilTotals(coils.rows) } };
   }
 
   private async requireProductionRecord(client: PoolClient, tenantId: string, recordId: string) {

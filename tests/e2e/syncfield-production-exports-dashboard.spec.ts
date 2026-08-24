@@ -74,9 +74,15 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     expect(csv).toContain("Customer Accepted Quantity");
     expect(csv).toContain("Design Segment ID");
     expect(csv).toContain("From Input Tick");
+    expect(csv).toContain("Required Coil FT");
+    expect(csv).toContain("Actual Coil FT");
+    expect(csv).toContain("Commercial Treatment");
     expect(csv).toContain("15-12-2");
     expect(csv).toContain("14826");
     expect(csv).toContain("14600");
+    expect(csv).toContain("front_easement");
+    expect(csv).toContain("rear_easement");
+    expect(csv).toContain("not_configured");
     expect(csv).toContain("\"'=+@SUM(1,2)\"");
     expect(csv).not.toMatch(/contractor_rate|customer_rate|margin|storage_key/i);
     const partnerDownload = await apiJson(request, fixture.partnerToken, "GET", `/syncfield/partner/production-exports/${first.id}/bytes`);
@@ -99,6 +105,8 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     expect(annotatedPdf).toContain("correction_required");
     expect(annotatedPdf).toContain("REDLINE 15-12-2->15-12-4");
     expect(annotatedPdf).toContain("IN/OUT 14826.00/14780.00");
+    expect(annotatedPdf).toContain("COIL 15-12-2; 15-12-4");
+    expect(annotatedPdf).toContain("actual=232.00");
     expect(annotatedPdf).toContain("point\\(257.04,411.84\\)");
     const daily = await apiJson(request, fixture.internalToken, "POST", "/syncfield/production-exports", {
       artifact_type: "daily_production_pdf",
@@ -108,6 +116,7 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     const dailyBytes = await apiJson(request, fixture.internalToken, "GET", `/syncfield/production-exports/${daily.id}/bytes`);
     const dailyPdf = Buffer.from(dailyBytes.content_base64, "base64").toString("latin1");
     expect(dailyPdf).toContain("Reported 141 LF; Customer Accepted 132");
+    expect(dailyPdf).toContain("Recorded coil/slack: 232 FT; Commercial treatment: not configured");
     expect(dailyPdf).toContain("Pending Customer QC");
     const after = await client.query("SELECT checksum FROM partner_restricted_file_objects WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.mapFileId]);
     expect(after.rows[0].checksum).toBe(before.rows[0].checksum);
@@ -171,6 +180,8 @@ async function seedP11Fixture(client: Client, secret: string): Promise<Fixture> 
   const fromObservation = crypto.randomUUID();
   const toObservation = crypto.randomUUID();
   const spanCompletion = crypto.randomUUID();
+  const frontCoil = crypto.randomUUID();
+  const rearCoil = crypto.randomUUID();
   const permissions = ["production_dashboard.read", "production_export.generate", "production_export.read", "production_closeout.read", "production_closeout.generate", "partner_production_dashboard.read", "partner_production_export.read", "partner_production_export.generate", "partner_production_history.read_own", "partner_production_export.read_own", "partner_context.read", "partner_actions.read", "partner_daily_production.read_org", "partner_production.read_org", "partner_daily_production.read", "partner_customer_qc.read", "partner_customer_qc.read_own"];
   await client.query("BEGIN");
   try {
@@ -237,6 +248,19 @@ async function seedP11Fixture(client: Client, secret: string): Promise<Fixture> 
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$12,$13,$14,$15,$16,'15-12-2','15-12-4',$17,'submitted',false,$18,$19)
       `,
       [spanCompletion, tenantA, orgA, projectId, workOrderId, mapAssignment, crewA, foremanWorker, designSegment, fiberRecord, reportId, mapDocumentId, mapVersionId, mapPage.rows[0].id, fromObservation, toObservation, { points: [{ x: 0.22, y: 0.48 }, { x: 0.5, y: 0.5 }, { x: 0.78, y: 0.52 }] }, revisionId, foremanUser],
+    );
+    await client.query(
+      `
+      INSERT INTO syncfield_coil_observations (
+        id,tenant_id,organization_id,project_id,work_order_id,assignment_id,crew_id,foreman_worker_id,production_date,map_document_id,map_version_id,map_page_id,
+        asset_observation_id,design_segment_id,span_completion_id,production_record_id,daily_report_id,submitted_revision_id,asset_identifier,easement_type,coil_type,
+        required_length_ft,actual_length_ft,variance_status,rule_source,rule_source_reference,reel_cable_id,fiber_type,status,created_by_user_id
+      )
+      VALUES
+        ($1,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$12,$13,$14,$15,$16,$17,'15-12-2','front','front_easement',150,150,'within_expectation','work_order_rule','Default front easement slack requirement','R-327','96CT','submitted',$18),
+        ($19,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$20,$13,$14,$15,$16,$17,'15-12-4','rear','rear_easement',80,82,'within_expectation','work_order_rule','Default rear easement slack requirement','R-327','96CT','submitted',$18)
+      `,
+      [frontCoil, tenantA, orgA, projectId, workOrderId, mapAssignment, crewA, foremanWorker, mapDocumentId, mapVersionId, mapPage.rows[0].id, fromObservation, designSegment, spanCompletion, fiberRecord, reportId, revisionId, foremanUser, rearCoil, toObservation],
     );
     await client.query("INSERT INTO map_annotations (tenant_id,production_record_id,map_version_id,page_number,annotation_type,x_ratio,y_ratio,display_status,created_by_user_id) VALUES ($1,$2,$3,1,'asset_point',0.42,0.48,'complete',$4)", [tenantA, transferRecord, mapVersionId, foremanUser]);
     await client.query("INSERT INTO map_annotations (tenant_id,production_record_id,map_version_id,page_number,annotation_type,start_x_ratio,start_y_ratio,end_x_ratio,end_y_ratio,display_status,created_by_user_id) VALUES ($1,$2,$3,1,'route_line',0.42,0.48,0.66,0.52,'partial',$4)", [tenantA, fiberRecord, mapVersionId, foremanUser]);
