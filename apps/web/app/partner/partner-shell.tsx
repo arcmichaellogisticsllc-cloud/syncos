@@ -100,6 +100,53 @@ type MapAssignment = {
   map?: { document_id?: string; version_id?: string; name?: string; customer_document_number?: string | null; revision_number?: number; revision_label?: string | null; page_count?: number; processing_status?: string; status?: string; original_filename?: string; file_hash?: string };
   work_zones?: Array<{ id?: string; name?: string; page_number?: number; x_ratio?: number; y_ratio?: number; zoom_level?: number }>;
 };
+type DesignSegment = {
+  id?: string;
+  production_code_id?: string | null;
+  production_code?: string | null;
+  production_description?: string | null;
+  from_asset_identifier?: string | null;
+  to_asset_identifier?: string | null;
+  design_label?: string | null;
+  design_length_ft?: number | null;
+  design_unit?: string | null;
+  geometry?: { points?: Array<{ x?: number; y?: number }> };
+  status?: string;
+  span_completion_id?: string | null;
+  completion_status?: string | null;
+  production_record_id?: string | null;
+  design_deviation?: boolean | null;
+};
+type AssetObservation = {
+  id?: string;
+  design_segment_id?: string | null;
+  asset_identifier?: string;
+  asset_type?: string;
+  pdf_x?: number;
+  pdf_y?: number;
+  input_tick?: number | null;
+  output_tick?: number | null;
+  tick_difference?: number | null;
+  tick_unit?: string;
+  reel_cable_id?: string | null;
+  fiber_type?: string | null;
+  notes?: string | null;
+  status?: string;
+};
+type SpanCompletion = {
+  id?: string;
+  design_segment_id?: string | null;
+  production_record_id?: string;
+  from_asset_observation_id?: string | null;
+  to_asset_observation_id?: string | null;
+  from_asset_identifier?: string;
+  to_asset_identifier?: string;
+  redline_geometry?: { points?: Array<{ x?: number; y?: number }> };
+  completion_status?: string;
+  design_deviation?: boolean;
+  deviation_reason?: string | null;
+  reported_quantity?: number | null;
+};
 type DailyJsa = {
   id?: string;
   status?: string;
@@ -283,6 +330,9 @@ type PortalData = {
   jsas?: DailyJsa[];
   productionToday?: DailyProduction | null;
   productionCodes?: ProductionCode[];
+  designSegments?: DesignSegment[];
+  assetObservations?: AssetObservation[];
+  spanCompletions?: SpanCompletion[];
   productionReports?: DailyProduction[];
   customerQcReports?: CustomerQcItem[];
   productionDashboard?: ProductionDashboard | null;
@@ -571,6 +621,7 @@ async function loadForeman(context: PartnerContext, actions: PartnerActions | un
   const needsAssignment = needsToday || section === "work-orders" || section === "work-order-detail";
   const needsMobilization = needsToday || section === "mobilization";
   const needsMap = needsToday || section === "field-map" || section === "daily-production" || section === "review-day";
+  const needsConstruction = section === "field-map" || section === "daily-production" || section === "review-day";
   const needsJsa = needsToday || section === "crews" || section === "crew-detail" || section === "workforce" || section === "daily-jsa" || section === "daily-production" || section === "review-day";
   const needsProduction = section === "daily-production" || section === "review-day";
   const needsProductionHistory = section === "daily-production" || section === "review-day";
@@ -585,7 +636,7 @@ async function loadForeman(context: PartnerContext, actions: PartnerActions | un
   if (foremanAssignments.length > 1 && !selectedAssignment) {
     return { context, actions, foremanAssignments, selectedAssignment: null };
   }
-  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, customerQcReports, productionHistory] = await Promise.all([
+  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, spanCompletions, customerQcReports, productionHistory] = await Promise.all([
     needsToday ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCrew ? safeFetch<Crew | null>("partner-workforce/foreman/crew", null) : null,
     needsCrew ? safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []) : [],
@@ -596,10 +647,13 @@ async function loadForeman(context: PartnerContext, actions: PartnerActions | un
     needsJsa && permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>(`syncfield/foreman/jsa/today${assignmentQuery}`, null) : null,
     needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<DailyProduction | null>(`syncfield/foreman/production/today${assignmentQuery}`, null) : null,
     needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>(`syncfield/foreman/production/codes${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<DesignSegment[]>(`syncfield/foreman/design-segments${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<AssetObservation[]>(`syncfield/foreman/asset-observations${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<SpanCompletion[]>(`syncfield/foreman/span-completions${assignmentQuery}`, []) : [],
     (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
     needsProductionHistory && permissions.includes("partner_production_history.read_own") ? safeFetch<ProductionDashboard | null>("syncfield/foreman/production-history", null) : null,
   ]);
-  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, spanCompletions, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
 }
 
 async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
@@ -822,11 +876,14 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
     return <EmptyPortal title="No assigned field map" body="A read-only field map appears after Sync assigns a READY Map Version to your Work Order and Crew." />;
   }
   const zones = assignment.work_zones ?? [];
+  const designSegments = data.designSegments ?? [];
+  const spanCompletions = data.spanCompletions ?? [];
+  const observations = data.assetObservations ?? [];
   return (
     <div className="field-map-shell">
       <section className="field-map-header" aria-label="Field map context">
         <div>
-          <p className="eyebrow">Read-only field map</p>
+          <p className="eyebrow">Assigned field map</p>
           <h3>{assignment.map.name} Rev {assignment.map.revision_number ?? 0}</h3>
           <p>{assignment.work_order?.work_order_number} · {assignment.crew?.name}</p>
         </div>
@@ -840,11 +897,29 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
           <button className="partner-button" type="button" aria-label="Zoom out">-</button>
           <button className="partner-button" type="button" aria-label="Zoom in">+</button>
         </div>
-        <div className="field-map-canvas" role="img" aria-label={`Read-only PDF map ${assignment.map.name} revision ${assignment.map.revision_number ?? 0}`}>
+        <div className="field-map-canvas field-construction-canvas" role="img" aria-label={`PDF map ${assignment.map.name} revision ${assignment.map.revision_number ?? 0} with planned and completed overlays`}>
           <span>{assignment.map.customer_document_number || assignment.map.name}</span>
           <strong>PDF page preview</strong>
           <small>Pan, zoom, and review the assigned print before recording production.</small>
+          <div className="field-design-layer" aria-hidden="true">
+            {designSegments.slice(0, 8).map((segment, index) => <MapPolyline key={segment.id ?? index} points={segment.geometry?.points} className="design" />)}
+          </div>
+          <div className="field-redline-layer" aria-hidden="true">
+            {spanCompletions.slice(0, 8).map((span, index) => <MapPolyline key={span.id ?? index} points={span.redline_geometry?.points} className="redline" />)}
+          </div>
+          <div className="field-pole-layer" aria-hidden="true">
+            {observations.slice(0, 12).map((observation) => (
+              <span key={observation.id} className="field-pole-marker" style={{ left: `${Number(observation.pdf_x ?? 0) * 100}%`, top: `${Number(observation.pdf_y ?? 0) * 100}%` }}>
+                {observation.asset_identifier}
+              </span>
+            ))}
+          </div>
         </div>
+      </section>
+      <section className="field-map-legend" aria-label="Map legend">
+        <span><b className="legend-line design" /> DESIGN / PLANNED</span>
+        <span><b className="legend-line redline" /> COMPLETED REDLINE</span>
+        <span><b className="legend-dot" /> POLE / ASSET OBSERVATION</span>
       </section>
       <Panel title="Work Zones" eyebrow="Navigation bookmarks">
         <div className="partner-actions-row">
@@ -853,14 +928,50 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
         </div>
       </Panel>
       <Panel title="Field Access" eyebrow="Assigned print">
-        <StatusRows rows={[["State", "Available"], ["Map Package", assignment.map.name], ["Production Entry", "Use the Production workspace"]]} />
+        <StatusRows rows={[["State", "Available"], ["Source", "Read-only field map"], ["Map Package", assignment.map.name], ["Production Entry", "Use the Production workspace"]]} />
       </Panel>
       <Panel title="Production marks" eyebrow="Authoritative quantity remains ProductionRecord">
-        <p className="partner-safe-text">Use Production to place tick/span annotations, capture pole or asset references, enter footage, and preserve fiber sequence traceability against this exact map revision.</p>
+        <StatusRows rows={[
+          ["Planned Segments", String(designSegments.length)],
+          ["Completed Redlines", String(spanCompletions.length)],
+          ["Pole Observations", String(observations.length)],
+        ]} />
+        <div className="field-construction-list" aria-label="Visible construction spans">
+          {designSegments.slice(0, 4).map((segment) => (
+            <div className="field-construction-list-item design" key={segment.id}>
+              <span>DESIGN</span>
+              <strong>{constructionSpanLabel(segment.from_asset_identifier, segment.to_asset_identifier, segment.design_label)}</strong>
+            </div>
+          ))}
+          {spanCompletions.slice(0, 4).map((span) => (
+            <div className="field-construction-list-item redline" key={span.id}>
+              <span>REDLINE</span>
+              <strong>{constructionSpanLabel(span.from_asset_identifier, span.to_asset_identifier)}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="partner-safe-text">Yellow planned segments, red completion overlays, and annotation marks are construction evidence. ProductionRecord remains the reported quantity authority.</p>
         <Link className="partner-button wide-touch" href="/syncfield/production">Open Production</Link>
       </Panel>
     </div>
   );
+}
+
+function constructionSpanLabel(from?: string | null, to?: string | null, fallback?: string | null) {
+  if (from || to) return `${from ?? "From"} -> ${to ?? "To"}`;
+  return fallback || "Unlabeled span";
+}
+
+function MapPolyline({ points, className }: { points?: Array<{ x?: number; y?: number }>; className: "design" | "redline" }) {
+  const valid = (points ?? []).filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
+  if (valid.length < 2) return null;
+  const style = {
+    left: `${Number(valid[0].x) * 100}%`,
+    top: `${Number(valid[0].y) * 100}%`,
+    width: `${Math.max(12, Math.abs(Number(valid[valid.length - 1].x) - Number(valid[0].x)) * 100)}%`,
+    transform: `rotate(${Math.atan2(Number(valid[valid.length - 1].y) - Number(valid[0].y), Number(valid[valid.length - 1].x) - Number(valid[0].x))}rad)`,
+  };
+  return <span className={`field-map-polyline ${className}`} style={style} />;
 }
 
 type ChecklistOption = readonly [string, string];
@@ -1119,14 +1230,22 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
   const fiber = codes.find((code) => code.code === "FIBER") ?? codes.find((code) => code.location_type === "route");
   const transfer = codes.find((code) => code.code === "TRANSFER") ?? codes.find((code) => code.location_type === "asset");
   const labor = codes.find((code) => code.code === "LABOR") ?? codes.find((code) => code.location_type === "daily");
+  const designSegments = data.designSegments ?? [];
+  const availableDesignSegments = designSegments.filter((segment) => !segment.span_completion_id);
+  const selectedDesignSegment = availableDesignSegments[0] ?? designSegments[0];
   const localRecords = localProductionRecords(queue.mutations, codes);
   const visibleRecords = [...(report?.records ?? []), ...localRecords];
   const visibleTotals = mergeProductionTotals(report?.totals, localRecords);
   const visibleAnnotationCount = (report?.annotation_count ?? 0) + localRecords.filter((record) => record.location_type !== "daily").length;
   const [error, setError] = useState<string | null>(null);
   const [spanForm, setSpanForm] = useState({
+    designSegmentId: selectedDesignSegment?.id ?? "",
     from: "Pole 12301",
     to: "Pole 12312",
+    fromInput: "14826",
+    fromOutput: "14780",
+    toInput: "14639",
+    toOutput: "14600",
     reel: "REEL-A",
     fiberType: "144ct",
     start: "14826",
@@ -1135,6 +1254,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
     explanation: "",
   });
   const sequenceCalc = sequencePreview(spanForm.start, spanForm.end, spanForm.reported);
+  const selectedSegment = designSegments.find((segment) => segment.id === spanForm.designSegmentId) ?? selectedDesignSegment;
 
   async function quickCreate(kind: "asset" | "route" | "daily") {
     const code = kind === "asset" ? transfer : kind === "route" ? fiber : labor;
@@ -1202,17 +1322,66 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
     });
   }
 
+  async function completeDesignSpan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!fiber?.id || !selectedSegment?.id) return;
+    const geometryPoints = selectedSegment.geometry?.points?.length ? selectedSegment.geometry.points : [{ x: 0.42, y: 0.48 }, { x: 0.66, y: 0.52 }];
+    const mutationId = crypto.randomUUID();
+    const spanMutation = {
+      client_mutation_id: mutationId,
+      assignment_id: data.selectedAssignment?.id,
+      work_date: report?.work_date,
+      design_segment_id: selectedSegment.id,
+      production_code_id: fiber.id,
+      page_number: 1,
+      from_asset_identifier: spanForm.from,
+      to_asset_identifier: spanForm.to,
+      reported_quantity: Number(spanForm.reported),
+      sequence_start: Number(spanForm.start),
+      sequence_end: Number(spanForm.end),
+      sequence_variance_explanation: spanForm.explanation || undefined,
+      reel_cable_id: spanForm.reel,
+      fiber_type: spanForm.fiberType,
+      from_observation: {
+        asset_type: "pole",
+        asset_identifier: spanForm.from,
+        pdf_x: geometryPoints[0]?.x ?? 0.42,
+        pdf_y: geometryPoints[0]?.y ?? 0.48,
+        input_tick: Number(spanForm.fromInput),
+        output_tick: Number(spanForm.fromOutput),
+        notes: "From pole observation for completed design span.",
+      },
+      to_observation: {
+        asset_type: "pole",
+        asset_identifier: spanForm.to,
+        pdf_x: geometryPoints[geometryPoints.length - 1]?.x ?? 0.66,
+        pdf_y: geometryPoints[geometryPoints.length - 1]?.y ?? 0.52,
+        input_tick: Number(spanForm.toInput),
+        output_tick: Number(spanForm.toOutput),
+        notes: "To pole observation for completed design span.",
+      },
+      redline_geometry: { points: geometryPoints },
+      design_deviation: false,
+      notes: "Completed against planned design segment.",
+    };
+    await saveConstructionMutation("CREATE_SPAN_COMPLETION", spanMutation);
+  }
+
   async function saveProduction(mutation: Record<string, unknown>) {
+    await saveConstructionMutation("CREATE_PRODUCTION", mutation);
+  }
+
+  async function saveConstructionMutation(operation: OfflineMutation["operation"], mutation: Record<string, unknown>) {
     setError(null);
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      await queue.enqueue({ operation: "CREATE_PRODUCTION", payload: mutation });
+      await queue.enqueue({ operation, payload: mutation });
       return;
     }
     try {
-      await syncosFetch("syncfield/foreman/production/records", { method: "POST", body: mutation });
+      await syncosFetch(fieldMutationEndpoint(operation), { method: "POST", body: mutation });
     } catch (caught) {
       if (isTransientNetworkError(caught)) {
-        await queue.enqueue({ operation: "CREATE_PRODUCTION", payload: mutation });
+        await queue.enqueue({ operation, payload: mutation });
         return;
       }
       setError(caught instanceof Error ? safeSyncError(caught.message) : "Production save failed.");
@@ -1255,8 +1424,46 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
           <button className="partner-button primary wide-touch" type="submit">Save Fiber Span</button>
         </form>
       </Panel>
+      <Panel title="Complete Planned Span" eyebrow="Yellow design to redline">
+        <form className="partner-form-grid compact-form" onSubmit={(event) => void completeDesignSpan(event)}>
+          <label>Planned segment<select value={spanForm.designSegmentId} onChange={(event) => {
+            const next = designSegments.find((segment) => segment.id === event.target.value);
+            setSpanForm({
+              ...spanForm,
+              designSegmentId: event.target.value,
+              from: next?.from_asset_identifier ?? spanForm.from,
+              to: next?.to_asset_identifier ?? spanForm.to,
+              reported: next?.design_length_ft ? String(next.design_length_ft) : spanForm.reported,
+            });
+          }}>
+            {designSegments.map((segment) => <option key={segment.id} value={segment.id}>{segment.design_label || `${segment.from_asset_identifier ?? "From"} to ${segment.to_asset_identifier ?? "To"}`} {segment.completion_status ? `(${segment.completion_status})` : ""}</option>)}
+          </select></label>
+          <label>From pole<input value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
+          <label>From input tick<input inputMode="decimal" value={spanForm.fromInput} onChange={(event) => setSpanForm({ ...spanForm, fromInput: event.target.value })} /></label>
+          <label>From output tick<input inputMode="decimal" value={spanForm.fromOutput} onChange={(event) => setSpanForm({ ...spanForm, fromOutput: event.target.value })} /></label>
+          <label>To pole<input value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
+          <label>To input tick<input inputMode="decimal" value={spanForm.toInput} onChange={(event) => setSpanForm({ ...spanForm, toInput: event.target.value })} /></label>
+          <label>To output tick<input inputMode="decimal" value={spanForm.toOutput} onChange={(event) => setSpanForm({ ...spanForm, toOutput: event.target.value })} /></label>
+          <label>Reported footage<input inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
+          <StatusRows rows={[
+            ["Design Footage", selectedSegment?.design_length_ft ? `${selectedSegment.design_length_ft} FT` : "Not provided"],
+            ["From Tick Difference", quantityText(sequenceFootage(spanForm.fromInput, spanForm.fromOutput), "FT")],
+            ["To Tick Difference", quantityText(sequenceFootage(spanForm.toInput, spanForm.toOutput), "FT")],
+            ["Financial Authority", "ProductionRecord after Customer QC"],
+          ]} />
+          <button className="partner-button primary wide-touch" type="submit" disabled={!selectedSegment?.id}>Mark Complete / Redline</button>
+        </form>
+        {!designSegments.length ? <p className="partner-safe-text">No planned design segments are prepared for this map revision yet. Use Fiber Span for manual field production until Sync Operations prepares the print.</p> : null}
+      </Panel>
       <Panel title="Today's Production" eyebrow={`${visibleRecords.length} records`}>
         <ProductionList records={visibleRecords} />
+      </Panel>
+      <Panel title="Construction Evidence" eyebrow="Subordinate to ProductionRecord">
+        <StatusRows rows={[
+          ["Planned Segments", String(designSegments.length)],
+          ["Redlines", String((data.spanCompletions ?? []).length)],
+          ["Pole Observations", String((data.assetObservations ?? []).length)],
+        ]} />
       </Panel>
       <Panel title="Daily Totals" eyebrow="Derived from ProductionRecords">
         <TotalsView totals={visibleTotals} annotationCount={visibleAnnotationCount} />
@@ -2165,9 +2372,10 @@ function recordTitle(record: ProductionRecord) {
 }
 
 type OfflineMutationStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT";
+type FieldMutationOperation = "CREATE_PRODUCTION" | "CREATE_ASSET_OBSERVATION" | "CREATE_SPAN_COMPLETION";
 type OfflineMutation = {
   mutationId: string;
-  operation: "CREATE_PRODUCTION";
+  operation: FieldMutationOperation;
   scopeKey: string;
   reportId?: string;
   localEntityId: string;
@@ -2231,7 +2439,7 @@ function useFieldProductionQueue(data: PortalData) {
     };
   }, [scopeKey]);
 
-  async function enqueue(entry: { operation: "CREATE_PRODUCTION"; payload: Record<string, unknown> }) {
+  async function enqueue(entry: { operation: FieldMutationOperation; payload: Record<string, unknown> }) {
     if (!scopeKey) return;
     const payload = { ...entry.payload, client_mutation_id: str(entry.payload.client_mutation_id) || crypto.randomUUID() };
     const mutation: OfflineMutation = {
@@ -2307,7 +2515,7 @@ async function replayFieldMutations(scopeKey: string, setMutations: (mutations: 
     await saveFieldMutation(syncing);
     setMutations(await listFieldMutations(scopeKey));
     try {
-      const canonical = await syncosFetch<Record<string, unknown>>("syncfield/foreman/production/records", { method: "POST", body: mutation.payload });
+      const canonical = await syncosFetch<Record<string, unknown>>(fieldMutationEndpoint(mutation.operation), { method: "POST", body: mutation.payload });
       await saveFieldMutation({ ...syncing, status: "SYNCED", serverEntityId: str(canonical.id), canonical, lastSafeError: undefined });
       syncedCount += 1;
       setMutations(await listFieldMutations(scopeKey));
@@ -2321,6 +2529,12 @@ async function replayFieldMutations(scopeKey: string, setMutations: (mutations: 
   }
   const remainingUnsynced = (await listFieldMutations(scopeKey)).filter(isUnsyncedMutation).length;
   return { syncedCount, remainingUnsynced };
+}
+
+function fieldMutationEndpoint(operation: FieldMutationOperation) {
+  if (operation === "CREATE_ASSET_OBSERVATION") return "syncfield/foreman/asset-observations";
+  if (operation === "CREATE_SPAN_COMPLETION") return "syncfield/foreman/span-completions";
+  return "syncfield/foreman/production/records";
 }
 
 function isReplayableMutation(mutation: OfflineMutation) {

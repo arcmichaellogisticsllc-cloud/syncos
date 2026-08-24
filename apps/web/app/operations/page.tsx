@@ -51,6 +51,7 @@ export default async function OperationsPage() {
           rows={[
             { label: "Projects", value: "Open", href: "/projects", helper: "Project context and handoff readiness." },
             { label: "Work orders", value: "Open", href: "/work-orders", helper: "Executable work packages." },
+            { label: "SyncField design prep", value: "Open", href: "/syncfield/design-prep", helper: "Trace planned spans on immutable customer prints." },
             { label: "Activated providers", value: formatValue(activatedProviders), href: "/work-orders", helper: "Available capacity supply." },
           ]}
         />

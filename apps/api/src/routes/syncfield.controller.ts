@@ -177,6 +177,12 @@ const correctionTypes = new Set(["quantity", "production_code", "location", "ass
 const correctionFieldValues = new Set(["reported_quantity", "production_code_id", "asset_identifier", "route_endpoint", "map_location", "notes", "evidence"]);
 const exportArtifactTypes = new Set(["annotated_map_pdf", "daily_production_pdf", "production_csv", "production_closeout_package"]);
 const exportGenerationModes = new Set(["submitted_day", "customer_qc_status", "final_accepted_closeout", "dashboard_export"]);
+const designSegmentStatuses = new Set(["active", "superseded", "void"]);
+const designSegmentSources = new Set(["manual", "imported", "derived"]);
+const designGeometryTypes = new Set(["pdf_point", "pdf_line", "pdf_polyline"]);
+const assetObservationTypes = new Set(["pole", "pedestal", "handhole", "vault", "cabinet", "splice_point", "terminal", "riser", "anchor", "other"]);
+const spanCompletionStatuses = new Set(["draft", "completed", "submitted", "void"]);
+const deviationReasons = new Set(["field_obstruction", "customer_direction", "engineering_change", "pole_unavailable", "make_ready_condition", "route_change", "other"]);
 const sequenceVarianceToleranceFeet = Number(process.env.SYNCOS_FIELD_SEQUENCE_VARIANCE_TOLERANCE_FT ?? 25);
 const defaultProductionCodes = [
   ["POLE-ATT", "Pole Attachment", "EA", "asset", true, false],
@@ -301,6 +307,72 @@ export class SyncfieldController {
     });
   }
 
+  @Get("organizations/:organizationId/map-versions/:versionId/design-segments")
+  @RequirePermission("syncfield_map.work_zone.manage")
+  async listDesignSegments(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("versionId") versionId: string) {
+    return this.withClient(async (client) => {
+      await this.organizationScope.requireOrganizationAccess(client, request.auth.tenantId, request.auth.userId, organizationId, "syncfield_map.work_zone.manage");
+      const version = await this.requireMapVersion(client, request.auth.tenantId, organizationId, versionId);
+      const result = await client.query(
+        `
+        SELECT ds.*, pc.code AS production_code, pc.description AS production_description, pc.unit_of_measure
+        FROM syncfield_design_segments ds
+        LEFT JOIN syncfield_production_codes pc ON pc.tenant_id = ds.tenant_id AND pc.id = ds.production_code_id
+        WHERE ds.tenant_id = $1 AND ds.map_version_id = $2 AND ds.map_document_id = $3 AND ds.deleted_at IS NULL
+        ORDER BY ds.created_at ASC
+        `,
+        [request.auth.tenantId, versionId, version.map_document_id],
+      );
+      return result.rows.map((row) => this.safeDesignSegment(row));
+    });
+  }
+
+  @Post("organizations/:organizationId/map-versions/:versionId/design-segments")
+  @RequirePermission("syncfield_map.work_zone.manage")
+  async createDesignSegment(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("versionId") versionId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      await this.organizationScope.requireOrganizationAccess(client, request.auth.tenantId, request.auth.userId, organizationId, "syncfield_map.work_zone.manage");
+      const version = await this.requireMapVersion(client, request.auth.tenantId, organizationId, versionId);
+      const pageNumber = this.positiveInt(body.page_number, "page_number is required");
+      const page = await this.requireMapPage(client, request.auth.tenantId, versionId, pageNumber);
+      const geometry = this.pdfGeometry(body.geometry ?? {
+        points: [
+          { x: body.start_x_ratio, y: body.start_y_ratio },
+          { x: body.end_x_ratio, y: body.end_y_ratio },
+        ],
+      });
+      const geometryType = String(body.geometry_type ?? (geometry.points.length > 2 ? "pdf_polyline" : "pdf_line")).toLowerCase();
+      if (!designGeometryTypes.has(geometryType)) throw new BadRequestException("geometry_type is invalid");
+      const source = String(body.source ?? "manual").toLowerCase();
+      if (!designSegmentSources.has(source)) throw new BadRequestException("source is invalid");
+      const productionCodeId = this.optionalString(body.production_code_id);
+      if (productionCodeId) await this.requireProductionCode(client, request.auth.tenantId, productionCodeId);
+      const workZoneId = this.optionalString(body.work_zone_id);
+      if (workZoneId) await this.requireWorkZone(client, request.auth.tenantId, versionId, workZoneId);
+      return this.writeWithClient(client, request, "design_segment.create", "design_segment.created", "syncfield_design_segment", async (writeClient) => {
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO syncfield_design_segments (
+            tenant_id, project_id, work_order_id, map_document_id, map_version_id, map_page_id, work_zone_id,
+            production_code_id, from_asset_identifier, to_asset_identifier, design_label, design_quantity,
+            design_unit, design_length_ft, geometry_type, geometry, source, source_reference, status, created_by_user_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'active',$19)
+          RETURNING *
+          `,
+          [
+            request.auth.tenantId, version.project_id, version.work_order_id, version.map_document_id, versionId, page.id, workZoneId,
+            productionCodeId, this.optionalString(body.from_asset_identifier), this.optionalString(body.to_asset_identifier),
+            this.optionalString(body.design_label), this.optionalNumber(body.design_quantity, "design_quantity must be non-negative"),
+            this.optionalString(body.design_unit), this.optionalNumber(body.design_length_ft, "design_length_ft must be non-negative"),
+            geometryType, geometry, source, this.optionalString(body.source_reference), request.auth.userId,
+          ],
+        );
+        return { entityType: "syncfield_design_segment", entityId: inserted.rows[0].id, afterState: this.safeDesignSegment(inserted.rows[0]) };
+      });
+    });
+  }
+
   @Post("organizations/:organizationId/map-versions/:versionId/assign")
   @RequirePermission("syncfield_map.assignment.manage")
   async assignMapVersion(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("versionId") versionId: string, @Body() body: Record<string, unknown>) {
@@ -360,6 +432,197 @@ export class SyncfieldController {
       const context = await this.requirePartnerForeman(client, request);
       const assignments = await this.activeForemanAssignments(client, context);
       return Promise.all(assignments.map((assignment) => this.safeAssignmentDetail(client, assignment)));
+    });
+  }
+
+  @Get("foreman/design-segments")
+  @RequirePermission("partner_map.read_assigned")
+  async foremanDesignSegments(@Req() request: AuthenticatedRequest, @Query("assignment_id") assignmentId?: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
+      const result = await client.query(
+        `
+        SELECT ds.*, pc.code AS production_code, pc.description AS production_description, pc.unit_of_measure,
+          sc.id AS span_completion_id, sc.completion_status, sc.production_record_id, sc.design_deviation
+        FROM syncfield_design_segments ds
+        LEFT JOIN syncfield_production_codes pc ON pc.tenant_id = ds.tenant_id AND pc.id = ds.production_code_id
+        LEFT JOIN LATERAL (
+          SELECT *
+          FROM syncfield_span_completions sc
+          WHERE sc.tenant_id = ds.tenant_id
+            AND sc.assignment_id = $3
+            AND sc.design_segment_id = ds.id
+            AND sc.deleted_at IS NULL
+            AND sc.completion_status <> 'void'
+          ORDER BY sc.created_at DESC
+          LIMIT 1
+        ) sc ON true
+        WHERE ds.tenant_id = $1
+          AND ds.map_version_id = $2
+          AND ds.status = 'active'
+          AND ds.deleted_at IS NULL
+        ORDER BY ds.created_at ASC
+        `,
+        [assignment.tenant_id, assignment.map_version_id, assignment.assignment_id],
+      );
+      return result.rows.map((row) => this.safeDesignSegment(row));
+    });
+  }
+
+  @Get("foreman/asset-observations")
+  @RequirePermission("partner_map.read_assigned")
+  async foremanAssetObservations(@Req() request: AuthenticatedRequest, @Query("assignment_id") assignmentId?: string, @Query("work_date") workDate?: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
+      const values: unknown[] = [assignment.tenant_id, assignment.assignment_id];
+      const where = ["tenant_id = $1", "assignment_id = $2", "deleted_at IS NULL"];
+      if (workDate) {
+        values.push(this.workDate(workDate));
+        where.push(`production_date = $${values.length}`);
+      }
+      const result = await client.query(`SELECT * FROM syncfield_asset_observations WHERE ${where.join(" AND ")} ORDER BY production_date DESC, created_at ASC`, values);
+      return result.rows.map((row) => this.safeAssetObservation(row));
+    });
+  }
+
+  @Post("foreman/asset-observations")
+  @RequirePermission("partner_production_record.create")
+  async createForemanAssetObservation(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
+      const date = this.workDate(String(body.work_date ?? ""));
+      return this.writeWithClient(client, request, "asset_observation.create", "asset_observation.created", "syncfield_asset_observation", async (writeClient) => {
+        await this.assertProductionGate(writeClient, assignment, date);
+        const report = await this.findDailyReport(writeClient, assignment, date) ?? await this.createReportInline(writeClient, request, assignment, date, body);
+        if (report.status !== "draft") throw new BadRequestException("submitted report is read-only");
+        const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+        const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "create_asset_observation");
+        if (receipt?.entity_id) {
+          const existing = await this.requireAssetObservation(writeClient, assignment.tenant_id, receipt.entity_id);
+          return { entityType: "syncfield_asset_observation", entityId: existing.id, afterState: this.safeAssetObservation(existing), skipEventAudit: true };
+        }
+        const designSegment = this.optionalString(body.design_segment_id) ? await this.requireDesignSegmentForAssignment(writeClient, assignment, String(body.design_segment_id)) : null;
+        const pageNumber = this.positiveInt(body.page_number ?? designSegment?.page_number, "page_number is required");
+        const page = await this.requireMapPage(writeClient, assignment.tenant_id, assignment.map_version_id, pageNumber);
+        const assetType = requireString(body.asset_type ?? "pole", "asset_type is required").toLowerCase();
+        if (!assetObservationTypes.has(assetType)) throw new BadRequestException("asset_type is invalid");
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO syncfield_asset_observations (
+            tenant_id, organization_id, project_id, work_order_id, assignment_id, crew_id, foreman_worker_id,
+            production_date, map_document_id, map_version_id, map_page_id, design_segment_id, asset_identifier, asset_type,
+            pdf_x, pdf_y, latitude, longitude, accuracy_m, input_tick, output_tick, tick_unit, reel_cable_id,
+            fiber_type, notes, daily_report_id, created_by_user_id, client_mutation_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+          ON CONFLICT (tenant_id, created_by_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL
+          DO UPDATE SET updated_at = syncfield_asset_observations.updated_at
+          RETURNING *
+          `,
+          [
+            assignment.tenant_id, assignment.organization_id, assignment.project_id, assignment.work_order_id, assignment.assignment_id, assignment.crew_id,
+            assignment.foreman_worker_id, date, assignment.map_document_id, assignment.map_version_id, page.id, designSegment?.id ?? null,
+            requireString(body.asset_identifier, "asset_identifier is required"), assetType, this.ratio(body.pdf_x ?? body.x_ratio, "pdf_x"), this.ratio(body.pdf_y ?? body.y_ratio, "pdf_y"),
+            this.optionalSignedNumber(body.latitude, "latitude is invalid"), this.optionalSignedNumber(body.longitude, "longitude is invalid"), this.optionalNumber(body.accuracy_m, "accuracy_m must be non-negative"),
+            this.optionalNumber(body.input_tick, "input_tick must be non-negative"), this.optionalNumber(body.output_tick, "output_tick must be non-negative"), this.optionalString(body.tick_unit) ?? "ft",
+            this.optionalString(body.reel_cable_id), this.optionalString(body.fiber_type), this.optionalString(body.notes), report.id, request.auth.userId, mutationId,
+          ],
+        );
+        await this.recordMutationReceipt(writeClient, request, mutationId, "create_asset_observation", "syncfield_asset_observation", inserted.rows[0].id, body);
+        return { entityType: "syncfield_asset_observation", entityId: inserted.rows[0].id, afterState: this.safeAssetObservation(inserted.rows[0]) };
+      });
+    });
+  }
+
+  @Get("foreman/span-completions")
+  @RequirePermission("partner_map.read_assigned")
+  async foremanSpanCompletions(@Req() request: AuthenticatedRequest, @Query("assignment_id") assignmentId?: string, @Query("work_date") workDate?: string) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, assignmentId);
+      const values: unknown[] = [assignment.tenant_id, assignment.assignment_id];
+      const where = ["sc.tenant_id = $1", "sc.assignment_id = $2", "sc.deleted_at IS NULL"];
+      if (workDate) {
+        values.push(this.workDate(workDate));
+        where.push(`sc.production_date = $${values.length}`);
+      }
+      const result = await client.query(`SELECT sc.*, pr.quantity_submitted, pr.status AS production_record_status FROM syncfield_span_completions sc JOIN production_records pr ON pr.tenant_id = sc.tenant_id AND pr.id = sc.production_record_id WHERE ${where.join(" AND ")} ORDER BY sc.production_date DESC, sc.created_at ASC`, values);
+      return result.rows.map((row) => this.safeSpanCompletion(row));
+    });
+  }
+
+  @Post("foreman/span-completions")
+  @RequirePermission("partner_production_record.create")
+  async createForemanSpanCompletion(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
+      const date = this.workDate(String(body.work_date ?? ""));
+      return this.writeWithClient(client, request, "span_completion.create", "span_completion.created", "syncfield_span_completion", async (writeClient) => {
+        await this.assertProductionGate(writeClient, assignment, date);
+        const report = await this.findDailyReport(writeClient, assignment, date) ?? await this.createReportInline(writeClient, request, assignment, date, body);
+        if (report.status !== "draft") throw new BadRequestException("submitted report is read-only");
+        const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+        const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "create_span_completion");
+        if (receipt?.entity_id) {
+          const existing = await this.requireSpanCompletion(writeClient, assignment.tenant_id, receipt.entity_id);
+          return { entityType: "syncfield_span_completion", entityId: existing.id, afterState: this.safeSpanCompletion(existing), skipEventAudit: true };
+        }
+        const designSegment = this.optionalString(body.design_segment_id) ? await this.requireDesignSegmentForAssignment(writeClient, assignment, String(body.design_segment_id)) : null;
+        const pageNumber = this.positiveInt(body.page_number ?? designSegment?.page_number, "page_number is required");
+        const page = await this.requireMapPage(writeClient, assignment.tenant_id, assignment.map_version_id, pageNumber);
+        const fromObservation = this.optionalString(body.from_asset_observation_id)
+          ? await this.requireScopedAssetObservation(writeClient, assignment, String(body.from_asset_observation_id), report.id)
+          : await this.createNestedAssetObservation(writeClient, request, assignment, report, date, body, designSegment, "from");
+        const toObservation = this.optionalString(body.to_asset_observation_id)
+          ? await this.requireScopedAssetObservation(writeClient, assignment, String(body.to_asset_observation_id), report.id)
+          : await this.createNestedAssetObservation(writeClient, request, assignment, report, date, body, designSegment, "to");
+        const fromAssetIdentifier = this.optionalString(body.from_asset_identifier) ?? fromObservation?.asset_identifier ?? designSegment?.from_asset_identifier;
+        const toAssetIdentifier = this.optionalString(body.to_asset_identifier) ?? toObservation?.asset_identifier ?? designSegment?.to_asset_identifier;
+        if (!fromAssetIdentifier) throw new BadRequestException("from_asset_identifier is required");
+        if (!toAssetIdentifier) throw new BadRequestException("to_asset_identifier is required");
+        const productionBody = { ...body, from_asset_identifier: fromAssetIdentifier, to_asset_identifier: toAssetIdentifier };
+        const productionRecord = this.optionalString(body.production_record_id)
+          ? await this.requireScopedDraftProductionRecord(writeClient, assignment, String(body.production_record_id), report.id)
+          : await this.createSpanProductionRecord(writeClient, request, assignment, report, date, productionBody, designSegment);
+        const redlineGeometry = this.pdfGeometry(body.redline_geometry ?? designSegment?.geometry ?? {
+          points: [
+            { x: body.start_x_ratio, y: body.start_y_ratio },
+            { x: body.end_x_ratio, y: body.end_y_ratio },
+          ],
+        });
+        const designDeviation = Boolean(body.design_deviation ?? false);
+        const deviationReason = this.optionalString(body.deviation_reason)?.toLowerCase() ?? null;
+        if (designDeviation && (!deviationReason || !deviationReasons.has(deviationReason))) throw new BadRequestException("deviation_reason is required for design deviation");
+        if (deviationReason === "other" && !this.optionalString(body.deviation_notes)) throw new BadRequestException("deviation_notes is required for OTHER deviation");
+        const inserted = await writeClient.query(
+          `
+          INSERT INTO syncfield_span_completions (
+            tenant_id, organization_id, project_id, work_order_id, assignment_id, crew_id, foreman_worker_id,
+            production_date, design_segment_id, production_record_id, daily_report_id, map_document_id, map_version_id,
+            map_page_id, from_asset_observation_id, to_asset_observation_id, from_asset_identifier, to_asset_identifier,
+            redline_geometry, completion_status, design_deviation, deviation_reason, deviation_notes, created_by_user_id, client_mutation_id
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'completed',$20,$21,$22,$23,$24)
+          ON CONFLICT (tenant_id, created_by_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL
+          DO UPDATE SET updated_at = syncfield_span_completions.updated_at
+          RETURNING *
+          `,
+          [
+            assignment.tenant_id, assignment.organization_id, assignment.project_id, assignment.work_order_id, assignment.assignment_id,
+            assignment.crew_id, assignment.foreman_worker_id, date, designSegment?.id ?? null, productionRecord.id, report.id,
+            assignment.map_document_id, assignment.map_version_id, page.id, fromObservation?.id ?? null, toObservation?.id ?? null,
+            fromAssetIdentifier,
+            toAssetIdentifier,
+            redlineGeometry, designDeviation, deviationReason, this.optionalString(body.deviation_notes), request.auth.userId, mutationId,
+          ],
+        );
+        await this.recordMutationReceipt(writeClient, request, mutationId, "create_span_completion", "syncfield_span_completion", inserted.rows[0].id, body);
+        return { entityType: "syncfield_span_completion", entityId: inserted.rows[0].id, afterState: this.safeSpanCompletion({ ...inserted.rows[0], quantity_submitted: productionRecord.quantity_submitted, production_record_status: productionRecord.status }) };
+      });
     });
   }
 
@@ -769,6 +1032,10 @@ export class SyncfieldController {
           [assignment.tenant_id, report.id, snapshot, request.auth.userId],
         );
         await writeClient.query("UPDATE production_records SET status = 'submitted', submitted_at = now(), submitted_by_user_id = $3, submitted_by = $3, locked_at = now(), updated_at = now() WHERE tenant_id = $1 AND daily_production_report_id = $2 AND status = 'draft'", [assignment.tenant_id, report.id, request.auth.userId]);
+        if (revision.rows[0]?.id) {
+          await writeClient.query("UPDATE syncfield_asset_observations SET status = 'submitted', submitted_revision_id = $3, updated_at = now() WHERE tenant_id = $1 AND daily_report_id = $2 AND status = 'draft' AND deleted_at IS NULL", [assignment.tenant_id, report.id, revision.rows[0].id]);
+          await writeClient.query("UPDATE syncfield_span_completions SET completion_status = 'submitted', submitted_revision_id = $3, updated_at = now() WHERE tenant_id = $1 AND daily_report_id = $2 AND completion_status IN ('draft','completed') AND deleted_at IS NULL", [assignment.tenant_id, report.id, revision.rows[0].id]);
+        }
         const submitted = await writeClient.query("UPDATE daily_production_reports SET status = 'submitted', submitted_at = now(), submitted_by_user_id = $3, general_notes = COALESCE($4, general_notes), updated_at = now() WHERE tenant_id = $1 AND id = $2 AND status = 'draft' RETURNING *", [assignment.tenant_id, report.id, request.auth.userId, this.optionalString(body.general_notes)]);
         await this.recordMutationReceipt(writeClient, request, mutationId, "submit_daily_report", "daily_report", report.id, body);
         return { entityType: "daily_report", entityId: report.id, beforeState: this.safeDailyProductionSummary(report), afterState: await this.safeDailyProductionDetail(writeClient, submitted.rows[0] ?? report), additionalEvents: [{ action: "daily_report_revision.create", eventType: "daily_report_revision.created", aggregateType: "daily_report_revision", entityType: "daily_report_revision", entityId: revision.rows[0]?.id ?? report.id, afterState: { daily_report_id: report.id, revision_number: 1 } }] };
@@ -1249,6 +1516,10 @@ export class SyncfieldController {
         pr.production_notes, pc.id AS production_code_id, pc.code, pc.description,
         COALESCE(pc.unit_of_measure, pr.unit) AS unit_of_measure, ma.id AS map_annotation_id, ma.annotation_type,
         ma.x_ratio, ma.y_ratio, ma.start_x_ratio, ma.start_y_ratio, ma.end_x_ratio, ma.end_y_ratio,
+        sc.id AS span_completion_id, sc.design_segment_id, sc.redline_geometry, sc.design_deviation, sc.deviation_reason,
+        sc.from_asset_identifier AS span_from_asset_identifier, sc.to_asset_identifier AS span_to_asset_identifier,
+        ds.design_label, ds.design_length_ft, fo.input_tick AS from_input_tick, fo.output_tick AS from_output_tick,
+        too.input_tick AS to_input_tick, too.output_tick AS to_output_tick,
         mv.id AS map_version_id, mv.revision_number AS map_revision_number, mv.revision_label, mv.file_hash AS map_file_hash,
         md.name AS map_name, ld.decision AS customer_decision, ld.customer_accepted_quantity,
         ld.customer_reason_code, ld.customer_comments, ld.qc_authority_organization_id, qa.name AS qc_authority_name,
@@ -1275,6 +1546,10 @@ export class SyncfieldController {
       LEFT JOIN latest_decision ld ON ld.tenant_id = pr.tenant_id AND ld.production_record_id = pr.id
       LEFT JOIN organizations qa ON qa.tenant_id = r.tenant_id AND qa.id = ld.qc_authority_organization_id
       LEFT JOIN production_corrections corr ON corr.tenant_id = r.tenant_id AND corr.production_record_id = pr.id AND corr.deleted_at IS NULL AND corr.status <> 'cancelled'
+      LEFT JOIN syncfield_span_completions sc ON sc.tenant_id = pr.tenant_id AND sc.production_record_id = pr.id AND sc.deleted_at IS NULL
+      LEFT JOIN syncfield_design_segments ds ON ds.tenant_id = sc.tenant_id AND ds.id = sc.design_segment_id
+      LEFT JOIN syncfield_asset_observations fo ON fo.tenant_id = sc.tenant_id AND fo.id = sc.from_asset_observation_id
+      LEFT JOIN syncfield_asset_observations too ON too.tenant_id = sc.tenant_id AND too.id = sc.to_asset_observation_id
       WHERE ${where.join(" AND ")}
       ORDER BY r.work_date DESC, r.submitted_at DESC NULLS LAST, pr.created_at ASC
       LIMIT 500
@@ -1416,6 +1691,12 @@ export class SyncfieldController {
       decision: row.customer_decision,
       accepted: row.customer_accepted_quantity === null ? null : Number(row.customer_accepted_quantity),
       annotation: row.map_annotation_id,
+      span_completion: row.span_completion_id,
+      design_segment: row.design_segment_id,
+      from_input_tick: row.from_input_tick === null ? null : Number(row.from_input_tick),
+      from_output_tick: row.from_output_tick === null ? null : Number(row.from_output_tick),
+      to_input_tick: row.to_input_tick === null ? null : Number(row.to_input_tick),
+      to_output_tick: row.to_output_tick === null ? null : Number(row.to_output_tick),
     }));
     return createHash("sha256").update(JSON.stringify({ artifactType, generationMode, query, facts })).digest("hex");
   }
@@ -1447,11 +1728,15 @@ export class SyncfieldController {
   }
 
   private renderProductionCsv(rows: QueryResultRow[]) {
-    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "Start Tick", "End Tick", "Reel/Cable", "Fiber Type", "Sequence Start", "Sequence End", "Sequence Direction", "Sequence Footage", "Sequence Variance", "Sequence Variance Status", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
+    const headers = ["Work Date", "Project", "Work Order", "Partner", "Crew", "Foreman", "Map", "Map Revision", "Daily Report Revision", "Design Segment ID", "Design Label", "Design Length FT", "Span Completion ID", "Asset Type", "Asset Identifier", "From Asset", "To Asset", "From Input Tick", "From Output Tick", "To Input Tick", "To Output Tick", "Start Tick", "End Tick", "Reel/Cable", "Fiber Type", "Sequence Start", "Sequence End", "Sequence Direction", "Sequence Footage", "Sequence Variance", "Sequence Variance Status", "Design Deviation", "Deviation Reason", "Production Code", "Production Description", "Reported Quantity", "Customer Accepted Quantity", "Unit", "Field Production Status", "Customer QC Outcome", "Correction Status", "Customer QC Authority", "Customer Decision Date", "Partner Correction Resubmitted Date", "Notes"];
     const body = rows.map((row) => [
       this.dateOnly(row.work_date), row.project_name, row.work_order_number, row.partner_name, row.crew_name, row.foreman_worker_id, row.map_name, row.map_revision_number, row.revision_number,
-      row.asset_type, row.asset_identifier, row.from_asset_identifier, row.to_asset_identifier, row.tick_start_label, row.tick_end_label, row.reel_cable_id, row.fiber_type,
+      row.design_segment_id, row.design_label, row.design_length_ft, row.span_completion_id,
+      row.asset_type, row.asset_identifier, row.span_from_asset_identifier ?? row.from_asset_identifier, row.span_to_asset_identifier ?? row.to_asset_identifier,
+      row.from_input_tick, row.from_output_tick, row.to_input_tick, row.to_output_tick,
+      row.tick_start_label, row.tick_end_label, row.reel_cable_id, row.fiber_type,
       row.sequence_start, row.sequence_end, row.sequence_direction, row.sequence_calculated_footage, row.sequence_reported_variance, row.sequence_variance_status,
+      row.design_deviation, row.deviation_reason,
       row.code, row.description, row.reported_quantity,
       row.customer_accepted_quantity === null || row.customer_accepted_quantity === undefined ? "Pending Customer QC" : row.customer_accepted_quantity,
       row.unit_of_measure, row.field_status, row.customer_decision ?? "pending_customer_qc", row.correction_status, row.qc_authority_name, row.decision_recorded_at, row.resubmitted_at, row.production_notes,
@@ -1466,9 +1751,12 @@ export class SyncfieldController {
   }
 
   private annotatedMapPdfLines(rows: QueryResultRow[], generationMode: string) {
-    const lines = ["Sync Comm Systems", `Artifact Type: ${generationMode}`, `Project: ${rows[0].project_name}`, `Work Order: ${rows[0].work_order_number}`, `Map Revision: ${rows[0].map_revision_number ?? "not set"}`, "Legend: check complete, partial, warning blocked, rework, Customer Accepted, Customer Correction Required, Customer Rejected, Pending Customer QC"];
+    const lines = ["Sync Comm Systems", `Artifact Type: ${generationMode}`, `Project: ${rows[0].project_name}`, `Work Order: ${rows[0].work_order_number}`, `Map Revision: ${rows[0].map_revision_number ?? "not set"}`, "Legend: yellow planned design, red completed redline, check submitted or accepted, warning correction required"];
     for (const row of rows.filter((candidate) => candidate.map_annotation_id).slice(0, 24)) {
       lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} ${row.customer_decision ?? "pending_customer_qc"} ${this.annotationCoordinateLabel(row)} ${this.sequenceLabel(row)}`);
+    }
+    for (const row of rows.filter((candidate) => candidate.span_completion_id).slice(0, 12)) {
+      lines.push(`REDLINE ${row.span_from_asset_identifier ?? row.from_asset_identifier}->${row.span_to_asset_identifier ?? row.to_asset_identifier} design=${row.design_label ?? row.design_segment_id ?? "unmatched"} IN/OUT ${row.from_input_tick ?? ""}/${row.from_output_tick ?? ""} to ${row.to_input_tick ?? ""}/${row.to_output_tick ?? ""}`);
     }
     return lines;
   }
@@ -1995,6 +2283,47 @@ export class SyncfieldController {
     return result.rows[0];
   }
 
+  private async requireMapPage(client: PoolClient, tenantId: string, versionId: string, pageNumber: number) {
+    const result = await client.query("SELECT * FROM syncfield_map_pages WHERE tenant_id = $1 AND map_version_id = $2 AND page_number = $3", [tenantId, versionId, pageNumber]);
+    if (!result.rows[0]) throw new NotFoundException("Map page not found");
+    return result.rows[0];
+  }
+
+  private async requireWorkZone(client: PoolClient, tenantId: string, versionId: string, workZoneId: string) {
+    const result = await client.query("SELECT * FROM syncfield_map_work_zones WHERE tenant_id = $1 AND map_version_id = $2 AND id = $3 AND deleted_at IS NULL", [tenantId, versionId, workZoneId]);
+    if (!result.rows[0]) throw new BadRequestException("work_zone_id is invalid");
+    return result.rows[0];
+  }
+
+  private async requireProductionCode(client: PoolClient, tenantId: string, productionCodeId: string) {
+    const result = await client.query("SELECT * FROM syncfield_production_codes WHERE tenant_id = $1 AND id = $2 AND active = true AND deleted_at IS NULL", [tenantId, productionCodeId]);
+    if (!result.rows[0]) throw new BadRequestException("production_code_id is invalid");
+    return result.rows[0];
+  }
+
+  private async requireDesignSegmentForAssignment(client: PoolClient, assignment: MapAssignmentRow, segmentId: string) {
+    const result = await client.query(
+      `
+      SELECT ds.*, mp.page_number, pc.code AS production_code, pc.description AS production_description, pc.unit_of_measure
+      FROM syncfield_design_segments ds
+      JOIN syncfield_map_pages mp ON mp.tenant_id = ds.tenant_id AND mp.id = ds.map_page_id
+      LEFT JOIN syncfield_production_codes pc ON pc.tenant_id = ds.tenant_id AND pc.id = ds.production_code_id
+      WHERE ds.tenant_id = $1
+        AND ds.id = $2
+        AND ds.project_id = $3
+        AND ds.work_order_id = $4
+        AND ds.map_document_id = $5
+        AND ds.map_version_id = $6
+        AND ds.status = 'active'
+        AND ds.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [assignment.tenant_id, segmentId, assignment.project_id, assignment.work_order_id, assignment.map_document_id, assignment.map_version_id],
+    );
+    if (!result.rows[0]) throw new NotFoundException("Design Segment not found for active assignment");
+    return result.rows[0];
+  }
+
   private async createMapPdfFile(client: PoolClient, request: AuthenticatedRequest, organizationId: string, capacityProviderId: string, documentId: string, body: Record<string, unknown>) {
     for (const key of storageRejectKeys) if (body[key] !== undefined) throw new BadRequestException("storage references are server-generated");
     const fileName = this.sanitizeFileName(requireString(body.file_name, "file_name is required"));
@@ -2196,12 +2525,16 @@ export class SyncfieldController {
       `
       SELECT psa.authorization_status
       FROM production_start_authorizations psa
-      JOIN notice_to_proceed_versions n ON n.tenant_id = psa.tenant_id AND n.id = psa.notice_id
-      WHERE psa.tenant_id = $1 AND n.work_order_version_id = $2 AND n.crew_assignment_id = $3
-        AND psa.current = true AND psa.authorization_status = 'authorized'
+      WHERE psa.tenant_id = $1
+        AND psa.work_order_version_id = $2
+        AND psa.crew_assignment_id = $3
+        AND psa.organization_id = $4
+        AND psa.crew_id = $5
+        AND psa.current = true
+        AND psa.authorization_status = 'authorized'
       LIMIT 1
       `,
-      [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_assignment_id],
+      [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_assignment_id, assignment.organization_id, assignment.crew_id],
     );
     if (!authorization.rows[0]) blockers.push("production_start_not_authorized");
     const jsa = await this.findJsa(client, assignment, workDate);
@@ -2269,6 +2602,103 @@ export class SyncfieldController {
     const result = await client.query("SELECT * FROM daily_production_reports WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, reportId]);
     if (!result.rows[0]) throw new NotFoundException("daily production report not found");
     return result.rows[0] as DailyProductionReportRow;
+  }
+
+  private async requireAssetObservation(client: PoolClient, tenantId: string, observationId: string) {
+    const result = await client.query("SELECT * FROM syncfield_asset_observations WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, observationId]);
+    if (!result.rows[0]) throw new NotFoundException("asset observation not found");
+    return result.rows[0];
+  }
+
+  private async requireSpanCompletion(client: PoolClient, tenantId: string, spanCompletionId: string) {
+    const result = await client.query("SELECT * FROM syncfield_span_completions WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, spanCompletionId]);
+    if (!result.rows[0]) throw new NotFoundException("span completion not found");
+    return result.rows[0];
+  }
+
+  private async requireScopedAssetObservation(client: PoolClient, assignment: MapAssignmentRow, observationId: string, reportId: string) {
+    const result = await client.query(
+      `
+      SELECT *
+      FROM syncfield_asset_observations
+      WHERE tenant_id = $1 AND id = $2 AND assignment_id = $3 AND crew_id = $4 AND organization_id = $5
+        AND daily_report_id = $6 AND deleted_at IS NULL AND status = 'draft'
+      LIMIT 1
+      `,
+      [assignment.tenant_id, observationId, assignment.assignment_id, assignment.crew_id, assignment.organization_id, reportId],
+    );
+    if (!result.rows[0]) throw new NotFoundException("asset observation not found for active assignment");
+    return result.rows[0];
+  }
+
+  private async requireScopedDraftProductionRecord(client: PoolClient, assignment: MapAssignmentRow, recordId: string, reportId: string) {
+    const record = await this.requireScopedProductionRecord(client, assignment, recordId);
+    if (record.daily_production_report_id !== reportId || record.status !== "draft" || record.locked_at) throw new BadRequestException("production record is not editable in current report");
+    return record;
+  }
+
+  private nestedObservationBody(body: Record<string, unknown>, side: "from" | "to") {
+    const value = body[`${side}_observation`];
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+  }
+
+  private async createNestedAssetObservation(
+    client: PoolClient,
+    request: AuthenticatedRequest,
+    assignment: MapAssignmentRow,
+    report: DailyProductionReportRow,
+    workDate: string,
+    body: Record<string, unknown>,
+    designSegment: QueryResultRow | null,
+    side: "from" | "to",
+  ) {
+    const nested = this.nestedObservationBody(body, side);
+    if (!nested) return null;
+    const mutationId = this.optionalString(nested.client_mutation_id) ?? `${requireString(body.client_mutation_id, "clientMutationId is required")}:${side}`;
+    const pageNumber = this.positiveInt(nested.page_number ?? body.page_number ?? designSegment?.page_number, "page_number is required");
+    const page = await this.requireMapPage(client, assignment.tenant_id, assignment.map_version_id, pageNumber);
+    const assetType = requireString(nested.asset_type ?? "pole", "asset_type is required").toLowerCase();
+    if (!assetObservationTypes.has(assetType)) throw new BadRequestException("asset_type is invalid");
+    const identifierFallback = side === "from" ? designSegment?.from_asset_identifier : designSegment?.to_asset_identifier;
+    const geometrySource = body.redline_geometry ?? designSegment?.geometry;
+    const points = geometrySource ? this.pdfGeometry(geometrySource).points : [];
+    const defaultPoint = side === "from" ? points[0] : points[points.length - 1];
+    const inserted = await client.query(
+      `
+      INSERT INTO syncfield_asset_observations (
+        tenant_id, organization_id, project_id, work_order_id, assignment_id, crew_id, foreman_worker_id,
+        production_date, map_document_id, map_version_id, map_page_id, design_segment_id, asset_identifier, asset_type,
+        pdf_x, pdf_y, latitude, longitude, accuracy_m, input_tick, output_tick, tick_unit, reel_cable_id,
+        fiber_type, notes, daily_report_id, created_by_user_id, client_mutation_id
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+      ON CONFLICT (tenant_id, created_by_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL
+      DO UPDATE SET updated_at = syncfield_asset_observations.updated_at
+      RETURNING *
+      `,
+      [
+        assignment.tenant_id, assignment.organization_id, assignment.project_id, assignment.work_order_id, assignment.assignment_id, assignment.crew_id,
+        assignment.foreman_worker_id, workDate, assignment.map_document_id, assignment.map_version_id, page.id, designSegment?.id ?? null,
+        requireString(nested.asset_identifier ?? body[`${side}_asset_identifier`] ?? identifierFallback, `${side}_observation.asset_identifier is required`),
+        assetType,
+        this.ratio(nested.pdf_x ?? nested.x_ratio ?? defaultPoint?.x, `${side}_observation.pdf_x`),
+        this.ratio(nested.pdf_y ?? nested.y_ratio ?? defaultPoint?.y, `${side}_observation.pdf_y`),
+        this.optionalSignedNumber(nested.latitude, `${side}_observation.latitude is invalid`),
+        this.optionalSignedNumber(nested.longitude, `${side}_observation.longitude is invalid`),
+        this.optionalNumber(nested.accuracy_m, `${side}_observation.accuracy_m must be non-negative`),
+        this.optionalNumber(nested.input_tick, `${side}_observation.input_tick must be non-negative`),
+        this.optionalNumber(nested.output_tick, `${side}_observation.output_tick must be non-negative`),
+        this.optionalString(nested.tick_unit) ?? "ft",
+        this.optionalString(nested.reel_cable_id) ?? this.optionalString(body.reel_cable_id),
+        this.optionalString(nested.fiber_type) ?? this.optionalString(body.fiber_type),
+        this.optionalString(nested.notes),
+        report.id,
+        request.auth.userId,
+        mutationId,
+      ],
+    );
+    return inserted.rows[0];
   }
 
   private async requireAuthorizedProductionCode(client: PoolClient, assignment: MapAssignmentRow, codeId: string) {
@@ -2350,6 +2780,57 @@ export class SyncfieldController {
     };
   }
 
+  private async createSpanProductionRecord(client: PoolClient, request: AuthenticatedRequest, assignment: MapAssignmentRow, report: DailyProductionReportRow, workDate: string, body: Record<string, unknown>, designSegment: QueryResultRow | null) {
+    const productionCodeId = this.optionalString(body.production_code_id) ?? designSegment?.production_code_id;
+    if (!productionCodeId) throw new BadRequestException("production_code_id is required");
+    const code = await this.requireAuthorizedProductionCode(client, assignment, String(productionCodeId));
+    if (code.location_type !== "route") throw new BadRequestException("SpanCompletion requires a route production code");
+    const quantity = this.positiveNumber(body.reported_quantity, "reported_quantity must be positive");
+    const sequence = this.sequenceTraceability(body, quantity, code);
+    const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
+    const geometry = this.pdfGeometry(body.redline_geometry ?? designSegment?.geometry ?? {
+      points: [
+        { x: body.start_x_ratio, y: body.start_y_ratio },
+        { x: body.end_x_ratio, y: body.end_y_ratio },
+      ],
+    });
+    const first = geometry.points[0];
+    const last = geometry.points[geometry.points.length - 1];
+    const inserted = await client.query(
+      `
+      INSERT INTO production_records (
+        tenant_id, project_id, work_order_id, work_order_version_id, capacity_provider_id, crew_id, foreman_user_id,
+        foreman_worker_id, submitted_by_user_id, submitted_by, production_date, quantity_submitted, quantity, claimed_quantity,
+        unit_type, unit, rate_code_id, production_type, qc_status, billable_status, status, daily_production_report_id,
+        partner_organization_id, map_document_id, map_version_id, syncfield_production_code_id, syncfield_location_type,
+        syncfield_status, from_asset_identifier, to_asset_identifier, map_page, tick_start_x_ratio, tick_start_y_ratio,
+        tick_end_x_ratio, tick_end_y_ratio, tick_start_label, tick_end_label, reel_cable_id, fiber_type,
+        sequence_start, sequence_end, sequence_direction, sequence_calculated_footage, sequence_reported_variance,
+        sequence_variance_status, sequence_variance_explanation, client_mutation_id, production_notes, created_by, updated_by
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,$7,$9,$10,$10,$10,$11,$11,NULL,'daily_production','not_started','not_billable','draft',$12,$13,$14,$15,$16,'route',$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$7,$7)
+      ON CONFLICT (tenant_id, foreman_user_id, client_mutation_id) WHERE client_mutation_id IS NOT NULL AND daily_production_report_id IS NOT NULL
+      DO UPDATE SET updated_at = production_records.updated_at
+      RETURNING *
+      `,
+      [
+        assignment.tenant_id, assignment.project_id, assignment.work_order_id, assignment.work_order_version_id, assignment.capacity_provider_id, assignment.crew_id,
+        request.auth.userId, assignment.foreman_worker_id, workDate, quantity, code.unit_of_measure, report.id, assignment.organization_id,
+        assignment.map_document_id, assignment.map_version_id, code.id, String(body.status ?? "complete").toLowerCase(),
+        this.optionalString(body.from_asset_identifier) ?? designSegment?.from_asset_identifier,
+        this.optionalString(body.to_asset_identifier) ?? designSegment?.to_asset_identifier,
+        this.positiveInt(body.page_number ?? designSegment?.page_number, "page_number is required"),
+        first.x, first.y, last.x, last.y,
+        this.optionalString(body.tick_start_label), this.optionalString(body.tick_end_label),
+        sequence.reelCableId, sequence.fiberType, sequence.sequenceStart, sequence.sequenceEnd,
+        sequence.sequenceDirection, sequence.sequenceCalculatedFootage, sequence.sequenceReportedVariance,
+        sequence.sequenceVarianceStatus, sequence.sequenceVarianceExplanation, mutationId, this.optionalString(body.notes),
+      ],
+    );
+    await this.insertAnnotation(client, request, assignment, inserted.rows[0], "route", { mapPage: this.positiveInt(body.page_number ?? designSegment?.page_number, "page_number is required"), startX: first.x, startY: first.y, endX: last.x, endY: last.y }, String(body.status ?? "complete").toLowerCase());
+    return inserted.rows[0];
+  }
+
   private async insertAnnotation(client: PoolClient, request: AuthenticatedRequest, assignment: MapAssignmentRow, record: QueryResultRow, locationType: string, values: Record<string, unknown>, status: string) {
     if (locationType === "asset") {
       await client.query(
@@ -2394,7 +2875,9 @@ export class SyncfieldController {
   private async safeDailyProductionDetail(client: PoolClient, row: QueryResultRow) {
     const records = await this.reportRecords(client, row.tenant_id, row.id);
     const annotations = await client.query("SELECT * FROM map_annotations WHERE tenant_id = $1 AND production_record_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, records.map((record) => record.id)]);
-    return { ...this.safeDailyProductionSummary(row), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), totals: this.productionTotals(records), annotation_count: annotations.rowCount ?? 0 };
+    const spans = await client.query("SELECT * FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, row.id]);
+    const observations = await client.query("SELECT * FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC", [row.tenant_id, row.id]);
+    return { ...this.safeDailyProductionSummary(row), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), totals: this.productionTotals(records), annotation_count: annotations.rowCount ?? 0 };
   }
 
   private safeDailyProductionSummary(row: QueryResultRow) {
@@ -2454,6 +2937,103 @@ export class SyncfieldController {
     return { id: row.id, production_record_id: row.production_record_id, map_version_id: row.map_version_id, page_number: Number(row.page_number), annotation_type: row.annotation_type, x_ratio: row.x_ratio === null ? null : Number(row.x_ratio), y_ratio: row.y_ratio === null ? null : Number(row.y_ratio), start_x_ratio: row.start_x_ratio === null ? null : Number(row.start_x_ratio), start_y_ratio: row.start_y_ratio === null ? null : Number(row.start_y_ratio), end_x_ratio: row.end_x_ratio === null ? null : Number(row.end_x_ratio), end_y_ratio: row.end_y_ratio === null ? null : Number(row.end_y_ratio), display_status: row.display_status };
   }
 
+  private safeDesignSegment(row: QueryResultRow) {
+    return {
+      id: row.id,
+      project_id: row.project_id,
+      work_order_id: row.work_order_id,
+      map_document_id: row.map_document_id,
+      map_version_id: row.map_version_id,
+      map_page_id: row.map_page_id,
+      work_zone_id: row.work_zone_id,
+      production_code_id: row.production_code_id,
+      production_code: row.production_code,
+      production_description: row.production_description,
+      from_asset_identifier: row.from_asset_identifier,
+      to_asset_identifier: row.to_asset_identifier,
+      design_label: row.design_label,
+      design_quantity: row.design_quantity === null || row.design_quantity === undefined ? null : Number(row.design_quantity),
+      design_unit: row.design_unit,
+      design_length_ft: row.design_length_ft === null || row.design_length_ft === undefined ? null : Number(row.design_length_ft),
+      geometry_type: row.geometry_type,
+      geometry: row.geometry,
+      source: row.source,
+      source_reference: row.source_reference,
+      status: row.status,
+      span_completion_id: row.span_completion_id,
+      completion_status: row.completion_status ?? "not_started",
+      production_record_id: row.production_record_id,
+      design_deviation: row.design_deviation === null || row.design_deviation === undefined ? null : Boolean(row.design_deviation),
+    };
+  }
+
+  private safeAssetObservation(row: QueryResultRow) {
+    return {
+      id: row.id,
+      organization_id: row.organization_id,
+      project_id: row.project_id,
+      work_order_id: row.work_order_id,
+      assignment_id: row.assignment_id,
+      crew_id: row.crew_id,
+      foreman_worker_id: row.foreman_worker_id,
+      production_date: this.dateOnly(row.production_date),
+      map_document_id: row.map_document_id,
+      map_version_id: row.map_version_id,
+      map_page_id: row.map_page_id,
+      design_segment_id: row.design_segment_id,
+      asset_identifier: row.asset_identifier,
+      asset_type: row.asset_type,
+      pdf_x: Number(row.pdf_x),
+      pdf_y: Number(row.pdf_y),
+      input_tick: row.input_tick === null || row.input_tick === undefined ? null : Number(row.input_tick),
+      output_tick: row.output_tick === null || row.output_tick === undefined ? null : Number(row.output_tick),
+      tick_difference: row.input_tick === null || row.input_tick === undefined || row.output_tick === null || row.output_tick === undefined ? null : Number(Math.abs(Number(row.output_tick) - Number(row.input_tick)).toFixed(2)),
+      tick_unit: row.tick_unit,
+      reel_cable_id: row.reel_cable_id,
+      fiber_type: row.fiber_type,
+      notes: row.notes,
+      status: row.status,
+      daily_report_id: row.daily_report_id,
+      submitted_revision_id: row.submitted_revision_id,
+      client_mutation_id: row.client_mutation_id,
+      created_at: row.created_at,
+    };
+  }
+
+  private safeSpanCompletion(row: QueryResultRow) {
+    return {
+      id: row.id,
+      organization_id: row.organization_id,
+      project_id: row.project_id,
+      work_order_id: row.work_order_id,
+      assignment_id: row.assignment_id,
+      crew_id: row.crew_id,
+      foreman_worker_id: row.foreman_worker_id,
+      production_date: this.dateOnly(row.production_date),
+      design_segment_id: row.design_segment_id,
+      production_record_id: row.production_record_id,
+      daily_report_id: row.daily_report_id,
+      submitted_revision_id: row.submitted_revision_id,
+      map_document_id: row.map_document_id,
+      map_version_id: row.map_version_id,
+      map_page_id: row.map_page_id,
+      from_asset_observation_id: row.from_asset_observation_id,
+      to_asset_observation_id: row.to_asset_observation_id,
+      from_asset_identifier: row.from_asset_identifier,
+      to_asset_identifier: row.to_asset_identifier,
+      redline_geometry: row.redline_geometry,
+      completion_status: row.completion_status,
+      design_deviation: Boolean(row.design_deviation),
+      deviation_reason: row.deviation_reason,
+      deviation_notes: row.deviation_notes,
+      quantity_submitted: row.quantity_submitted === null || row.quantity_submitted === undefined ? null : Number(row.quantity_submitted),
+      reported_quantity: row.quantity_submitted === null || row.quantity_submitted === undefined ? null : Number(row.quantity_submitted),
+      production_record_status: row.production_record_status,
+      client_mutation_id: row.client_mutation_id,
+      created_at: row.created_at,
+    };
+  }
+
   private productionTotals(records: QueryResultRow[]) {
     const totals = new Map<string, { code: string; description: string; quantity: number; unit: string; count: number }>();
     const status_counts: Record<string, number> = { complete: 0, partial: 0, blocked: 0, rework: 0 };
@@ -2471,7 +3051,9 @@ export class SyncfieldController {
   private async buildReportSnapshot(client: PoolClient, report: QueryResultRow) {
     const records = await this.reportRecords(client, report.tenant_id, report.id);
     const annotations = await client.query("SELECT * FROM map_annotations WHERE tenant_id = $1 AND production_record_id = ANY($2::uuid[]) AND deleted_at IS NULL", [report.tenant_id, records.map((record) => record.id)]);
-    return { report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), totals: this.productionTotals(records) };
+    const spans = await client.query("SELECT * FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
+    const observations = await client.query("SELECT * FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
+    return { report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), totals: this.productionTotals(records) };
   }
 
   private async requireProductionRecord(client: PoolClient, tenantId: string, recordId: string) {
@@ -2682,6 +3264,20 @@ export class SyncfieldController {
     return number;
   }
 
+  private optionalNumber(value: unknown, message: string): number | null {
+    if (value === undefined || value === null || value === "") return null;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) throw new BadRequestException(message);
+    return number;
+  }
+
+  private optionalSignedNumber(value: unknown, message: string): number | null {
+    if (value === undefined || value === null || value === "") return null;
+    const number = Number(value);
+    if (!Number.isFinite(number)) throw new BadRequestException(message);
+    return number;
+  }
+
   private nonNegativeNumber(value: unknown, message: string): number {
     const number = Number(value);
     if (!Number.isFinite(number) || number < 0) throw new BadRequestException(message);
@@ -2692,6 +3288,18 @@ export class SyncfieldController {
     const number = Number(value);
     if (!Number.isFinite(number) || number < 0 || number > 1) throw new BadRequestException(`${field} must be between 0 and 1`);
     return number;
+  }
+
+  private pdfGeometry(value: unknown): { points: Array<{ x: number; y: number }> } {
+    const candidate = value && typeof value === "object" ? value as { points?: unknown } : {};
+    const points = Array.isArray(candidate.points) ? candidate.points : [];
+    if (points.length < 2) throw new BadRequestException("PDF geometry requires at least two points");
+    return {
+      points: points.map((point, index) => {
+        const row = point && typeof point === "object" ? point as { x?: unknown; y?: unknown } : {};
+        return { x: this.ratio(row.x, `geometry.points.${index}.x`), y: this.ratio(row.y, `geometry.points.${index}.y`) };
+      }),
+    };
   }
 
   private textArray(value: unknown, allowed: Set<string>, field: string): string[] {

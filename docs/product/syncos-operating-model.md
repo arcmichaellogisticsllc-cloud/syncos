@@ -122,6 +122,16 @@ Purpose:
 
 SyncField captures field facts. It does not approve Partners, assign unrelated work, run Customer QC, create invoices, execute payments, or expose internal finance/admin controls.
 
+Construction record rule:
+
+- DesignSegments are planned work on immutable map versions.
+- SpanCompletions and redlines are completed/as-built evidence.
+- Pole/Asset Observations preserve raw field ticks.
+- ProductionRecord remains authoritative reported production.
+- Customer-accepted ProductionRecord quantity remains financial truth.
+
+Detailed construction-record semantics are maintained in `docs/product/syncfield-construction-record-model.md`.
+
 ## F. Command Center
 
 Command Center is the executive prioritization layer.

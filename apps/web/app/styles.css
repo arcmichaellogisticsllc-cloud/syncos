@@ -3142,3 +3142,125 @@ th {
     width: 100%;
   }
 }
+
+.field-construction-canvas {
+  overflow: hidden;
+  position: relative;
+}
+
+.field-design-layer,
+.field-redline-layer,
+.field-pole-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.field-map-polyline {
+  display: block;
+  height: 0;
+  position: absolute;
+  transform-origin: left center;
+  z-index: 2;
+}
+
+.field-map-polyline.design {
+  border-top: 6px solid #f5b800;
+  box-shadow: 0 0 0 2px rgba(10, 18, 32, 0.24);
+}
+
+.field-map-polyline.redline {
+  border-top: 5px solid #d72626;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.72);
+  z-index: 3;
+}
+
+.field-pole-marker {
+  background: #fff;
+  border: 2px solid #06152e;
+  color: #06152e;
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1;
+  max-width: 120px;
+  overflow: hidden;
+  padding: 6px 8px;
+  position: absolute;
+  text-overflow: ellipsis;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 4;
+}
+
+.field-map-legend {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+
+.field-map-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.field-construction-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.field-construction-list-item {
+  align-items: center;
+  border: 1px solid #d9e0ea;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.field-construction-list-item span {
+  color: #526278;
+  font-family: var(--font-display);
+  font-size: 11px;
+}
+
+.field-construction-list-item strong {
+  color: #06152e;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.field-construction-list-item.design {
+  border-left: 5px solid #f5b800;
+}
+
+.field-construction-list-item.redline {
+  border-left: 5px solid #d72626;
+}
+
+.legend-line {
+  display: inline-block;
+  height: 0;
+  width: 34px;
+}
+
+.legend-line.design {
+  border-top: 5px solid #f5b800;
+}
+
+.legend-line.redline {
+  border-top: 5px solid #d72626;
+}
+
+.legend-dot {
+  background: #fff;
+  border: 2px solid #06152e;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}

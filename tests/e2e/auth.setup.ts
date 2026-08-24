@@ -23,7 +23,7 @@ export default async function globalSetup(_config: FullConfig) {
     const seeded = manifest.personas[persona.slug];
     if (!seeded) throw new Error(`Missing seeded persona in manifest: ${persona.slug}`);
     const token = createToken({ sub: seeded.userId, tenant_id: manifest.tenant.id, email: seeded.email }, secret);
-    const response = await fetch(`${apiBaseUrl}/auth/me/permissions`, {
+    const response = await fetch(`${apiBaseUrl}/auth/me`, {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!response.ok) {

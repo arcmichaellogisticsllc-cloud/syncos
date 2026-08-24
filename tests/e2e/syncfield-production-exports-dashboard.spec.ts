@@ -72,6 +72,11 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     const csv = Buffer.from(bytes.content_base64, "base64").toString("utf8");
     expect(csv).toContain("Reported Quantity");
     expect(csv).toContain("Customer Accepted Quantity");
+    expect(csv).toContain("Design Segment ID");
+    expect(csv).toContain("From Input Tick");
+    expect(csv).toContain("15-12-2");
+    expect(csv).toContain("14826");
+    expect(csv).toContain("14600");
     expect(csv).toContain("\"'=+@SUM(1,2)\"");
     expect(csv).not.toMatch(/contractor_rate|customer_rate|margin|storage_key/i);
     const partnerDownload = await apiJson(request, fixture.partnerToken, "GET", `/syncfield/partner/production-exports/${first.id}/bytes`);
@@ -91,7 +96,9 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     const annotatedBytes = await apiJson(request, fixture.internalToken, "GET", `/syncfield/production-exports/${annotated.id}/bytes`);
     const annotatedPdf = Buffer.from(annotatedBytes.content_base64, "base64").toString("latin1");
     expect(annotatedPdf.startsWith("%PDF-")).toBe(true);
-    expect(annotatedPdf).toContain("Customer Correction Required");
+    expect(annotatedPdf).toContain("correction_required");
+    expect(annotatedPdf).toContain("REDLINE 15-12-2->15-12-4");
+    expect(annotatedPdf).toContain("IN/OUT 14826.00/14780.00");
     expect(annotatedPdf).toContain("point\\(257.04,411.84\\)");
     const daily = await apiJson(request, fixture.internalToken, "POST", "/syncfield/production-exports", {
       artifact_type: "daily_production_pdf",
@@ -144,9 +151,11 @@ async function seedP11Fixture(client: Client, secret: string): Promise<Fixture> 
   const rateScheduleId = crypto.randomUUID();
   const workOrderVersionId = crypto.randomUUID();
   const crewA = crypto.randomUUID();
+  const crewAssignment = crypto.randomUUID();
   const foremanWorker = crypto.randomUUID();
   const mapDocumentId = crypto.randomUUID();
   const mapVersionId = crypto.randomUUID();
+  const mapAssignment = crypto.randomUUID();
   const mapFileId = crypto.randomUUID();
   const jsaId = crypto.randomUUID();
   const reportId = crypto.randomUUID();
@@ -158,6 +167,10 @@ async function seedP11Fixture(client: Client, secret: string): Promise<Fixture> 
   const transferRecord = crypto.randomUUID();
   const fiberRecord = crypto.randomUUID();
   const laborRecord = crypto.randomUUID();
+  const designSegment = crypto.randomUUID();
+  const fromObservation = crypto.randomUUID();
+  const toObservation = crypto.randomUUID();
+  const spanCompletion = crypto.randomUUID();
   const permissions = ["production_dashboard.read", "production_export.generate", "production_export.read", "production_closeout.read", "production_closeout.generate", "partner_production_dashboard.read", "partner_production_export.read", "partner_production_export.generate", "partner_production_history.read_own", "partner_production_export.read_own", "partner_context.read", "partner_actions.read", "partner_daily_production.read_org", "partner_production.read_org", "partner_daily_production.read", "partner_customer_qc.read", "partner_customer_qc.read_own"];
   await client.query("BEGIN");
   try {
@@ -182,10 +195,13 @@ async function seedP11Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("INSERT INTO partner_worker_user_links (tenant_id,organization_id,worker_id,tenant_user_id,status) VALUES ($1,$2,$3,$4,'active')", [tenantA, orgA, foremanWorker, foremanTenantUser]);
     await client.query("INSERT INTO work_orders (id,tenant_id,project_id,assigned_capacity_provider_id,assigned_crew_id,title,work_type,expected_units,unit_type,status,work_order_name,work_order_number,scope_summary,map_link,assignment_type,assigned_organization_id,partner_organization_id,partner_rate_schedule_id,governing_agreement_version_id,partner_execution_status,partner_effective_date,unit,planned_quantity,qc_authority_organization_id) VALUES ($1,$2,$3,$4,$5,'P11 WO','fiber',3000,'feet','assigned','P11 WO','WO-P11','P11 fiber scope','MAP-P11','partner_contractor',$6,$6,$7,$8,'active','2026-08-01','feet',3000,$9)", [workOrderId, tenantA, projectId, providerA, crewA, orgA, rateScheduleId, agreementVersionId, customerOrg]);
     await client.query("INSERT INTO partner_work_order_versions (id,tenant_id,organization_id,capacity_provider_id,project_id,work_order_id,governing_agreement_version_id,assigned_crew_id,rate_schedule_id,work_order_number,scope_summary,map_work_package_ref,production_unit,status,effective_date,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'WO-P11','P11 fiber scope','MAP-P11','feet','active','2026-08-01',$10)", [workOrderVersionId, tenantA, orgA, providerA, projectId, workOrderId, agreementVersionId, crewA, rateScheduleId, internalUser]);
+    await client.query("INSERT INTO partner_work_order_crew_assignments (id,tenant_id,organization_id,capacity_provider_id,work_order_id,work_order_version_id,crew_id,status,assigned_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8)", [crewAssignment, tenantA, orgA, providerA, workOrderId, workOrderVersionId, crewA, internalUser]);
     await client.query("INSERT INTO syncfield_map_documents (id,tenant_id,project_id,work_order_id,name,customer_document_number,status,created_by_user_id) VALUES ($1,$2,$3,$4,'P11 Map','ARL019','active',$5)", [mapDocumentId, tenantA, projectId, workOrderId, internalUser]);
     await client.query("INSERT INTO partner_restricted_file_objects (id,tenant_id,organization_id,capacity_provider_id,category,related_entity_type,related_entity_id,file_name,mime_type,size_bytes,checksum,storage_key,uploaded_by_user_id) VALUES ($1,$2,$3,$4,'syncfield_map_original_pdf','syncfield_map_version',$5,'map.pdf','application/pdf',16,'original-map-checksum',$6,$7)", [mapFileId, tenantA, orgA, providerA, mapVersionId, `${tenantA}/${orgA}/p11-map.pdf`, internalUser]);
     await client.query("INSERT INTO syncfield_map_versions (id,tenant_id,map_document_id,revision_number,revision_label,original_filename,original_file_object_id,file_hash,page_count,processing_status,status,uploaded_by_user_id) VALUES ($1,$2,$3,1,'Rev 0','map.pdf',$4,'original-map-checksum',1,'ready','ready',$5)", [mapVersionId, tenantA, mapDocumentId, mapFileId, internalUser]);
     await client.query("INSERT INTO syncfield_map_pages (tenant_id,map_version_id,page_number,pdf_width,pdf_height) VALUES ($1,$2,1,612,792)", [tenantA, mapVersionId]);
+    const mapPage = await client.query("SELECT id FROM syncfield_map_pages WHERE tenant_id = $1 AND map_version_id = $2 AND page_number = 1", [tenantA, mapVersionId]);
+    await client.query("INSERT INTO syncfield_map_assignments (id,tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_assignment_id,crew_id,foreman_worker_id,map_document_id,map_version_id,assignment_status,assigned_by_user_id,current) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active',$13,true)", [mapAssignment, tenantA, projectId, workOrderId, workOrderVersionId, orgA, providerA, crewAssignment, crewA, foremanWorker, mapDocumentId, mapVersionId, internalUser]);
     await client.query("INSERT INTO daily_jsas (id,tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,map_version_id,status,work_location,foreman_certified,submitted_by_user_id,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'2026-08-25',$11,'completed','P11 work area',true,$10,now())", [jsaId, tenantA, projectId, workOrderId, workOrderVersionId, orgA, providerA, crewA, foremanWorker, foremanUser, mapVersionId]);
     await client.query("INSERT INTO daily_production_reports (id,tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,map_document_id,map_version_id,daily_jsa_id,status,submitted_at,submitted_by_user_id,revision_number,completeness_status,customer_qc_outcome) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'2026-08-25',$11,$12,$13,'submitted',now(),$10,1,'complete','customer_correction_required')", [reportId, tenantA, projectId, workOrderId, workOrderVersionId, orgA, providerA, crewA, foremanWorker, foremanUser, mapDocumentId, mapVersionId, jsaId]);
     await client.query("INSERT INTO daily_production_report_revisions (id,tenant_id,daily_report_id,revision_number,snapshot_json,reason,submitted_by_user_id) VALUES ($1,$2,$3,1,'{}','submitted',$4)", [revisionId, tenantA, reportId, foremanUser]);
@@ -195,6 +211,33 @@ async function seedP11Fixture(client: Client, secret: string): Promise<Fixture> 
     await insertProduction(client, tenantA, projectId, workOrderId, workOrderVersionId, orgA, providerA, crewA, foremanWorker, foremanUser, reportId, transferRecord, transferCode, 1, "EA", "asset", "complete", "Pole 12301", null, null, "=+@SUM(1,2)");
     await insertProduction(client, tenantA, projectId, workOrderId, workOrderVersionId, orgA, providerA, crewA, foremanWorker, foremanUser, reportId, fiberRecord, fiberCode, 141, "LF", "route", "partial", null, "Pole 12301", "Pole 12312", "Fiber notes");
     await insertProduction(client, tenantA, projectId, workOrderId, workOrderVersionId, orgA, providerA, crewA, foremanWorker, foremanUser, reportId, laborRecord, laborCode, 8, "HR", "daily", "complete", null, null, null, "Crew labor");
+    await client.query(
+      "INSERT INTO syncfield_design_segments (id,tenant_id,project_id,work_order_id,map_document_id,map_version_id,map_page_id,production_code_id,from_asset_identifier,to_asset_identifier,design_label,design_quantity,design_unit,design_length_ft,geometry_type,geometry,source,status,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'15-12-2','15-12-4','ARL019 span 15-12-2 to 15-12-4',141,'FT',141,'pdf_polyline',$9,'manual','active',$10)",
+      [designSegment, tenantA, projectId, workOrderId, mapDocumentId, mapVersionId, mapPage.rows[0].id, fiberCode, { points: [{ x: 0.22, y: 0.48 }, { x: 0.5, y: 0.5 }, { x: 0.78, y: 0.52 }] }, internalUser],
+    );
+    await client.query(
+      `
+      INSERT INTO syncfield_asset_observations (
+        id,tenant_id,organization_id,project_id,work_order_id,assignment_id,crew_id,foreman_worker_id,production_date,map_document_id,map_version_id,map_page_id,
+        design_segment_id,asset_identifier,asset_type,pdf_x,pdf_y,input_tick,output_tick,tick_unit,reel_cable_id,fiber_type,status,daily_report_id,submitted_revision_id,created_by_user_id
+      )
+      VALUES
+        ($1,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$12,'15-12-2','pole',0.22,0.48,14826,14780,'ft','REEL-ARL019-A','144ct','submitted',$13,$14,$15),
+        ($16,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$12,'15-12-4','pole',0.78,0.52,14639,14600,'ft','REEL-ARL019-A','144ct','submitted',$13,$14,$15)
+      `,
+      [fromObservation, tenantA, orgA, projectId, workOrderId, mapAssignment, crewA, foremanWorker, mapDocumentId, mapVersionId, mapPage.rows[0].id, designSegment, reportId, revisionId, foremanUser, toObservation],
+    );
+    await client.query(
+      `
+      INSERT INTO syncfield_span_completions (
+        id,tenant_id,organization_id,project_id,work_order_id,assignment_id,crew_id,foreman_worker_id,production_date,design_segment_id,production_record_id,daily_report_id,
+        map_document_id,map_version_id,map_page_id,from_asset_observation_id,to_asset_observation_id,from_asset_identifier,to_asset_identifier,
+        redline_geometry,completion_status,design_deviation,submitted_revision_id,created_by_user_id
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'2026-08-25',$9,$10,$11,$12,$13,$14,$15,$16,'15-12-2','15-12-4',$17,'submitted',false,$18,$19)
+      `,
+      [spanCompletion, tenantA, orgA, projectId, workOrderId, mapAssignment, crewA, foremanWorker, designSegment, fiberRecord, reportId, mapDocumentId, mapVersionId, mapPage.rows[0].id, fromObservation, toObservation, { points: [{ x: 0.22, y: 0.48 }, { x: 0.5, y: 0.5 }, { x: 0.78, y: 0.52 }] }, revisionId, foremanUser],
+    );
     await client.query("INSERT INTO map_annotations (tenant_id,production_record_id,map_version_id,page_number,annotation_type,x_ratio,y_ratio,display_status,created_by_user_id) VALUES ($1,$2,$3,1,'asset_point',0.42,0.48,'complete',$4)", [tenantA, transferRecord, mapVersionId, foremanUser]);
     await client.query("INSERT INTO map_annotations (tenant_id,production_record_id,map_version_id,page_number,annotation_type,start_x_ratio,start_y_ratio,end_x_ratio,end_y_ratio,display_status,created_by_user_id) VALUES ($1,$2,$3,1,'route_line',0.42,0.48,0.66,0.52,'partial',$4)", [tenantA, fiberRecord, mapVersionId, foremanUser]);
     await client.query("INSERT INTO customer_qc_cycles (id,tenant_id,project_id,work_order_id,work_order_version_id,daily_report_id,daily_report_revision_id,partner_organization_id,crew_id,qc_authority_organization_id,cycle_number,status,submitted_to_customer_at,source_reference,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,'awaiting_partner_correction',now() - interval '3 days','customer-email',$11)", [cycleId, tenantA, projectId, workOrderId, workOrderVersionId, reportId, revisionId, orgA, crewA, customerOrg, internalUser]);

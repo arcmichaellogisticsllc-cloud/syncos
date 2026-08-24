@@ -29,6 +29,8 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
   let codes: Record<string, string>;
   let reportId: string;
   let submittedRecordId: string;
+  let designSegmentId: string;
+  let spanCompletionId: string;
 
   test.beforeAll(async ({ request }) => {
     const connectionString = process.env.DATABASE_URL;
@@ -179,6 +181,155 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(badCoordinate.status()).toBe(400);
   });
 
+  test("DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency", async ({ request, page }) => {
+    const segmentBody = {
+      page_number: 1,
+      production_code_id: codes.FIBER,
+      from_asset_identifier: "15-12-2",
+      to_asset_identifier: "15-12-4",
+      design_label: "ARL019 span 15-12-2 to 15-12-4",
+      design_quantity: 141,
+      design_unit: "FT",
+      design_length_ft: 141,
+      geometry_type: "pdf_polyline",
+      geometry: { points: [{ x: 0.22, y: 0.48 }, { x: 0.5, y: 0.5 }, { x: 0.78, y: 0.52 }] },
+      source: "manual",
+      source_reference: "ARL019 synthetic planned span",
+    };
+    const segment = await apiJson(request, seeded.internalToken, "POST", `/syncfield/organizations/${seeded.orgA}/map-versions/${seeded.mapVersionId}/design-segments`, segmentBody);
+    designSegmentId = segment.id;
+    expect(segment.map_version_id).toBe(seeded.mapVersionId);
+    expect(segment.from_asset_identifier).toBe("15-12-2");
+    expect(segment.status).toBe("active");
+
+    const foremanDesignEdit = await request.post(apiUrl(`/syncfield/organizations/${seeded.orgA}/map-versions/${seeded.mapVersionId}/design-segments`), {
+      headers: auth(seeded.foremanToken),
+      data: { ...segmentBody, client_mutation_id: crypto.randomUUID() },
+    });
+    expect(foremanDesignEdit.status()).toBe(403);
+
+    const crossTenantDesign = await request.get(apiUrl("/syncfield/foreman/design-segments"), { headers: auth(seeded.tenantBToken) });
+    expect(crossTenantDesign.status()).toBeGreaterThanOrEqual(403);
+
+    const assignedSegments = await apiJson(request, seeded.foremanToken, "GET", `/syncfield/foreman/design-segments?assignment_id=${seeded.assignmentId}`);
+    expect(assignedSegments.some((row: Record<string, unknown>) => row.id === designSegmentId && row.completion_status === "not_started")).toBe(true);
+
+    const standaloneObservationMutation = crypto.randomUUID();
+    const standaloneObservation = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/asset-observations", {
+      client_mutation_id: standaloneObservationMutation,
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      design_segment_id: designSegmentId,
+      page_number: 1,
+      asset_type: "pole",
+      asset_identifier: "15-12-2",
+      pdf_x: 0.22,
+      pdf_y: 0.48,
+      input_tick: 14826,
+      output_tick: 14780,
+      reel_cable_id: "REEL-ARL019-A",
+      fiber_type: "144ct",
+    });
+    expect(standaloneObservation.input_tick).toBe(14826);
+    expect(standaloneObservation.output_tick).toBe(14780);
+    expect(standaloneObservation.tick_difference).toBe(46);
+    const repeatedPoleObservation = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/asset-observations", {
+      client_mutation_id: crypto.randomUUID(),
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      design_segment_id: designSegmentId,
+      page_number: 1,
+      asset_type: "pole",
+      asset_identifier: "15-12-2",
+      pdf_x: 0.23,
+      pdf_y: 0.49,
+      input_tick: 14800,
+      output_tick: 14775,
+      notes: "Second same-day field observation is allowed when traceability differs.",
+    });
+    expect(repeatedPoleObservation.id).not.toBe(standaloneObservation.id);
+    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 8 });
+
+    const partnerAdminWrite = await request.post(apiUrl("/syncfield/foreman/asset-observations"), {
+      headers: auth(seeded.adminToken),
+      data: { client_mutation_id: crypto.randomUUID(), assignment_id: seeded.assignmentId, work_date: today(), page_number: 1, asset_identifier: "15-12-X", pdf_x: 0.2, pdf_y: 0.2 },
+    });
+    expect(partnerAdminWrite.status()).toBe(403);
+
+    const badAssignment = await request.post(apiUrl("/syncfield/foreman/asset-observations"), {
+      headers: auth(seeded.foremanToken),
+      data: { client_mutation_id: crypto.randomUUID(), assignment_id: crypto.randomUUID(), work_date: today(), page_number: 1, asset_identifier: "15-12-X", pdf_x: 0.2, pdf_y: 0.2 },
+    });
+    expect(badAssignment.status()).toBeGreaterThanOrEqual(400);
+
+    const spanMutationId = crypto.randomUUID();
+    const spanBody = {
+      client_mutation_id: spanMutationId,
+      assignment_id: seeded.assignmentId,
+      work_date: today(),
+      design_segment_id: designSegmentId,
+      production_code_id: codes.FIBER,
+      page_number: 1,
+      from_asset_identifier: "15-12-2",
+      to_asset_identifier: "15-12-4",
+      reported_quantity: 141,
+      sequence_start: 14780,
+      sequence_end: 14639,
+      reel_cable_id: "REEL-ARL019-A",
+      fiber_type: "144ct",
+      from_observation: { asset_type: "pole", asset_identifier: "15-12-2", pdf_x: 0.22, pdf_y: 0.48, input_tick: 14826, output_tick: 14780 },
+      to_observation: { asset_type: "pole", asset_identifier: "15-12-4", pdf_x: 0.78, pdf_y: 0.52, input_tick: 14639, output_tick: 14600 },
+      redline_geometry: { points: [{ x: 0.22, y: 0.48 }, { x: 0.5, y: 0.5 }, { x: 0.78, y: 0.52 }] },
+      design_deviation: false,
+      notes: "Completed against planned ARL019 span.",
+    };
+    const span = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/span-completions", spanBody);
+    spanCompletionId = span.id;
+    expect(span.design_segment_id).toBe(designSegmentId);
+    expect(span.production_record_id).toBeTruthy();
+    expect(span.quantity_submitted).toBe(141);
+    expect(span.from_asset_observation_id).toBeTruthy();
+    expect(span.to_asset_observation_id).toBeTruthy();
+    expect(span.redline_geometry.points).toHaveLength(3);
+    expect(span.design_deviation).toBe(false);
+
+    const retry = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/span-completions", spanBody);
+    expect(retry.id).toBe(span.id);
+    const duplicateRows = await client.query("SELECT count(*)::int AS count FROM syncfield_span_completions WHERE tenant_id = $1 AND client_mutation_id = $2", [seeded.tenantA, spanMutationId]);
+    expect(duplicateRows.rows[0].count).toBe(1);
+
+    const missingReason = await request.post(apiUrl("/syncfield/foreman/span-completions"), {
+      headers: auth(seeded.foremanToken),
+      data: { ...spanBody, client_mutation_id: crypto.randomUUID(), design_segment_id: null, from_asset_identifier: "15-12-5", to_asset_identifier: "15-12-6", design_deviation: true },
+    });
+    expect(missingReason.status()).toBe(400);
+    const missingOtherNotes = await request.post(apiUrl("/syncfield/foreman/span-completions"), {
+      headers: auth(seeded.foremanToken),
+      data: { ...spanBody, client_mutation_id: crypto.randomUUID(), design_segment_id: null, from_asset_identifier: "15-12-5", to_asset_identifier: "15-12-6", design_deviation: true, deviation_reason: "OTHER" },
+    });
+    expect(missingOtherNotes.status()).toBe(400);
+
+    const unchangedDesign = await client.query("SELECT status, geometry, design_length_ft FROM syncfield_design_segments WHERE tenant_id = $1 AND id = $2", [seeded.tenantA, designSegmentId]);
+    expect(unchangedDesign.rows[0].status).toBe("active");
+    expect(unchangedDesign.rows[0].design_length_ft).toBe("141.00");
+    expect(unchangedDesign.rows[0].geometry.points).toHaveLength(3);
+
+    const detail = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/production/today");
+    expect(detail.records).toHaveLength(9);
+    expect(detail.annotations).toHaveLength(7);
+    expect(detail.span_completions.some((row: Record<string, unknown>) => row.id === spanCompletionId)).toBe(true);
+    expect(detail.asset_observations.some((row: Record<string, unknown>) => row.input_tick === 14826 && row.output_tick === 14780)).toBe(true);
+    expect(detail.totals.by_code.find((row: Record<string, unknown>) => row.code === "FIBER").quantity).toBe(3564);
+    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 9 });
+
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/syncfield/map");
+    await expect(page.getByText("DESIGN / PLANNED")).toBeVisible();
+    await expect(page.getByText("COMPLETED REDLINE", { exact: true })).toBeVisible();
+    await expect(page.locator(".field-construction-list-item.design").getByText("15-12-2 -> 15-12-4")).toBeVisible();
+    await expect(page.locator(".field-construction-list-item.redline").getByText("15-12-2 -> 15-12-4")).toBeVisible();
+  });
+
   test("submission creates immutable revision snapshot and blocks ordinary edits without QC or finance", async ({ page, request }) => {
     const beforeReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
     const submitted = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/review-day/submit", { work_date: today(), client_mutation_id: crypto.randomUUID(), general_notes: "Submitted by Foreman." });
@@ -186,8 +337,20 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(submitted.records.every((record: Record<string, unknown>) => record.locked === true)).toBe(true);
     const revision = await client.query("SELECT snapshot_json FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2", [seeded.tenantA, submitted.id]);
     expect(revision.rowCount).toBe(1);
-    expect(revision.rows[0].snapshot_json.records).toHaveLength(8);
+    expect(revision.rows[0].snapshot_json.records).toHaveLength(9);
     expect(revision.rows[0].snapshot_json.records.some((record: Record<string, unknown>) => record.sequence_variance_status === "review_required")).toBe(true);
+    expect(revision.rows[0].snapshot_json.span_completions.some((span: Record<string, unknown>) => span.id === spanCompletionId)).toBe(true);
+    expect(revision.rows[0].snapshot_json.asset_observations.some((observation: Record<string, unknown>) => observation.input_tick === 14826 && observation.output_tick === 14780)).toBe(true);
+    const lockedChildren = await client.query(
+      `
+      SELECT
+        (SELECT count(*)::int FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND status = 'submitted' AND submitted_revision_id IS NOT NULL) AS observations,
+        (SELECT count(*)::int FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND completion_status = 'submitted' AND submitted_revision_id IS NOT NULL) AS spans
+      `,
+      [seeded.tenantA, submitted.id],
+    );
+    expect(lockedChildren.rows[0].observations).toBeGreaterThanOrEqual(4);
+    expect(lockedChildren.rows[0].spans).toBe(1);
 
     const edit = await request.post(apiUrl(`/syncfield/foreman/production/records/${submittedRecordId}`), {
       headers: auth(seeded.foremanToken),
@@ -201,7 +364,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(addAfterSubmit.status()).toBe(400);
     const afterReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
     expect(afterReadiness.overall_status).toBe(beforeReadiness.overall_status);
-    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 8 });
+    expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 9 });
 
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 390, height: 860 });

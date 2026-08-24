@@ -239,6 +239,7 @@ async function main() {
   try {
     await client.query("BEGIN");
     await seedTenant(client);
+    await seedPermissionCatalog(client);
     await seedPersonas(client);
     await seedCanonicalRecords(client);
     await seedPartnerBrowserReviewAccess(client);
@@ -253,6 +254,34 @@ async function main() {
   } finally {
     await client.end();
   }
+}
+
+async function seedPermissionCatalog(client) {
+  const sourceRoot = path.resolve(process.cwd(), "apps/api/src");
+  const permissions = new Set();
+  for (const file of walkFiles(sourceRoot)) {
+    if (!file.endsWith(".ts")) continue;
+    const text = fs.readFileSync(file, "utf8");
+    for (const match of text.matchAll(/RequirePermission\(["'`]([^"'`]+)["'`]\)/g)) {
+      permissions.add(match[1]);
+    }
+  }
+  for (const key of permissions) {
+    await client.query(
+      "INSERT INTO permissions (key, name, description) VALUES ($1, $1, 'Browser E2E permission') ON CONFLICT (key) DO NOTHING",
+      [key],
+    );
+  }
+}
+
+function walkFiles(root) {
+  const entries = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) entries.push(...walkFiles(full));
+    else entries.push(full);
+  }
+  return entries;
 }
 
 async function seedTenant(client) {
