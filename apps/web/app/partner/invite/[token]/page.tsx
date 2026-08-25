@@ -33,7 +33,9 @@ export default function PartnerInviteAcceptancePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
+  const [acceptedPath, setAcceptedPath] = useState("");
   const isForemanInvite = preview?.invitation?.intended_role_key === "partner_foreman";
+  const roleLabel = isForemanInvite ? "Foreman" : "Partner Administrator";
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +76,8 @@ export default function PartnerInviteAcceptancePage() {
       saveToken(accepted.token);
       const context = await loadAuthContext(accepted.token);
       savePermissions(context.permissions);
-      window.location.assign(accepted.next_path || "/partner/onboarding");
+      setAcceptedPath(accepted.next_path || "/partner/onboarding");
+      setAccepting(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invitation acceptance failed.");
       setAccepting(false);
@@ -82,36 +85,41 @@ export default function PartnerInviteAcceptancePage() {
   }
 
   return (
-    <main className="partner-portal-shell">
-      <section className="partner-main">
-        <div className="partner-panel">
+    <main className="partner-invite-shell">
+      <section className="partner-invite-card">
+        <div className="partner-invite-header">
           <p className="eyebrow">Sync Comm Systems</p>
-          <h1>{isForemanInvite ? "Activate SyncOS field access" : "Complete partner onboarding"}</h1>
-          {loading ? <p>Loading invitation...</p> : null}
-          {error ? <div className="partner-banner error">{error}</div> : null}
-          {preview ? (
-            <div className="partner-stack">
+          <h1>You've been invited to join SyncOS</h1>
+          <p>{isForemanInvite ? "Activate your field account before opening SyncField." : "Create your account before continuing to Partner onboarding."}</p>
+        </div>
+        {loading ? <div className="partner-panel loading-state" role="status">Loading invitation...</div> : null}
+        {error ? <div className="partner-banner error">{error}</div> : null}
+        {acceptedPath ? (
+          <div className="partner-invite-success">
+            <p className="eyebrow">Account Activated</p>
+            <h2>{isForemanInvite ? "SyncField access is ready" : "Continue to Partner onboarding"}</h2>
+            <p>{isForemanInvite ? "Your account is active. Continue to your field workspace." : "Your account is active. Continue to company onboarding to prepare for Sync review."}</p>
+            <button className="partner-button primary wide-touch" type="button" onClick={() => window.location.assign(acceptedPath)}>
+              {isForemanInvite ? "Continue to SyncField" : "Continue to Partner Onboarding"}
+            </button>
+          </div>
+        ) : null}
+        {!acceptedPath && preview ? (
+          <div className="partner-invite-grid">
+            <aside className="partner-invite-summary" aria-label="Invitation summary">
+              <span>Organization</span>
+              <strong>{preview.invitation?.organization_name ?? "Partner Organization"}</strong>
+              <span>Role</span>
+              <strong>{roleLabel}</strong>
+              <span>Email</span>
+              <strong>{preview.invitation?.email ?? "Invited email"}</strong>
+            </aside>
+            <div className="partner-invite-form">
+              <h2>Create your account</h2>
               <p>{preview.message}</p>
-              <div className="partner-list">
-                <div className="partner-list-row">
-                  <div>
-                    <strong>{preview.invitation?.organization_name ?? "Partner Organization"}</strong>
-                    <span>{preview.invitation?.email}</span>
-                  </div>
-                  <span className="status-pill">{isForemanInvite ? "Field Access" : "Partner Admin"}</span>
-                </div>
-                {(preview.checklist?.items ?? []).map((item) => (
-                  <div className="partner-list-row" key={item.key ?? item.label}>
-                    <div>
-                      <strong>{item.label}</strong>
-                      <span>{item.requirement}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
               <label className="form-field">
                 <span>Display name</span>
-                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" />
               </label>
               <label className="form-field">
                 <span>Password</span>
@@ -121,13 +129,15 @@ export default function PartnerInviteAcceptancePage() {
                 <span>Confirm password</span>
                 <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} />
               </label>
-              <button className="primary-button" type="button" onClick={accept} disabled={accepting}>
-                {accepting ? "Opening..." : isForemanInvite ? "Activate Field Access" : "Complete Onboarding"}
-              </button>
-              <Link href="/partner">I already have access</Link>
+              <div className="partner-invite-actions">
+                <button className="partner-button primary wide-touch" type="button" onClick={accept} disabled={accepting}>
+                  {accepting ? "Activating..." : "Activate Account"}
+                </button>
+                <Link href="/login">Already have access? Sign in</Link>
+              </div>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

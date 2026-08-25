@@ -328,7 +328,6 @@ type PartnerPerformanceSummary = {
   boundary?: Record<string, boolean>;
 };
 type OnboardingChecklist = {
-  organization_id?: string;
   required_complete?: boolean;
   ready_for_review?: boolean;
   readiness_status?: string;
@@ -773,20 +772,23 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
   const readyForReview = Boolean(checklist?.ready_for_review || checklist?.readiness_status === "READY_FOR_REVIEW");
   const companyGate = companyApproved ? "approved" : readyForReview ? "ready for sync review" : "not ready";
   const crewGate = crewReadinessStatus(data);
-  const mobilizationGate = data.mobilization?.overall_status ?? "work order specific";
+  const mobilizationGate = data.mobilization?.overall_status ?? "locked";
   const nextStep = steps.find((step) => !step.complete && step.required) ?? steps.find((step) => !step.complete);
+  const progress = totalRequired ? Math.round((completedRequired / totalRequired) * 100) : 0;
+  const groupedSteps = onboardingStepGroups(steps);
   return (
     <div className="partner-stack onboarding-workflow">
       <section className="partner-panel onboarding-hero">
         <div className="onboarding-hero-copy">
           <p className="eyebrow">Partner Onboarding</p>
           <h3>{data.context?.organization.name ?? "Partner company"}</h3>
-          <p>Complete the company, tax, insurance, agreement, workforce, crew, equipment, and safety gates before Sync review.</p>
+          <p>{nextStep ? `Next step: ${nextStep.action}` : "Ready for Sync review."}</p>
         </div>
         <div className="onboarding-status-card">
           <span>Status</span>
           <strong>{companyApproved ? "Approved" : readyForReview ? "Ready for Sync Review" : "Not Ready"}</strong>
           <small>{completedRequired} of {totalRequired} required gates complete</small>
+          <div className="onboarding-progress" aria-label={`${progress}% complete`}><span style={{ width: `${progress}%` }} /></div>
         </div>
       </section>
 
@@ -803,19 +805,41 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
             <h3>Required order</h3>
             {nextStep ? <p className="partner-safe-text">Next: {nextStep.label}</p> : <p className="partner-safe-text">Ready for Sync review.</p>}
           </div>
-          <StatusPill label="Review" value={checklist?.readiness_status ?? (readyForReview ? "READY_FOR_REVIEW" : "ACCOUNT_ACTIVATED")} />
+          <OnboardingStatusBadge status={readyForReview ? "READY_FOR_REVIEW" : "ACCOUNT_ACTIVATED"} />
         </div>
-        <div className="onboarding-step-list">
-          {steps.map((step, index) => (
-            <Link key={step.key} className={step.complete ? "onboarding-step complete" : "onboarding-step"} href={step.route}>
-              <span className="onboarding-step-index">{step.complete ? "Done" : String(index + 1)}</span>
-              <div className="onboarding-step-body">
-                <strong>{step.label}</strong>
-                <span>{step.detail}</span>
+        <div className="onboarding-layout">
+          <nav className="onboarding-step-list" aria-label="Partner-controlled onboarding tasks">
+            {groupedSteps.map((group) => (
+              <div className="onboarding-step-group" key={group.label}>
+                <h4>{group.label}</h4>
+                {group.steps.map((step, index) => (
+                  <Link key={step.key} className={step.complete ? "onboarding-step complete" : "onboarding-step"} href={step.route} aria-current={nextStep?.key === step.key ? "step" : undefined}>
+                    <span className="onboarding-step-index">{step.complete ? "Done" : String(index + 1)}</span>
+                    <div className="onboarding-step-body">
+                      <strong>{step.label}</strong>
+                      <span>{step.action}</span>
+                    </div>
+                    <OnboardingStatusBadge status={step.complete ? "complete" : step.status} />
+                  </Link>
+                ))}
               </div>
-              <StatusPill label={step.label} value={step.complete ? "complete" : step.status} />
-            </Link>
-          ))}
+            ))}
+          </nav>
+          <section className="onboarding-current-step">
+            <p className="eyebrow">Current Step</p>
+            <h3>{nextStep?.label ?? "Review & Submit"}</h3>
+            <p>{nextStep?.detail ?? "Sync can review the company package once the required Partner-controlled tasks are complete."}</p>
+            {nextStep ? <Link className="partner-button primary" href={nextStep.route}>Continue</Link> : <span className="partner-button primary disabled-action">Ready for Sync Review</span>}
+            <div className="onboarding-review-note">
+              <strong>What happens after you submit?</strong>
+              <ol>
+                <li>Sync reviews company information.</li>
+                <li>Sync verifies compliance and agreements.</li>
+                <li>Approved crews become eligible for work.</li>
+                <li>Project-specific mobilization begins after Work Order assignment.</li>
+              </ol>
+            </div>
+          </section>
         </div>
         {!items.length ? <EmptyPortal title="No checklist available" body="The onboarding checklist appears after the Partner Admin invitation is accepted." /> : null}
         <div className="onboarding-submit-row">
@@ -852,8 +876,11 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
 }
 
 type OnboardingStep = { key: string; label: string; detail: string; route: string; required: boolean; complete: boolean; status: string };
+type OnboardingStepGroup = "Company" | "Workforce" | "Capacity" | "Final";
 
-function onboardingSteps(data: PortalData): OnboardingStep[] {
+type GroupedOnboardingStep = OnboardingStep & { group: OnboardingStepGroup; action: string };
+
+function onboardingSteps(data: PortalData): GroupedOnboardingStep[] {
   const byKey = new Map((data.onboarding?.items ?? []).map((item) => [item.key ?? "", item]));
   const fromItem = (key: string) => byKey.get(key);
   const itemComplete = (key: string) => Boolean(fromItem(key)?.complete);
@@ -862,18 +889,38 @@ function onboardingSteps(data: PortalData): OnboardingStep[] {
   const safetyComplete = itemComplete("insurance") && itemComplete("credentials") && itemComplete("headshots");
   const finalReviewComplete = Boolean(data.onboarding?.ready_for_review || data.onboarding?.readiness_status === "READY_FOR_REVIEW");
   return [
-    { key: "company_setup", label: "Company Setup", detail: "Legal company name, DBA, tax classification, address, contacts, territories, capabilities, and emergency contact.", route: "/partner/company", required: true, complete: itemComplete("company_profile"), status: itemStatus("company_profile") },
-    { key: "w9_tax", label: "W-9 / Tax Information", detail: "Signed W-9 and secure tax profile for internal Sync review.", route: "/partner/compliance", required: true, complete: itemComplete("w9"), status: itemStatus("w9") },
-    { key: "payment_setup", label: "Payment Setup", detail: "Payment contact, remittance email, setup method, and required authorization. This does not enable automatic payouts.", route: "/partner/compliance", required: true, complete: itemComplete("payment_setup"), status: itemStatus("payment_setup") },
-    { key: "insurance", label: "Insurance", detail: "General liability, auto liability, Workers' Comp, umbrella coverage, COI, limits, and expiration tracking.", route: "/partner/compliance", required: true, complete: itemComplete("insurance"), status: itemStatus("insurance") },
-    { key: "agreements", label: "Agreements", detail: "Master Partner Agreement, NDA, safety acknowledgements, payment terms, and countersignature status.", route: "/partner/agreements", required: false, complete: itemComplete("agreement"), status: itemStatus("agreement") },
-    { key: "workers", label: "Workers", detail: "Worker roster, role, phone, email where needed, certifications, credential evidence, and headshot status.", route: "/partner/workers", required: true, complete: itemComplete("workers"), status: itemStatus("workers") },
-    { key: "foremen", label: "Foremen", detail: "Foreman designation, active status, assigned crew, and SyncField eligibility.", route: "/partner/workers", required: true, complete: itemComplete("foreman"), status: itemStatus("foreman") },
-    { key: "crews", label: "Crews", detail: "Crew name, Foreman, worker count, capabilities, availability, home market, travel radius, and deployable status.", route: "/partner/crews", required: true, complete: itemComplete("crew"), status: itemStatus("crew") },
-    { key: "equipment", label: "Vehicles / Equipment", detail: "Trucks, bucket trucks, reel trailers, lashers, drills, trailers, inspections, and crew assignments.", route: "/partner/vehicles", required: false, complete: vehiclesComplete, status: vehiclesComplete ? `${data.vehicles?.length ?? 0} assigned` : "pending" },
-    { key: "safety", label: "Safety / Compliance", detail: "Insurance, worker qualifications, headshots, credentials, safety acknowledgements, and missing documentation.", route: "/partner/compliance", required: true, complete: safetyComplete, status: safetyComplete ? "complete" : "required" },
-    { key: "final_review", label: "Final Review", detail: "Sync reviews the completed company package. Partner approval, crew readiness, and project mobilization stay separate.", route: "/partner/onboarding", required: false, complete: finalReviewComplete, status: finalReviewComplete ? "ready for sync review" : "locked" },
+    { group: "Company", key: "company_setup", label: "Company Setup", action: "Complete company profile", detail: "Legal company name, DBA, tax classification, address, contacts, territories, capabilities, and emergency contact.", route: "/partner/company", required: true, complete: itemComplete("company_profile"), status: itemStatus("company_profile") },
+    { group: "Company", key: "w9_tax", label: "W-9 / Tax Information", action: "Upload signed W-9", detail: "Signed W-9 and secure tax profile for internal Sync review.", route: "/partner/compliance", required: true, complete: itemComplete("w9"), status: itemStatus("w9") },
+    { group: "Company", key: "payment_setup", label: "Payment Setup", action: "Complete payment setup", detail: "Payment contact, remittance email, setup method, and required authorization. This does not enable automatic payouts.", route: "/partner/compliance", required: true, complete: itemComplete("payment_setup"), status: itemStatus("payment_setup") },
+    { group: "Company", key: "insurance", label: "Insurance", action: "Upload insurance documents", detail: "General liability, auto liability, Workers' Comp, umbrella coverage, COI, limits, and expiration tracking.", route: "/partner/compliance", required: true, complete: itemComplete("insurance"), status: itemStatus("insurance") },
+    { group: "Company", key: "agreements", label: "Agreements", action: "Review issued agreements", detail: "Master Partner Agreement, NDA, safety acknowledgements, payment terms, and countersignature status.", route: "/partner/agreements", required: false, complete: itemComplete("agreement"), status: itemStatus("agreement") },
+    { group: "Workforce", key: "workers", label: "Workers", action: "Add workforce roster", detail: "Worker roster, role, phone, email where needed, certifications, credential evidence, and headshot status.", route: "/partner/workers", required: true, complete: itemComplete("workers"), status: itemStatus("workers") },
+    { group: "Workforce", key: "foremen", label: "Foremen", action: "Designate at least one Foreman", detail: "Foreman designation, active status, assigned crew, and SyncField eligibility.", route: "/partner/workers", required: true, complete: itemComplete("foreman"), status: itemStatus("foreman") },
+    { group: "Workforce", key: "crews", label: "Crews", action: "Create crew structure", detail: "Crew name, Foreman, worker count, capabilities, availability, home market, travel radius, and deployable status.", route: "/partner/crews", required: true, complete: itemComplete("crew"), status: itemStatus("crew") },
+    { group: "Capacity", key: "equipment", label: "Vehicles / Equipment", action: "Add deployable equipment", detail: "Trucks, bucket trucks, reel trailers, lashers, drills, trailers, inspections, and crew assignments.", route: "/partner/vehicles", required: false, complete: vehiclesComplete, status: vehiclesComplete ? "complete" : "pending" },
+    { group: "Capacity", key: "safety", label: "Safety / Compliance", action: "Clear safety documentation", detail: "Insurance, worker qualifications, headshots, credentials, safety acknowledgements, and missing documentation.", route: "/partner/compliance", required: true, complete: safetyComplete, status: safetyComplete ? "complete" : "required" },
+    { group: "Final", key: "final_review", label: "Review & Submit", action: "Review company package", detail: "Sync reviews the completed company package. Partner approval, crew readiness, and project mobilization stay separate.", route: "/partner/onboarding", required: false, complete: finalReviewComplete, status: finalReviewComplete ? "ready for sync review" : "locked" },
   ];
+}
+
+function onboardingStepGroups(steps: GroupedOnboardingStep[]) {
+  const order: OnboardingStepGroup[] = ["Company", "Workforce", "Capacity", "Final"];
+  return order.map((label) => ({ label, steps: steps.filter((step) => step.group === label) })).filter((group) => group.steps.length);
+}
+
+function OnboardingStatusBadge({ status }: { status: string }) {
+  const label = onboardingStatusLabel(status);
+  return <span className={`partner-status-pill ${statusClass(label)}`} aria-label={`Status: ${label}`}>{label}</span>;
+}
+
+function onboardingStatusLabel(status: string) {
+  const value = status.toLowerCase();
+  if (/complete|verified|active|approved|executed|ready/.test(value)) return "Complete";
+  if (/under[_ ]?review|review/.test(value)) return "Under Review";
+  if (/submitted|issued|pending/.test(value)) return "Submitted";
+  if (/returned|rejected|blocked|missing|required|incomplete/.test(value)) return "Action Required";
+  if (/locked|not authorized/.test(value)) return "Locked";
+  return "Not Started";
 }
 
 function crewReadinessStatus(data: PortalData) {

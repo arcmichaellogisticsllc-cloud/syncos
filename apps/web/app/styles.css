@@ -2511,6 +2511,97 @@ th {
   max-width: 1180px;
 }
 
+.partner-invite-shell {
+  align-items: start;
+  display: grid;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.partner-invite-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgb(7 19 38 / 0.08);
+  display: grid;
+  gap: 22px;
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 24px;
+  width: 100%;
+}
+
+.partner-invite-header {
+  border-bottom: 1px solid #e5ebe7;
+  padding-bottom: 18px;
+}
+
+.partner-invite-header h1,
+.partner-invite-success h2,
+.partner-invite-form h2 {
+  font-size: 2rem;
+  letter-spacing: 0;
+  line-height: 1.08;
+  margin: 0;
+}
+
+.partner-invite-header p,
+.partner-invite-form p,
+.partner-invite-success p {
+  color: #4f615b;
+  line-height: 1.45;
+  margin: 12px 0 0;
+  max-width: 660px;
+}
+
+.partner-invite-grid {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+}
+
+.partner-invite-summary {
+  align-content: start;
+  background: #f8faf9;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.partner-invite-summary span {
+  color: #526071;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.partner-invite-summary strong {
+  color: #111827;
+  line-height: 1.25;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.partner-invite-form,
+.partner-invite-success {
+  display: grid;
+  gap: 14px;
+}
+
+.partner-invite-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.partner-invite-actions a {
+  color: #173a2a;
+  font-weight: 800;
+}
+
 .syncfield-assignment-strip {
   align-items: center;
   background: #ffffff;
@@ -2696,6 +2787,20 @@ th {
   margin: 8px 0;
 }
 
+.onboarding-progress {
+  background: #dfe7e2;
+  border-radius: 999px;
+  height: 10px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.onboarding-progress span {
+  background: var(--accent);
+  display: block;
+  height: 100%;
+}
+
 .onboarding-gates {
   display: grid;
   gap: 14px;
@@ -2721,6 +2826,26 @@ th {
   gap: 10px;
 }
 
+.onboarding-layout {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(300px, 0.42fr) minmax(0, 0.58fr);
+}
+
+.onboarding-step-group {
+  display: grid;
+  gap: 10px;
+}
+
+.onboarding-step-group h4 {
+  color: #526071;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  margin: 10px 0 0;
+  text-transform: uppercase;
+}
+
 .onboarding-step {
   align-items: center;
   border: 1px solid #e5ebe7;
@@ -2732,6 +2857,10 @@ th {
   min-height: 74px;
   padding: 12px;
   text-decoration: none;
+}
+
+.onboarding-step[aria-current="step"] {
+  border-color: var(--accent);
 }
 
 .onboarding-step:hover {
@@ -2791,6 +2920,46 @@ th {
 .onboarding-submit-row span {
   color: #4f615b;
   font-size: 0.9rem;
+}
+
+.onboarding-current-step {
+  background: #f8faf9;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  position: sticky;
+  top: 16px;
+}
+
+.onboarding-current-step h3 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+.onboarding-current-step p {
+  color: #4f615b;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.onboarding-review-note {
+  border-top: 1px solid #dce4de;
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.onboarding-review-note strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.onboarding-review-note ol {
+  color: #4f615b;
+  line-height: 1.5;
+  margin: 0;
+  padding-left: 20px;
 }
 
 .portal-workspace-grid {
@@ -3216,8 +3385,14 @@ th {
   .partner-dashboard-grid,
   .onboarding-gates,
   .onboarding-hero,
+  .onboarding-layout,
+  .partner-invite-grid,
   .mobilization-lanes {
     grid-template-columns: 1fr;
+  }
+
+  .onboarding-current-step {
+    position: static;
   }
 }
 
@@ -3262,8 +3437,19 @@ th {
   }
 
   .partner-main,
-  .partner-sidebar {
+  .partner-sidebar,
+  .partner-invite-shell {
     padding: 14px;
+  }
+
+  .partner-invite-card {
+    padding: 16px;
+  }
+
+  .partner-invite-header h1,
+  .partner-invite-success h2,
+  .partner-invite-form h2 {
+    font-size: 1.65rem;
   }
 
   .partner-page-header,

@@ -273,12 +273,21 @@ Partner Inquiry
 -> record conversation
 -> qualify / future capacity / not a fit
 -> invite only when qualified
--> Partner Admin accepts invite
--> Partner completes onboarding checklist from canonical P3-P6 state
+-> Partner Admin activates account from the invite
+-> Partner Admin continues to `/partner/onboarding`
+-> Partner completes Partner-owned company, compliance, workforce, crew, and capacity setup from canonical P3-P6 state
 -> internal review
 -> internal approval when readiness policy allows.
 
 Manual Partner invitation may bypass the public inquiry. It does not bypass onboarding, compliance, internal review, approval, Work Order, mobilization, or production authorization.
+
+Partner onboarding has three separate readiness levels:
+
+- Company Approved: the company may participate in the Sync Partner network.
+- Crew Ready: a specific crew has the people, equipment, and compliance posture needed for deployable work.
+- Project Mobilization Approved: a specific crew is authorized for a specific Work Order.
+
+Partner onboarding completion leads toward Company Approved only. It does not make every crew deployable and does not authorize project mobilization or production.
 
 ## Workspace Boundaries
 
