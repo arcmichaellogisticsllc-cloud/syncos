@@ -6,9 +6,10 @@ P18 invitations use a provider-neutral delivery boundary:
 
 - `EMAIL_PROVIDER=local_test` for development and certification.
 - `EMAIL_PROVIDER=generic_http` for production transactional provider API integration.
+- `EMAIL_PROVIDER=smtp_relay` for a standard SMTP relay with required TLS.
 - `EMAIL_PROVIDER=disabled` to fail closed when production credentials are not ready.
 
-Production startup rejects `local_test` and requires either `generic_http` or `disabled`.
+Production startup rejects `local_test` and requires `generic_http`, `smtp_relay`, or `disabled`.
 
 ## Required Use Cases
 
@@ -23,9 +24,12 @@ Production startup rejects `local_test` and requires either `generic_http` or `d
 - `EMAIL_REPLY_TO`
 - `EMAIL_HTTP_ENDPOINT`
 - `EMAIL_API_KEY`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, and `SMTP_REQUIRE_TLS=true` when `EMAIL_PROVIDER=smtp_relay`
 - `APPLICATION_BASE_URL`
 
 Secret values must be stored in the provider secret manager, not Git.
+
+For Google Workspace SMTP relay configured by trusted source IP, leave `SMTP_USERNAME` and `SMTP_PASSWORD` unset. SyncOS only sends SMTP AUTH credentials when both values are present.
 
 ## DNS Authentication
 

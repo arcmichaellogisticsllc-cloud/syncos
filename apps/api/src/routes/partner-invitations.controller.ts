@@ -3,6 +3,7 @@ import { BadRequestException, Body, ConflictException, Controller, ForbiddenExce
 import { createAuthToken, hashPassword, validatePassword } from "@syncos/auth";
 import { appendAuditLog } from "@syncos/shared";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import { sendSmtpRelayEmail } from "../email/smtp-relay";
 import { DATABASE_POOL } from "../modules/database.module";
 import { Public } from "../security/public.decorator";
 import { RequirePermission } from "../security/require-permission.decorator";
@@ -756,6 +757,27 @@ export class PartnerInvitationsController {
       } catch {
         await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'generic_http:error', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
         return this.deliveryResult(row, provider, "FAILED", null, "Invitation email provider request failed.");
+      }
+    }
+    if (provider === "smtp_relay") {
+      const from = process.env.EMAIL_FROM;
+      if (!from) {
+        await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'smtp_relay:config_incomplete', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+        return this.deliveryResult(row, provider, "FAILED", null, "SMTP relay configuration is incomplete.");
+      }
+      try {
+        await sendSmtpRelayEmail({
+          from,
+          replyTo: process.env.EMAIL_REPLY_TO,
+          to: row.email,
+          subject: row.email_subject,
+          text: `${row.email_preview}\n\n${onboardingUrl}`,
+        });
+        await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'SENT', delivery_reference = 'smtp_relay:accepted', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+        return this.deliveryResult(row, provider, "SENT", null, null);
+      } catch {
+        await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'smtp_relay:error', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+        return this.deliveryResult(row, provider, "FAILED", null, "SMTP relay invitation delivery failed.");
       }
     }
     await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'LOCAL_PREPARED', delivery_reference = 'local_test_adapter', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
