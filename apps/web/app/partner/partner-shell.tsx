@@ -330,6 +330,8 @@ type PartnerPerformanceSummary = {
 type OnboardingChecklist = {
   organization_id?: string;
   required_complete?: boolean;
+  ready_for_review?: boolean;
+  readiness_status?: string;
   items?: Array<{ key?: string; label?: string; requirement?: string; complete?: boolean; route?: string; status?: string }>;
 };
 
@@ -596,12 +598,12 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const permissions = readPermissions();
   const needsDashboard = section === "dashboard";
   const needsOnboarding = needsDashboard || section === "onboarding";
-  const needsCompliance = needsDashboard || section === "compliance";
-  const needsCompany = section === "company";
-  const needsCrews = needsDashboard || section === "crews" || section === "crew-detail";
-  const needsAgreements = needsDashboard || section === "agreements" || section === "agreement-detail";
+  const needsCompliance = needsDashboard || section === "onboarding" || section === "compliance";
+  const needsCompany = section === "onboarding" || section === "company";
+  const needsCrews = needsDashboard || section === "onboarding" || section === "crews" || section === "crew-detail";
+  const needsAgreements = needsDashboard || section === "onboarding" || section === "agreements" || section === "agreement-detail";
   const needsWorkOrders = needsDashboard || section === "work-orders" || section === "work-order-detail" || section === "mobilization";
-  const needsVehicles = needsDashboard || section === "vehicles";
+  const needsVehicles = needsDashboard || section === "onboarding" || section === "vehicles";
   const needsMobilization = needsDashboard || section === "mobilization";
   const [onboarding, compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
     needsOnboarding ? safeFetch<OnboardingChecklist>("partner-invitations/me/onboarding-checklist") : undefined,
@@ -610,7 +612,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
     section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
     needsCompliance || needsDashboard ? safeFetch<PaymentProfile>("partner-compliance/me/payment-profile") : undefined,
     section === "compliance" ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
-    section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
+    section === "onboarding" || section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
     needsCrews ? safeFetch<Crew[]>("partner-workforce/me/crews", []) : [],
     needsAgreements ? safeFetch<Agreement[]>("partner-agreements/me/agreements", []) : [],
     needsWorkOrders ? safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []) : [],
@@ -764,30 +766,133 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
 function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
   const checklist = data.onboarding;
   const items = checklist?.items ?? [];
+  const steps = onboardingSteps(data);
+  const completedRequired = steps.filter((step) => step.required).filter((step) => step.complete).length;
+  const totalRequired = steps.filter((step) => step.required).length;
+  const companyApproved = /approved/.test(str(data.context?.organization.status).toLowerCase());
+  const readyForReview = Boolean(checklist?.ready_for_review || checklist?.readiness_status === "READY_FOR_REVIEW");
+  const companyGate = companyApproved ? "approved" : readyForReview ? "ready for sync review" : "not ready";
+  const crewGate = crewReadinessStatus(data);
+  const mobilizationGate = data.mobilization?.overall_status ?? "work order specific";
+  const nextStep = steps.find((step) => !step.complete && step.required) ?? steps.find((step) => !step.complete);
   return (
-    <div className="partner-stack">
-      <section className="partner-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Onboarding Checklist</p>
-            <h3>Company onboarding</h3>
-          </div>
-          <StatusPill label="Required" value={checklist?.required_complete ? "complete" : "incomplete"} />
+    <div className="partner-stack onboarding-workflow">
+      <section className="partner-panel onboarding-hero">
+        <div className="onboarding-hero-copy">
+          <p className="eyebrow">Partner Onboarding</p>
+          <h3>{data.context?.organization.name ?? "Partner company"}</h3>
+          <p>Complete the company, tax, insurance, agreement, workforce, crew, equipment, and safety gates before Sync review.</p>
         </div>
-        <div className="partner-list">
-          {items.map((item) => (
-            <Link key={item.key ?? item.label} className="partner-list-row" href={item.route ?? "/partner"}>
-              <div>
-                <strong>{item.label}</strong>
-                <span>{item.requirement}</span>
+        <div className="onboarding-status-card">
+          <span>Status</span>
+          <strong>{companyApproved ? "Approved" : readyForReview ? "Ready for Sync Review" : "Not Ready"}</strong>
+          <small>{completedRequired} of {totalRequired} required gates complete</small>
+        </div>
+      </section>
+
+      <section className="onboarding-gates" aria-label="Readiness gates">
+        <GateCard title="Company Approved" status={companyGate} body="Company approval admits the Partner into the Sync Partner network." />
+        <GateCard title="Crew Ready" status={crewGate} body="Crew readiness is specific to each crew's people, equipment, and compliance." />
+        <GateCard title="Project Mobilization" status={mobilizationGate} body="Mobilization approval is issued per Work Order before production starts." />
+      </section>
+
+      <section className="partner-panel">
+        <div className="panel-header onboarding-section-header">
+          <div>
+            <p className="eyebrow">Readiness Checklist</p>
+            <h3>Required order</h3>
+            {nextStep ? <p className="partner-safe-text">Next: {nextStep.label}</p> : <p className="partner-safe-text">Ready for Sync review.</p>}
+          </div>
+          <StatusPill label="Review" value={checklist?.readiness_status ?? (readyForReview ? "READY_FOR_REVIEW" : "ACCOUNT_ACTIVATED")} />
+        </div>
+        <div className="onboarding-step-list">
+          {steps.map((step, index) => (
+            <Link key={step.key} className={step.complete ? "onboarding-step complete" : "onboarding-step"} href={step.route}>
+              <span className="onboarding-step-index">{step.complete ? "Done" : String(index + 1)}</span>
+              <div className="onboarding-step-body">
+                <strong>{step.label}</strong>
+                <span>{step.detail}</span>
               </div>
-              <StatusPill label={item.complete ? "Complete" : "Open"} value={item.status} />
+              <StatusPill label={step.label} value={step.complete ? "complete" : step.status} />
             </Link>
           ))}
         </div>
         {!items.length ? <EmptyPortal title="No checklist available" body="The onboarding checklist appears after the Partner Admin invitation is accepted." /> : null}
+        <div className="onboarding-submit-row">
+          {readyForReview ? <span className="partner-button primary disabled-action">Ready for Sync Review</span> : <button className="partner-button primary" type="button" disabled>Submit for Sync Review</button>}
+          <span>{readyForReview ? "Sync Admin can review and approve the Partner." : "Approval remains locked until required gates are complete."}</span>
+        </div>
+      </section>
+
+      <section className="partner-panel">
+        <div className="panel-header onboarding-section-header">
+          <div>
+            <p className="eyebrow">After Approval</p>
+            <h3>Partner Portal</h3>
+          </div>
+          <StatusPill label="Portal" value={companyApproved ? "active" : "locked"} />
+        </div>
+        <div className="portal-workspace-grid">
+          {[
+            ["Company", "/partner/company"],
+            ["Compliance", "/partner/compliance"],
+            ["Workers", "/partner/workers"],
+            ["Crews", "/partner/crews"],
+            ["Equipment", "/partner/vehicles"],
+            ["Work Orders", "/partner/work-orders"],
+            ["Production", "/partner/production"],
+            ["Corrections", "/partner/corrections"],
+            ["Settlements", "/partner/settlements"],
+            ["Performance", "/partner/performance"],
+          ].map(([label, route]) => <Link key={route} className="portal-workspace-link" href={route}>{label}</Link>)}
+        </div>
       </section>
     </div>
+  );
+}
+
+type OnboardingStep = { key: string; label: string; detail: string; route: string; required: boolean; complete: boolean; status: string };
+
+function onboardingSteps(data: PortalData): OnboardingStep[] {
+  const byKey = new Map((data.onboarding?.items ?? []).map((item) => [item.key ?? "", item]));
+  const fromItem = (key: string) => byKey.get(key);
+  const itemComplete = (key: string) => Boolean(fromItem(key)?.complete);
+  const itemStatus = (key: string) => fromItem(key)?.status ?? "required";
+  const vehiclesComplete = (data.vehicles ?? []).length > 0;
+  const safetyComplete = itemComplete("insurance") && itemComplete("credentials") && itemComplete("headshots");
+  const finalReviewComplete = Boolean(data.onboarding?.ready_for_review || data.onboarding?.readiness_status === "READY_FOR_REVIEW");
+  return [
+    { key: "company_setup", label: "Company Setup", detail: "Legal company name, DBA, tax classification, address, contacts, territories, capabilities, and emergency contact.", route: "/partner/company", required: true, complete: itemComplete("company_profile"), status: itemStatus("company_profile") },
+    { key: "w9_tax", label: "W-9 / Tax Information", detail: "Signed W-9 and secure tax profile for internal Sync review.", route: "/partner/compliance", required: true, complete: itemComplete("w9"), status: itemStatus("w9") },
+    { key: "payment_setup", label: "Payment Setup", detail: "Payment contact, remittance email, setup method, and required authorization. This does not enable automatic payouts.", route: "/partner/compliance", required: true, complete: itemComplete("payment_setup"), status: itemStatus("payment_setup") },
+    { key: "insurance", label: "Insurance", detail: "General liability, auto liability, Workers' Comp, umbrella coverage, COI, limits, and expiration tracking.", route: "/partner/compliance", required: true, complete: itemComplete("insurance"), status: itemStatus("insurance") },
+    { key: "agreements", label: "Agreements", detail: "Master Partner Agreement, NDA, safety acknowledgements, payment terms, and countersignature status.", route: "/partner/agreements", required: false, complete: itemComplete("agreement"), status: itemStatus("agreement") },
+    { key: "workers", label: "Workers", detail: "Worker roster, role, phone, email where needed, certifications, credential evidence, and headshot status.", route: "/partner/workers", required: true, complete: itemComplete("workers"), status: itemStatus("workers") },
+    { key: "foremen", label: "Foremen", detail: "Foreman designation, active status, assigned crew, and SyncField eligibility.", route: "/partner/workers", required: true, complete: itemComplete("foreman"), status: itemStatus("foreman") },
+    { key: "crews", label: "Crews", detail: "Crew name, Foreman, worker count, capabilities, availability, home market, travel radius, and deployable status.", route: "/partner/crews", required: true, complete: itemComplete("crew"), status: itemStatus("crew") },
+    { key: "equipment", label: "Vehicles / Equipment", detail: "Trucks, bucket trucks, reel trailers, lashers, drills, trailers, inspections, and crew assignments.", route: "/partner/vehicles", required: false, complete: vehiclesComplete, status: vehiclesComplete ? `${data.vehicles?.length ?? 0} assigned` : "pending" },
+    { key: "safety", label: "Safety / Compliance", detail: "Insurance, worker qualifications, headshots, credentials, safety acknowledgements, and missing documentation.", route: "/partner/compliance", required: true, complete: safetyComplete, status: safetyComplete ? "complete" : "required" },
+    { key: "final_review", label: "Final Review", detail: "Sync reviews the completed company package. Partner approval, crew readiness, and project mobilization stay separate.", route: "/partner/onboarding", required: false, complete: finalReviewComplete, status: finalReviewComplete ? "ready for sync review" : "locked" },
+  ];
+}
+
+function crewReadinessStatus(data: PortalData) {
+  const crews = data.crews ?? [];
+  if (!crews.length) return "not ready";
+  const readiness = crews.map((crew) => data.readinessByCrew?.[str(crew.id)]?.overall_status).filter(Boolean);
+  if (readiness.some((status) => /ready|conditional/i.test(String(status)))) return "some crews ready";
+  return "setup required";
+}
+
+function GateCard({ title, status, body }: { title: string; status: string; body: string }) {
+  return (
+    <section className="partner-panel onboarding-gate-card">
+      <div className="panel-header">
+        <h3>{title}</h3>
+        <StatusPill label={title} value={status} />
+      </div>
+      <p>{body}</p>
+    </section>
   );
 }
 
