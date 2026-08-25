@@ -64,6 +64,7 @@ export default function PartnerNetworkPage() {
   const [contactNote, setContactNote] = useState("");
   const [organizationId, setOrganizationId] = useState("");
   const [manualInvite, setManualInvite] = useState({ organization_id: "", primary_contact_name: "", email: "", source: "MANUAL_INTERNAL" });
+  const [manualInviteState, setManualInviteState] = useState({ loading: false, error: "", message: "" });
   const [currentUserId, setCurrentUserId] = useState("");
 
   useEffect(() => {
@@ -141,12 +142,20 @@ export default function PartnerNetworkPage() {
     }));
   }
 
-  function submitManualInvite(event: FormEvent) {
+  async function submitManualInvite(event: FormEvent) {
     event.preventDefault();
-    action("Manual invitation sent", () => syncosFetch("partner-invitations", {
-      method: "POST",
-      body: { ...manualInvite, role_key: "partner_admin" },
-    }));
+    setManualInviteState({ loading: true, error: "", message: "Sending Partner Admin invitation..." });
+    try {
+      const result = await syncosFetch<{ email_delivery?: { delivery_status?: string; provider?: string } }>("partner-invitations", {
+        method: "POST",
+        body: { ...manualInvite, role_key: "partner_admin" },
+      });
+      await refresh();
+      const delivery = result.email_delivery?.delivery_status ? ` Delivery: ${result.email_delivery.delivery_status}.` : "";
+      setManualInviteState({ loading: false, error: "", message: `Manual invitation request complete.${delivery}` });
+    } catch (error) {
+      setManualInviteState({ loading: false, error: error instanceof Error ? error.message : "Manual invitation failed.", message: "" });
+    }
   }
 
   const analytics = useMemo(() => ({
@@ -158,7 +167,7 @@ export default function PartnerNetworkPage() {
 
   return (
     <CommandShell title="Partner Network" purpose="Internal Sync Admin workspace for Partner inquiries, qualification, invitations, onboarding review, and approval gates.">
-      {state.error ? <section className="workspace-panel error-state"><h2>Access denied or unavailable</h2><p>{state.error}</p></section> : null}
+      {state.error ? <section className="workspace-panel error-state"><h2>Action unavailable</h2><p>{state.error}</p></section> : null}
       {state.message ? <section className="workspace-panel success-state"><p>{state.message}</p></section> : null}
       {state.loading ? <section className="workspace-panel loading-state">Loading Partner Network...</section> : null}
 
@@ -250,10 +259,12 @@ export default function PartnerNetworkPage() {
           <p className="muted">Manual invitation bypasses public inquiry only. It does not bypass onboarding, compliance, internal review, approval, Work Order, or mobilization controls.</p>
           <form onSubmit={submitManualInvite} className="stacked-form">
             <label className="form-field"><span>Partner Organization ID</span><input value={manualInvite.organization_id} onChange={(event) => setManualInvite((current) => ({ ...current, organization_id: event.target.value }))} /></label>
-            <label className="form-field"><span>Primary contact</span><input value={manualInvite.primary_contact_name} onChange={(event) => setManualInvite((current) => ({ ...current, primary_contact_name: event.target.value }))} /></label>
+            <label className="form-field"><span>Primary contact name</span><input value={manualInvite.primary_contact_name} onChange={(event) => setManualInvite((current) => ({ ...current, primary_contact_name: event.target.value }))} /></label>
             <label className="form-field"><span>Email</span><input value={manualInvite.email} onChange={(event) => setManualInvite((current) => ({ ...current, email: event.target.value }))} /></label>
             <label className="form-field"><span>Source</span><select value={manualInvite.source} onChange={(event) => setManualInvite((current) => ({ ...current, source: event.target.value }))}>{inviteSources.map((source) => <option key={source}>{source}</option>)}</select></label>
-            <button type="submit" className="primary-button">Send Partner Admin Invite</button>
+            <button type="submit" className="primary-button" disabled={manualInviteState.loading}>{manualInviteState.loading ? "Sending..." : "Send Partner Admin Invite"}</button>
+            {manualInviteState.error ? <p className="form-error" role="alert">{manualInviteState.error}</p> : null}
+            {manualInviteState.message ? <p className="form-success" aria-live="polite">{manualInviteState.message}</p> : null}
           </form>
         </section>
 

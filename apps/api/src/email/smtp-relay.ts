@@ -1,6 +1,6 @@
 import * as nodemailer from "nodemailer";
 
-type Env = Pick<NodeJS.ProcessEnv, "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_REQUIRE_TLS" | "SMTP_USERNAME" | "SMTP_PASSWORD">;
+type Env = Pick<NodeJS.ProcessEnv, "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_REQUIRE_TLS" | "SMTP_USERNAME" | "SMTP_PASSWORD" | "SMTP_ADDRESS_FAMILY">;
 
 export type SmtpRelayConfig = {
   host: string;
@@ -9,6 +9,7 @@ export type SmtpRelayConfig = {
   requireTLS: boolean;
   username?: string;
   password?: string;
+  addressFamily?: 4 | 6;
 };
 
 export type SmtpRelayMessage = {
@@ -34,12 +35,13 @@ export function buildSmtpRelayConfig(env: Partial<Env> = process.env): SmtpRelay
   const requireTLS = parseBoolean(env.SMTP_REQUIRE_TLS, true, "SMTP_REQUIRE_TLS");
   const username = env.SMTP_USERNAME?.trim() || undefined;
   const password = env.SMTP_PASSWORD?.trim() || undefined;
+  const addressFamily = parseAddressFamily(env.SMTP_ADDRESS_FAMILY);
 
   if (username && !password) throw new Error("SMTP_PASSWORD is required when SMTP_USERNAME is set");
   if (password && !username) throw new Error("SMTP_USERNAME is required when SMTP_PASSWORD is set");
   if (!requireTLS) throw new Error("SMTP_REQUIRE_TLS=true is required for smtp_relay");
 
-  return { host, port, secure, requireTLS, username, password };
+  return { host, port, secure, requireTLS, username, password, addressFamily };
 }
 
 export async function sendSmtpRelayEmail(message: SmtpRelayMessage, env: Partial<Env> = process.env, transportFactory = createSmtpTransport): Promise<SmtpRelaySendResult> {
@@ -61,6 +63,7 @@ export function createSmtpTransport(config: SmtpRelayConfig): SmtpRelayTransport
     socketTimeout: 10000,
     disableFileAccess: true,
     disableUrlAccess: true,
+    ...(config.addressFamily ? { family: config.addressFamily } : {}),
     tls: {
       minVersion: "TLSv1.2",
     },
@@ -99,4 +102,11 @@ function parseBoolean(value: string | undefined, defaultValue: boolean, name: st
   if (value === "true") return true;
   if (value === "false") return false;
   throw new Error(`${name} must be true or false`);
+}
+
+function parseAddressFamily(value: string | undefined): 4 | 6 | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  if (value.trim() === "4") return 4;
+  if (value.trim() === "6") return 6;
+  throw new Error("SMTP_ADDRESS_FAMILY must be 4 or 6");
 }

@@ -388,9 +388,9 @@ export class PartnerInvitationsController {
   @Post("foreman")
   @RequirePermission("partner_foreman_invitation.create")
   async createForemanInvitation(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
-    const organizationId = typeof body.organization_id === "string" && body.organization_id.trim() ? body.organization_id.trim() : undefined;
-    const workerId = this.requiredString(body.worker_id, "worker_id is required");
-    const crewId = this.requiredString(body.crew_id, "crew_id is required");
+    const organizationId = typeof body.organization_id === "string" && body.organization_id.trim() ? this.requiredUuid(body.organization_id, "organization_id must be a valid UUID") : undefined;
+    const workerId = this.requiredUuid(body.worker_id, "worker_id must be a valid UUID");
+    const crewId = this.requiredUuid(body.crew_id, "crew_id must be a valid UUID");
     const email = this.normalizeEmail(this.requiredString(body.email, "email is required"));
     if (!this.validEmail(email)) throw new BadRequestException("email must be valid");
     return this.withClient(async (client) => {
@@ -432,7 +432,7 @@ export class PartnerInvitationsController {
   @Post()
   @RequirePermission("partner_invitation.create")
   async createInvitation(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
-    const organizationId = this.requiredString(body.organization_id, "organization_id is required");
+    const organizationId = this.requiredUuid(body.organization_id, "organization_id must be a valid UUID");
     const email = this.normalizeEmail(this.requiredString(body.email, "email is required"));
     const primaryContactName = this.requiredString(body.primary_contact_name, "primary_contact_name is required");
     const roleKey = body.role_key === undefined ? partnerAdminRoleKey : this.requiredString(body.role_key, "role_key is required");
@@ -1169,6 +1169,12 @@ export class PartnerInvitationsController {
   private requiredString(value: unknown, message: string) {
     if (typeof value !== "string" || !value.trim()) throw new BadRequestException(message);
     return value.trim();
+  }
+
+  private requiredUuid(value: unknown, message: string) {
+    const text = this.requiredString(value, message);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)) throw new BadRequestException(message);
+    return text;
   }
 
   private limitedString(value: unknown, message: string, max: number) {

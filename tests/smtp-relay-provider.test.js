@@ -14,6 +14,8 @@ test("smtp_relay is a hosted email provider with STARTTLS and optional auth", ()
   assert.match(scriptValidator, /"smtp_relay"/);
   assert.match(helper, /requireTLS/);
   assert.match(helper, /SMTP_REQUIRE_TLS=true is required/);
+  assert.match(helper, /SMTP_ADDRESS_FAMILY must be 4 or 6/);
+  assert.match(helper, /family: config\.addressFamily/);
   assert.match(helper, /SMTP_USERNAME.*SMTP_PASSWORD/s);
   assert.match(helper, /const auth = config\.username && config\.password/);
   assert.doesNotMatch(helper, /google_smtp/);
@@ -34,6 +36,7 @@ test("staging smtp_relay keeps recipient allowlist and Sync sender controls", ()
   assert.match(template, /SMTP_HOST=smtp-relay\.gmail\.com/);
   assert.match(template, /SMTP_PORT=587/);
   assert.match(template, /SMTP_REQUIRE_TLS=true/);
+  assert.match(template, /SMTP_ADDRESS_FAMILY=4/);
   assert.match(template, /SMTP_USERNAME=\nSMTP_PASSWORD=/);
   assert.doesNotMatch(template, /EMAIL_API_KEY=<set-in-provider-secret-manager>/);
 });

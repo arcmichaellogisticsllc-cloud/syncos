@@ -11,6 +11,7 @@ Staging uses the Google Workspace SMTP relay with controlled recipients only.
 - `SMTP_PORT=587`
 - `SMTP_SECURE=false`
 - `SMTP_REQUIRE_TLS=true`
+- `SMTP_ADDRESS_FAMILY=4` for the Hostinger staging VPS because Google Workspace relay authorizes the IPv4 source `2.25.82.68`
 - `SMTP_USERNAME=` blank for Google Workspace IP-authenticated relay
 - `SMTP_PASSWORD=` blank for Google Workspace IP-authenticated relay
 - `STAGING_EMAIL_RECIPIENT_ALLOWLIST=<comma separated emails or @domains>`

@@ -52,6 +52,10 @@ function requireSmtpPort(errors: string[], value: string | undefined) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) errors.push("SMTP_PORT must be an integer from 1 to 65535 when EMAIL_PROVIDER=smtp_relay");
 }
 
+function requireSmtpAddressFamily(errors: string[], value: string | undefined) {
+  if (value !== undefined && value.trim() !== "" && value.trim() !== "4" && value.trim() !== "6") errors.push("SMTP_ADDRESS_FAMILY must be 4 or 6 when set");
+}
+
 export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): EnvironmentValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -88,6 +92,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Envir
       requireSmtpPort(errors, env.SMTP_PORT);
       requireBoolean(errors, "SMTP_SECURE", env.SMTP_SECURE);
       requireBoolean(errors, "SMTP_REQUIRE_TLS", env.SMTP_REQUIRE_TLS);
+      requireSmtpAddressFamily(errors, env.SMTP_ADDRESS_FAMILY);
       if (env.SMTP_REQUIRE_TLS !== "true") errors.push("SMTP_REQUIRE_TLS=true is required when EMAIL_PROVIDER=smtp_relay");
       if (Boolean(env.SMTP_USERNAME) !== Boolean(env.SMTP_PASSWORD)) errors.push("SMTP_USERNAME and SMTP_PASSWORD must either both be set or both be empty when EMAIL_PROVIDER=smtp_relay");
       if (nodeEnv === "staging" && !env.STAGING_EMAIL_RECIPIENT_ALLOWLIST) errors.push("STAGING_EMAIL_RECIPIENT_ALLOWLIST is required in staging when EMAIL_PROVIDER=smtp_relay");
