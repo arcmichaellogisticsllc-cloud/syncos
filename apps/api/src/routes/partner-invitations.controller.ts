@@ -432,21 +432,23 @@ export class PartnerInvitationsController {
   @Post()
   @RequirePermission("partner_invitation.create")
   async createInvitation(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
-    const organizationId = this.requiredUuid(body.organization_id, "organization_id must be a valid UUID");
+    const organizationId = typeof body.organization_id === "string" && body.organization_id.trim() ? this.requiredUuid(body.organization_id, "organization_id must be a valid UUID") : null;
+    const companyName = organizationId ? undefined : this.limitedString(body.company_name, "company_name is required", 160);
     const email = this.normalizeEmail(this.requiredString(body.email, "email is required"));
     const primaryContactName = this.requiredString(body.primary_contact_name, "primary_contact_name is required");
     const roleKey = body.role_key === undefined ? partnerAdminRoleKey : this.requiredString(body.role_key, "role_key is required");
     if (roleKey !== partnerAdminRoleKey) throw new BadRequestException("Only Partner Admin invitations use this endpoint");
     if (!this.validEmail(email)) throw new BadRequestException("email must be a valid normalized address");
-    return this.withClient(async (client) =>
-      this.createAdminInvitation(client, request, {
-        organizationId,
+    return this.withClient(async (client) => {
+      const resolvedOrganizationId = organizationId ?? (await this.resolveManualPartnerOrganization(client, request.auth.tenantId, request.auth.userId, this.requiredString(companyName, "company_name is required")));
+      return this.createAdminInvitation(client, request, {
+        organizationId: resolvedOrganizationId,
         primaryContactName,
         email,
         source: this.allowedUpper(body.source ?? "MANUAL_INTERNAL", inviteSources, "source is invalid"),
         inquiryId: typeof body.inquiry_id === "string" && body.inquiry_id.trim() ? body.inquiry_id.trim() : null,
-      }),
-    );
+      });
+    });
   }
 
   @Post("token/preview")
@@ -987,6 +989,68 @@ export class PartnerInvitationsController {
     );
     if (!result.rows[0]) throw new NotFoundException("Partner organization not found");
     return result.rows[0];
+  }
+
+  private async resolveManualPartnerOrganization(client: PoolClient, tenantId: string, actorUserId: string, companyName: string) {
+    const name = companyName.trim();
+    const existing = await client.query<PartnerOrganizationRow>(
+      `
+      SELECT o.id, o.tenant_id, o.name, o.status, cp.id AS capacity_provider_id, cp.provider_type
+      FROM organizations o
+      JOIN capacity_providers cp ON cp.tenant_id = o.tenant_id AND cp.organization_id = o.id
+      WHERE o.tenant_id = $1
+        AND lower(o.name) = lower($2)
+        AND o.deleted_at IS NULL
+        AND cp.deleted_at IS NULL
+        AND cp.provider_type = ANY($3::text[])
+        AND cp.status <> 'archived'
+      ORDER BY o.created_at ASC
+      `,
+      [tenantId, name, Array.from(partnerProviderTypes)],
+    );
+    if (existing.rows.length > 1) throw new ConflictException("Multiple Partner organizations match this company name");
+    if (existing.rows[0]) return existing.rows[0].id;
+
+    const inserted = await client.query<{ organization_id: string; capacity_provider_id: string }>(
+      `
+      WITH organization_insert AS (
+        INSERT INTO organizations (tenant_id, name, type, actor_roles, source_name, trust_level, status)
+        VALUES ($1, $2, 'partner', ARRAY['capacity_provider'], 'manual_partner_invitation', 40, 'discovered')
+        RETURNING id
+      ),
+      provider_insert AS (
+        INSERT INTO capacity_providers (
+          tenant_id,
+          organization_id,
+          name,
+          provider_type,
+          status,
+          verification_status,
+          contract_status
+        )
+        SELECT $1, id, $2, 'subcontractor', 'prospect', 'prospect', 'not_started'
+        FROM organization_insert
+        RETURNING id
+      )
+      SELECT organization_insert.id AS organization_id, provider_insert.id AS capacity_provider_id
+      FROM organization_insert, provider_insert
+      `,
+      [tenantId, name],
+    );
+    await appendAuditLog(client, {
+      tenantId,
+      actorUserId,
+      action: "partner_invitation.manual_partner.create",
+      entityType: "organization",
+      entityId: inserted.rows[0].organization_id,
+      afterState: {
+        organization_id: inserted.rows[0].organization_id,
+        capacity_provider_id: inserted.rows[0].capacity_provider_id,
+        company_name: name,
+        source: "manual_partner_invitation",
+      },
+    });
+    return inserted.rows[0].organization_id;
   }
 
   private async requireCurrentForemanMembership(client: PoolClient, tenantId: string, organizationId: string, workerId: string, crewId: string, membershipId?: string) {

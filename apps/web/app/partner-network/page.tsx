@@ -63,7 +63,7 @@ export default function PartnerNetworkPage() {
   const [filter, setFilter] = useState("ALL");
   const [contactNote, setContactNote] = useState("");
   const [organizationId, setOrganizationId] = useState("");
-  const [manualInvite, setManualInvite] = useState({ organization_id: "", primary_contact_name: "", email: "", source: "MANUAL_INTERNAL" });
+  const [manualInvite, setManualInvite] = useState({ company_name: "", primary_contact_name: "", email: "", source: "MANUAL_INTERNAL" });
   const [manualInviteState, setManualInviteState] = useState({ loading: false, error: "", message: "" });
   const [currentUserId, setCurrentUserId] = useState("");
 
@@ -158,12 +158,28 @@ export default function PartnerNetworkPage() {
     }
   }
 
+  function updateManualCompany(companyName: string) {
+    const inquiry = inquiries.find((entry) => entry.company_name.toLowerCase() === companyName.trim().toLowerCase());
+    setManualInvite((current) => ({
+      ...current,
+      company_name: companyName,
+      primary_contact_name: inquiry && !current.primary_contact_name ? inquiry.contact_name : current.primary_contact_name,
+      email: inquiry && !current.email ? inquiry.email : current.email,
+    }));
+  }
+
   const analytics = useMemo(() => ({
     inquiries: inquiries.length,
     qualified: inquiries.filter((inquiry) => inquiry.status === "QUALIFIED").length,
     invitations: invitations.length,
     accepted: invitations.filter((invite) => invite.status === "ACCEPTED").length,
   }), [inquiries, invitations]);
+  const companySuggestions = useMemo(() => {
+    const names = new Set<string>();
+    for (const inquiry of inquiries) names.add(inquiry.company_name);
+    for (const partner of partners) names.add(partner.company);
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [inquiries, partners]);
 
   return (
     <CommandShell title="Partner Network" purpose="Internal Sync Admin workspace for Partner inquiries, qualification, invitations, onboarding review, and approval gates.">
@@ -258,7 +274,13 @@ export default function PartnerNetworkPage() {
           <h2>Invite without public inquiry</h2>
           <p className="muted">Manual invitation bypasses public inquiry only. It does not bypass onboarding, compliance, internal review, approval, Work Order, or mobilization controls.</p>
           <form onSubmit={submitManualInvite} className="stacked-form">
-            <label className="form-field"><span>Partner Organization ID</span><input value={manualInvite.organization_id} onChange={(event) => setManualInvite((current) => ({ ...current, organization_id: event.target.value }))} /></label>
+            <label className="form-field">
+              <span>Partner company</span>
+              <input list="manual-invite-companies" value={manualInvite.company_name} onChange={(event) => updateManualCompany(event.target.value)} placeholder="Start typing a Partner company" />
+              <datalist id="manual-invite-companies">
+                {companySuggestions.map((company) => <option key={company} value={company} />)}
+              </datalist>
+            </label>
             <label className="form-field"><span>Primary contact name</span><input value={manualInvite.primary_contact_name} onChange={(event) => setManualInvite((current) => ({ ...current, primary_contact_name: event.target.value }))} /></label>
             <label className="form-field"><span>Email</span><input value={manualInvite.email} onChange={(event) => setManualInvite((current) => ({ ...current, email: event.target.value }))} /></label>
             <label className="form-field"><span>Source</span><select value={manualInvite.source} onChange={(event) => setManualInvite((current) => ({ ...current, source: event.target.value }))}>{inviteSources.map((source) => <option key={source}>{source}</option>)}</select></label>
