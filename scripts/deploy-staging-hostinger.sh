@@ -45,18 +45,20 @@ npm run build -w @syncos/api
 npm run build -w @syncos/web
 npm run build -w @syncos/worker
 
-if [[ ! -r "${STAGING_API_ENV_FILE}" ]]; then
+if [[ -r "${STAGING_API_ENV_FILE}" ]]; then
+  (
+    set -a
+    # shellcheck source=/dev/null
+    source "${STAGING_API_ENV_FILE}"
+    set +a
+    NODE_ENV=staging npm run release:staging:migrate
+  )
+elif sudo -n test -r "${STAGING_API_ENV_FILE}"; then
+  sudo -n bash -c 'set -euo pipefail; cd "$1"; set -a; source "$2"; set +a; NODE_ENV=staging npm run release:staging:migrate' bash "${RELEASE_DIR}" "${STAGING_API_ENV_FILE}"
+else
   echo "Staging API environment file is required for migration: ${STAGING_API_ENV_FILE}" >&2
   exit 1
 fi
-
-(
-  set -a
-  # shellcheck source=/dev/null
-  source "${STAGING_API_ENV_FILE}"
-  set +a
-  NODE_ENV=staging npm run release:staging:migrate
-)
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}.next"
 mv -Tf "${CURRENT_LINK}.next" "${CURRENT_LINK}"
