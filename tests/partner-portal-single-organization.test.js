@@ -35,6 +35,9 @@ test("Invitation and role assignment block cross-organization Partner accounts",
   const invitations = read("apps/api/src/routes/partner-invitations.controller.ts");
   const personas = read("apps/api/src/routes/partner-personas.controller.ts");
 
+  assert.match(invitations, /lockPartnerAccountForTransaction\(client, tenantId, input\.email\)/);
+  assert.match(invitations, /lockPartnerAccountForTransaction\(client, invitation\.tenant_id, invitation\.email\)/);
+  assert.match(invitations, /pg_advisory_xact_lock\(hashtextextended/);
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, tenantId, input\.email, input\.organizationId\)/);
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, invitation\.tenant_id, invitation\.email, invitation\.organization_id\)/);
   assert.match(invitations, /This email is already associated with another Partner organization/);

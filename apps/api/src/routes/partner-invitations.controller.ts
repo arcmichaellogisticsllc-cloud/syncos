@@ -478,6 +478,7 @@ export class PartnerInvitationsController {
       try {
         const invitation = await this.invitationByToken(client, token, true);
         this.requireAcceptableInvitation(invitation);
+        await this.lockPartnerAccountForTransaction(client, invitation.tenant_id, invitation.email);
         if (invitation.invitation_type === "partner_foreman") {
           await this.requireCurrentForemanMembership(client, invitation.tenant_id, invitation.organization_id, String(invitation.worker_id), String(invitation.crew_id), String(invitation.foreman_membership_id));
         }
@@ -604,45 +605,55 @@ export class PartnerInvitationsController {
     crewId?: string | null;
     foremanMembershipId?: string | null;
   }) {
-    await this.requireNoPartnerAccountOrganizationConflict(client, tenantId, input.email, input.organizationId);
-    const existing = await client.query(
-      "SELECT id FROM partner_onboarding_invitations WHERE tenant_id = $1 AND organization_id = $2 AND email = $3 AND invitation_type = $4 AND status = 'SENT' AND expires_at > now()",
-      [tenantId, input.organizationId, input.email, input.invitationType],
-    );
-    if (existing.rows[0]) throw new ConflictException("An active invitation already exists for this Partner contact");
+    await client.query("BEGIN");
+    let invitation: InvitationRow;
     const token = crypto.randomBytes(32).toString("base64url");
     const tokenHash = this.hashToken(token);
     const subject = input.invitationType === "partner_foreman" ? "Sync Comm Systems Field Access Invitation" : "Sync Comm Systems Partner Onboarding Invitation";
     const preview = input.invitationType === "partner_foreman"
       ? "Sync Comm Systems has invited you to activate Foreman field access."
       : "Sync Comm Systems has invited you to complete your company onboarding.";
-    const result = await client.query<InvitationRow>(
-      `
-      INSERT INTO partner_onboarding_invitations (
-        tenant_id, organization_id, inquiry_id, invitation_type, invitation_source, primary_contact_name, email,
-        intended_role_key, worker_id, crew_id, foreman_membership_id, token_hash, invited_by_user_id,
-        expires_at, email_subject, email_preview
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now() + ($14::text || ' days')::interval,$15,$16)
-      RETURNING *
-      `,
-      [tenantId, input.organizationId, input.inquiryId ?? null, input.invitationType, input.source, input.primaryContactName, input.email, input.roleKey, input.workerId ?? null, input.crewId ?? null, input.foremanMembershipId ?? null, tokenHash, actorUserId, inviteTtlDays, subject, preview],
-    );
-    if (input.inquiryId) {
-      await client.query("UPDATE partner_inquiries SET status = 'INVITED', invited_at = COALESCE(invited_at, now()), updated_at = now() WHERE tenant_id = $1 AND id = $2", [tenantId, input.inquiryId]);
-      await this.recordInquiryEvent(client, tenantId, input.inquiryId, "INVITE_SENT", actorUserId, { invitation_id: result.rows[0].id }, null);
+    try {
+      await this.lockPartnerAccountForTransaction(client, tenantId, input.email);
+      await this.requireNoPartnerAccountOrganizationConflict(client, tenantId, input.email, input.organizationId);
+      const existing = await client.query(
+        "SELECT id FROM partner_onboarding_invitations WHERE tenant_id = $1 AND organization_id = $2 AND email = $3 AND invitation_type = $4 AND status = 'SENT' AND expires_at > now()",
+        [tenantId, input.organizationId, input.email, input.invitationType],
+      );
+      if (existing.rows[0]) throw new ConflictException("An active invitation already exists for this Partner contact");
+      const result = await client.query<InvitationRow>(
+        `
+        INSERT INTO partner_onboarding_invitations (
+          tenant_id, organization_id, inquiry_id, invitation_type, invitation_source, primary_contact_name, email,
+          intended_role_key, worker_id, crew_id, foreman_membership_id, token_hash, invited_by_user_id,
+          expires_at, email_subject, email_preview
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now() + ($14::text || ' days')::interval,$15,$16)
+        RETURNING *
+        `,
+        [tenantId, input.organizationId, input.inquiryId ?? null, input.invitationType, input.source, input.primaryContactName, input.email, input.roleKey, input.workerId ?? null, input.crewId ?? null, input.foremanMembershipId ?? null, tokenHash, actorUserId, inviteTtlDays, subject, preview],
+      );
+      invitation = result.rows[0];
+      if (input.inquiryId) {
+        await client.query("UPDATE partner_inquiries SET status = 'INVITED', invited_at = COALESCE(invited_at, now()), updated_at = now() WHERE tenant_id = $1 AND id = $2", [tenantId, input.inquiryId]);
+        await this.recordInquiryEvent(client, tenantId, input.inquiryId, "INVITE_SENT", actorUserId, { invitation_id: invitation.id }, null);
+      }
+      await appendAuditLog(client, {
+        tenantId,
+        actorUserId,
+        action: "partner_invitation.create",
+        entityType: "partner_onboarding_invitation",
+        entityId: invitation.id,
+        afterState: this.safeInvitation(invitation),
+        metadata: { invitation_source: input.source, email_provider: this.emailProvider() },
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     }
-    await appendAuditLog(client, {
-      tenantId,
-      actorUserId,
-      action: "partner_invitation.create",
-      entityType: "partner_onboarding_invitation",
-      entityId: result.rows[0].id,
-      afterState: this.safeInvitation(result.rows[0]),
-      metadata: { invitation_source: input.source, email_provider: this.emailProvider() },
-    });
-    const delivery = await this.deliverInvitationEmail(client, result.rows[0], token);
-    return { ...this.safeInvitation({ ...result.rows[0], delivery_status: delivery.email_delivery.delivery_status }), ...delivery };
+    const delivery = await this.deliverInvitationEmail(client, invitation, token);
+    return { ...this.safeInvitation({ ...invitation, delivery_status: delivery.email_delivery.delivery_status }), ...delivery };
   }
 
   private async resendInvitationById(client: PoolClient, tenantId: string, actorUserId: string, id: string, organizationId?: string, invitationType?: "partner_admin" | "partner_foreman") {
@@ -986,6 +997,10 @@ export class PartnerInvitationsController {
     );
     const organizationIds = Array.from(new Set(result.rows.map((row) => row.organization_id)));
     if (organizationIds.some((assignedOrganizationId) => assignedOrganizationId !== organizationId)) throw this.partnerAccountOrganizationConflict();
+  }
+
+  private async lockPartnerAccountForTransaction(client: PoolClient, tenantId: string, email: string) {
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`partner-account:${tenantId}:${this.normalizeEmail(email)}`]);
   }
 
   private partnerAccountOrganizationConflict() {
