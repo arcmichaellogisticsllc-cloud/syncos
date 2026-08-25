@@ -2,7 +2,7 @@ import { resolve4, resolve6 } from "node:dns/promises";
 import * as net from "node:net";
 import * as nodemailer from "nodemailer";
 
-type Env = Pick<NodeJS.ProcessEnv, "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_REQUIRE_TLS" | "SMTP_USERNAME" | "SMTP_PASSWORD" | "SMTP_ADDRESS_FAMILY">;
+type Env = Pick<NodeJS.ProcessEnv, "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_REQUIRE_TLS" | "SMTP_USERNAME" | "SMTP_PASSWORD" | "SMTP_ADDRESS_FAMILY" | "SMTP_CLIENT_NAME">;
 
 export type SmtpRelayConfig = {
   host: string;
@@ -12,6 +12,7 @@ export type SmtpRelayConfig = {
   username?: string;
   password?: string;
   addressFamily?: 4 | 6;
+  clientName?: string;
 };
 
 export type SmtpRelayMessage = {
@@ -38,12 +39,13 @@ export function buildSmtpRelayConfig(env: Partial<Env> = process.env): SmtpRelay
   const username = env.SMTP_USERNAME?.trim() || undefined;
   const password = env.SMTP_PASSWORD?.trim() || undefined;
   const addressFamily = parseAddressFamily(env.SMTP_ADDRESS_FAMILY);
+  const clientName = env.SMTP_CLIENT_NAME?.trim() || undefined;
 
   if (username && !password) throw new Error("SMTP_PASSWORD is required when SMTP_USERNAME is set");
   if (password && !username) throw new Error("SMTP_USERNAME is required when SMTP_PASSWORD is set");
   if (!requireTLS) throw new Error("SMTP_REQUIRE_TLS=true is required for smtp_relay");
 
-  return { host, port, secure, requireTLS, username, password, addressFamily };
+  return { host, port, secure, requireTLS, username, password, addressFamily, clientName };
 }
 
 export async function sendSmtpRelayEmail(message: SmtpRelayMessage, env: Partial<Env> = process.env, transportFactory = createSmtpTransport): Promise<SmtpRelaySendResult> {
@@ -58,6 +60,7 @@ export function createSmtpTransport(config: SmtpRelayConfig): SmtpRelayTransport
   return nodemailer.createTransport({
     host: config.host,
     port: config.port,
+    ...(config.clientName ? { name: config.clientName } : {}),
     secure: config.secure,
     requireTLS: config.requireTLS,
     connectionTimeout: 10000,

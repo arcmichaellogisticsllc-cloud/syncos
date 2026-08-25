@@ -15,6 +15,8 @@ test("smtp_relay is a hosted email provider with STARTTLS and optional auth", ()
   assert.match(helper, /requireTLS/);
   assert.match(helper, /SMTP_REQUIRE_TLS=true is required/);
   assert.match(helper, /SMTP_ADDRESS_FAMILY must be 4 or 6/);
+  assert.match(helper, /SMTP_CLIENT_NAME/);
+  assert.match(helper, /name: config\.clientName/);
   assert.match(helper, /forcedAddressFamilySocket/);
   assert.match(helper, /resolve4\(config\.host\)/);
   assert.match(helper, /SMTP_USERNAME.*SMTP_PASSWORD/s);
@@ -38,6 +40,7 @@ test("staging smtp_relay keeps recipient allowlist and Sync sender controls", ()
   assert.match(template, /SMTP_PORT=587/);
   assert.match(template, /SMTP_REQUIRE_TLS=true/);
   assert.match(template, /SMTP_ADDRESS_FAMILY=4/);
+  assert.match(template, /SMTP_CLIENT_NAME=srv1818105\.synccommsystems\.com/);
   assert.match(template, /SMTP_USERNAME=\nSMTP_PASSWORD=/);
   assert.doesNotMatch(template, /EMAIL_API_KEY=<set-in-provider-secret-manager>/);
 });

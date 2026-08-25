@@ -26,6 +26,7 @@ Production startup rejects `local_test` and requires `generic_http`, `smtp_relay
 - `EMAIL_API_KEY`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, and `SMTP_REQUIRE_TLS=true` when `EMAIL_PROVIDER=smtp_relay`
 - `SMTP_ADDRESS_FAMILY=4` or `6` only when a relay provider requires a specific source address family
+- `SMTP_CLIENT_NAME` only when a relay provider requires a stable SMTP EHLO hostname
 - `APPLICATION_BASE_URL`
 
 Secret values must be stored in the provider secret manager, not Git.
@@ -33,6 +34,8 @@ Secret values must be stored in the provider secret manager, not Git.
 For Google Workspace SMTP relay configured by trusted source IP, leave `SMTP_USERNAME` and `SMTP_PASSWORD` unset. SyncOS only sends SMTP AUTH credentials when both values are present.
 
 For Hostinger staging, set `SMTP_ADDRESS_FAMILY=4` so outbound relay traffic uses the authorized IPv4 source. Production should set this only when the production relay policy requires it.
+
+Set `SMTP_CLIENT_NAME` to the service hostname when the SMTP relay validates the client's EHLO identity. For Hostinger staging, use `srv1818105.synccommsystems.com`.
 
 ## DNS Authentication
 
