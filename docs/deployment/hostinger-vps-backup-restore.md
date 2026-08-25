@@ -1,12 +1,22 @@
 # Hostinger VPS Backup And Restore
 
-## Status
+## Staging Status
 
 SyncOS staging currently runs on Hostinger VPS `srv1818105`.
 
-The required backup target is an S3-compatible private bucket. Cloudflare R2 is the recommended first target for staging because it is inexpensive, supports S3-compatible tooling, keeps recovery provider-neutral, and avoids depending on the same VPS that is being protected.
+For staging, the accepted recovery architecture is:
 
-Bucket name:
+- Layer 1: daily SyncOS application backups stored locally on the VPS;
+- Layer 2: weekly Hostinger VPS backups stored separately from the main server;
+- Layer 3: manual Hostinger VPS snapshots before major infrastructure changes.
+
+Hostinger hPanel currently confirms weekly automated VPS backups, separately stored restore points, and a manual snapshot. The manual snapshot expires on `2026-08-26`; it is temporary change protection, not a long-term backup.
+
+Cloudflare R2 is not required for staging. S3-compatible backup mode remains available for later production hardening or independent remote application-level backup.
+
+## Future S3/R2 Option
+
+If independent remote application backup is enabled later, use a private S3-compatible bucket. Recommended R2 bucket name:
 
 ```text
 syncos-staging-backups
@@ -14,11 +24,9 @@ syncos-staging-backups
 
 The bucket must stay private. Do not attach a public custom domain.
 
-Current gate status: off-VPS backup is not complete until `/etc/syncos/staging/backup.env` is populated, `aws` CLI or a compatible client is installed on the VPS, both backup scripts upload successfully, and restore validation passes.
-
 ## Backup Scope
 
-Back up:
+Daily SyncOS application backup jobs back up:
 
 - `syncos_staging` PostgreSQL database;
 - `/opt/syncos/staging/shared/storage` private application files;
@@ -37,9 +45,9 @@ Do not back up through these SyncOS jobs:
 
 Secrets must be recovered through the operator-controlled secret backup process, not by copying them into the DB/file backup set.
 
-## Backup Credentials
+## Backup Mode
 
-Store backup credentials outside Git:
+Store non-secret backup configuration outside Git:
 
 ```text
 /etc/syncos/staging/backup.env
@@ -52,9 +60,21 @@ chown root:syncos /etc/syncos/staging/backup.env
 chmod 640 /etc/syncos/staging/backup.env
 ```
 
-Required settings:
+Staging-local Hostinger mode:
 
 ```bash
+SYNCOS_BACKUP_MODE=local_hostinger
+SYNCOS_BACKUP_CADENCE=daily
+SYNCOS_BACKUP_RETENTION_KEEP=7
+SYNCOS_BACKUP_DISK_CRITICAL_PERCENT=85
+```
+
+This mode does not require AWS or R2 credentials. It writes local application backup artifacts that are then captured by Hostinger's subsequent off-server VPS backup.
+
+S3-compatible mode:
+
+```bash
+SYNCOS_BACKUP_MODE=s3_remote
 SYNCOS_BACKUP_S3_BUCKET=syncos-staging-backups
 SYNCOS_BACKUP_S3_PREFIX=
 SYNCOS_BACKUP_CADENCE=daily
@@ -64,6 +84,8 @@ AWS_DEFAULT_REGION=auto
 AWS_ENDPOINT_URL_S3=https://<account-id>.r2.cloudflarestorage.com
 SYNCOS_BACKUP_SSE=AES256
 ```
+
+S3-compatible mode requires `aws` CLI or a compatible client on the VPS.
 
 Use a least-privilege key scoped to the staging backup bucket or prefix where the provider supports it. Do not use account-wide admin credentials.
 
@@ -112,8 +134,10 @@ Behavior:
 - includes the deployed SHA in the backup filename;
 - writes a SHA-256 checksum;
 - writes a JSON manifest with environment, timestamp, deployed SHA, migration ceiling, filename, size, and checksum;
-- uploads the dump to `postgres/<daily|weekly>/` and the manifest to `postgres/manifests/`;
-- verifies the remote object with `head-object`;
+- stores the dump under `postgres/<daily|weekly>/`;
+- stores the manifest under `postgres/manifests/`;
+- verifies the dump with `pg_restore --list`;
+- uploads and verifies the remote object only when `SYNCOS_BACKUP_MODE=s3_remote`;
 - exits non-zero on failure.
 
 The script does not contain database passwords or backup provider secrets.
@@ -133,8 +157,10 @@ Behavior:
 - preserves directory structure;
 - writes a SHA-256 checksum;
 - writes a JSON manifest with file count and deployed SHA;
-- uploads the archive to `files/<daily|weekly>/` and the manifest to `files/manifests/`;
-- verifies the remote object with `head-object`;
+- stores the archive under `files/<daily|weekly>/`;
+- stores the manifest under `files/manifests/`;
+- verifies the archive with `tar --list`;
+- uploads and verifies the remote object only when `SYNCOS_BACKUP_MODE=s3_remote`;
 - exits non-zero on failure.
 
 ## Manual Run
@@ -149,7 +175,7 @@ SYNCOS_RELEASE_SHA=$(git rev-parse HEAD) scripts/backup-staging-files.sh
 
 ## Systemd Timers
 
-Use one daily timer per backup type.
+Use one daily timer per backup type. These local daily backups are intentionally staggered.
 
 Database timer:
 
@@ -161,7 +187,7 @@ syncos-staging-db-backup.timer
 Recommended schedule:
 
 ```text
-OnCalendar=*-*-* 06:15:00 UTC
+OnCalendar=*-*-* 02:10:00 UTC
 Persistent=true
 ```
 
@@ -175,7 +201,7 @@ syncos-staging-files-backup.timer
 Recommended schedule:
 
 ```text
-OnCalendar=*-*-* 06:45:00 UTC
+OnCalendar=*-*-* 02:30:00 UTC
 Persistent=true
 ```
 
@@ -183,25 +209,24 @@ Timers must log to journald. A failed script exit must mark the service failed s
 
 ## Retention
 
-Staging retention target:
+Local staging retention target:
 
 - daily backups: 7 copies;
-- weekly backups: 4 copies;
+- weekly backups: 4 copies if weekly jobs are enabled later;
 - monthly backups: optional for staging.
 
-Use bucket lifecycle rules where possible. Production needs a stronger policy with point-in-time recovery or equivalent managed database protection.
+Never delete the newest verified backup. Production needs a stronger policy with point-in-time recovery or equivalent managed database protection.
 
 ## Encryption
 
-Required:
+Staging requirements:
 
-- TLS in transit to the backup target;
-- provider-managed encryption at rest;
-- private bucket/container only;
+- Hostinger off-server VPS backup protection for the local backup artifacts;
+- private local backup directories;
 - no anonymous reads;
 - no public URLs.
 
-Client-side encryption can be added later if the staging evidence set becomes sensitive enough to require keys independent from the storage provider. Do not create encryption keys without a secure storage and recovery plan.
+For S3-compatible mode, require TLS in transit and provider-managed encryption at rest. Client-side encryption can be added later if the evidence set becomes sensitive enough to require keys independent from the storage provider. Do not create encryption keys without a secure storage and recovery plan.
 
 ## Restore Drill
 
@@ -292,12 +317,23 @@ Recovery outline:
 
 ## RPO/RTO
 
-Staging target:
+Application-level corruption in staging:
 
 - RPO: 24 hours after daily timers are active;
-- RTO: 4-8 hours for a full VPS rebuild by an operator with provider access.
+- RTO: 1-2 hours for DB/file restore into the existing VPS.
 
-These are realistic staging targets. Production should use a stronger database and file durability plan.
+Total VPS loss in staging:
+
+- RPO: depends on latest Hostinger weekly off-server VPS backup;
+- RTO: approximately 30 minutes for Hostinger restore once an operator initiates it, plus application validation time.
+
+Do not claim total-loss RPO is 24 hours while Hostinger backup cadence is weekly. Production should use daily VPS backups at minimum and preferably independent remote application-level backups.
+
+## Hostinger Restore Safety
+
+Hostinger Restore is a full VPS restoration. Do not use it casually to recover one database record, one map, or one document.
+
+Use SyncOS application-level DB/file backups for granular staging recovery. Use Hostinger whole-VPS restore only for disaster recovery.
 
 ## Cleanup
 
