@@ -274,6 +274,10 @@ export class PartnerPersonasController {
     if (organizationIds.some((assignedOrganizationId) => assignedOrganizationId !== organizationId)) throw this.partnerAccountOrganizationConflict();
   }
 
+  private async lockPartnerAccountForTransaction(client: PoolClient, tenantId: string, email: string) {
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`partner-account:${tenantId}:${email.trim().toLowerCase()}`]);
+  }
+
   private partnerAccountOrganizationConflict() {
     return new ConflictException({
       code: "PARTNER_ACCOUNT_ORGANIZATION_CONFLICT",
@@ -288,35 +292,41 @@ export class PartnerPersonasController {
   ) {
     await this.requireAssignablePartnerOrganization(client, request.auth.tenantId, request.auth.userId, input.organizationId);
     const tenantUser = await this.requireTenantUser(client, request.auth.tenantId, input.userId);
-    await this.requireNoPartnerAccountOrganizationConflict(client, request.auth.tenantId, tenantUser.id, input.organizationId);
     const role = await this.ensurePartnerRole(client, request.auth.tenantId, input.roleKey);
-    const existing = await client.query(
-      `
-      SELECT ur.*
-      FROM user_roles ur
-      WHERE ur.tenant_id = $1
-        AND ur.tenant_user_id = $2
-        AND ur.role_id = $3
-        AND ur.scope_type = 'organization'
-        AND ur.scope_id = $4
-      LIMIT 1
-      `,
-      [request.auth.tenantId, tenantUser.id, role.id, input.organizationId],
-    );
-    if (existing.rows[0]) {
-      return {
-        tenant_id: request.auth.tenantId,
-        user_id: input.userId,
-        role_key: input.roleKey,
-        scope_type: "organization",
-        scope_id: input.organizationId,
-        partner_organization_id: input.organizationId,
-        user_role_id: existing.rows[0].id,
-        reused_existing_assignment: true,
-      };
-    }
 
-    return this.writeWithClient(client, request, "partner_role.assign", "partner_role.assigned", "user_role", async (writeClient) => {
+    return this.writeWithClient<Record<string, unknown>>(client, request, "partner_role.assign", "partner_role.assigned", "user_role", async (writeClient) => {
+      await this.lockPartnerAccountForTransaction(writeClient, request.auth.tenantId, tenantUser.email);
+      await this.requireNoPartnerAccountOrganizationConflict(writeClient, request.auth.tenantId, tenantUser.id, input.organizationId);
+      const existing = await writeClient.query(
+        `
+        SELECT ur.*
+        FROM user_roles ur
+        WHERE ur.tenant_id = $1
+          AND ur.tenant_user_id = $2
+          AND ur.role_id = $3
+          AND ur.scope_type = 'organization'
+          AND ur.scope_id = $4
+        LIMIT 1
+        `,
+        [request.auth.tenantId, tenantUser.id, role.id, input.organizationId],
+      );
+      if (existing.rows[0]) {
+        return {
+          entityType: "user_role",
+          entityId: existing.rows[0].id,
+          skipEventAudit: true,
+          afterState: {
+            tenant_id: request.auth.tenantId,
+            user_id: input.userId,
+            role_key: input.roleKey,
+            scope_type: "organization",
+            scope_id: input.organizationId,
+            partner_organization_id: input.organizationId,
+            user_role_id: existing.rows[0].id,
+            reused_existing_assignment: true,
+          },
+        };
+      }
       const inserted = await writeClient.query(
         `
         INSERT INTO user_roles (tenant_id, tenant_user_id, role_id, scope_type, scope_id)
@@ -338,6 +348,7 @@ export class PartnerPersonasController {
           scope_type: "organization",
           scope_id: input.organizationId,
           partner_organization_id: input.organizationId,
+          user_role_id: inserted.rows[0].id,
           capacity_provider_id: capacityProviderId,
           actor_user_id: request.auth.userId,
           reused_existing_assignment: false,
@@ -415,7 +426,7 @@ export class PartnerPersonasController {
   private async requireTenantUser(client: PoolClient, tenantId: string, userId: string) {
     const result = await client.query(
       `
-      SELECT tu.*
+      SELECT tu.*, u.email
       FROM tenant_users tu
       JOIN users u ON u.id = tu.user_id
       WHERE tu.tenant_id = $1

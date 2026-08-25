@@ -42,7 +42,10 @@ test("Invitation and role assignment block cross-organization Partner accounts",
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, invitation\.tenant_id, invitation\.email, invitation\.organization_id\)/);
   assert.match(invitations, /This email is already associated with another Partner organization/);
   assert.match(invitations, /PARTNER_ACCOUNT_ORGANIZATION_CONFLICT/);
-  assert.match(personas, /requireNoPartnerAccountOrganizationConflict\(client, request\.auth\.tenantId, tenantUser\.id, input\.organizationId\)/);
+  assert.match(personas, /lockPartnerAccountForTransaction\(writeClient, request\.auth\.tenantId, tenantUser\.email\)/);
+  assert.match(personas, /pg_advisory_xact_lock\(hashtextextended/);
+  assert.match(personas, /partner-account:\$\{tenantId\}:\$\{email\.trim\(\)\.toLowerCase\(\)\}/);
+  assert.match(personas, /requireNoPartnerAccountOrganizationConflict\(writeClient, request\.auth\.tenantId, tenantUser\.id, input\.organizationId\)/);
 });
 
 test("Partner Portal product boundaries keep financial truth server-authoritative and private", () => {
