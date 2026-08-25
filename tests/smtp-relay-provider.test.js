@@ -15,7 +15,8 @@ test("smtp_relay is a hosted email provider with STARTTLS and optional auth", ()
   assert.match(helper, /requireTLS/);
   assert.match(helper, /SMTP_REQUIRE_TLS=true is required/);
   assert.match(helper, /SMTP_ADDRESS_FAMILY must be 4 or 6/);
-  assert.match(helper, /family: config\.addressFamily/);
+  assert.match(helper, /forcedAddressFamilySocket/);
+  assert.match(helper, /resolve4\(config\.host\)/);
   assert.match(helper, /SMTP_USERNAME.*SMTP_PASSWORD/s);
   assert.match(helper, /const auth = config\.username && config\.password/);
   assert.doesNotMatch(helper, /google_smtp/);

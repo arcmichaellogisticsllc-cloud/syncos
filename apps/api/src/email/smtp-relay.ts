@@ -1,3 +1,5 @@
+import { resolve4, resolve6 } from "node:dns/promises";
+import * as net from "node:net";
 import * as nodemailer from "nodemailer";
 
 type Env = Pick<NodeJS.ProcessEnv, "SMTP_HOST" | "SMTP_PORT" | "SMTP_SECURE" | "SMTP_REQUIRE_TLS" | "SMTP_USERNAME" | "SMTP_PASSWORD" | "SMTP_ADDRESS_FAMILY">;
@@ -63,12 +65,34 @@ export function createSmtpTransport(config: SmtpRelayConfig): SmtpRelayTransport
     socketTimeout: 10000,
     disableFileAccess: true,
     disableUrlAccess: true,
-    ...(config.addressFamily ? { family: config.addressFamily } : {}),
+    ...(config.addressFamily ? { getSocket: forcedAddressFamilySocket(config) } : {}),
     tls: {
       minVersion: "TLSv1.2",
+      servername: config.host,
     },
     ...auth,
   });
+}
+
+function forcedAddressFamilySocket(config: SmtpRelayConfig) {
+  return async (_options: unknown, callback: (error: Error | null, options?: { connection: net.Socket; host: string; servername: string }) => void) => {
+    try {
+      const addresses = config.addressFamily === 4 ? await resolve4(config.host) : await resolve6(config.host);
+      const host = addresses[0];
+      if (!host) throw new Error(`SMTP_HOST did not resolve IPv${config.addressFamily}`);
+      const connection = net.connect({ host, port: config.port, family: config.addressFamily });
+      let settled = false;
+      connection.once("connect", () => {
+        settled = true;
+        callback(null, { connection, host, servername: config.host });
+      });
+      connection.once("error", (error) => {
+        if (!settled) callback(error);
+      });
+    } catch (error) {
+      callback(error as Error);
+    }
+  };
 }
 
 export function validateConfiguredAddress(value: string, fieldName: string) {
