@@ -2374,7 +2374,22 @@ th {
 .partner-nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
+}
+
+.partner-nav-group {
+  display: grid;
+  gap: 6px;
+}
+
+.partner-nav-group p {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
 }
 
 .partner-nav-link {

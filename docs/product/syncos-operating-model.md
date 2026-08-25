@@ -158,6 +158,11 @@ Command Center recommends and prioritizes. It does not automatically award, assi
 - Partner inquiry != Partner approval.
 - Capacity signal != verified deployable capacity.
 - Website campaign signal != private operating data.
+- Partner Portal is single-company: one Partner-side account may have one active Partner organization in a tenant.
+- Internal Sync users manage multiple Partner companies through Partner Network, Operations, Work Orders, Partner Performance, and Command Center, not through a Partner Portal organization selector.
+- Company approval, Crew readiness, and project-specific mobilization are separate gates.
+- Settlement, payable eligibility, payment processing, and paid status are separate financial facts.
+- Partner Portal financial views use server-authoritative calculations and never expose customer rates or Sync margin.
 
 ## Public / Private System Model
 
@@ -202,6 +207,16 @@ Role precedence:
 7. safe root.
 
 Internal users with incidental Partner relationships remain internal-first. Partner-only users route to Partner Portal or SyncField.
+
+## Partner Portal Boundary
+
+Partner Portal is the subcontractor company workspace. It shows company management, compliance, workforce, crew readiness, Work Orders, Partner-safe production visibility, QC/correction visibility, settlements, payments, and Partner-only performance.
+
+The Partner organization is resolved from authenticated server truth. The browser must not choose a Partner organization. If a Partner-side account has multiple active Partner organization scopes, SyncOS fails closed with a support-oriented conflict message and does not show an organization selector.
+
+A Partner Admin may oversee its company and work but does not receive Foreman execution authority by default. A Partner Admin who is also canonically assigned as a Foreman may enter SyncField for that valid crew/work context.
+
+Partner Portal may show Partner rates and source lineage for the Partner's own work. It must not show customer rates, Sync margin, other Partner economics, internal shortlist data, full TIN, bank account details, or raw storage paths.
 
 ## Internal Operating Navigation
 

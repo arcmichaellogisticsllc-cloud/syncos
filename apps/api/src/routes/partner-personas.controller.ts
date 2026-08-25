@@ -149,7 +149,7 @@ export class PartnerPersonasController {
 
     const organizationIds = Array.from(new Set(rows.map((row) => row.organization_id)));
     if (!requestedScope && organizationIds.length > 1) {
-      throw new ConflictException("Multiple Partner organization scopes require explicit organization selection");
+      throw this.partnerAccountOrganizationConflict();
     }
 
     const selectedOrganizationId = requestedScope ?? organizationIds[0];
@@ -249,13 +249,36 @@ export class PartnerPersonasController {
   private requestedOrganizationScope(request: AuthenticatedRequest, queryOrganizationId?: string): string | undefined {
     const headerScopeType = request.header("x-scope-type");
     const headerScopeId = request.header("x-scope-id");
-    if (headerScopeType || headerScopeId) {
-      if (headerScopeType !== "organization" || !headerScopeId) {
-        throw new ForbiddenException("Partner context requires organization scope");
-      }
-      return headerScopeId;
+    if (headerScopeType || headerScopeId || queryOrganizationId) {
+      throw new BadRequestException("Partner Portal organization context is resolved from your account, not browser selection");
     }
-    return queryOrganizationId;
+    return undefined;
+  }
+
+  private async requireNoPartnerAccountOrganizationConflict(client: PoolClient, tenantId: string, tenantUserId: string, organizationId: string) {
+    const result = await client.query<{ organization_id: string }>(
+      `
+      SELECT DISTINCT ur.scope_id AS organization_id
+      FROM user_roles ur
+      JOIN roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id AND r.system_key = ANY($3::text[]) AND r.deleted_at IS NULL
+      JOIN organizations o ON o.tenant_id = ur.tenant_id AND o.id = ur.scope_id AND o.deleted_at IS NULL
+      JOIN capacity_providers cp ON cp.tenant_id = o.tenant_id AND cp.organization_id = o.id AND cp.provider_type = ANY($4::text[]) AND cp.status <> 'archived' AND cp.deleted_at IS NULL
+      WHERE ur.tenant_id = $1
+        AND ur.tenant_user_id = $2
+        AND ur.scope_type = 'organization'
+        AND ur.scope_id IS NOT NULL
+      `,
+      [tenantId, tenantUserId, Array.from(partnerRoleKeys), Array.from(partnerProviderTypes)],
+    );
+    const organizationIds = Array.from(new Set(result.rows.map((row) => row.organization_id)));
+    if (organizationIds.some((assignedOrganizationId) => assignedOrganizationId !== organizationId)) throw this.partnerAccountOrganizationConflict();
+  }
+
+  private partnerAccountOrganizationConflict() {
+    return new ConflictException({
+      code: "PARTNER_ACCOUNT_ORGANIZATION_CONFLICT",
+      message: "Your account has conflicting company access. Contact Sync Comm Systems support so we can correct your account.",
+    });
   }
 
   private async assignRole(
@@ -265,6 +288,7 @@ export class PartnerPersonasController {
   ) {
     await this.requireAssignablePartnerOrganization(client, request.auth.tenantId, request.auth.userId, input.organizationId);
     const tenantUser = await this.requireTenantUser(client, request.auth.tenantId, input.userId);
+    await this.requireNoPartnerAccountOrganizationConflict(client, request.auth.tenantId, tenantUser.id, input.organizationId);
     const role = await this.ensurePartnerRole(client, request.auth.tenantId, input.roleKey);
     const existing = await client.query(
       `

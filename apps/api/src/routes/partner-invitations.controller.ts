@@ -483,6 +483,7 @@ export class PartnerInvitationsController {
         }
         const user = await this.createOrAttachUser(client, invitation, displayName, password);
         const tenantUser = await this.ensureTenantUser(client, invitation.tenant_id, user.id);
+        await this.requireNoPartnerAccountOrganizationConflict(client, invitation.tenant_id, invitation.email, invitation.organization_id);
         const role = await this.requireRole(client, invitation.tenant_id, invitation.intended_role_key);
         await client.query(
           `
@@ -603,6 +604,7 @@ export class PartnerInvitationsController {
     crewId?: string | null;
     foremanMembershipId?: string | null;
   }) {
+    await this.requireNoPartnerAccountOrganizationConflict(client, tenantId, input.email, input.organizationId);
     const existing = await client.query(
       "SELECT id FROM partner_onboarding_invitations WHERE tenant_id = $1 AND organization_id = $2 AND email = $3 AND invitation_type = $4 AND status = 'SENT' AND expires_at > now()",
       [tenantId, input.organizationId, input.email, input.invitationType],
@@ -957,12 +959,40 @@ export class PartnerInvitationsController {
       JOIN organizations o ON o.tenant_id = ur.tenant_id AND o.id = ur.scope_id
       WHERE ur.tenant_id = $1 AND tu.user_id = $2 AND ur.scope_type = 'organization'
       ORDER BY ur.created_at
-      LIMIT 1
       `,
       [tenantId, userId],
     );
     if (!result.rows[0]) throw new ForbiddenException("Partner Admin organization scope is required");
+    const organizationIds = Array.from(new Set(result.rows.map((row) => row.organization_id)));
+    if (organizationIds.length > 1) throw this.partnerAccountOrganizationConflict();
     return result.rows[0];
+  }
+
+  private async requireNoPartnerAccountOrganizationConflict(client: PoolClient, tenantId: string, email: string, organizationId: string) {
+    const result = await client.query<{ organization_id: string }>(
+      `
+      SELECT DISTINCT ur.scope_id AS organization_id
+      FROM users u
+      JOIN tenant_users tu ON tu.user_id = u.id AND tu.tenant_id = $1 AND tu.status = 'active' AND tu.deleted_at IS NULL
+      JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id AND ur.scope_type = 'organization' AND ur.scope_id IS NOT NULL
+      JOIN roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id AND r.system_key = ANY($3::text[]) AND r.deleted_at IS NULL
+      JOIN organizations o ON o.tenant_id = ur.tenant_id AND o.id = ur.scope_id AND o.deleted_at IS NULL
+      JOIN capacity_providers cp ON cp.tenant_id = o.tenant_id AND cp.organization_id = o.id AND cp.provider_type = ANY($4::text[]) AND cp.status <> 'archived' AND cp.deleted_at IS NULL
+      WHERE lower(u.email) = lower($2)
+        AND u.status = 'active'
+        AND u.deleted_at IS NULL
+      `,
+      [tenantId, email, [partnerAdminRoleKey, partnerForemanRoleKey], Array.from(partnerProviderTypes)],
+    );
+    const organizationIds = Array.from(new Set(result.rows.map((row) => row.organization_id)));
+    if (organizationIds.some((assignedOrganizationId) => assignedOrganizationId !== organizationId)) throw this.partnerAccountOrganizationConflict();
+  }
+
+  private partnerAccountOrganizationConflict() {
+    return new ConflictException({
+      code: "PARTNER_ACCOUNT_ORGANIZATION_CONFLICT",
+      message: "This email is already associated with another Partner organization. Resolve the existing Partner access or use a separately authorized account.",
+    });
   }
 
   private async partnerAdminOrInternalOrg(client: PoolClient, request: AuthenticatedRequest, organizationId?: string) {

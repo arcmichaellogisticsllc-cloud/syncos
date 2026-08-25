@@ -375,22 +375,13 @@ type PortalData = {
   selectedAssignment?: MapAssignment | null;
 };
 
-const adminNav = [
-  ["Dashboard", "/partner"],
-  ["Onboarding", "/partner/onboarding"],
-  ["Company", "/partner/company"],
-  ["Compliance", "/partner/compliance"],
-  ["Workers", "/partner/workers"],
-  ["Crews", "/partner/crews"],
-  ["Agreements", "/partner/agreements"],
-  ["Work Orders", "/partner/work-orders"],
-  ["Vehicles", "/partner/vehicles"],
-  ["Mobilization", "/partner/mobilization"],
-  ["Daily JSA", "/partner/jsa"],
-  ["Customer QC", "/partner/customer-qc"],
-  ["Settlements", "/partner/settlements"],
-  ["Payments", "/partner/payments"],
-  ["Performance", "/partner/performance"],
+const adminNavGroups = [
+  { label: "Overview", items: [["Dashboard", "/partner"]] },
+  { label: "Company", items: [["Onboarding", "/partner/onboarding"], ["Company", "/partner/company"], ["Compliance", "/partner/compliance"], ["Agreements", "/partner/agreements"]] },
+  { label: "Workforce", items: [["Workers", "/partner/workers"], ["Crews", "/partner/crews"], ["Vehicles & Equipment", "/partner/vehicles"]] },
+  { label: "Work", items: [["Work Orders", "/partner/work-orders"], ["Mobilization", "/partner/mobilization"], ["Production", "/partner/production"], ["QC & Corrections", "/partner/customer-qc"]] },
+  { label: "Financial", items: [["Settlements", "/partner/settlements"], ["Payments", "/partner/payments"]] },
+  { label: "Performance", items: [["Performance", "/partner/performance"]] },
 ] as const;
 
 const syncfieldNav = [
@@ -450,7 +441,6 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
   const data = state.data;
   const persona = data.context?.persona;
   const isSyncField = persona === "partner_foreman";
-  const nav = isSyncField ? syncfieldNav : adminNav;
   const activeLabel = activeSectionLabel(section, persona);
   const shellLabel = isSyncField ? "SyncField" : "Partner Portal";
   const shellHome = isSyncField ? "/syncfield/today" : "/partner";
@@ -482,13 +472,23 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
           </div>
         </div>
         <nav className="partner-nav">
-          {nav.map(([label, href]) => (
-            <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
-              {label}
-            </Link>
-          ))}
+          {isSyncField
+            ? syncfieldNav.map(([label, href]) => (
+                <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
+                  {label}
+                </Link>
+              ))
+            : adminNavGroups.map((group) => (
+                <div className="partner-nav-group" key={group.label}>
+                  <p>{group.label}</p>
+                  {group.items.map(([label, href]) => (
+                    <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              ))}
           {persona === "partner_admin" && foremanFieldPermissions.some((permission) => permissions.includes(permission)) ? <Link className="partner-nav-link" href="/syncfield/today">SyncField</Link> : null}
-          {persona === "partner_admin" ? <Link className={section === "daily-production" ? "partner-nav-link active" : "partner-nav-link"} href="/partner/production">Daily Production</Link> : null}
         </nav>
         <div className="partner-account-control">
           <div>
@@ -2539,6 +2539,26 @@ function DeniedPortal({ message }: { message?: string }) {
 }
 
 function ErrorPortal({ message, product = "Partner Portal" }: { message?: string; product?: string }) {
+  if (/PARTNER_ACCOUNT_ORGANIZATION_CONFLICT|conflicting company access|another Partner organization|Multiple Partner organization/i.test(message ?? "")) {
+    return (
+      <div className="partner-panel error-state">
+        <p className="eyebrow">Partner Portal</p>
+        <h2>Unable to open Partner Portal</h2>
+        <p>Your account has conflicting company access. Contact Sync Comm Systems support so we can correct your account.</p>
+        <p className="partner-safe-text">Reference: PARTNER_ACCOUNT_ORGANIZATION_CONFLICT</p>
+        <button
+          type="button"
+          className="partner-button"
+          onClick={() => {
+            clearAuthContext();
+            window.location.assign("/login");
+          }}
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
   return <div className="partner-panel error-state"><h2>Unable to load {product}</h2><p>{message || "The Partner Portal API request failed."}</p></div>;
 }
 
@@ -2564,6 +2584,9 @@ function activeSectionLabel(section: Section, persona?: Persona) {
   if (section === "crew-detail") return "Crews";
   if (section === "agreement-detail") return "Agreements";
   if (section === "work-order-detail") return "Work Orders";
+  if (section === "vehicles") return "Vehicles & Equipment";
+  if (section === "daily-production") return "Production";
+  if (section === "customer-qc" || section === "corrections") return "QC & Corrections";
   const labels: Record<string, string> = { dashboard: "Dashboard", onboarding: "Onboarding", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments", performance: "Performance" };
   return labels[section] ?? "Dashboard";
 }
@@ -2577,9 +2600,9 @@ function pageTitle(section: Section, persona?: Persona) {
   if (section === "agreement-detail") return "Agreement";
   if (section === "field-map") return persona === "partner_foreman" ? "Map" : "Field Map";
   if (section === "daily-jsa") return "Daily JSA";
-  if (section === "daily-production") return persona === "partner_foreman" ? "Production" : "Daily Production";
+  if (section === "daily-production") return "Production";
   if (section === "review-day") return persona === "partner_foreman" ? "Production Review" : "Review Day";
-  if (section === "customer-qc") return "Customer QC";
+  if (section === "customer-qc") return "QC & Corrections";
   if (section === "corrections") return "Corrections";
   if (section === "settlements") return "Settlements";
   if (section === "payments") return "Payments";

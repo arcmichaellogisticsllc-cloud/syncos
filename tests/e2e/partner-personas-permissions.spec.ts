@@ -153,8 +153,8 @@ test.describe.serial("P2 Partner personas, permissions, and route visibility", (
   });
 
   test("Partner users cannot broaden organization scope through headers, query, body, or guessed IDs", async ({ request }) => {
-    await expectStatus(request, seeded.adminToken, "GET", `/partner-personas/me/context?organization_id=${seeded.orgB}`, 403);
-    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 403, undefined, orgScopeHeaders(seeded.orgB));
+    await expectStatus(request, seeded.adminToken, "GET", `/partner-personas/me/context?organization_id=${seeded.orgB}`, 400);
+    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 400, undefined, orgScopeHeaders(seeded.orgB));
     await expectStatus(request, seeded.adminToken, "GET", "/partner-domain/organizations", 403, undefined, orgScopeHeaders(seeded.orgB));
     await expectStatus(request, seeded.adminToken, "GET", `/partner-domain/organizations/${seeded.orgB}`, 403, undefined, orgScopeHeaders(seeded.orgB));
     await expectStatus(
@@ -225,23 +225,17 @@ test.describe.serial("P2 Partner personas, permissions, and route visibility", (
     await expectStatus(request, seeded.noRoleToken, "GET", "/partner-personas/me/context", 401);
   });
 
-  test("multiple Partner organization scopes require explicit selection and remain scoped", async ({ request }) => {
-    await apiJson(request, seeded.internalToken, "POST", `/partner-personas/users/${seeded.adminUser}/roles`, {
+  test("multiple active Partner organization scopes are blocked instead of selectable", async ({ request }) => {
+    await expectStatus(request, seeded.internalToken, "POST", `/partner-personas/users/${seeded.adminUser}/roles`, 409, {
       role_key: "partner_admin",
       organization_id: seeded.orgB,
     });
-    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 409);
-
-    const scopedA = await apiJson(request, seeded.adminToken, "GET", "/partner-personas/me/context", undefined, orgScopeHeaders(seeded.orgA));
-    expect(scopedA.organization.id).toBe(seeded.orgA);
-    const scopedB = await apiJson(request, seeded.adminToken, "GET", "/partner-personas/me/context", undefined, orgScopeHeaders(seeded.orgB));
-    expect(scopedB.organization.id).toBe(seeded.orgB);
 
     await client.query(
       "UPDATE capacity_providers SET status = 'archived', deleted_at = now() WHERE tenant_id = $1 AND id = $2",
       [seeded.tenantA, seeded.providerB],
     );
-    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 403, undefined, orgScopeHeaders(seeded.orgB));
+    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 400, undefined, orgScopeHeaders(seeded.orgB));
   });
 });
 
