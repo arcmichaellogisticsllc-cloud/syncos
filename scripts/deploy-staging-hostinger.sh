@@ -17,6 +17,7 @@ if [[ -z "${SYNCOS_RELEASE_SHA:-}" ]]; then
 fi
 
 APP_ROOT="${SYNCOS_APP_ROOT:-/opt/syncos/staging}"
+STAGING_API_ENV_FILE="${SYNCOS_STAGING_API_ENV_FILE:-/etc/syncos/staging/api.env}"
 REPO_URL="${SYNCOS_REPO_URL:-https://github.com/arcmichaellogisticsllc-cloud/syncos.git}"
 BRANCH="${SYNCOS_RELEASE_BRANCH:-release/syncos-v0.9.0-rc1}"
 RELEASE_DIR="${APP_ROOT}/releases/${SYNCOS_RELEASE_SHA}"
@@ -44,7 +45,18 @@ npm run build -w @syncos/api
 npm run build -w @syncos/web
 npm run build -w @syncos/worker
 
-NODE_ENV=staging npm run release:staging:migrate
+if [[ ! -r "${STAGING_API_ENV_FILE}" ]]; then
+  echo "Staging API environment file is required for migration: ${STAGING_API_ENV_FILE}" >&2
+  exit 1
+fi
+
+(
+  set -a
+  # shellcheck source=/dev/null
+  source "${STAGING_API_ENV_FILE}"
+  set +a
+  NODE_ENV=staging npm run release:staging:migrate
+)
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}.next"
 mv -Tf "${CURRENT_LINK}.next" "${CURRENT_LINK}"
