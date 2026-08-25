@@ -36,6 +36,7 @@ test("Partner Admin manual invite resolves typed company names server-side", () 
   assert.match(controller, /company_name is required/);
   assert.match(controller, /resolveManualPartnerOrganization/);
   assert.match(controller, /manual_partner_invitation/);
+  assert.match(controller, /'low', 'discovered'/);
   assert.match(controller, /Multiple Partner organizations match this company name/);
 });
 

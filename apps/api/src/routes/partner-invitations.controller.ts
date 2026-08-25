@@ -1015,7 +1015,7 @@ export class PartnerInvitationsController {
       `
       WITH organization_insert AS (
         INSERT INTO organizations (tenant_id, name, type, actor_roles, source_name, trust_level, status)
-        VALUES ($1, $2, 'partner', ARRAY['capacity_provider'], 'manual_partner_invitation', 40, 'discovered')
+        VALUES ($1, $2, 'partner', ARRAY['capacity_provider'], 'manual_partner_invitation', 'low', 'discovered')
         RETURNING id
       ),
       provider_insert AS (
