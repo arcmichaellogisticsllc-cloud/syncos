@@ -2,6 +2,68 @@
 
 ## Staging
 
+### Hostinger VPS / Squarespace Path
+
+1. Confirm current public website stays on Hostinger website hosting.
+   - Where: Hostinger website hosting control panel.
+   - Value needed: current `synccommsystems.com` and `www.synccommsystems.com` hosting status.
+   - Verify: public website loads before and after staging changes.
+   - Expected result: public website is not moved or interrupted.
+
+2. Confirm Squarespace DNS is authoritative.
+   - Where: Squarespace domain/DNS settings.
+   - Value needed: current DNS zone for `synccommsystems.com`.
+   - Verify: root, `www`, and mail records are documented before any staging additions.
+   - Expected result: no root-domain or mail records are changed for staging.
+
+3. Harden Hostinger VPS SSH access.
+   - Where: Hostinger VPS `srv1818105`.
+   - Value needed: non-root key-based admin/deploy login.
+   - Verify: second key-based session works before disabling password/root SSH.
+   - Expected result: `PasswordAuthentication no` and root login restricted without lockout.
+
+4. Create isolated staging service layout.
+   - Where: Hostinger VPS filesystem/systemd.
+   - Value needed: `/opt/syncos/staging`, `/etc/syncos/staging`, staging-specific services.
+   - Verify: services are named `syncos-staging-api`, `syncos-staging-web`, `syncos-staging-worker`.
+   - Expected result: staging and future production cannot share env files, logs, storage, or service names accidentally.
+
+5. Configure staging Nginx server blocks.
+   - Where: Hostinger VPS Nginx.
+   - Value needed: `staging-app.synccommsystems.com` to web port, `staging-api.synccommsystems.com` to API port.
+   - Verify: local proxy test before DNS, then HTTPS curl after DNS/TLS.
+   - Expected result: only 80/443 are public; internal ports remain blocked.
+
+6. Add Squarespace staging DNS records after local VPS health is ready.
+   - Where: Squarespace DNS.
+   - Value needed: `A staging-app -> 2.25.82.68`, `A staging-api -> 2.25.82.68` if the VPS IP is unchanged.
+   - Verify: `dig staging-app.synccommsystems.com` and `dig staging-api.synccommsystems.com`.
+   - Expected result: staging subdomains resolve without changing root website hosting.
+
+7. Issue TLS certificates for staging domains.
+   - Where: VPS Certbot/Nginx or chosen TLS tooling.
+   - Value needed: valid certs for `staging-app.synccommsystems.com` and `staging-api.synccommsystems.com`.
+   - Verify: `curl -I https://staging-app.synccommsystems.com/login` and API health over HTTPS.
+   - Expected result: no remote login or API traffic over HTTP.
+
+8. Configure off-server backups.
+   - Where: backup provider plus VPS backup jobs.
+   - Value needed: encrypted Postgres and private-file backup destination.
+   - Verify: restore drill into disposable targets.
+   - Expected result: staging/prod recovery does not depend only on the VPS disk.
+
+9. Deploy the approved release SHA.
+   - Where: Hostinger VPS.
+   - Value needed: branch `release/syncos-v0.9.0-rc1` and approved commit SHA.
+   - Verify: deployment metadata records SHA and `/health/startup` reaches migration ceiling `059`.
+   - Expected result: VPS no longer runs the older detached commit.
+
+10. Run controlled staging acceptance.
+    - Where: staging app/API.
+    - Value needed: synthetic seed and `docs/pilot/staging-end-to-end-acceptance.md`.
+    - Verify: public inquiry through financial workflow with no live payout.
+    - Expected result: staging validates the operating model using synthetic data only.
+
 1. Create hosted project/workspace.
    - Where: selected provider.
    - Value needed: project name `syncos-staging`.
