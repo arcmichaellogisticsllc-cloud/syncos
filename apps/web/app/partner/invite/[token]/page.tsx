@@ -63,7 +63,7 @@ export default function PartnerInviteAcceptancePage() {
   async function accept() {
     try {
       if (password.length < 12 || password.length > 128) {
-        setError("Use a password between 12 and 128 characters.");
+        setError("Password must be 12 to 128 characters.");
         return;
       }
       if (password !== confirmPassword) {
@@ -88,9 +88,14 @@ export default function PartnerInviteAcceptancePage() {
     <main className="partner-invite-shell">
       <section className="partner-invite-card">
         <div className="partner-invite-header">
-          <p className="eyebrow">Sync Comm Systems</p>
-          <h1>You've been invited to join SyncOS</h1>
-          <p>{isForemanInvite ? "Activate your field account before opening SyncField." : "Create your account before continuing to Partner onboarding."}</p>
+          <div className="partner-invite-brand">
+            <img src="/brand/sync-comm-systems-logo.png" alt="Sync Comm Systems" />
+            <p className="eyebrow">Sync Comm Systems</p>
+          </div>
+          <div>
+            <h1>You've been invited to join SyncOS</h1>
+            <p>{isForemanInvite ? "Activate your field account before opening SyncField." : "Create your account before continuing to Partner onboarding."}</p>
+          </div>
         </div>
         {loading ? <div className="partner-panel loading-state" role="status">Loading invitation...</div> : null}
         {error ? <div className="partner-banner error">{error}</div> : null}
@@ -123,8 +128,13 @@ export default function PartnerInviteAcceptancePage() {
               </label>
               <label className="form-field">
                 <span>Password</span>
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} />
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} aria-describedby="partner-password-requirements" />
               </label>
+              <ul id="partner-password-requirements" className="partner-password-rules">
+                <li>Use 12 to 128 characters.</li>
+                <li>Use a password unique to SyncOS.</li>
+                <li>Avoid company names, email addresses, or reused passwords.</li>
+              </ul>
               <label className="form-field">
                 <span>Confirm password</span>
                 <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} />

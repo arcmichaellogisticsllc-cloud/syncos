@@ -47,9 +47,23 @@ test("Partner invite activation is separated from company onboarding", () => {
   assert.match(invite, /Activate Account/);
   assert.match(invite, /Continue to Partner Onboarding/);
   assert.match(invite, /acceptedPath/);
+  assert.match(invite, /Password must be 12 to 128 characters/);
+  assert.match(invite, /Use a password unique to SyncOS/);
+  assert.match(invite, /sync-comm-systems-logo\.png/);
   assert.doesNotMatch(invite, /preview\.checklist/);
   assert.doesNotMatch(invite, /Complete Onboarding/);
   assert.doesNotMatch(invite, /MobilizationLocked/);
+});
+
+test("Partner onboarding and activation use Sync brand colors for primary surfaces", () => {
+  const styles = read("apps/web/app/styles.css");
+
+  assert.match(styles, /--accent: #0457ff/);
+  assert.match(styles, /--accent-2: #f6b600/);
+  assert.match(styles, /\.partner-button\.primary\s*{\s*background: var\(--accent\);/);
+  assert.match(styles, /\.onboarding-current-step\s*{[^}]*border-top: 4px solid var\(--accent-2\);/s);
+  assert.match(styles, /\.partner-invite-summary\s*{[^}]*border-top: 4px solid var\(--accent-2\);/s);
+  assert.doesNotMatch(styles, /\.partner-button\.primary\s*{[^}]*#236344/s);
 });
 
 test("Partner onboarding presentation protects against raw enums and IDs", () => {
