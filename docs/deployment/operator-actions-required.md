@@ -1,5 +1,99 @@
 # Operator Actions Required
 
+## Staging
+
+1. Create hosted project/workspace.
+   - Where: selected provider.
+   - Value needed: project name `syncos-staging`.
+   - Verify: provider project exists.
+   - Expected result: web/API/worker services can be created.
+
+2. Create managed Postgres.
+   - Where: managed database provider.
+   - Value needed: `DATABASE_URL` with SSL for staging.
+   - Verify: `NODE_ENV=staging DATABASE_URL=<url> npm run release:staging:migrate`.
+   - Expected result: migrations reach `059_syncfield_coil_commercial_policy.sql`.
+
+3. Create managed Redis.
+   - Where: Redis provider.
+   - Value needed: `REDIS_URL`.
+   - Verify: worker starts and API `/health/startup` reports Redis OK.
+   - Expected result: queue/scheduler connectivity is healthy.
+
+4. Create private storage.
+   - Where: object storage or private mounted storage provider.
+   - Value needed: staging bucket/container and server-side credentials.
+   - Verify: synthetic upload/read/deny/checksum smoke.
+   - Expected result: private file workflow works without public URLs.
+
+5. Create email provider credentials.
+   - Where: transactional email provider.
+   - Value needed: `EMAIL_HTTP_ENDPOINT`, `EMAIL_API_KEY`, sender, reply-to.
+   - Verify: invitation to allowlisted staging recipient.
+   - Expected result: staging invite delivered, blocked recipients fail closed.
+
+6. Configure DNS.
+   - Where: DNS zone for `synccommsystems.com`.
+   - Value needed: provider targets for `staging-app` and `staging-api`.
+   - Verify: `dig` and HTTPS curl.
+   - Expected result: both staging domains resolve.
+
+7. Configure TLS.
+   - Where: hosting provider or certificate provider.
+   - Value needed: managed certificates for both staging domains.
+   - Verify: browser and `curl -I`.
+   - Expected result: HTTPS only, no mixed content.
+
+8. Configure WAF/rate limits.
+   - Where: CDN/WAF/provider edge.
+   - Value needed: limits for login, public inquiry, and invite endpoints.
+   - Verify: allowed requests pass and abusive repeated requests are blocked.
+   - Expected result: broad staging exposure is controlled.
+
+9. Configure monitoring and alerts.
+   - Where: provider observability or external tool.
+   - Value needed: uptime, 5xx, DB, Redis, worker, email, storage alerts.
+   - Verify: test alert.
+   - Expected result: operator receives staging alerts.
+
+10. Configure secrets.
+    - Where: provider secret manager.
+    - Value needed: all variables in `docs/deployment/staging-secrets-checklist.md`.
+    - Verify: `/health/startup` and service startup logs.
+    - Expected result: no secrets in Git or logs.
+
+11. Connect Git repository.
+    - Where: provider deployment settings.
+    - Value needed: branch `release/syncos-v0.9.0-rc1` and approved commit SHA.
+    - Verify: build identity or deployment metadata.
+    - Expected result: staging runs the intended release candidate.
+
+12. Deploy services.
+    - Where: provider service dashboard.
+    - Value needed: API, web, and always-on worker commands.
+    - Verify: `/login`, `/health`, worker logs.
+    - Expected result: all services healthy.
+
+13. Run migration.
+    - Where: one-off job or release command.
+    - Value needed: `npm run release:staging:migrate`.
+    - Verify: schema ceiling `059`.
+    - Expected result: current schema without reset.
+
+14. Run synthetic seed.
+    - Where: one-off job.
+    - Value needed: `NODE_ENV=staging STAGING_SYNTHETIC_SEED_CONFIRM=true npm run seed:staging`.
+    - Verify: synthetic tenant/customer/Partner/work records visible.
+    - Expected result: staging demo data only.
+
+15. Run acceptance.
+    - Where: staging browser/API.
+    - Value needed: `docs/pilot/staging-end-to-end-acceptance.md`.
+    - Verify: all workflow sections pass.
+    - Expected result: controlled staging signoff.
+
+## Production
+
 1. Provision production app hosting for Next.js web, NestJS API, and dedicated worker.
    - Required provider/account: selected app platform.
    - Destination: production project/service settings.
@@ -10,7 +104,7 @@
    - Required provider/account: managed database provider.
    - Destination: `DATABASE_URL` in secret manager.
    - Verification: `npm run release:production:migrate` after backup confirmation.
-   - Expected result: migrations current through `056_syncfield_field_traceability.sql`; no seed/reset is run.
+   - Expected result: migrations current through `059_syncfield_coil_commercial_policy.sql`; no seed/reset is run.
 
 3. Provision managed Redis with auth/TLS.
    - Required provider/account: managed Redis provider.

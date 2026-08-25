@@ -5,6 +5,8 @@ import { validateEnvironment } from "../config/environment";
 import { DATABASE_POOL } from "../modules/database.module";
 import { Public } from "../security/public.decorator";
 
+const currentMigrationCeiling = "059_syncfield_coil_commercial_policy.sql";
+
 @Public()
 @Controller("health")
 export class HealthController {
@@ -80,7 +82,14 @@ export class HealthController {
     const result = await this.pool.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id");
     const applied = result.rows.map((row) => row.id);
     const missing = expected.filter((id) => !applied.includes(id));
-    return { ok: missing.length === 0 && applied.join("|") === [...applied].sort().join("|"), appliedCount: applied.length, missing };
+    const hasCurrentCeiling = applied.includes(currentMigrationCeiling);
+    return {
+      ok: missing.length === 0 && hasCurrentCeiling && applied.join("|") === [...applied].sort().join("|"),
+      appliedCount: applied.length,
+      missing,
+      currentCeiling: currentMigrationCeiling,
+      hasCurrentCeiling,
+    };
   }
 
   private async checkRequiredTables() {

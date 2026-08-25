@@ -10,10 +10,11 @@ const connection = {
 export const foundationQueueName = "syncos.foundation";
 
 function createDatabasePool(connectionString: string) {
+  const hosted = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "staging";
   return new Pool({
     connectionString,
-    max: Number(process.env.WORKER_DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 5 : 3)),
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false" } : undefined,
+    max: Number(process.env.WORKER_DB_POOL_MAX ?? (hosted ? 5 : 3)),
+    ssl: hosted ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false" } : undefined,
   });
 }
 

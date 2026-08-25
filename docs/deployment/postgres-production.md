@@ -15,7 +15,7 @@
 - API uses `pg.Pool` from `apps/api/src/modules/database.module.ts`.
 - Worker creates bounded `pg.Pool` instances for scheduled scans.
 - Migration runner is idempotent through `schema_migrations`.
-- Certified migration list currently ends at `056_syncfield_field_traceability.sql`.
+- Certified migration list currently ends at `059_syncfield_coil_commercial_policy.sql`.
 
 ## Pool Sizing
 

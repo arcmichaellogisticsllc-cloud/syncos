@@ -12,7 +12,7 @@ No real values belong in this document or in committed env files.
 | `NEXT_PUBLIC_API_BASE_URL` | Web/browser | Yes | No | `<staging-api-url>` | `NEXT_PUBLIC_API_BASE_URL` | Local API URL. | Staging API URL; public value only. | Production API URL; public value only. | Browser calls expected API. |
 | `NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL` | Web/browser | No | No | `false` | `NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL` | May be true only for local debugging. | Must be false or missing. | Must be false or missing. | No developer token panel visible. |
 | `ALLOW_DEV_HEADER_AUTH` | API | No | No | `false` | `ALLOW_DEV_HEADER_AUTH` | May be true only for local debugging. | Must be false or missing. | Must be false or missing. | Dev header auth denied. |
-| `NODE_ENV` | Web, API, Worker | Yes | No | `production` | `NODE_ENV` | `development` or test as needed. | Many providers should use `production` build/runtime mode even for staging. | `production`. | Build/runtime mode documented per provider. |
+| `NODE_ENV` | Web, API, Worker | Yes | No | `staging` | `NODE_ENV` | `development` or test as needed. | Use `staging` for the hosted staging runtime so staging safety gates and email allowlists activate. | `production`. | Build/runtime mode documented per provider. |
 | `PORT` | Web, API, Worker | Provider-dependent | No | `<provider-assigned>` | `PORT` | Local explicit port. | Provider-assigned or configured per service. | Provider-assigned or configured per service. | Service listens on provider port. |
 | `CI` | CI/test only | Contextual | No | `true` | `CI` | Empty unless running CI-like validation. | True only in CI/test contexts. | True only in CI contexts. | Playwright/build behavior matches context. |
 | `REDIS_URL` | API/Worker if queue/cache requires it | Conditional | Yes if managed credential | `<staging-redis-url-if-used>` | `REDIS_URL` | Local Redis if used. | Configure only if worker/API require it. | Production secret manager if used. | Worker/API boot without queue errors. |
@@ -23,5 +23,5 @@ No real values belong in this document or in committed env files.
 - `DATABASE_URL` and `AUTH_JWT_SECRET` are secrets and must live in provider secret managers.
 - `NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL` is public but must be false or missing in staging.
 - `ALLOW_DEV_HEADER_AUTH` must be false or missing in staging.
-- `NODE_ENV=production` is acceptable for staging providers when that is how the app builds and runs production-mode bundles.
+- `NODE_ENV=staging` is now the canonical hosted staging runtime. Build systems may still produce optimized bundles, but runtime environment validation and email allowlisting depend on `staging`.
 - `CI=true` is for CI/test contexts only.

@@ -6,7 +6,7 @@
 - Release branch: `release/syncos-v0.9.0-rc1`
 - Public site baseline: `f2bf5c977cd83464a60cbf5552179bb1cc9ed438`
 - Public site branch: `feat/syncos-app-integration-rc1`
-- Certified migrations: `001` through `056_syncfield_field_traceability.sql`
+- Certified migrations: `001` through `059_syncfield_coil_commercial_policy.sql`
 
 ## Runtime Inventory
 

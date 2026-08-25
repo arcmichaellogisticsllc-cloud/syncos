@@ -721,6 +721,11 @@ export class PartnerInvitationsController {
   private async deliverInvitationEmail(client: PoolClient, row: InvitationRow, token: string) {
     const provider = this.emailProvider();
     const onboardingUrl = this.invitationUrl(token);
+    const allowlistFailure = this.stagingRecipientAllowlistFailure(row.email);
+    if (allowlistFailure) {
+      await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'staging_recipient_blocked', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
+      return this.deliveryResult(row, provider, "FAILED", null, allowlistFailure);
+    }
     if (provider === "disabled") {
       await client.query("UPDATE partner_onboarding_invitations SET delivery_status = 'FAILED', delivery_reference = 'email_disabled', updated_at = now() WHERE tenant_id = $1 AND id = $2", [row.tenant_id, row.id]);
       return this.deliveryResult(row, provider, "FAILED", null, "Outbound invitation email is disabled until a production provider is configured.");
@@ -779,6 +784,18 @@ export class PartnerInvitationsController {
 
   private emailProvider() {
     return process.env.EMAIL_PROVIDER ?? "local_test";
+  }
+
+  private stagingRecipientAllowlistFailure(email: string) {
+    if (process.env.NODE_ENV !== "staging") return null;
+    const allowed = (process.env.STAGING_EMAIL_RECIPIENT_ALLOWLIST ?? "")
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    if (allowed.length === 0) return "STAGING_EMAIL_RECIPIENT_ALLOWLIST is required before staging invitation email can be delivered.";
+    const normalized = email.trim().toLowerCase();
+    const permitted = allowed.some((entry) => entry.startsWith("@") ? normalized.endsWith(entry) : normalized === entry);
+    return permitted ? null : "Recipient is not in STAGING_EMAIL_RECIPIENT_ALLOWLIST; staging email delivery was blocked.";
   }
 
   private invitationUrl(token: string) {

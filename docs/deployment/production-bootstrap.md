@@ -20,7 +20,7 @@ Create only the configuration needed for the first SyncOS production tenant. Do 
 
 ## Sequence
 
-1. Run migrations through `056_syncfield_field_traceability.sql`.
+1. Run migrations through `059_syncfield_coil_commercial_policy.sql`.
 2. Create Sync tenant.
 3. Create internal admin user and role memberships.
 4. Seed only canonical role/permission/catalog data required by the app.

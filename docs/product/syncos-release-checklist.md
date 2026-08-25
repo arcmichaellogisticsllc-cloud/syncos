@@ -7,7 +7,7 @@
 | DB backup confirmed | PASS WITH LIMITATION | Production operator must confirm PostgreSQL backup and restore test before release. |
 | File-store backup confirmed | PASS WITH LIMITATION | Private evidence/export storage must have backup and restore coverage. |
 | Env validated | PASS WITH LIMITATION | Required env includes `DATABASE_URL`, `AUTH_JWT_SECRET`, `SYNCOS_API_BASE_URL`, private storage config, and worker scheduler config. |
-| Migration plan | PASS | Certified final migration is `056_syncfield_field_traceability.sql`; use `npm run release:production:migrate`. |
+| Migration plan | PASS | Certified final migration is `059_syncfield_coil_commercial_policy.sql`; use `npm run release:production:migrate`. |
 | Payment provider mode | PASS WITH LIMITATION | `local_test_provider` is certification-only; live payouts require provider production certification and `LIVE_AUTOMATED_PARTNER_PAYMENTS=false` remains required. |
 | Worker config | PASS WITH LIMITATION | P6/P14/P15/P16 schedules must be enabled with bounded intervals and advisory-lock support. |
 | Storage config | PASS WITH LIMITATION | Private artifact storage must be configured before production. |
@@ -19,7 +19,7 @@
 1. Confirm no release blockers and no unresolved cross-tenant or cross-Partner leaks.
 2. Confirm database backup and private file-store backup.
 3. Disable live payment execution unless provider certification is complete.
-4. Run migrations through `056_syncfield_field_traceability.sql`.
+4. Run migrations through `059_syncfield_coil_commercial_policy.sql`.
 5. Deploy API.
 6. Deploy worker with P6/P14/P15/P16 scheduled jobs.
 7. Deploy web with `SYNCOS_API_BASE_URL`.
