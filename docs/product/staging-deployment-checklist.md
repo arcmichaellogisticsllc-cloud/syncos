@@ -66,7 +66,7 @@ For each service, configure only provider-managed values:
 
 ## F. Tenant / Admin Setup
 
-- Create Jackson Telcom Staging tenant.
+- Create Sync Comm Systems Staging tenant.
 - Create first admin through the approved secure method.
 - Assign System Admin role.
 - Create persona users.

@@ -803,7 +803,7 @@ async function main() {
     const tenantResult = await client.query(
       `
       INSERT INTO tenants (name, slug)
-      VALUES ('Jackson Telcom', 'jackson-telcom')
+      VALUES ('Sync Comm Systems', 'sync-comm-systems')
       ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
       RETURNING id
       `,
@@ -836,7 +836,7 @@ async function main() {
     const userResult = await client.query(
       `
       INSERT INTO users (email, display_name, password_hash)
-      VALUES ('admin@jackson-telcom.local', 'Jackson Telcom Admin', $1)
+      VALUES ('admin@synccommsystems.local', 'Sync Comm Systems Admin', $1)
       ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name, password_hash = EXCLUDED.password_hash
       RETURNING id
       `,

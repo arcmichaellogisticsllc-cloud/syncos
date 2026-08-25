@@ -58,7 +58,7 @@ The command runs typecheck, API/worker/web builds, regression tests, migration v
 ## Operational Readiness Checklist
 
 - Fresh database migration verification passes.
-- Seed creates Jackson Telcom tenant, roles, permissions, and admin.
+- Seed creates Sync Comm Systems tenant, roles, permissions, and admin.
 - API `/health/startup` passes.
 - Worker build passes.
 - Security smoke passes.
@@ -74,5 +74,5 @@ The command runs typecheck, API/worker/web builds, regression tests, migration v
 - Run database backup before deployment.
 - Deploy API, worker, and web artifacts from the same commit.
 - Verify `/health/startup`.
-- Execute Jackson Telcom pilot workflow with controlled users.
+- Execute Sync Comm Systems pilot workflow with controlled users.
 - Monitor structured logs for `Security`, `Event`, `Audit`, `Workflow`, and `API` categories.

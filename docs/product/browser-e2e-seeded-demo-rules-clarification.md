@@ -14,7 +14,7 @@ Current validated commit: `dedda819a0ed51ba179c1feba5b2b6777577c12d`.
 | Browser dependencies | No Playwright, Puppeteer, Cypress, or browser automation dependency found. | Missing | Do not install in this clarification sprint. |
 | Browser test folders | No browser E2E folder found. | Missing | Future coding sprint only. |
 | Route-load scripts | No committed route-load script found; physical QA used an ad hoc local HTTP probe. | Partially supported | Route-load method is documented, not repo-owned. |
-| Seed scripts | `packages/database/scripts/seed.js` seeds Jackson Telcom baseline roles/users/permissions. | Partially supported | No Cedar Ridge canonical demo seed. |
+| Seed scripts | `packages/database/scripts/seed.js` seeds Sync Comm Systems baseline roles/users/permissions. | Partially supported | No Cedar Ridge canonical demo seed. |
 | DB verification | `verify-migrations.js` requires an empty database, runs migrations and seed, and checks core tables. | Supported | Future E2E must use fresh DB per run. |
 | Permissions seed | Large permission list is seeded, including payment execution, bank reconciliation, and accounting export families. | Supported | Named E2E persona bundles are not confirmed. |
 | Test users | Seed creates an admin user and roles, but no confirmed 10-persona E2E matrix. | Partially supported | Persona seed is a future requirement. |

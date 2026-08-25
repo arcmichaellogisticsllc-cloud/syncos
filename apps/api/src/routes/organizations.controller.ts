@@ -660,7 +660,7 @@ export class OrganizationsController {
       : roles.includes("cash_controller")
         ? "Can they approve and pay correctly?"
         : roles.includes("work_distributor")
-          ? "Can they route work to Jackson?"
+          ? "Can they route work to Sync Comm Systems?"
           : roles.includes("work_influencer")
             ? "What work do they know about or influence before construction starts?"
             : "What work might they create?";

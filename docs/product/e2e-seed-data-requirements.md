@@ -4,7 +4,7 @@
 
 The E2E seed must create a deterministic, tenant-isolated Cedar Ridge demo path that browser tests can use from any major checkpoint without relying on prior test order.
 
-Current state: `packages/database/scripts/seed.js` seeds a Jackson Telcom baseline. `seed:e2e-demo` does not exist yet.
+Current state: `packages/database/scripts/seed.js` seeds a Sync Comm Systems baseline. `seed:e2e-demo` does not exist yet.
 
 ## Required Seed Command
 

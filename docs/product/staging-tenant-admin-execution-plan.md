@@ -6,8 +6,8 @@ Create the first staging tenant, admin user, and persona users safely after Mike
 
 ## B. Tenant
 
-- Tenant: Jackson Telcom Staging
-- Slug: `jackson-telcom-staging`
+- Tenant: Sync Comm Systems Staging
+- Slug: `sync-comm-systems-staging`
 - Environment: staging
 - Status: active
 - Owner/contact: placeholder only until Mike approves the named owner.
@@ -15,7 +15,7 @@ Create the first staging tenant, admin user, and persona users safely after Mike
 
 ## C. First Admin
 
-- Placeholder email: `admin@jacksontelcom.staging.example`
+- Placeholder email: `admin@synccommsystems.staging.example`
 - Role: System Admin
 - Password: Do not document. Use secure reset flow, one-time bootstrap secret, or provider-managed secure channel.
 
@@ -23,22 +23,22 @@ Create the first staging tenant, admin user, and persona users safely after Mike
 
 | User | Role | Expected landing page | Expected nav | Expected allowed actions | Expected denied actions | UAT path |
 | --- | --- | --- | --- | --- | --- | --- |
-| `executive@jacksontelcom.staging.example` | Executive | `/executive` | Executive, Operations, Finance overview | Review dashboards and blockers. | Lifecycle mutations outside role. | Command center and executive review. |
-| `growth@jacksontelcom.staging.example` | Growth Operator | `/intelligence/signals` | Intelligence workspace | Review/create signal if allowed by role. | Finance and payout mutations. | Signal feed and signal detail. |
-| `operations@jacksontelcom.staging.example` | Operations Manager | `/operations` | Operations, work orders, production, QC | Review execution queues and supported operations actions. | Finance-only mutations. | Operations board to work order/production/QC. |
-| `field@jacksontelcom.staging.example` | Field Supervisor | `/production` | Production and related execution views | Submit/update supported field production actions. | Billing, payroll, accounting actions. | Production correction/review path. |
-| `qc@jacksontelcom.staging.example` | QC Manager | `/qc` | QC and execution context | Review/approve/request correction where permitted. | Invoice, cash, payment, export actions. | QC queue and QC detail. |
-| `finance@jacksontelcom.staging.example` | Billing / Finance User | `/invoices` | Revenue and cash workbenches | Review billable, settlements, invoices, cash if permitted. | Payroll/accounting/admin actions outside role. | Revenue and cash cycle. |
-| `collections@jacksontelcom.staging.example` | Collections Specialist | `/collections` | Collections and cash follow-up | Manage supported collection actions. | Payment execution and accounting export actions. | Collections follow-up path. |
-| `payables@jacksontelcom.staging.example` | Payables / Payroll Admin | `/contractor-payables` | Contractor payables, payroll, payments | Review payout readiness workflows. | Customer cash/accounting actions outside role. | Payables/payroll/payment execution. |
-| `accounting@jacksontelcom.staging.example` | Accounting Manager | `/bank-reconciliation` | Reconciliation and accounting exports | Review reconciliation/export workflows. | Operational field mutations outside role. | Bank reconciliation and accounting export. |
-| `auditor@jacksontelcom.staging.example` | Read-only Auditor | `/` or representative read-only page | Readable workspaces only | View status, details, audit/timeline. | All lifecycle mutations. | Read-only audit review. |
+| `executive@synccommsystems.staging.example` | Executive | `/executive` | Executive, Operations, Finance overview | Review dashboards and blockers. | Lifecycle mutations outside role. | Command center and executive review. |
+| `growth@synccommsystems.staging.example` | Growth Operator | `/intelligence/signals` | Intelligence workspace | Review/create signal if allowed by role. | Finance and payout mutations. | Signal feed and signal detail. |
+| `operations@synccommsystems.staging.example` | Operations Manager | `/operations` | Operations, work orders, production, QC | Review execution queues and supported operations actions. | Finance-only mutations. | Operations board to work order/production/QC. |
+| `field@synccommsystems.staging.example` | Field Supervisor | `/production` | Production and related execution views | Submit/update supported field production actions. | Billing, payroll, accounting actions. | Production correction/review path. |
+| `qc@synccommsystems.staging.example` | QC Manager | `/qc` | QC and execution context | Review/approve/request correction where permitted. | Invoice, cash, payment, export actions. | QC queue and QC detail. |
+| `finance@synccommsystems.staging.example` | Billing / Finance User | `/invoices` | Revenue and cash workbenches | Review billable, settlements, invoices, cash if permitted. | Payroll/accounting/admin actions outside role. | Revenue and cash cycle. |
+| `collections@synccommsystems.staging.example` | Collections Specialist | `/collections` | Collections and cash follow-up | Manage supported collection actions. | Payment execution and accounting export actions. | Collections follow-up path. |
+| `payables@synccommsystems.staging.example` | Payables / Payroll Admin | `/contractor-payables` | Contractor payables, payroll, payments | Review payout readiness workflows. | Customer cash/accounting actions outside role. | Payables/payroll/payment execution. |
+| `accounting@synccommsystems.staging.example` | Accounting Manager | `/bank-reconciliation` | Reconciliation and accounting exports | Review reconciliation/export workflows. | Operational field mutations outside role. | Bank reconciliation and accounting export. |
+| `auditor@synccommsystems.staging.example` | Read-only Auditor | `/` or representative read-only page | Readable workspaces only | View status, details, audit/timeline. | All lifecycle mutations. | Read-only audit review. |
 
 ## E. Bootstrap Mechanism Options
 
 | Option | Current repo capability | Risk | Recommendation |
 | --- | --- | --- | --- |
-| Existing seed script | `db:seed` creates baseline Jackson Telcom data and local-development admin. | Unsafe if default local credentials are used for real staging. | Use only after approving/staging-hardening bootstrap behavior. |
+| Existing seed script | `db:seed` creates baseline Sync Comm Systems data and local-development admin. | Unsafe if default local credentials are used for real staging. | Use only after approving/staging-hardening bootstrap behavior. |
 | Future CLI | Not present yet. | Requires implementation. | Preferred long-term if it requires explicit env vars and fails closed. |
 | Temporary SQL runbook | Possible using known schema. | Manual error and password handling risk. | Acceptable only as reviewed temporary procedure. |
 | Future Admin UI | Not present yet. | Requires product work. | Useful later, not required for first planning gate. |

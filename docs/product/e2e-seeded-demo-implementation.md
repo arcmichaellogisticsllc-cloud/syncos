@@ -10,7 +10,7 @@ The command runs `packages/database/scripts/seed-e2e-demo.js`.
 
 ## Seed Strategy
 
-The seed runs after `npm run db:verify`, which creates the baseline migrated database and Jackson Telcom seed. The E2E seed then adds a second tenant:
+The seed runs after `npm run db:verify`, which creates the baseline migrated database and Sync Comm Systems seed. The E2E seed then adds a second tenant:
 
 * `ARC SyncOS Demo Tenant`
 * slug: `arc-syncos-demo`

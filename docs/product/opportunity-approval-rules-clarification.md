@@ -60,9 +60,9 @@ Unsafe to infer:
 
 ## 2. Approval Decision Types
 
-Pursuit Approval means Jackson approves active pursuit effort: outreach, relationship building, scope investigation, pricing preparation, capacity planning, and proposal preparation. It does not mean work is won.
+Pursuit Approval means Sync Comm Systems approves active pursuit effort: outreach, relationship building, scope investigation, pricing preparation, capacity planning, and proposal preparation. It does not mean work is won.
 
-Award Acceptance Approval means Jackson accepts awarded work or prepares a downstream project handoff. Product Sprint 6 records `awarded` status only and must not create project records.
+Award Acceptance Approval means Sync Comm Systems accepts awarded work or prepares a downstream project handoff. Product Sprint 6 records `awarded` status only and must not create project records.
 
 These are separate decisions and should not silently share all rules.
 

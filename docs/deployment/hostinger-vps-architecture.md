@@ -62,7 +62,7 @@ Private files
 ## Current VPS Caveats
 
 - Deployed SyncOS commit is `1e0694b472268190084d125262e81555ad61ce1d`, not the local release candidate.
-- Current Nginx TLS certificate is for `staging.jacksontelcom.com`, not `staging-app.synccommsystems.com` or `staging-api.synccommsystems.com`.
+- Current Nginx TLS certificate is for the retired legacy hostname `staging.jacksontelcom.com`, not `staging-app.synccommsystems.com` or `staging-api.synccommsystems.com`. Treat this as migration evidence only; no new active SyncOS deployment path should use it.
 - Current API runs with `NODE_ENV=production` based on `/health/startup`.
 - Current startup health fails because required permission and role seed rows are missing.
 - SSH currently allows root login and password authentication.

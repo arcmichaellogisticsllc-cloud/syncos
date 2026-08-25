@@ -106,9 +106,9 @@ Deferred:
 
 ## Definitions
 
-Awarded Opportunity: a growth-side opportunity record showing Jackson has been awarded or selected for work.
+Awarded Opportunity: a growth-side opportunity record showing Sync Comm Systems has been awarded or selected for work.
 
-Award Acceptance: management decision that Jackson is willing to accept responsibility for the awarded work. Award acceptance is stricter than pursuit approval because it may lead to operational commitment.
+Award Acceptance: management decision that Sync Comm Systems is willing to accept responsibility for the awarded work. Award acceptance is stricter than pursuit approval because it may lead to operational commitment.
 
 Project Handoff: controlled transition from Growth to Operations. It validates operational ownership, scope, capacity, compliance, customer/contract, financial readiness, and constraints before execution records are created or activated.
 
@@ -121,7 +121,7 @@ Production Record: field-recorded work completed against a work order.
 Important boundaries:
 
 - Awarded status does not automatically mean a project exists.
-- Awarded status does not automatically mean Jackson is ready to execute.
+- Awarded status does not automatically mean Sync Comm Systems is ready to execute.
 - Project handoff is not the same decision as award.
 
 ## Award Acceptance Authority
@@ -220,7 +220,7 @@ It answers:
 - What rate schedule applies?
 - What constraints must be resolved before field work starts?
 
-Award means Jackson won or was selected. Project Handoff means Operations is ready to convert that award into executable work.
+Award means Sync Comm Systems won or was selected. Project Handoff means Operations is ready to convert that award into executable work.
 
 ## Project Creation Trigger
 

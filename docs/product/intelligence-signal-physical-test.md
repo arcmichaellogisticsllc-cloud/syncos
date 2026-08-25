@@ -32,8 +32,8 @@ Validate that an operator can use the Intelligence Workspace without API calls, 
 2. Paste the bearer token into Operator Session and apply it.
 3. Confirm the Signal Feed loads without direct API or database access.
 4. Click Create Signal.
-5. Create a realistic Jackson Telcom signal:
-   - Title: Broadband funding opportunity near Jackson market
+5. Create a realistic Sync Comm Systems signal:
+   - Title: Broadband funding opportunity near Sync Comm Systems market
    - Summary: Public funding notice indicates fiber expansion activity.
    - Category: funding
    - Type: broadband_funding

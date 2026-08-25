@@ -25,8 +25,8 @@ Operational metadata not currently modeled and requiring schema/product verifica
 
 ## Recommended First Tenant
 
-- Tenant name: `Jackson Telcom Staging`
-- Slug: `jackson-telcom-staging`
+- Tenant name: `Sync Comm Systems Staging`
+- Slug: `sync-comm-systems-staging`
 - Environment: staging, tracked operationally until a schema field exists.
 - Status: `active`
 
@@ -49,8 +49,8 @@ Current schema fields:
 
 ## Recommended First Admin
 
-- Email placeholder: `admin@jacksontelcom.staging.example`
-- Display name: `Jackson Telcom Staging Admin`
+- Email placeholder: `admin@synccommsystems.staging.example`
+- Display name: `Sync Comm Systems Staging Admin`
 - Role: `System Admin`
 - Password/auth method: set out-of-band through the approved auth mechanism. Do not commit or document real passwords.
 
@@ -84,7 +84,7 @@ For each role:
 
 Available today:
 
-- `db:seed` creates Jackson Telcom baseline roles, permissions, tenant, and a local-development admin. This is useful for local validation and schema reference, not final real staging admin bootstrap.
+- `db:seed` creates Sync Comm Systems baseline roles, permissions, tenant, and a local-development admin. This is useful for local validation and schema reference, not final real staging admin bootstrap.
 - Manual SQL can create a staging tenant/admin if no admin CLI/UI exists. This is temporary and must be reviewed by engineering and security.
 
 Future preferred:

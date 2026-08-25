@@ -8,13 +8,19 @@ SyncOS app:
 https://github.com/arcmichaellogisticsllc-cloud/syncos.git
 ```
 
-Public website:
+Public website current legacy remote:
 
 ```text
 https://github.com/arcmichaellogisticsllc-cloud/Jackson-Telcom.git
 ```
 
-The repositories are separate and must remain independently deployable.
+The website repository is separate and must remain independently deployable. `Jackson-Telcom` is retired as an active brand/repository identity. Create a canonical Sync Comm Systems website repository and move the existing website history there before making GitHub the long-term deployment source.
+
+Recommended canonical website repository:
+
+```text
+https://github.com/arcmichaellogisticsllc-cloud/synccommsystems.com.git
+```
 
 ## Recommended VPS Access Pattern
 
@@ -49,6 +55,24 @@ The working copy is a detached HEAD at:
 ```
 
 This is not the current local release candidate.
+
+## Website Repository Migration
+
+Do not delete the legacy repository immediately.
+
+Recommended operator sequence:
+
+```bash
+cd /Users/User/syncos/synccommsystems.com
+git status --short
+git remote -v
+git remote rename origin legacy-jackson
+git remote add origin https://github.com/arcmichaellogisticsllc-cloud/synccommsystems.com.git
+git push -u origin feat/syncos-app-integration-rc1
+git remote -v
+```
+
+After verifying the canonical repository, archive the legacy `Jackson-Telcom` repository in GitHub instead of deleting it.
 
 ## Release Identity
 

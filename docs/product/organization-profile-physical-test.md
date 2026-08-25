@@ -9,7 +9,7 @@ Validate that an operator can use the Organization workspace as a telecom actor 
 - SyncOS API and web app are running.
 - Tester has a valid SyncOS JWT.
 - Tester has permissions appropriate for organization, contact, signal, candidate, and read-only slice validation.
-- Database has the seeded Jackson Telcom tenant and at least one territory.
+- Database has the seeded Sync Comm Systems tenant and at least one territory.
 
 ## Steps
 

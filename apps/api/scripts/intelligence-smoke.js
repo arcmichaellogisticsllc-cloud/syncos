@@ -17,11 +17,11 @@ async function main() {
     FROM users u
     JOIN tenant_users tu ON tu.user_id = u.id
     JOIN tenants t ON t.id = tu.tenant_id
-    WHERE u.email = 'admin@jackson-telcom.local'
-      AND t.slug = 'jackson-telcom'
+    WHERE u.email = 'admin@synccommsystems.local'
+      AND t.slug = 'sync-comm-systems'
     LIMIT 1
   `);
-  if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+  if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
 
   const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
   const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
@@ -38,7 +38,7 @@ async function main() {
   const before = await counts(client);
   const signal = await expectStatus("create signal with metadata", "POST", "/signals", `Bearer ${token}`, 201, {
     title: `Intelligence Signal ${Date.now()}`,
-    description: "Jackson Telcom broadband funding notice for fiber construction.",
+    description: "Sync Comm Systems broadband funding notice for fiber construction.",
     signal_category: "funding",
     signal_type: "broadband_funding",
     source_name: "State Broadband Office",
@@ -113,7 +113,7 @@ async function main() {
   if (archived.archive_reason !== "stale" || archived.status !== "archived") throw new Error("archive reason/status did not persist");
 
   const candidate = await expectStatus("create candidate from signal", "POST", `/signals/${signal.id}/create-candidate`, `Bearer ${token}`, 201, {
-    candidate_name: "Jackson Telcom Fiber Funding Candidate",
+    candidate_name: "Sync Comm Systems Fiber Funding Candidate",
     organization_id: base.organizationId,
     territory_id: base.territoryId,
     work_type: "fiber",

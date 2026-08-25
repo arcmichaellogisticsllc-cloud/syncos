@@ -128,7 +128,7 @@ export function OpportunityPipeline() {
   const summary = useMemo(() => buildSummary(data.opportunities.map((opportunity) => enrichOpportunity(opportunity, data))), [data]);
 
   return (
-    <OpportunityShell title="Opportunity Pipeline" purpose="Manage work Jackson has decided is worth pursuing without creating execution or finance records.">
+    <OpportunityShell title="Opportunity Pipeline" purpose="Manage work Sync Comm Systems has decided is worth pursuing without creating execution or finance records.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <UnsupportedNotice unavailable={data.unavailable} />
@@ -205,7 +205,7 @@ export function OpportunityPipeline() {
         {loading ? <div className="empty-state">Loading opportunities...</div> : null}
         {!loading && opportunities.length === 0 ? (
           <div className="empty-state">
-            <p>No opportunities yet. Create an opportunity only when Jackson has decided the work is worth pursuing.</p>
+            <p>No opportunities yet. Create an opportunity only when Sync Comm Systems has decided the work is worth pursuing.</p>
             <Link className="primary-button link-button" href="/opportunities/new">Create Opportunity</Link>
           </div>
         ) : null}
@@ -585,7 +585,7 @@ function OpportunityTab({ tab, opportunity, scoreSummary, permissions, onCapacit
   if (tab === "overview") {
     return (
       <div className="workspace-panel">
-        <SummaryMetric label="Opportunity definition" value="An Opportunity is work Jackson has decided is worth pursuing. It is not casual lead storage and it does not create execution or finance records." />
+        <SummaryMetric label="Opportunity definition" value="An Opportunity is work Sync Comm Systems has decided is worth pursuing. It is not casual lead storage and it does not create execution or finance records." />
         <SummaryMetric label="Summary" value={textValue(opportunity.evidence_summary ?? opportunity.summary, "No summary captured yet.")} />
         <SummaryMetric label="Scope" value={textValue(opportunity.scope_summary, "No scope captured yet.")} />
         <SummaryMetric label="Current status" value={`${formatAction(opportunity.productStatus)} (backend ${formatAction(opportunity.backendStatus)})`} />

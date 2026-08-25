@@ -2,7 +2,7 @@
 
 ## Definition
 
-An Opportunity is work Jackson has decided is worth pursuing. It is downstream from Opportunity Candidate and upstream from future project, production, capacity deployment, and finance workflows.
+An Opportunity is work Sync Comm Systems has decided is worth pursuing. It is downstream from Opportunity Candidate and upstream from future project, production, capacity deployment, and finance workflows.
 
 Opportunity Pipeline does not create projects, work orders, production records, contracts, settlements, invoices, payments, payroll, cash, or capacity deployment.
 

@@ -14,7 +14,7 @@ Current validated commit at sprint start: `df030878aa898103de585cf51acd8bf1a7af9
 | Existing test dependencies | Node test runner existed; `@playwright/test` was added as dev dependency. | Supported | Browser binaries are not committed. |
 | Existing tests directory | Regression tests existed; `tests/e2e` now contains Playwright foundation and expanded certification-readiness tests. | Supported | Full modal matrix certification remains future scope. |
 | Release validation | Builds API/worker/web, runs db verify and all domain smokes. | Supported | Browser E2E remains a separate CI-ready command. |
-| Database seed | Baseline Jackson Telcom seed existed; `seed:e2e-demo` now adds ARC/Cedar Ridge tenant data after `db:verify`. | Supported | No migrations were added. |
+| Database seed | Baseline Sync Comm Systems seed existed; `seed:e2e-demo` now adds ARC/Cedar Ridge tenant data after `db:verify`. | Supported | No migrations were added. |
 | Permission seed | Global permissions and roles are seeded by baseline seed. | Supported | E2E seed creates tenant-scoped persona roles from existing permission keys. |
 | Auth/token pattern | Backend accepts HMAC bearer JWTs for active tenant users. | Supported | E2E uses runtime-generated JWT storage state; no login workflow was added. |
 | Existing E2E docs | Clarification docs are committed and treated as source of truth. | Supported | Implementation follows Hybrid Option D. |

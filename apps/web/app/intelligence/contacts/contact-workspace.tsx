@@ -967,7 +967,7 @@ function roleExplanation(contact: ContactView) {
   if (contact.contactRole === "vendor_manager") return "This contact may influence subcontractor onboarding, vendor approval, and access to work distributed by the organization.";
   if (contact.contactRole === "field_inspector" || contact.contactRole === "qc_contact") return "This contact may validate field work, influence correction flow, or unblock production acceptance.";
   if (contact.contactRole === "ap_contact" || contact.contactRole === "billing_contact") return "This contact may help resolve settlement, invoice, AR, or payment issues.";
-  if (contact.contactRole === "relationship_bridge") return "This contact may introduce Jackson to target contacts or help relationship pathing.";
+  if (contact.contactRole === "relationship_bridge") return "This contact may introduce Sync Comm Systems to target contacts or help relationship pathing.";
   if (contact.contactRole === "decision_maker") return "This contact may influence or approve telecom work decisions.";
   return "Contact role is not captured by the backend yet. Use the title, organization context, and notes to prepare relationship mapping.";
 }

@@ -32,7 +32,7 @@ Create a controlled environment for Mike, the team, and internal operators to te
 - Existing scripts are `scripts/check-e2e-certification.js` and `scripts/release-validation.sh`.
 - Database scripts are `migrate.js`, `seed.js`, `seed-e2e-demo.js`, and `verify-migrations.js`.
 - `.env.example` existed but needed staging-safe placeholders and explicit disabled dev-session defaults.
-- `db:seed` currently creates Jackson Telcom baseline tenant, roles, permissions, and `admin@jackson-telcom.local` using a local development password hash. This is not a final real staging admin bootstrap.
+- `db:seed` currently creates Sync Comm Systems baseline tenant, roles, permissions, and `admin@synccommsystems.local` using a local development password hash. This is not a final real staging admin bootstrap.
 - `seed:e2e-demo` is deterministic certification/demo data and must not be run against shared staging unless the environment is explicitly demo-only.
 - Header auth is controlled by `ALLOW_DEV_HEADER_AUTH`; developer session UI is controlled by `NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL`.
 - Staging implementation planning now has a provider decision matrix, ADR, deployment checklist, final env map, tenant/admin execution plan, UAT execution packet, approval gate, dry-run plan, and static implementation-plan checker.

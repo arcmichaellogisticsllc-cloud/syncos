@@ -1218,7 +1218,7 @@ function warningsFor(organization: EnrichedOrganization, slices: OrganizationSli
 function actorRoleExplanation(organization: EnrichedOrganization) {
   if (hasActorRole(organization, "work_creator")) return "This organization may originate telecom work. Emphasize signals, territory, funding or project indicators, opportunities, and access paths.";
   if (hasActorRole(organization, "work_influencer")) return "This organization can influence work before construction starts. Emphasize contacts, relationship access, signals, and relationship gaps.";
-  if (hasActorRole(organization, "work_distributor")) return "This organization may route work to Jackson. Emphasize onboarding path, vendor contacts, opportunities, and capacity needs.";
+  if (hasActorRole(organization, "work_distributor")) return "This organization may route work to Sync Comm Systems. Emphasize onboarding path, vendor contacts, opportunities, and capacity needs.";
   if (hasActorRole(organization, "capacity_provider")) return "This organization may help cover work. Emphasize provider status, compliance, readiness, crews, workers, equipment, and production history.";
   if (hasActorRole(organization, "work_validator")) return "This organization can validate or block production. Emphasize field contacts, QC contacts, approvals, corrections, and project history.";
   if (hasActorRole(organization, "cash_controller")) return "This organization can approve and pay correctly. Emphasize contracts, settlements, invoices, AR, payments, and billing contacts.";

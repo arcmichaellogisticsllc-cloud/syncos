@@ -87,7 +87,7 @@ See the [code start gate](docs/architecture/code-start-gate.md).
    npm run db:migrate
    ```
 
-5. Seed Jackson Telcom tenant, core roles, permissions, and admin user:
+5. Seed Sync Comm Systems tenant, core roles, permissions, and admin user:
 
    ```bash
    npm run db:seed

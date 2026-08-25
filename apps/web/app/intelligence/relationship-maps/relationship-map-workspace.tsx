@@ -185,7 +185,7 @@ export function RelationshipMapDirectory() {
         {loading ? <div className="empty-state">Loading relationship maps...</div> : null}
         {!loading && maps.length === 0 ? (
           <div className="empty-state">
-            <p>No relationship maps yet. Create a map to define who Jackson needs access to and how that access may be built.</p>
+            <p>No relationship maps yet. Create a map to define who Sync Comm Systems needs access to and how that access may be built.</p>
             <Link className="primary-button link-button" href="/intelligence/relationship-maps/new">Create Relationship Map</Link>
           </div>
         ) : null}
@@ -279,7 +279,7 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
   }
 
   return (
-    <IntelligenceShell title={mode === "create" ? "Create Relationship Map" : "Edit Relationship Map"} purpose="Define who Jackson needs access to and which existing backend relationship fields can support that access target.">
+    <IntelligenceShell title={mode === "create" ? "Create Relationship Map" : "Edit Relationship Map"} purpose="Define who Sync Comm Systems needs access to and which existing backend relationship fields can support that access target.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <UnsupportedNotice />
