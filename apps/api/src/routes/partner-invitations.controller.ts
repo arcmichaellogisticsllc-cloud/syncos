@@ -5,6 +5,7 @@ import { appendAuditLog } from "@syncos/shared";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { sendSmtpRelayEmail } from "../email/smtp-relay";
 import { DATABASE_POOL } from "../modules/database.module";
+import { lockPartnerAccountOrganizationBinding, normalizePartnerAccountEmail } from "../security/partner-account-binding-lock";
 import { Public } from "../security/public.decorator";
 import { RequirePermission } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
@@ -1000,7 +1001,7 @@ export class PartnerInvitationsController {
   }
 
   private async lockPartnerAccountForTransaction(client: PoolClient, tenantId: string, email: string) {
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`partner-account:${tenantId}:${this.normalizeEmail(email)}`]);
+    await lockPartnerAccountOrganizationBinding(client, tenantId, email);
   }
 
   private partnerAccountOrganizationConflict() {
@@ -1272,7 +1273,7 @@ export class PartnerInvitationsController {
   }
 
   private normalizeEmail(value: string) {
-    return value.trim().toLowerCase();
+    return normalizePartnerAccountEmail(value);
   }
 
   private requiredString(value: unknown, message: string) {

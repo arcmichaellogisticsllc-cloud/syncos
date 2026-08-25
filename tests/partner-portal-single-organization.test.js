@@ -34,18 +34,21 @@ test("Partner Portal uses grouped admin navigation and keeps field execution in 
 test("Invitation and role assignment block cross-organization Partner accounts", () => {
   const invitations = read("apps/api/src/routes/partner-invitations.controller.ts");
   const personas = read("apps/api/src/routes/partner-personas.controller.ts");
+  const lockHelper = read("apps/api/src/security/partner-account-binding-lock.ts");
 
   assert.match(invitations, /lockPartnerAccountForTransaction\(client, tenantId, input\.email\)/);
   assert.match(invitations, /lockPartnerAccountForTransaction\(client, invitation\.tenant_id, invitation\.email\)/);
-  assert.match(invitations, /pg_advisory_xact_lock\(hashtextextended/);
+  assert.match(invitations, /lockPartnerAccountOrganizationBinding\(client, tenantId, email\)/);
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, tenantId, input\.email, input\.organizationId\)/);
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, invitation\.tenant_id, invitation\.email, invitation\.organization_id\)/);
   assert.match(invitations, /This email is already associated with another Partner organization/);
   assert.match(invitations, /PARTNER_ACCOUNT_ORGANIZATION_CONFLICT/);
   assert.match(personas, /lockPartnerAccountForTransaction\(writeClient, request\.auth\.tenantId, tenantUser\.email\)/);
-  assert.match(personas, /pg_advisory_xact_lock\(hashtextextended/);
-  assert.match(personas, /partner-account:\$\{tenantId\}:\$\{email\.trim\(\)\.toLowerCase\(\)\}/);
+  assert.match(personas, /lockPartnerAccountOrganizationBinding\(client, tenantId, email\)/);
   assert.match(personas, /requireNoPartnerAccountOrganizationConflict\(writeClient, request\.auth\.tenantId, tenantUser\.id, input\.organizationId\)/);
+  assert.match(lockHelper, /partner-account:\$\{tenantId\}:\$\{normalizePartnerAccountEmail\(email\)\}/);
+  assert.match(lockHelper, /email\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(lockHelper, /pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/);
 });
 
 test("Partner Portal product boundaries keep financial truth server-authoritative and private", () => {

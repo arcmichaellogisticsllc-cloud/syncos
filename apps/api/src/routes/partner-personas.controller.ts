@@ -3,6 +3,7 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import { DATABASE_POOL } from "../modules/database.module";
 import { OrganizationScopeService } from "../security/organization-scope";
+import { lockPartnerAccountOrganizationBinding } from "../security/partner-account-binding-lock";
 import { RequirePermission } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { requireAllowed, requireString } from "./intelligence.types";
@@ -275,7 +276,7 @@ export class PartnerPersonasController {
   }
 
   private async lockPartnerAccountForTransaction(client: PoolClient, tenantId: string, email: string) {
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`partner-account:${tenantId}:${email.trim().toLowerCase()}`]);
+    await lockPartnerAccountOrganizationBinding(client, tenantId, email);
   }
 
   private partnerAccountOrganizationConflict() {
