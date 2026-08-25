@@ -6,6 +6,14 @@ SyncOS staging currently runs on Hostinger VPS `srv1818105`.
 
 The required backup target is an S3-compatible private bucket. Cloudflare R2 is the recommended first target for staging because it is inexpensive, supports S3-compatible tooling, keeps recovery provider-neutral, and avoids depending on the same VPS that is being protected.
 
+Bucket name:
+
+```text
+syncos-staging-backups
+```
+
+The bucket must stay private. Do not attach a public custom domain.
+
 Current gate status: off-VPS backup is not complete until `/etc/syncos/staging/backup.env` is populated, `aws` CLI or a compatible client is installed on the VPS, both backup scripts upload successfully, and restore validation passes.
 
 ## Backup Scope
@@ -47,8 +55,9 @@ chmod 640 /etc/syncos/staging/backup.env
 Required settings:
 
 ```bash
-SYNCOS_BACKUP_S3_BUCKET=
-SYNCOS_BACKUP_S3_PREFIX=syncos/staging
+SYNCOS_BACKUP_S3_BUCKET=syncos-staging-backups
+SYNCOS_BACKUP_S3_PREFIX=
+SYNCOS_BACKUP_CADENCE=daily
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_DEFAULT_REGION=auto
@@ -57,6 +66,35 @@ SYNCOS_BACKUP_SSE=AES256
 ```
 
 Use a least-privilege key scoped to the staging backup bucket or prefix where the provider supports it. Do not use account-wide admin credentials.
+
+Credential name:
+
+```text
+syncos-staging-backup
+```
+
+Required Cloudflare R2 permissions:
+
+- list objects in `syncos-staging-backups`;
+- upload objects;
+- read/download objects for restore;
+- delete objects only if retention cleanup is implemented.
+
+Do not paste R2 access keys into chat or commit them to Git.
+
+Expected object layout:
+
+```text
+syncos-staging-backups/
+├── postgres/
+│   ├── daily/
+│   ├── weekly/
+│   └── manifests/
+└── files/
+    ├── daily/
+    ├── weekly/
+    └── manifests/
+```
 
 ## Postgres Backup
 
@@ -74,7 +112,7 @@ Behavior:
 - includes the deployed SHA in the backup filename;
 - writes a SHA-256 checksum;
 - writes a JSON manifest with environment, timestamp, deployed SHA, migration ceiling, filename, size, and checksum;
-- uploads the dump and manifest to the configured S3-compatible bucket;
+- uploads the dump to `postgres/<daily|weekly>/` and the manifest to `postgres/manifests/`;
 - verifies the remote object with `head-object`;
 - exits non-zero on failure.
 
@@ -95,7 +133,7 @@ Behavior:
 - preserves directory structure;
 - writes a SHA-256 checksum;
 - writes a JSON manifest with file count and deployed SHA;
-- uploads the archive and manifest to the configured S3-compatible bucket;
+- uploads the archive to `files/<daily|weekly>/` and the manifest to `files/manifests/`;
 - verifies the remote object with `head-object`;
 - exits non-zero on failure.
 

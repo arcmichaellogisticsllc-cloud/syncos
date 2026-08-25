@@ -7,6 +7,7 @@ STORAGE_ROOT="${SYNCOS_STORAGE_ROOT:-/opt/syncos/staging/shared/storage}"
 BACKUP_ROOT="${SYNCOS_BACKUP_ROOT:-/opt/syncos/staging/shared/backups/files}"
 SHA="${SYNCOS_RELEASE_SHA:-unknown}"
 MIGRATION_CEILING="${SYNCOS_MIGRATION_CEILING:-059_syncfield_coil_commercial_policy.sql}"
+CADENCE="${SYNCOS_BACKUP_CADENCE:-daily}"
 
 if [[ ! -r "${ENV_FILE}" ]]; then
   echo "missing readable staging env file: ${ENV_FILE}" >&2
@@ -28,7 +29,7 @@ set -a
 . "${BACKUP_ENV_FILE}"
 set +a
 
-required=(SYNCOS_BACKUP_S3_BUCKET SYNCOS_BACKUP_S3_PREFIX)
+required=(SYNCOS_BACKUP_S3_BUCKET)
 for name in "${required[@]}"; do
   if [[ -z "${!name:-}" ]]; then
     echo "missing required backup setting: ${name}" >&2
@@ -45,8 +46,25 @@ mkdir -p "${BACKUP_ROOT}"
 archive_file="${BACKUP_ROOT}/syncos_staging_files_${timestamp}_${SHA:0:12}.tar.gz"
 checksum_file="${archive_file}.sha256"
 manifest_file="${archive_file}.manifest.json"
-remote_key="${SYNCOS_BACKUP_S3_PREFIX%/}/files/$(basename "${archive_file}")"
-remote_manifest_key="${remote_key}.manifest.json"
+case "${CADENCE}" in
+  daily|weekly) ;;
+  *) echo "SYNCOS_BACKUP_CADENCE must be daily or weekly" >&2; exit 1 ;;
+esac
+
+object_key() {
+  local key="$1"
+  local prefix="${SYNCOS_BACKUP_S3_PREFIX:-}"
+  prefix="${prefix#/}"
+  prefix="${prefix%/}"
+  if [[ -n "${prefix}" ]]; then
+    printf "%s/%s" "${prefix}" "${key}"
+  else
+    printf "%s" "${key}"
+  fi
+}
+
+remote_key="$(object_key "files/${CADENCE}/$(basename "${archive_file}")")"
+remote_manifest_key="$(object_key "files/manifests/$(basename "${manifest_file}")")"
 
 echo "starting private file backup ${archive_file}"
 file_count="$(find "${STORAGE_ROOT}" -type f | wc -l | tr -d ' ')"

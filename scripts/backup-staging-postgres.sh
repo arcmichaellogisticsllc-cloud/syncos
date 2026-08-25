@@ -6,6 +6,7 @@ BACKUP_ENV_FILE="${SYNCOS_BACKUP_ENV_FILE:-/etc/syncos/staging/backup.env}"
 BACKUP_ROOT="${SYNCOS_BACKUP_ROOT:-/opt/syncos/staging/shared/backups/postgres}"
 SHA="${SYNCOS_RELEASE_SHA:-unknown}"
 MIGRATION_CEILING="${SYNCOS_MIGRATION_CEILING:-059_syncfield_coil_commercial_policy.sql}"
+CADENCE="${SYNCOS_BACKUP_CADENCE:-daily}"
 
 if [[ ! -r "${ENV_FILE}" ]]; then
   echo "missing readable staging env file: ${ENV_FILE}" >&2
@@ -23,7 +24,7 @@ set -a
 . "${BACKUP_ENV_FILE}"
 set +a
 
-required=(DATABASE_URL SYNCOS_BACKUP_S3_BUCKET SYNCOS_BACKUP_S3_PREFIX)
+required=(DATABASE_URL SYNCOS_BACKUP_S3_BUCKET)
 for name in "${required[@]}"; do
   if [[ -z "${!name:-}" ]]; then
     echo "missing required backup setting: ${name}" >&2
@@ -40,8 +41,25 @@ mkdir -p "${BACKUP_ROOT}"
 backup_file="${BACKUP_ROOT}/syncos_staging_${timestamp}_${SHA:0:12}.dump"
 checksum_file="${backup_file}.sha256"
 manifest_file="${backup_file}.manifest.json"
-remote_key="${SYNCOS_BACKUP_S3_PREFIX%/}/postgres/$(basename "${backup_file}")"
-remote_manifest_key="${remote_key}.manifest.json"
+case "${CADENCE}" in
+  daily|weekly) ;;
+  *) echo "SYNCOS_BACKUP_CADENCE must be daily or weekly" >&2; exit 1 ;;
+esac
+
+object_key() {
+  local key="$1"
+  local prefix="${SYNCOS_BACKUP_S3_PREFIX:-}"
+  prefix="${prefix#/}"
+  prefix="${prefix%/}"
+  if [[ -n "${prefix}" ]]; then
+    printf "%s/%s" "${prefix}" "${key}"
+  else
+    printf "%s" "${key}"
+  fi
+}
+
+remote_key="$(object_key "postgres/${CADENCE}/$(basename "${backup_file}")")"
+remote_manifest_key="$(object_key "postgres/manifests/$(basename "${manifest_file}")")"
 
 echo "starting postgres backup ${backup_file}"
 pg_dump --format=custom --no-owner --no-acl --dbname="${DATABASE_URL}" --file="${backup_file}"
