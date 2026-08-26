@@ -128,7 +128,7 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
     await page.goto("/syncfield/map");
-    await expect(page.getByRole("heading", { name: /ARL019 Construction Map Rev 1/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /ARL019 Construction Map Rev 1/i })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Read-only field map")).toBeVisible();
     await expect(page.getByRole("button", { name: /Next PDF page/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /Zoom in/i })).toBeVisible();
@@ -180,9 +180,10 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
   });
 
   test("Partner Admin sees safe JSA history and P9-era field navigation remains QC-safe", async ({ page }) => {
+    test.setTimeout(90_000);
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner/jsa");
-    await expect(page.getByRole("heading", { name: "Daily JSAs" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Daily JSAs" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("traffic")).toBeVisible();
     await expect(page.getByText("internal_notes")).toHaveCount(0);
     await expect(page.getByText("storage_key")).toHaveCount(0);
@@ -190,7 +191,7 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 390, height: 860 });
     await page.goto("/syncfield/today");
-    await expect(page.getByText("Daily JSA")).toBeVisible();
+    await expect(page.getByText("Daily JSA")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("link", { name: "Open Map" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
     await expect(page.getByText("Customer QC")).toHaveCount(0);

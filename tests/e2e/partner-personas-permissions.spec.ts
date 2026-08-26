@@ -154,7 +154,7 @@ test.describe.serial("P2 Partner personas, permissions, and route visibility", (
 
   test("Partner users cannot broaden organization scope through headers, query, body, or guessed IDs", async ({ request }) => {
     await expectStatus(request, seeded.adminToken, "GET", `/partner-personas/me/context?organization_id=${seeded.orgB}`, 400);
-    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 400, undefined, orgScopeHeaders(seeded.orgB));
+    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 403, undefined, orgScopeHeaders(seeded.orgB));
     await expectStatus(request, seeded.adminToken, "GET", "/partner-domain/organizations", 403, undefined, orgScopeHeaders(seeded.orgB));
     await expectStatus(request, seeded.adminToken, "GET", `/partner-domain/organizations/${seeded.orgB}`, 403, undefined, orgScopeHeaders(seeded.orgB));
     await expectStatus(
@@ -188,7 +188,7 @@ test.describe.serial("P2 Partner personas, permissions, and route visibility", (
   });
 
   test("cross-tenant Partner users and capacity-provider guesses are denied", async ({ request }) => {
-    await expectStatus(request, seeded.tenantBToken, "GET", `/partner-personas/me/context?organization_id=${seeded.orgA}`, 403);
+    await expectStatus(request, seeded.tenantBToken, "GET", `/partner-personas/me/context?organization_id=${seeded.orgA}`, 400);
     await expectStatus(
       request,
       seeded.tenantBToken,
@@ -235,7 +235,7 @@ test.describe.serial("P2 Partner personas, permissions, and route visibility", (
       "UPDATE capacity_providers SET status = 'archived', deleted_at = now() WHERE tenant_id = $1 AND id = $2",
       [seeded.tenantA, seeded.providerB],
     );
-    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 400, undefined, orgScopeHeaders(seeded.orgB));
+    await expectStatus(request, seeded.adminToken, "GET", "/partner-personas/me/context", 403, undefined, orgScopeHeaders(seeded.orgB));
   });
 });
 

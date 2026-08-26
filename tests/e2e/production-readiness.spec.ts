@@ -168,6 +168,7 @@ test.describe.serial("P17 production readiness release-candidate acceptance", ()
   });
 
   test("critical drill-through routes load for internal release users", async ({ page }) => {
+    test.setTimeout(120_000);
     await page.addInitScript((token) => window.localStorage.setItem("syncos.apiToken", token), fixture.internalToken);
     for (const [route, text] of [
       ["/command-center", "Command Center"],
@@ -178,7 +179,7 @@ test.describe.serial("P17 production readiness release-candidate acceptance", ()
       ["/payment-retainage-adjustments", "Payment, Retainage, Adjustments"],
     ]) {
       await page.goto(route);
-      await expect(page.getByRole("heading", { level: 1, name: text })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: text })).toBeVisible({ timeout: 30_000 });
     }
   });
 

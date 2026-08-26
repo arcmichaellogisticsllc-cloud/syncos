@@ -40,12 +40,14 @@ test("Invitation and role assignment block cross-organization Partner accounts",
   assert.match(invitations, /lockPartnerAccountForTransaction\(client, invitation\.tenant_id, invitation\.email\)/);
   assert.match(invitations, /lockPartnerAccountOrganizationBinding\(client, tenantId, email\)/);
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, tenantId, input\.email, input\.organizationId\)/);
+  assert.match(invitations, /requireNoCompetingPendingInvitation\(client, tenantId, input\.email, input\.organizationId\)/);
   assert.match(invitations, /requireNoPartnerAccountOrganizationConflict\(client, invitation\.tenant_id, invitation\.email, invitation\.organization_id\)/);
   assert.match(invitations, /This email is already associated with another Partner organization/);
   assert.match(invitations, /PARTNER_ACCOUNT_ORGANIZATION_CONFLICT/);
   assert.match(personas, /lockPartnerAccountForTransaction\(writeClient, request\.auth\.tenantId, tenantUser\.email\)/);
   assert.match(personas, /lockPartnerAccountOrganizationBinding\(client, tenantId, email\)/);
-  assert.match(personas, /requireNoPartnerAccountOrganizationConflict\(writeClient, request\.auth\.tenantId, tenantUser\.id, input\.organizationId\)/);
+  assert.match(personas, /requireNoPartnerAccountOrganizationConflict\(writeClient, request\.auth\.tenantId, tenantUser\.id, tenantUser\.email, input\.organizationId\)/);
+  assert.match(personas, /FROM partner_onboarding_invitations/);
   assert.match(lockHelper, /partner-account:\$\{tenantId\}:\$\{normalizePartnerAccountEmail\(email\)\}/);
   assert.match(lockHelper, /email\.trim\(\)\.toLowerCase\(\)/);
   assert.match(lockHelper, /pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/);

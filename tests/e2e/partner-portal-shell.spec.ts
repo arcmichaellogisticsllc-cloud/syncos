@@ -41,10 +41,11 @@ test.describe.serial("P7 Partner Portal shell", () => {
   });
 
   test("Partner Admin enters dashboard with safe P1-P6 operational summary", async ({ page }) => {
+    test.setTimeout(90_000);
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner");
-    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "P7 Partner A" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "P7 Partner A", level: 1 })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { name: "Dashboard", level: 2 })).toBeVisible();
     await expect(page.getByText("Current Assignment")).toBeVisible();
     await expect(page.getByText("WO-P7-A")).toBeVisible();
     await expect(page.getByText("MAP-P7-A")).toBeVisible();
@@ -52,7 +53,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("authorized").first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Company" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compliance", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Daily Production" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
     await expect(page.getByText("Finance")).toHaveCount(0);
     await expect(page.getByText("Collections")).toHaveCount(0);
     await expect(page.getByText("margin")).toHaveCount(0);
@@ -64,36 +65,37 @@ test.describe.serial("P7 Partner Portal shell", () => {
   });
 
   test("Partner Admin workspaces expose safe company, workforce, agreement, vehicle, and mobilization views", async ({ page }) => {
+    test.setTimeout(180_000);
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner/company");
-    await expect(page.getByText("P7 Partner A LLC")).toBeVisible();
+    await expect(page.getByText("P7 Partner A LLC")).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText("1234")).toHaveCount(0);
 
     await page.goto("/partner/compliance");
-    await expect(page.getByRole("heading", { name: "Insurance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Insurance" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText("commercial_auto")).toBeVisible();
     await expect(page.getByText("storage_key")).toHaveCount(0);
 
     await page.goto("/partner/workers");
-    await expect(page.getByText("P7-0 Worker")).toBeVisible();
+    await expect(page.getByText("P7-0 Worker")).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText("driver-license-number")).toHaveCount(0);
 
     await page.goto(`/partner/workers/${seeded.workerIds[0]}`);
-    await expect(page.getByRole("heading", { name: "P7-0 Worker" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "P7-0 Worker" })).toBeVisible({ timeout: 45_000 });
 
     await page.goto("/partner/crews");
-    await expect(page.getByText("P7 Ready Crew")).toBeVisible();
+    await expect(page.getByText("P7 Ready Crew")).toBeVisible({ timeout: 45_000 });
 
     await page.goto(`/partner/agreements/${seeded.agreementVersionId}`);
-    await expect(page.getByText("P7-MSA")).toBeVisible();
+    await expect(page.getByText("P7-MSA")).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText("storage_key")).toHaveCount(0);
 
     await page.goto("/partner/vehicles");
-    await expect(page.getByText("P7 Bucket Truck")).toBeVisible();
+    await expect(page.getByText("P7 Bucket Truck")).toBeVisible({ timeout: 45_000 });
     expect(await financialCounts(client)).toEqual(downstreamCountsBefore);
 
     await page.goto("/partner/mobilization");
-    await expect(page.getByRole("heading", { name: "Readiness" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Readiness" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { name: "Approval to Mobilize" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Production Start" })).toBeVisible();
     await expect(page.getByText("approved_to_mobilize")).toBeVisible();

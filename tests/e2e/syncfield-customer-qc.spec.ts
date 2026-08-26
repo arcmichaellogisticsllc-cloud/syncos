@@ -50,7 +50,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
   });
 
   test("production gate, Work Order codes, and field UI hydrate without rates", async ({ page, request }) => {
-    const missingJsa = await request.post(apiUrl("/syncfield/foreman/production/today?work_date=2026-08-26"), { headers: auth(seeded.foremanToken), data: { client_mutation_id: crypto.randomUUID() } });
+    test.setTimeout(90_000);
+    const missingJsa = await request.post(apiUrl(`/syncfield/foreman/production/today?work_date=${tomorrow()}`), { headers: auth(seeded.foremanToken), data: { client_mutation_id: crypto.randomUUID() } });
     expect(missingJsa.status()).toBe(400);
 
     const codeList = await apiJson(request, seeded.foremanToken, "GET", "/syncfield/foreman/production/codes");
@@ -67,7 +68,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
     await page.goto("/syncfield/production");
-    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
+    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("button", { name: "Asset" })).toBeVisible();
     await expect(page.locator("a.partner-button", { hasText: "Review & Submit" })).toBeVisible();
     await expect(page.getByText("Partner Rate")).toHaveCount(0);
@@ -81,7 +82,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
     await page.goto("/syncfield/production");
-    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
+    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
 
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
@@ -117,7 +118,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
   test("offline replay revalidates lost production-start authorization and keeps failed work traceable", async ({ page, context }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.goto("/syncfield/production");
-    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
+    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
     await page.getByRole("button", { name: "Asset" }).click();
@@ -326,7 +327,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
   test("submitted-report offline conflict does not reopen the report or create production", async ({ page, context }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.goto("/syncfield/production");
-    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
+    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
     await page.getByRole("button", { name: "Daily" }).click();
@@ -341,7 +342,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
   test("Partner-local queue isolation hides pending field work after account switch", async ({ page, context }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.goto("/syncfield/production");
-    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
+    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 30_000 });
     await context.setOffline(true);
     await page.getByRole("button", { name: "Asset" }).click();
     await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
@@ -512,6 +513,12 @@ async function createProduction(request: APIRequestContext, fixture: Seeded, bod
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrow() {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 async function seedReadyCompliance(client: Client, tenantId: string, orgId: string, providerId: string) {

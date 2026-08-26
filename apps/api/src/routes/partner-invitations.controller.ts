@@ -617,6 +617,7 @@ export class PartnerInvitationsController {
     try {
       await this.lockPartnerAccountForTransaction(client, tenantId, input.email);
       await this.requireNoPartnerAccountOrganizationConflict(client, tenantId, input.email, input.organizationId);
+      await this.requireNoCompetingPendingInvitation(client, tenantId, input.email, input.organizationId);
       const existing = await client.query(
         "SELECT id FROM partner_onboarding_invitations WHERE tenant_id = $1 AND organization_id = $2 AND email = $3 AND invitation_type = $4 AND status = 'SENT' AND expires_at > now()",
         [tenantId, input.organizationId, input.email, input.invitationType],
@@ -995,6 +996,22 @@ export class PartnerInvitationsController {
         AND u.deleted_at IS NULL
       `,
       [tenantId, email, [partnerAdminRoleKey, partnerForemanRoleKey], Array.from(partnerProviderTypes)],
+    );
+    const organizationIds = Array.from(new Set(result.rows.map((row) => row.organization_id)));
+    if (organizationIds.some((assignedOrganizationId) => assignedOrganizationId !== organizationId)) throw this.partnerAccountOrganizationConflict();
+  }
+
+  private async requireNoCompetingPendingInvitation(client: PoolClient, tenantId: string, email: string, organizationId: string) {
+    const result = await client.query<{ organization_id: string }>(
+      `
+      SELECT DISTINCT organization_id
+      FROM partner_onboarding_invitations
+      WHERE tenant_id = $1
+        AND lower(email) = lower($2)
+        AND status = 'SENT'
+        AND expires_at > now()
+      `,
+      [tenantId, email],
     );
     const organizationIds = Array.from(new Set(result.rows.map((row) => row.organization_id)));
     if (organizationIds.some((assignedOrganizationId) => assignedOrganizationId !== organizationId)) throw this.partnerAccountOrganizationConflict();
