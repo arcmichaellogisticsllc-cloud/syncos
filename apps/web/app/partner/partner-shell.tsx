@@ -434,6 +434,7 @@ type PartnerDashboardWorkOrder = {
   workOrderNumber?: string;
   projectName?: string;
   crewName?: string;
+  mapWorkPackageRef?: string | null;
   status?: string;
   mobilizationState?: string;
   productionState?: string;
@@ -1072,6 +1073,7 @@ function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowl
               <StatusRows rows={[
                 ["Project", str(workOrder.projectName) || "Assigned project"],
                 ["Assigned Crew", str(workOrder.crewName) || "Not assigned"],
+                ["Map Package", str(workOrder.mapWorkPackageRef) || "Not issued"],
                 ["Mobilization", statusLabel(workOrder.mobilizationState)],
                 ["Production", statusLabel(workOrder.productionState)],
                 ["QC", statusLabel(workOrder.qcState)],

@@ -275,6 +275,7 @@ export class PartnerDashboardController {
           workOrderNumber: row.work_order_number,
           projectName: row.project_name,
           crewName: row.crew_name,
+          mapWorkPackageRef: row.map_work_package_ref,
           status: this.presentationStatus(row.status),
           mobilizationState: this.presentationStatus(row.partner_execution_status ?? row.status),
           productionState: "See Production",
