@@ -8,23 +8,35 @@ It is not a Sync Admin dashboard and it does not create a second production, set
 
 ## Read Model
 
-The dashboard reuses current server-derived Partner endpoints:
+Slice B2 makes the Dashboard a bounded server-side read model:
 
-- Partner context and route visibility
-- Partner onboarding checklist
-- Partner compliance summary, W-9, payment profile, and insurance policies
-- Partner Workers, Crews, Crew roster, and Crew readiness
-- Partner Agreements, Work Orders, and Vehicles / Equipment
-- Partner-safe production reports and production dashboard summaries
-- Partner-safe Customer QC and correction summaries
-- Partner settlements and payment/payable summaries
-- Partner-only performance summary
+`GET /partner/dashboard`
 
-The browser does not send an authority-bearing `organization_id`. The API derives the Partner organization from authenticated server truth.
+The endpoint derives the Partner organization from authenticated server truth and requires Partner Admin read authority. A Partner Foreman-only account cannot read the financial Dashboard. The browser does not send an authority-bearing `organization_id`, scope header, or organization selector.
+
+Response contract:
+
+- `organization`
+- `freshness`
+- `company`
+- `crews`
+- `todayByCrew`
+- `workOrders`
+- `production`
+- `qcCorrections`
+- `actions`
+- `financial`
+- `performance`
+- `panelStatus`
+- `warnings`
+
+The read model is evaluated with one server `asOf` / `calculatedAt` value inside a repeatable-read, read-only database transaction. Optional panel queries use safe panel states such as `READY`, `EMPTY`, and `UNAVAILABLE`; unavailable data is not substituted with zero.
+
+Dashboard queries are bounded to current status, today/current Crew rows, active/recent Work Orders, current production and QC lineage, current settlement/payable/payment buckets, and the current Partner performance snapshot. Drill-through pages remain the source for detail history.
 
 ## Action Center
 
-Actions are derived from canonical source state on every dashboard read. Slice B does not persist Partner action cards and does not add dismiss or snooze behavior.
+Actions are derived server-side from canonical source state on every dashboard read. Slice B does not persist Partner action cards and does not add dismiss or snooze behavior.
 
 Action groups:
 
@@ -39,7 +51,7 @@ Priority policy:
 - Medium: upcoming compliance or credential expiration, incomplete Worker documentation, incomplete Crew setup, or offered Work Order attention.
 - Low / Informational: under Sync review, QC pending, Customer reinspection pending, awaiting Customer funds, or payment processing.
 
-Actions are deduplicated by reason and source. Every CTA routes to an existing page such as `/partner/onboarding`, `/partner/compliance`, `/partner/workers`, `/partner/crews`, `/partner/work-orders`, `/partner/production`, `/partner/customer-qc`, `/partner/settlements`, `/partner/payments`, or valid SyncField routes.
+Actions are deduplicated by reason and source before the response is returned. Every CTA routes to an existing page such as `/partner/onboarding`, `/partner/compliance`, `/partner/workers`, `/partner/crews`, `/partner/work-orders`, `/partner/production`, `/partner/customer-qc`, `/partner/settlements`, `/partner/payments`, or valid SyncField routes.
 
 ## Daily Crew Status
 
@@ -63,13 +75,13 @@ Dashboard financial status preserves these boundaries:
 - Processing
 - Paid This Month
 
-The frontend formats server-returned amounts. It does not calculate settlement line amounts from Partner rates, customer accepted quantities, retainage, coil/slack, or rate versions. Customer rates, customer invoice economics, Customer cash details beyond safe eligibility state, Sync margin, Sync spread, other Partner rates, full bank details, and full TIN are not displayed.
+The Dashboard endpoint returns authoritative financial totals. The frontend formats server-returned amounts. It does not calculate settlement line amounts, payable totals, payment eligibility, processing totals, paid totals, or accepted-production-awaiting-settlement from Partner rates, customer accepted quantities, retainage, coil/slack, or rate versions. Customer rates, customer invoice economics, Customer cash details beyond safe eligibility state, Sync margin, Sync spread, other Partner rates, full bank details, and full TIN are not displayed.
 
-Partner coil/slack treatment is Partner-safe only. Customer coil treatment and any resulting Sync spread remain internal.
+Partner coil/slack treatment is Partner-safe only and is returned only from Partner financial source fields. Customer coil treatment and any resulting Sync spread remain internal.
 
 ## Freshness And Failures
 
-The dashboard displays a freshness label and provides manual Refresh. Optional panel failures must render panel-level empty/error states where practical and must not block company context, Action Center, or Crew operations. Partner context conflict fails closed through the Slice A conflict UI.
+The dashboard displays the server-returned freshness label and provides manual Refresh. Refresh issues one Dashboard read-model request. Optional panel failures must render panel-level empty/error states where practical and must not block company context, Action Center, or Crew operations. Partner context conflict fails closed through the Slice A conflict UI.
 
 Browser alerts are not valid dashboard error handling. A Partner route must resolve to ready, empty, action-required, locked, stale, error, or context-conflict state.
 

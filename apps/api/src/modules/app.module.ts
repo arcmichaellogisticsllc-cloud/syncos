@@ -26,6 +26,7 @@ import { PaymentExecutionController } from "../routes/payment-execution.controll
 import { PaymentRetainageAdjustmentsController } from "../routes/payment-retainage-adjustments.controller";
 import { PartnerDomainController } from "../routes/partner-domain.controller";
 import { PartnerComplianceController } from "../routes/partner-compliance.controller";
+import { PartnerDashboardController } from "../routes/partner-dashboard.controller";
 import { PartnerInvitationsController } from "../routes/partner-invitations.controller";
 import { PartnerPersonasController } from "../routes/partner-personas.controller";
 import { PartnerWorkforceController } from "../routes/partner-workforce.controller";
@@ -76,6 +77,7 @@ import { DatabaseModule } from "./database.module";
     PaymentExecutionController,
     PaymentRetainageAdjustmentsController,
     PartnerComplianceController,
+    PartnerDashboardController,
     PartnerInvitationsController,
     PartnerDomainController,
     PartnerPersonasController,

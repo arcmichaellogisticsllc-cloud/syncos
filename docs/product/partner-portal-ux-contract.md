@@ -56,9 +56,12 @@ The Partner Dashboard is the daily command page for a single subcontractor compa
 5. Action identity is derived from reason, source type, and source record so duplicate source conditions do not create duplicate cards.
 6. Quantities remain unit-aware. FT, EA, HR, and other units are never combined into one total.
 7. Reported quantity, Customer accepted quantity, correction quantity, Partner payable basis, settlement, eligibility, processing, and paid states remain distinct.
-8. Dashboard financial values are server-authoritative. The frontend may format and total server-returned bucket amounts, but it must not calculate settlement line amounts from rates or quantities.
+8. Dashboard financial values are server-authoritative. The frontend may format server-returned bucket amounts, but it must not total raw financial lines or calculate settlement, payable, eligibility, processing, paid, or accepted-awaiting-settlement values from rates or quantities.
 9. Dashboard never displays customer rates, customer cash details beyond safe eligibility state, Sync margin, Sync spread, other Partner rates, full bank details, or full TIN.
 10. Data freshness is visible and a manual Refresh action is available.
 11. Optional panel failure must not block the full Dashboard. Required Partner context failure fails closed.
 12. Dashboard and Partner / SyncField routes must not use browser alerts and must not remain indefinitely in a loading state.
 13. Desktop, tablet, and mobile layouts keep the Action Center and Today by Crew usable without horizontal overflow.
+14. Dashboard actions are derived by the server read model, not from raw domain records in React.
+15. Dashboard `asOf` and `calculatedAt` are server timestamps. Browser fetch time is not source freshness.
+16. `UNAVAILABLE` panel state is distinct from a legitimate zero count or zero-dollar amount.

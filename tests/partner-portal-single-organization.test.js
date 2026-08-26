@@ -67,6 +67,7 @@ test("Partner Portal product boundaries keep financial truth server-authoritativ
 
 test("Partner Dashboard exposes daily operations and action ownership without organization selection", () => {
   const shell = read("apps/web/app/partner/partner-shell.tsx");
+  const dashboardController = read("apps/api/src/routes/partner-dashboard.controller.ts");
   const contract = read("docs/product/partner-portal-ux-contract.md");
   const dashboardDoc = read("docs/product/partner-dashboard-action-center.md");
 
@@ -83,9 +84,16 @@ test("Partner Dashboard exposes daily operations and action ownership without or
     assert.match(shell, new RegExp(label.replace(/[\\/]/g, "\\$&")));
   }
 
-  assert.match(shell, /partnerDashboardSummary/);
-  assert.match(shell, /partnerDashboardActions/);
-  assert.match(shell, /dedupeDashboardActions/);
+  assert.match(shell, /safeFetch<PartnerDashboardReadModel>\("partner\/dashboard"\)/);
+  assert.match(shell, /dashboardActionsFromReadModel/);
+  assert.doesNotMatch(shell, /partnerDashboardSummary/);
+  assert.doesNotMatch(shell, /partnerDashboardActions/);
+  assert.doesNotMatch(shell, /dashboardFinancialSummary/);
+  assert.match(dashboardController, /@Controller\("partner"\)/);
+  assert.match(dashboardController, /@Get\("dashboard"\)/);
+  assert.match(dashboardController, /@RequirePermission\("partner_profile\.read"\)/);
+  assert.match(dashboardController, /Partner Dashboard organization context is resolved from your account, not browser selection/);
+  assert.match(dashboardController, /actionsPanel/);
   assert.match(shell, /freshnessLabel/);
   assert.match(shell, /window\.location\.reload\(\)/);
   assert.doesNotMatch(shell, /organization_id=\$\{/);
@@ -95,6 +103,7 @@ test("Partner Dashboard exposes daily operations and action ownership without or
 
 test("Partner Dashboard financial summary keeps payment states separate and avoids rate math", () => {
   const shell = read("apps/web/app/partner/partner-shell.tsx");
+  const dashboardController = read("apps/api/src/routes/partner-dashboard.controller.ts");
   const dashboardDoc = read("docs/product/partner-dashboard-action-center.md");
 
   for (const label of [
@@ -110,7 +119,14 @@ test("Partner Dashboard financial summary keeps payment states separate and avoi
   }
 
   assert.match(shell, /Server-returned amounts only/);
-  assert.match(shell, /Amounts are formatted from server-returned Partner financial records/);
+  assert.match(shell, /Amounts are returned by the Partner Dashboard read model and formatted in the browser/);
+  assert.doesNotMatch(shell, /sumReturnedAmounts/);
+  assert.doesNotMatch(shell, /settlementAwaitingQuantity/);
+  assert.doesNotMatch(shell, /paidThisMonthAmount/);
+  assert.match(dashboardController, /financialPanel/);
+  assert.match(dashboardController, /acceptedProductionAwaitingSettlement/);
+  assert.match(dashboardController, /financial_status <> 'void'/);
+  assert.match(dashboardController, /settlement_item_id IS NULL/);
   assert.doesNotMatch(shell, /partner_rate\s*[*]/);
   assert.doesNotMatch(shell, /[*]\s*partner_rate/);
   assert.doesNotMatch(shell, /gross_partner_amount\s*=/);
