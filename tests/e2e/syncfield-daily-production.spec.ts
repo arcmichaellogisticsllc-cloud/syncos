@@ -545,19 +545,20 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
   test("Partner Admin receives safe read-only report and duplicate submitted work requires traceability", async ({ request, page }) => {
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner/production");
-    await expect(page.locator("h2").filter({ hasText: "Daily Production" })).toBeVisible();
+    await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
     await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("contractor_rate")).toHaveCount(0);
     await expect(page.getByText("storage_key")).toHaveCount(0);
 
-    await completeJsa(request, seeded, "2026-08-26");
-    await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/today", { work_date: "2026-08-26", client_mutation_id: crypto.randomUUID() });
+    const workDate = tomorrow();
+    await completeJsa(request, seeded, workDate);
+    await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/today", { work_date: workDate, client_mutation_id: crypto.randomUUID() });
     const duplicate = await request.post(apiUrl("/syncfield/foreman/production/records"), {
       headers: auth(seeded.foremanToken),
-      data: { work_date: "2026-08-26", client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework" },
+      data: { work_date: workDate, client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework" },
     });
     expect(duplicate.status()).toBe(400);
-    const traced = await createProduction(request, seeded, { work_date: "2026-08-26", client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework", duplicate_reason: "Customer requested additional pass." });
+    const traced = await createProduction(request, seeded, { work_date: workDate, client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework", duplicate_reason: "Customer requested additional pass." });
     expect(traced.duplicate_reason).toBe("Customer requested additional pass.");
   });
 });

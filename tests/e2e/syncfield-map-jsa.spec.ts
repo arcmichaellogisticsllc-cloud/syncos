@@ -191,7 +191,7 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 390, height: 860 });
     await page.goto("/syncfield/today");
-    await expect(page.getByText("Daily JSA")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Daily JSA", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("link", { name: "Open Map" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
     await expect(page.getByText("Customer QC")).toHaveCount(0);

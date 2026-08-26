@@ -4,6 +4,11 @@ export type SyncRecord = Record<string, unknown>;
 
 const tokenKey = "syncos.apiToken";
 const permissionKey = "syncos.permissions";
+const partnerSensitiveStorageKeys = [
+  "syncos.syncfieldAssignmentId",
+  "syncos.fieldMutations",
+  "syncos.fieldProductionMutations",
+];
 
 export type AuthContext = {
   user_id: string;
@@ -309,6 +314,12 @@ export function clearAuthContext() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(tokenKey);
   window.localStorage.removeItem(permissionKey);
+  for (const key of partnerSensitiveStorageKeys) window.localStorage.removeItem(key);
+  if ("indexedDB" in window) {
+    const request = window.indexedDB.deleteDatabase("syncos-field-production");
+    request.onerror = () => undefined;
+    request.onblocked = () => undefined;
+  }
 }
 
 export function sessionEmailFromToken(token = readToken()) {

@@ -689,7 +689,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
   try {
     return await syncosFetch<T>(path);
   } catch (error) {
-    if (fallback !== undefined && error instanceof Error && /404|not found/i.test(error.message)) return fallback;
+    if (fallback !== undefined) return fallback;
     throw error;
   }
 }
@@ -2762,9 +2762,13 @@ function useFieldProductionQueue(data: PortalData) {
     if (!scopeKey) return;
     let cancelled = false;
     async function load() {
-      await migrateLegacyQueue(scopeKey);
-      const next = await listFieldMutations(scopeKey);
-      if (!cancelled) setMutations(next);
+      try {
+        await migrateLegacyQueue(scopeKey);
+        const next = await listFieldMutations(scopeKey);
+        if (!cancelled) setMutations(next);
+      } catch {
+        if (!cancelled) setMutations([]);
+      }
     }
     void load();
     return () => {
@@ -2774,14 +2778,20 @@ function useFieldProductionQueue(data: PortalData) {
 
   async function replay() {
     if (!scopeKey || (typeof navigator !== "undefined" && !navigator.onLine)) return;
-    await replayFieldMutations(scopeKey, setMutations);
+    try {
+      await replayFieldMutations(scopeKey, setMutations);
+    } catch {
+      setMutations((current) => current.map((mutation) => isUnsyncedMutation(mutation) ? { ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." } : mutation));
+    }
   }
 
   useEffect(() => {
     if (!scopeKey) return;
     const handleOnline = () => {
       setOnline(true);
-      void replayFieldMutations(scopeKey, setMutations);
+      void replayFieldMutations(scopeKey, setMutations).catch(() => {
+        setMutations((current) => current.map((mutation) => isUnsyncedMutation(mutation) ? { ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." } : mutation));
+      });
     };
     const handleOffline = () => setOnline(false);
     window.addEventListener("online", handleOnline);
@@ -2809,7 +2819,11 @@ function useFieldProductionQueue(data: PortalData) {
       retryCount: 0,
     };
     await saveFieldMutation(mutation);
-    setMutations(await listFieldMutations(scopeKey));
+    try {
+      setMutations(await listFieldMutations(scopeKey));
+    } catch {
+      setMutations((current) => [...current, { ...mutation, status: "FAILED", lastSafeError: "Local field queue is unavailable." }]);
+    }
   }
 
   const unsynced = mutations.filter(isUnsyncedMutation);

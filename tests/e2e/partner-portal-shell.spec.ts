@@ -42,6 +42,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
 
   test("Partner Admin enters dashboard with safe P1-P6 operational summary", async ({ page }) => {
     test.setTimeout(90_000);
+    const dialogs = failOnUnexpectedDialogs(page);
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner");
     await expect(page.getByRole("heading", { name: "P7 Partner A", level: 1 })).toBeVisible({ timeout: 45_000 });
@@ -62,6 +63,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await page.goto("/syncfield/today");
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
     await expect(page.getByText("SyncField requires an active Foreman assignment.")).toBeVisible();
+    expect(dialogs).toEqual([]);
   });
 
   test("Partner Admin workspaces expose safe company, workforce, agreement, vehicle, and mobilization views", async ({ page }) => {
@@ -145,11 +147,37 @@ test.describe.serial("P7 Partner Portal shell", () => {
     const crossScope = await request.get(apiUrl(`/partner-personas/me/context?organization_id=${seeded.orgTenantB}`), {
       headers: { authorization: `Bearer ${seeded.adminToken}` },
     });
-    expect(crossScope.status()).toBe(403);
+    expect(crossScope.status()).toBe(400);
 
     await installSession(page, seeded.tenantBToken, seeded.adminPermissions);
     await page.goto(`/partner/workers/${seeded.workerIds[0]}`);
     await expect(page.getByText("Worker not found in your Partner organization.")).toBeVisible();
+  });
+
+  test("Partner and SyncField shells reach terminal UI states without browser dialogs or client organization scope", async ({ page }) => {
+    const dialogs = failOnUnexpectedDialogs(page);
+    const scopedRequests: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      const body = request.postData() ?? "";
+      if (url.pathname.includes("/api/syncos/") && (url.searchParams.has("organization_id") || url.searchParams.has("organizationId") || /organization_id|organizationId/.test(body))) {
+        scopedRequests.push(`${request.method()} ${url.pathname}${url.search}`);
+      }
+    });
+
+    await installSession(page, seeded.adminToken, seeded.adminPermissions);
+    await page.goto("/partner");
+    await expect(page.getByRole("heading", { name: "Dashboard", level: 2 })).toBeVisible();
+    await expect(page.getByText("Loading Partner Portal...")).toHaveCount(0);
+
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    for (const route of ["/syncfield/today", "/syncfield/production", "/syncfield/production/review", "/syncfield/jsa", "/syncfield/map"]) {
+      await page.goto(route);
+      await expect(page.getByText(/Loading (Partner Portal|SyncField)\.\.\./)).toHaveCount(0);
+      await expect(page.locator("main")).toBeVisible();
+    }
+    expect(dialogs).toEqual([]);
+    expect(scopedRequests).toEqual([]);
   });
 });
 
@@ -158,6 +186,15 @@ async function installSession(page: Page, token: string, permissions: string[]) 
     window.localStorage.setItem("syncos.apiToken", nextToken);
     window.localStorage.setItem("syncos.permissions", nextPermissions.join(","));
   }, { nextToken: token, nextPermissions: permissions });
+}
+
+function failOnUnexpectedDialogs(page: Page) {
+  const dialogs: string[] = [];
+  page.on("dialog", async (dialog) => {
+    dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+    await dialog.dismiss();
+  });
+  return dialogs;
 }
 
 async function seedPortalFixture(client: Client, secret: string): Promise<Seeded> {
