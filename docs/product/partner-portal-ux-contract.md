@@ -44,3 +44,21 @@ Do not list the conflicting organizations to the Partner user.
 The Partner Portal may show Partner rates, accepted quantities, payable basis, settlement lines, retainage, adjustments, eligibility, and payment status for that Partner only.
 
 It must never expose customer rate, Sync margin, customer invoice economics, other Partner economics, or internal shortlist/performance intelligence.
+
+## Dashboard And Action Center
+
+The Partner Dashboard is the daily command page for a single subcontractor company.
+
+1. Daily actions and crew/work status appear before analytics and finance history.
+2. Needs Your Action, Crew / Foreman Action, and Waiting / Informational items remain visually separated.
+3. Waiting items such as Sync review, Customer QC pending, Customer reinspection, awaiting Customer funds, and payment processing are not presented as Partner failures.
+4. Every action links to an existing Partner Portal or SyncField route. Slice B does not add dismiss, snooze, acknowledge, or notification-ledger behavior.
+5. Action identity is derived from reason, source type, and source record so duplicate source conditions do not create duplicate cards.
+6. Quantities remain unit-aware. FT, EA, HR, and other units are never combined into one total.
+7. Reported quantity, Customer accepted quantity, correction quantity, Partner payable basis, settlement, eligibility, processing, and paid states remain distinct.
+8. Dashboard financial values are server-authoritative. The frontend may format and total server-returned bucket amounts, but it must not calculate settlement line amounts from rates or quantities.
+9. Dashboard never displays customer rates, customer cash details beyond safe eligibility state, Sync margin, Sync spread, other Partner rates, full bank details, or full TIN.
+10. Data freshness is visible and a manual Refresh action is available.
+11. Optional panel failure must not block the full Dashboard. Required Partner context failure fails closed.
+12. Dashboard and Partner / SyncField routes must not use browser alerts and must not remain indefinitely in a loading state.
+13. Desktop, tablet, and mobile layouts keep the Action Center and Today by Crew usable without horizontal overflow.

@@ -65,6 +65,60 @@ test("Partner Portal product boundaries keep financial truth server-authoritativ
   assert.match(contract, /Reported, accepted, payable, settled, eligible, processing, and paid states remain distinct/);
 });
 
+test("Partner Dashboard exposes daily operations and action ownership without organization selection", () => {
+  const shell = read("apps/web/app/partner/partner-shell.tsx");
+  const contract = read("docs/product/partner-portal-ux-contract.md");
+  const dashboardDoc = read("docs/product/partner-dashboard-action-center.md");
+
+  for (const label of [
+    "Needs Your Action",
+    "Crew / Foreman Action",
+    "Waiting / Informational",
+    "Today by Crew",
+    "Active Work Orders",
+    "Production & QC",
+    "Settlements & Payments",
+    "Paid This Month",
+  ]) {
+    assert.match(shell, new RegExp(label.replace(/[\\/]/g, "\\$&")));
+  }
+
+  assert.match(shell, /partnerDashboardSummary/);
+  assert.match(shell, /partnerDashboardActions/);
+  assert.match(shell, /dedupeDashboardActions/);
+  assert.match(shell, /freshnessLabel/);
+  assert.match(shell, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(shell, /organization_id=\$\{/);
+  assert.match(contract, /Daily actions and crew\/work status appear before analytics and finance history/);
+  assert.match(dashboardDoc, /The browser does not send an authority-bearing `organization_id`/);
+});
+
+test("Partner Dashboard financial summary keeps payment states separate and avoids rate math", () => {
+  const shell = read("apps/web/app/partner/partner-shell.tsx");
+  const dashboardDoc = read("docs/product/partner-dashboard-action-center.md");
+
+  for (const label of [
+    "Accepted Production Awaiting Settlement",
+    "Issued Settlements",
+    "Outstanding Payable",
+    "Eligible",
+    "Awaiting Customer Funds",
+    "Processing",
+    "Paid This Month",
+  ]) {
+    assert.match(shell, new RegExp(label));
+  }
+
+  assert.match(shell, /Server-returned amounts only/);
+  assert.match(shell, /Amounts are formatted from server-returned Partner financial records/);
+  assert.doesNotMatch(shell, /partner_rate\s*[*]/);
+  assert.doesNotMatch(shell, /[*]\s*partner_rate/);
+  assert.doesNotMatch(shell, /gross_partner_amount\s*=/);
+  assert.match(dashboardDoc, /The frontend formats server-returned amounts/);
+  assert.match(dashboardDoc, /does not calculate settlement line amounts/);
+  assert.match(dashboardDoc, /Customer rates, customer invoice economics, Customer cash details beyond safe eligibility state, Sync margin/);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

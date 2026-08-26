@@ -337,6 +337,7 @@ type OnboardingChecklist = {
 type PortalData = {
   context?: PartnerContext;
   actions?: PartnerActions;
+  loadedAt?: string;
   onboarding?: OnboardingChecklist;
   compliance?: ComplianceSummary;
   company?: CompanyProfile;
@@ -373,6 +374,56 @@ type PortalData = {
   foremanWorkOrder?: WorkOrder | null;
   foremanAssignments?: MapAssignment[];
   selectedAssignment?: MapAssignment | null;
+};
+
+type DashboardActionCategory = "needs_action" | "crew_foreman" | "waiting";
+type DashboardActionSeverity = "critical" | "high" | "medium" | "low" | "info";
+type DashboardAction = {
+  key: string;
+  category: DashboardActionCategory;
+  severity: DashboardActionSeverity;
+  title: string;
+  description: string;
+  sourceLabel?: string;
+  href?: string;
+  cta?: string;
+};
+type CrewToday = {
+  crew: Crew;
+  foreman: string;
+  workOrder?: WorkOrder;
+  readiness: string;
+  jsaStatus: string;
+  productionStatus: string;
+  reported: Array<{ label: string; value: string }>;
+  qcStatus: string;
+  correctionStatus: string;
+  lastActivity: string;
+};
+type DashboardSummary = {
+  requiredComplete: number;
+  requiredTotal: number;
+  activeCrews: number;
+  readyCrews: number;
+  incompleteCrews: number;
+  assignedCrews: number;
+  activeToday: number;
+  blockedCrews: number;
+  activeWorkOrders: number;
+  blockedWorkOrders: number;
+  openCorrections: number;
+  crewToday: CrewToday[];
+  productionRows: Array<{ label: string; reported: string; accepted: string; correction: string }>;
+  workOrders: WorkOrder[];
+  financial: {
+    issuedSettlements: string;
+    outstandingPayable: string;
+    eligiblePayment: string;
+    awaitingFunds: string;
+    processing: string;
+    paidThisMonth: string;
+    acceptedAwaitingSettlement: string;
+  };
 };
 
 const adminNavGroups = [
@@ -598,7 +649,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const needsDashboard = section === "dashboard";
   const needsOnboarding = needsDashboard || section === "onboarding";
   const needsCompliance = needsDashboard || section === "onboarding" || section === "compliance";
-  const needsCompany = section === "onboarding" || section === "company";
+  const needsCompany = needsDashboard || section === "onboarding" || section === "company";
   const needsCrews = needsDashboard || section === "onboarding" || section === "crews" || section === "crew-detail";
   const needsAgreements = needsDashboard || section === "onboarding" || section === "agreements" || section === "agreement-detail";
   const needsWorkOrders = needsDashboard || section === "work-orders" || section === "work-order-detail" || section === "mobilization";
@@ -608,26 +659,26 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
     needsOnboarding ? safeFetch<OnboardingChecklist>("partner-invitations/me/onboarding-checklist") : undefined,
     needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
-    section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
+    needsDashboard || section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
     needsCompliance || needsDashboard ? safeFetch<PaymentProfile>("partner-compliance/me/payment-profile") : undefined,
-    section === "compliance" ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
-    section === "onboarding" || section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
+    needsDashboard || section === "compliance" ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
+    needsDashboard || section === "onboarding" || section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
     needsCrews ? safeFetch<Crew[]>("partner-workforce/me/crews", []) : [],
     needsAgreements ? safeFetch<Agreement[]>("partner-agreements/me/agreements", []) : [],
     needsWorkOrders ? safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []) : [],
     needsVehicles ? safeFetch<VehicleAssignment[]>("partner-agreements/me/vehicle-assignments", []) : [],
     section === "field-map" && permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
     section === "daily-jsa" && permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
-    (section === "daily-production" || section === "review-day") && permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
-    (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
-    section === "daily-production" && permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
-    section === "settlements" && permissions.includes("partner_settlement.read") ? safeFetch<PartnerSettlement[]>("accepted-production-financials/partner/settlements", []) : [],
-    section === "payments" && permissions.includes("partner_payment.read") ? safeFetch<PartnerPayment[]>("payment-retainage-adjustments/partner/payments", []) : [],
-    section === "performance" && permissions.includes("partner_performance.read_own") ? safeFetch<PartnerPerformanceSummary | null>("partner-performance/partner/summary", null) : null,
+    (needsDashboard || section === "daily-production" || section === "review-day") && permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
+    (needsDashboard || section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
+    (needsDashboard || section === "daily-production") && permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
+    (needsDashboard || section === "settlements") && permissions.includes("partner_settlement.read") ? safeFetch<PartnerSettlement[]>("accepted-production-financials/partner/settlements", []) : [],
+    (needsDashboard || section === "payments") && permissions.includes("partner_payment.read") ? safeFetch<PartnerPayment[]>("payment-retainage-adjustments/partner/payments", []) : [],
+    (needsDashboard || section === "performance") && permissions.includes("partner_performance.read_own") ? safeFetch<PartnerPerformanceSummary | null>("partner-performance/partner/summary", null) : null,
   ]);
   const rosterByCrew: Record<string, Worker[]> = {};
   const readinessByCrew: Record<string, Readiness> = {};
-  const crewsForReadiness = needsDashboard ? (crews ?? []).slice(0, 1) : (section === "crews" || section === "crew-detail" ? crews ?? [] : []);
+  const crewsForReadiness = needsDashboard ? (crews ?? []) : (section === "crews" || section === "crew-detail" ? crews ?? [] : []);
   await Promise.all(crewsForReadiness.map(async (crew) => {
     const id = str(crew.id);
     if (!id) return;
@@ -639,7 +690,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const versionId = str(selectedWorkOrder?.id);
   const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, onboarding, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
+  return { context, actions, loadedAt: new Date().toISOString(), onboarding, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
 }
 
 async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section, selectedAssignmentId?: string): Promise<PortalData> {
@@ -944,55 +995,578 @@ function GateCard({ title, status, body }: { title: string; status: string; body
 }
 
 function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowledgeNotice: () => Promise<void> }) {
-  const assignment = data.workOrders?.[0];
-  const crew = data.crews?.[0];
-  const roster = crew ? data.rosterByCrew?.[str(crew.id)] ?? [] : [];
-  const vehicle = data.vehicles?.[0];
-  const blockers = externalBlockers(data.mobilization, data.compliance, data.notice);
+  const summary = partnerDashboardSummary(data);
+  const actions = partnerDashboardActions(data, summary);
   return (
-    <div className="partner-stack">
-      <div className="partner-dashboard-grid">
-        <Panel title="Company" eyebrow={data.context?.organization.name}>
-          <StatusRows rows={[
-            ["Lifecycle", data.context?.organization.status],
-            ["Compliance", data.compliance?.overall_status],
-            ["MSA", data.agreements?.[0]?.status ? "executed" : "action_required"],
-            ["Payment Setup", statusFrom(data.payment, "status")],
-            ["Insurance", data.compliance?.insurance_status],
-          ]} />
-        </Panel>
-        <Panel title="Current Assignment" eyebrow={str(assignment?.project_name) || "No active assignment"}>
-          <StatusRows rows={[
-            ["Work Order", str(assignment?.work_order_number) || str(assignment?.work_order_id) || "Not assigned"],
-            ["Status", statusFrom(assignment, "status")],
-            ["Crew", str(crew?.name) || "Not assigned"],
-            ["Vehicle", str(vehicle?.equipment_name) || "Not assigned"],
-            ["Start Authorization", data.mobilization?.decision?.decision ?? "pending"],
-            ["Production Start", data.notice?.production_start?.authorization_status ?? data.notice?.production_start_status ?? "not_authorized"],
-            ["Map Package", str(assignment?.map_work_package_ref) || data.notice?.initial_map_work_package_ref || "Not issued"],
-            ["Notice", data.notice?.status ?? "not_issued"],
-          ]} />
-        </Panel>
-        <Panel title="Crew" eyebrow={str(crew?.crew_type) || "Crew"}>
-          <StatusRows rows={[
-            ["Target Staffing", str(crew?.target_staffing_level) || "4"],
-            ["Active Staffing", String(roster.length)],
-            ["Ready Workers", String(roster.length - (data.readinessByCrew?.[str(crew?.id)]?.blocker_count ?? 0))],
-            ["Foreman", roster.find((worker) => str(worker.membership_role) === "foreman") ? workerName(roster.find((worker) => str(worker.membership_role) === "foreman")) : "Not assigned"],
-            ["Crew Readiness", data.readinessByCrew?.[str(crew?.id)]?.overall_status ?? "not_evaluated"],
-          ]} />
-          <RosterStrip roster={roster} />
-        </Panel>
-        <Panel title="Action Required" eyebrow="Partner-safe blockers">
-          <ActionList blockers={blockers} />
+    <div className="partner-stack partner-dashboard-command">
+      <section className="partner-dashboard-hero" aria-label="Partner Dashboard identity and freshness">
+        <div>
+          <p className="eyebrow">Partner Portal</p>
+          <h3>{data.context?.organization.name ?? "Partner Company"}</h3>
+          <p>{personaLabel(data.context?.persona)} · {data.context?.capacity_provider?.name ?? "Authorized Partner organization"}</p>
+        </div>
+        <div className="partner-dashboard-refresh">
+          <span>{freshnessLabel(data.loadedAt ?? data.compliance?.evaluated_at)}</span>
+          <button className="partner-button" type="button" onClick={() => window.location.reload()}>Refresh</button>
+        </div>
+      </section>
+
+      <section className="partner-dashboard-metrics" aria-label="Daily operating summary">
+        <MetricTile label="Company Status" value={statusLabel(data.context?.organization.status ?? data.compliance?.overall_status)} />
+        <MetricTile label="Required Items" value={`${summary.requiredComplete} of ${summary.requiredTotal}`} />
+        <MetricTile label="Ready Crews" value={`${summary.readyCrews} of ${summary.activeCrews}`} />
+        <MetricTile label="Active Work Orders" value={summary.activeWorkOrders} />
+        <MetricTile label="Open Corrections" value={summary.openCorrections} />
+        <MetricTile label="Eligible Payment" value={summary.financial.eligiblePayment} />
+      </section>
+
+      <div className="partner-dashboard-layout">
+        <PartnerActionCenter actions={actions} />
+        <TodayByCrewPanel rows={summary.crewToday} />
+      </div>
+
+      <Panel title="Active Work Orders" eyebrow="Partner-safe operating status">
+        <div className="partner-card-grid">
+          {summary.workOrders.slice(0, 6).map((workOrder) => (
+            <RecordCard key={str(workOrder.id) || str(workOrder.work_order_number)} title={str(workOrder.work_order_number) || str(workOrder.work_order_name) || "Work Order"} status={statusLabel(str(workOrder.status) || str(workOrder.partner_execution_status))} href={`/partner/work-orders/${str(workOrder.id)}`}>
+              <StatusRows rows={[
+                ["Project", str(workOrder.project_name) || "Assigned project"],
+                ["Assigned Crew", crewNameForWorkOrder(workOrder, data)],
+                ["Map Package", str(workOrder.map_work_package_ref) || data.notice?.initial_map_work_package_ref || "Not issued"],
+                ["Mobilization", statusLabel(str(workOrder.mobilization_status) || data.mobilization?.overall_status || "Pending")],
+                ["Production", productionStatusForWorkOrder(workOrder, data.productionReports ?? [])],
+                ["QC", qcStatusForWorkOrder(workOrder, data.customerQcReports ?? [])],
+                ["Partner Rate", str(workOrder.partner_rate) ? "Available in Work Order detail" : "Not issued"],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!summary.workOrders.length ? <EmptyPortal title="No active Work Orders" body="Assigned Work Orders appear here after Sync issues Partner work." /> : null}
+      </Panel>
+
+      <div className="partner-dashboard-layout">
+        <Panel title="Production & QC" eyebrow="Reported, accepted, and corrections stay separate">
+          <div className="dashboard-quantity-grid">
+            {summary.productionRows.map((row) => (
+              <div className="dashboard-quantity-row" key={row.label}>
+                <strong>{row.label}</strong>
+                <span>Reported: {row.reported}</span>
+                <span>Customer Accepted: {row.accepted}</span>
+                <span>Correction: {row.correction}</span>
+              </div>
+            ))}
+          </div>
+          {!summary.productionRows.length ? <EmptyPortal title="No production submitted" body="Daily production summaries appear after Foremen submit field production." /> : null}
           <div className="partner-actions-row">
-            <Link className="partner-button" href="/partner/compliance">View Compliance</Link>
-            <Link className="partner-button" href="/partner/workers">Manage Workers</Link>
-            <Link className="partner-button" href="/partner/mobilization">View Mobilization</Link>
-            {data.notice?.id ? <button className="partner-button primary" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+            <Link className="partner-button" href="/partner/production">View Production</Link>
+            <Link className="partner-button" href="/partner/customer-qc">View QC & Corrections</Link>
+          </div>
+        </Panel>
+
+        <Panel title="Settlements & Payments" eyebrow="Server-returned amounts only">
+          <div className="dashboard-finance-grid">
+            <MetricTile label="Accepted Production Awaiting Settlement" value={summary.financial.acceptedAwaitingSettlement} />
+            <MetricTile label="Issued Settlements" value={summary.financial.issuedSettlements} />
+            <MetricTile label="Outstanding Payable" value={summary.financial.outstandingPayable} />
+            <MetricTile label="Eligible" value={summary.financial.eligiblePayment} />
+            <MetricTile label="Awaiting Customer Funds" value={summary.financial.awaitingFunds} />
+            <MetricTile label="Processing" value={summary.financial.processing} />
+            <MetricTile label="Paid This Month" value={summary.financial.paidThisMonth} />
+          </div>
+          <p className="partner-safe-text">Settlement, payable, eligibility, processing, and paid states remain separate. Amounts are formatted from server-returned Partner financial records.</p>
+          <div className="partner-actions-row">
+            <Link className="partner-button" href="/partner/settlements">View Settlements</Link>
+            <Link className="partner-button" href="/partner/payments">View Payments</Link>
           </div>
         </Panel>
       </div>
+
+      <Panel title="Performance" eyebrow="Partner-only signal">
+        <PerformanceSummaryInline summary={data.partnerPerformance} />
+      </Panel>
+
+      {data.notice?.id ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+    </div>
+  );
+}
+
+function PartnerActionCenter({ actions }: { actions: DashboardAction[] }) {
+  return (
+    <Panel title="Needs Attention" eyebrow="Partner Action Center">
+      {(["needs_action", "crew_foreman", "waiting"] as DashboardActionCategory[]).map((category) => {
+        const grouped = actions.filter((action) => action.category === category);
+        return (
+          <div className="dashboard-action-group" key={category}>
+            <h4>{actionCategoryLabel(category)}</h4>
+            {grouped.length ? grouped.map((action) => <DashboardActionCard key={action.key} action={action} />) : <p className="partner-safe-text">{emptyActionText(category)}</p>}
+          </div>
+        );
+      })}
+    </Panel>
+  );
+}
+
+function DashboardActionCard({ action }: { action: DashboardAction }) {
+  const body = (
+    <>
+      <div>
+        <StatusPill label="Severity" value={action.severity} />
+        <strong>{action.title}</strong>
+        <span>{action.description}</span>
+        {action.sourceLabel ? <small>{action.sourceLabel}</small> : null}
+      </div>
+      {action.cta ? <b>{action.cta}</b> : null}
+    </>
+  );
+  return action.href ? <Link className="dashboard-action-card" href={action.href}>{body}</Link> : <div className="dashboard-action-card static">{body}</div>;
+}
+
+function TodayByCrewPanel({ rows }: { rows: CrewToday[] }) {
+  return (
+    <Panel title="Today by Crew" eyebrow="Operational status">
+      <div className="today-crew-list">
+        {rows.map((row) => (
+          <div className="today-crew-card" key={str(row.crew.id) || str(row.crew.name)}>
+            <div className="today-crew-title">
+              <div>
+                <strong>{str(row.crew.name) || "Crew"}</strong>
+                <span>{row.foreman} · {str(row.workOrder?.work_order_number) || "No active Work Order"}</span>
+              </div>
+              <StatusPill label="Readiness" value={row.readiness} />
+            </div>
+            <StatusRows rows={[
+              ["JSA", row.jsaStatus],
+              ["Production", row.productionStatus],
+              ["Reported", row.reported.map((item) => item.value).join("; ") || "No report"],
+              ["Customer QC", row.qcStatus],
+              ["Corrections", row.correctionStatus],
+              ["Last Activity", row.lastActivity],
+            ]} />
+            <div className="partner-actions-row compact-actions">
+              <Link className="partner-button" href="/partner/crews">View Crew</Link>
+              <Link className="partner-button" href="/partner/work-orders">View Work Order</Link>
+            </div>
+          </div>
+        ))}
+      </div>
+      {!rows.length ? <EmptyPortal title="No crews working today" body="Current Crew work appears after Sync authorizes a Crew and Work Order assignment." /> : null}
+    </Panel>
+  );
+}
+
+function partnerDashboardSummary(data: PortalData): DashboardSummary {
+  const onboardingItems = data.onboarding?.items ?? [];
+  const requiredItems = onboardingItems.filter((item) => item.requirement !== "optional");
+  const requiredComplete = requiredItems.filter((item) => item.complete).length;
+  const crews = data.crews ?? [];
+  const workOrders = (data.workOrders ?? []).filter((workOrder) => activeWorkOrderStatus(str(workOrder.status) || str(workOrder.partner_execution_status)));
+  const correctionRows = openCorrections(data.customerQcReports ?? []);
+  const readyCrews = crews.filter((crew) => isReadyStatus(data.readinessByCrew?.[str(crew.id)]?.overall_status)).length;
+  const blockedCrews = crews.filter((crew) => Number(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0) > 0).length;
+  const assignedCrewIds = new Set(workOrders.map((workOrder) => str(workOrder.assigned_crew_id ?? workOrder.crew_id)).filter(Boolean));
+  const crewToday = crews.map((crew) => crewTodayRow(crew, data, workOrders)).filter(Boolean) as CrewToday[];
+  const productionRows = productionDashboardRows(data);
+  return {
+    requiredComplete,
+    requiredTotal: requiredItems.length || onboardingItems.length || 0,
+    activeCrews: crews.length,
+    readyCrews,
+    incompleteCrews: Math.max(crews.length - readyCrews, 0),
+    assignedCrews: assignedCrewIds.size,
+    activeToday: crewToday.length,
+    blockedCrews,
+    activeWorkOrders: workOrders.length,
+    blockedWorkOrders: workOrders.filter((workOrder) => /blocked|suspended|hold/i.test(str(workOrder.status) || str(workOrder.partner_execution_status))).length,
+    openCorrections: correctionRows.length,
+    crewToday,
+    productionRows,
+    workOrders,
+    financial: dashboardFinancialSummary(data),
+  };
+}
+
+function partnerDashboardActions(data: PortalData, summary: DashboardSummary): DashboardAction[] {
+  const actions: DashboardAction[] = [];
+  const complianceBlockers = externalBlockers(undefined, data.compliance).filter((blocker) => !/production_start_not_authorized/i.test(str(blocker.key)));
+  for (const blocker of complianceBlockers) {
+    actions.push({
+      key: `compliance:${str(blocker.key) || str(blocker.requirement_code) || str(blocker.message)}`,
+      category: "needs_action",
+      severity: /expired|missing|blocked|required/i.test(str(blocker.message) || str(blocker.external_detail)) ? "critical" : "medium",
+      title: statusLabel(str(blocker.key) || str(blocker.requirement_code) || "Compliance action required"),
+      description: str(blocker.external_detail) || str(blocker.message) || "Partner compliance needs attention.",
+      href: "/partner/compliance",
+      cta: "Resolve Compliance",
+    });
+  }
+  if (summary.requiredTotal > 0 && summary.requiredComplete < summary.requiredTotal) {
+    actions.push({
+      key: "onboarding:incomplete",
+      category: "needs_action",
+      severity: "high",
+      title: "Complete Partner onboarding",
+      description: `${summary.requiredComplete} of ${summary.requiredTotal} required items are complete.`,
+      href: "/partner/onboarding",
+      cta: "Complete Onboarding",
+    });
+  }
+  for (const crew of data.crews ?? []) {
+    const readiness = data.readinessByCrew?.[str(crew.id)];
+    const foreman = foremanForCrew(crew, data);
+    if (!foreman || foreman === "Foreman not assigned") {
+      actions.push({
+        key: `crew:${str(crew.id)}:foreman`,
+        category: "needs_action",
+        severity: "high",
+        title: `${str(crew.name) || "Crew"} needs a Foreman`,
+        description: "Crew readiness requires an eligible Foreman before field execution.",
+        href: "/partner/crews",
+        cta: "View Crew",
+      });
+    }
+    for (const blocker of readiness?.blockers ?? []) {
+      actions.push({
+        key: `crew:${str(crew.id)}:${str(blocker.requirement_code) || str(blocker.key)}`,
+        category: "needs_action",
+        severity: "medium",
+        title: statusLabel(str(blocker.requirement_code) || "Crew setup incomplete"),
+        description: str(blocker.external_detail) || str(blocker.message) || "Crew readiness item needs attention.",
+        sourceLabel: str(crew.name),
+        href: "/partner/crews",
+        cta: "View Crew",
+      });
+    }
+  }
+  for (const report of data.productionReports ?? []) {
+    if (!report.submitted_at && /draft|in_progress|required/i.test(str(report.status))) {
+      actions.push({
+        key: `production:${str(report.id)}:submit`,
+        category: "crew_foreman",
+        severity: "high",
+        title: "Daily production not submitted",
+        description: `${str(report.work_order_number) || "Work Order"} has field production that still needs Foreman submission.`,
+        sourceLabel: workDateLabel(report.work_date, undefined),
+        href: "/partner/production",
+        cta: "View Production",
+      });
+    }
+  }
+  for (const { report, correction } of openCorrections(data.customerQcReports ?? [])) {
+    actions.push({
+      key: `correction:${str(correction.id)}`,
+      category: "crew_foreman",
+      severity: "high",
+      title: "Customer correction required",
+      description: correction.partner_safe_instructions || correction.customer_reason || "A Customer QC correction requires Foreman action in SyncField.",
+      sourceLabel: `${report.work_order_number || "Work Order"} · ${report.crew_name || "Crew"}`,
+      href: "/partner/customer-qc",
+      cta: "View Correction",
+    });
+  }
+  for (const report of data.customerQcReports ?? []) {
+    if (/pending|awaiting/i.test(str(report.report_outcome) || str(report.cycle_status))) {
+      actions.push({
+        key: `qc:${str(report.report_id)}:${str(report.cycle_id)}:waiting`,
+        category: "waiting",
+        severity: "info",
+        title: "Customer QC pending",
+        description: "Customer review is pending and is not a Partner-controlled blocker.",
+        sourceLabel: report.work_order_number,
+        href: "/partner/customer-qc",
+        cta: "View QC",
+      });
+    }
+  }
+  for (const payable of data.partnerPayments ?? []) {
+    const status = paymentDisplayStatus(payable);
+    if (/awaiting_customer_funds|not_yet_eligible/i.test(status)) {
+      actions.push({
+        key: `payment:${str(payable.payable_number) || str(payable.contractor_payable_id)}:waiting`,
+        category: "waiting",
+        severity: "info",
+        title: statusLabel(status),
+        description: "Payment eligibility is waiting on canonical funding or payable controls.",
+        sourceLabel: str(payable.payable_number),
+        href: "/partner/payments",
+        cta: "View Payments",
+      });
+    }
+    if (/failed/i.test(status)) {
+      actions.push({
+        key: `payment:${str(payable.payable_number) || str(payable.contractor_payable_id)}:failed`,
+        category: "needs_action",
+        severity: "critical",
+        title: "Payment setup needs attention",
+        description: "A Partner payable has a failed payment status. Review payment setup and Sync instructions.",
+        sourceLabel: str(payable.payable_number),
+        href: "/partner/payments",
+        cta: "View Payments",
+      });
+    }
+  }
+  return dedupeDashboardActions(actions).sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
+}
+
+function crewTodayRow(crew: Crew, data: PortalData, workOrders: WorkOrder[]): CrewToday | null {
+  const crewId = str(crew.id);
+  const workOrder = workOrders.find((candidate) => str(candidate.assigned_crew_id ?? candidate.crew_id) === crewId) ?? workOrders[0];
+  const reports = (data.productionReports ?? []).filter((report) => !workOrder || str(report.work_order_version_id) === str(workOrder.id) || str(report.work_order_number) === str(workOrder.work_order_number));
+  const qcReports = (data.customerQcReports ?? []).filter((report) => !workOrder || report.work_order_number === str(workOrder.work_order_number));
+  const readiness = data.readinessByCrew?.[crewId]?.overall_status ?? str(crew.lifecycle_status) ?? "Not evaluated";
+  const hasTodayWork = Boolean(workOrder) || reports.length > 0 || qcReports.length > 0 || isReadyStatus(readiness);
+  if (!hasTodayWork) return null;
+  return {
+    crew,
+    foreman: foremanForCrew(crew, data),
+    workOrder,
+    readiness: statusLabel(readiness),
+    jsaStatus: jsaStatusForCrew(crew, data, workOrder),
+    productionStatus: reports[0]?.submitted_at ? "Submitted" : statusLabel(reports[0]?.status ?? "No report"),
+    reported: productionReportTotals(reports),
+    qcStatus: qcReports[0] ? statusLabel(qcReports[0].report_outcome ?? qcReports[0].cycle_status ?? qcReports[0].decision?.decision) : "QC Pending",
+    correctionStatus: openCorrections(qcReports).length ? "Correction Required" : "No open correction",
+    lastActivity: latestDateLabel([reports[0]?.submitted_at, reports[0]?.work_date, qcReports[0]?.work_date]),
+  };
+}
+
+function productionDashboardRows(data: PortalData) {
+  const dashboardRows = data.productionDashboard?.reported_vs_accepted ?? [];
+  if (dashboardRows.length) {
+    return dashboardRows.map((row) => ({
+      label: str(row.description) || str(row.code) || "Production",
+      reported: quantityText(row.reported_quantity, row.unit_of_measure),
+      accepted: row.customer_accepted_quantity === null || row.customer_accepted_quantity === undefined ? "Pending Customer QC" : quantityText(row.customer_accepted_quantity, row.unit_of_measure),
+      correction: quantityText(row.variance, row.unit_of_measure),
+    }));
+  }
+  const byLabel = new Map<string, { label: string; reported: number; accepted: number | null; correction: number | null; unit: string }>();
+  for (const report of data.productionReports ?? []) {
+    for (const record of report.records ?? []) {
+      const unit = str(record.unit_of_measure) || "Unit";
+      const label = `${record.description || record.code || "Production"} · ${unit}`;
+      const current = byLabel.get(label) ?? { label, reported: 0, accepted: null, correction: null, unit };
+      current.reported += Number(record.reported_quantity ?? 0);
+      byLabel.set(label, current);
+    }
+  }
+  for (const report of data.customerQcReports ?? []) {
+    const decision = report.decision;
+    if (!decision) continue;
+    const unit = decision.unit_of_measure || "Unit";
+    const label = `${decision.description || decision.code || "Production"} · ${unit}`;
+    const current = byLabel.get(label) ?? { label, reported: 0, accepted: null, correction: null, unit };
+    if (decision.reported_quantity !== undefined) current.reported = Number(decision.reported_quantity);
+    if (decision.customer_accepted_quantity !== null && decision.customer_accepted_quantity !== undefined) {
+      current.accepted = Number(decision.customer_accepted_quantity);
+      current.correction = Math.max(Number(decision.reported_quantity ?? 0) - Number(decision.customer_accepted_quantity), 0);
+    }
+    byLabel.set(label, current);
+  }
+  return [...byLabel.values()].map((row) => ({
+    label: row.label,
+    reported: quantityText(row.reported, row.unit),
+    accepted: row.accepted === null ? "Pending Customer QC" : quantityText(row.accepted, row.unit),
+    correction: row.correction === null ? "None" : quantityText(row.correction, row.unit),
+  }));
+}
+
+function dashboardFinancialSummary(data: PortalData): DashboardSummary["financial"] {
+  const settlements = data.partnerSettlements ?? [];
+  const payments = data.partnerPayments ?? [];
+  const issuedSettlementAmount = sumReturnedAmounts(settlements, "net_settlement_amount");
+  const outstandingPayable = sumReturnedAmounts(payments.filter((payable) => !/paid|confirmed/i.test(str(payable.payment_status))), "net_payable_amount");
+  const eligible = sumReturnedAmounts(payments, "eligible_amount");
+  const processing = sumReturnedAmounts(payments, "in_flight_payment_amount");
+  const paidThisMonthAmount = sumReturnedAmounts(payments.filter((payable) => payablePaidThisMonth(payable)), "paid_amount");
+  const awaitingFunds = sumReturnedAmounts(payments.filter((payable) => /awaiting|not_yet_eligible|pending/i.test(str(payable.pay_when_paid_status))), "net_payable_amount");
+  const acceptedAwaitingSettlement = settlementAwaitingQuantity(data);
+  return {
+    issuedSettlements: currency(issuedSettlementAmount),
+    outstandingPayable: currency(Math.max(outstandingPayable, 0)),
+    eligiblePayment: currency(eligible),
+    awaitingFunds: currency(awaitingFunds),
+    processing: currency(processing),
+    paidThisMonth: currency(paidThisMonthAmount),
+    acceptedAwaitingSettlement,
+  };
+}
+
+function settlementAwaitingQuantity(data: PortalData) {
+  const settledKeys = new Set((data.partnerSettlements ?? []).flatMap((settlement) => (settlement.items ?? []).map((item) => `${item.production_code ?? "Production"}:${item.unit ?? ""}:${item.accepted_quantity ?? ""}`)));
+  const rows = (data.productionDashboard?.reported_vs_accepted ?? []).filter((row) => {
+    const key = `${str(row.code) || "Production"}:${str(row.unit_of_measure)}:${str(row.customer_accepted_quantity)}`;
+    return Number(row.customer_accepted_quantity ?? 0) > 0 && !settledKeys.has(key);
+  });
+  if (!rows.length) return "No accepted quantities awaiting settlement";
+  return rows.map((row) => quantityText(row.customer_accepted_quantity, row.unit_of_measure)).join("; ");
+}
+
+function sumReturnedAmounts<T extends Record<string, unknown>>(rows: T[], key: keyof T) {
+  return rows.reduce((sum, row) => {
+    const value = Number(row[key] ?? 0);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
+}
+
+function payablePaidThisMonth(payable: PartnerPayment) {
+  if (Number(payable.paid_amount ?? 0) <= 0) return false;
+  const payments = payable.payments ?? [];
+  if (!payments.length) return true;
+  const now = new Date();
+  return payments.some((payment) => /confirmed|paid/i.test(str(payment.status)) && sameMonth(str(payment.requested_at), now));
+}
+
+function sameMonth(value: string, now: Date) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return true;
+  return date.getUTCFullYear() === now.getUTCFullYear() && date.getUTCMonth() === now.getUTCMonth();
+}
+
+function productionReportTotals(reports: DailyProduction[]) {
+  const totals = new Map<string, number>();
+  for (const report of reports) {
+    for (const row of report.totals?.by_code ?? []) {
+      const label = `${row.description || row.code || "Production"} · ${row.unit || "Unit"}`;
+      totals.set(label, (totals.get(label) ?? 0) + Number(row.quantity ?? 0));
+    }
+    for (const record of report.records ?? []) {
+      const label = `${record.description || record.code || "Production"} · ${record.unit_of_measure || "Unit"}`;
+      totals.set(label, (totals.get(label) ?? 0) + Number(record.reported_quantity ?? 0));
+    }
+  }
+  return [...totals.entries()].map(([label, quantity]) => ({ label, value: quantityText(quantity, label.split(" · ").at(-1)) }));
+}
+
+function foremanForCrew(crew: Crew, data: PortalData) {
+  const roster = data.rosterByCrew?.[str(crew.id)] ?? [];
+  const foreman = roster.find((worker) => /foreman/i.test(str(worker.membership_role) || str(worker.worker_role)));
+  return foreman ? workerName(foreman) : "Foreman not assigned";
+}
+
+function crewNameForWorkOrder(workOrder: WorkOrder, data: PortalData) {
+  const crewId = str(workOrder.assigned_crew_id ?? workOrder.crew_id);
+  return str((data.crews ?? []).find((crew) => str(crew.id) === crewId)?.name) || str(workOrder.crew_name) || "Not assigned";
+}
+
+function productionStatusForWorkOrder(workOrder: WorkOrder, reports: DailyProduction[]) {
+  const report = reports.find((candidate) => str(candidate.work_order_version_id) === str(workOrder.id) || str(candidate.work_order_number) === str(workOrder.work_order_number));
+  if (!report) return "No report";
+  return report.submitted_at ? "Submitted" : statusLabel(report.status);
+}
+
+function qcStatusForWorkOrder(workOrder: WorkOrder, reports: CustomerQcItem[]) {
+  const report = reports.find((candidate) => candidate.work_order_number === str(workOrder.work_order_number));
+  return report ? statusLabel(report.report_outcome ?? report.cycle_status ?? report.decision?.decision) : "QC Pending";
+}
+
+function jsaStatusForCrew(_crew: Crew, data: PortalData, _workOrder?: WorkOrder) {
+  const jsas = data.jsas ?? [];
+  if (!jsas.length) return "Not Yet Required";
+  const latest = jsas[0];
+  if (/complete/i.test(str(latest.status))) return "Complete";
+  return statusLabel(latest.status ?? "Required");
+}
+
+function activeWorkOrderStatus(status: string) {
+  if (!status) return true;
+  return !/closed|cancelled|complete|completed/i.test(status);
+}
+
+function isReadyStatus(status?: string | null) {
+  return /ready|approved|authorized|conditional/i.test(status ?? "");
+}
+
+function freshnessLabel(value?: string | null) {
+  if (!value) return "Updated time unavailable";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Updated time unavailable";
+  const minutes = Math.max(Math.floor((Date.now() - date.getTime()) / 60000), 0);
+  if (minutes < 1) return "Updated just now";
+  if (minutes === 1) return "Updated 1 minute ago";
+  if (minutes > 15) return `Data may be stale · updated ${minutes} minutes ago`;
+  return `Updated ${minutes} minutes ago`;
+}
+
+function latestDateLabel(values: Array<string | undefined | null>) {
+  const dates = values
+    .map((value) => value ? new Date(value) : null)
+    .filter((date): date is Date => date !== null && Number.isFinite(date.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime());
+  if (!dates.length) return "No server activity";
+  return dates[0].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function workDateLabel(value?: string, timezone?: string) {
+  return value ? `Work date ${value}${timezone ? ` · ${timezone}` : ""}` : timezone ? `Timezone ${timezone}` : "Work date not set";
+}
+
+function statusLabel(value?: string | null) {
+  const raw = str(value).trim();
+  if (!raw) return "Not Started";
+  const normalized = raw.toLowerCase().replace(/[_-]+/g, " ");
+  const specific: Record<string, string> = {
+    active: "Active",
+    accepted: "Accepted",
+    assigned: "Assigned",
+    "awaiting customer funds": "Awaiting Customer Funds",
+    complete: "Complete",
+    completed: "Complete",
+    confirmed: "Paid",
+    "correction required": "Correction Required",
+    draft: "Draft",
+    eligible: "Eligible",
+    failed: "Failed",
+    "in progress": "In Progress",
+    "not authorized": "Not Authorized",
+    "not evaluated": "Not Evaluated",
+    "not ready": "Not Ready",
+    paid: "Paid",
+    "partially accepted": "Partially Accepted",
+    "payment processing": "Processing",
+    pending: "Pending",
+    processing: "Processing",
+    "qc pending": "QC Pending",
+    ready: "Ready",
+    submitted: "Submitted",
+    "under review": "Under Review",
+  };
+  return specific[normalized] ?? normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function actionCategoryLabel(category: DashboardActionCategory) {
+  if (category === "needs_action") return "Needs Your Action";
+  if (category === "crew_foreman") return "Crew / Foreman Action";
+  return "Waiting / Informational";
+}
+
+function emptyActionText(category: DashboardActionCategory) {
+  if (category === "needs_action") return "No Partner Admin-controlled blockers.";
+  if (category === "crew_foreman") return "No Foreman execution items require attention.";
+  return "No waiting items to track right now.";
+}
+
+function dedupeDashboardActions(actions: DashboardAction[]) {
+  const seen = new Set<string>();
+  return actions.filter((action) => {
+    if (seen.has(action.key)) return false;
+    seen.add(action.key);
+    return true;
+  });
+}
+
+function severityRank(severity: DashboardActionSeverity) {
+  return { critical: 0, high: 1, medium: 2, low: 3, info: 4 }[severity];
+}
+
+function PerformanceSummaryInline({ summary }: { summary?: PartnerPerformanceSummary | null }) {
+  if (!summary) return <EmptyPortal title="Performance unavailable" body="Partner performance appears after enough Partner-safe operational data exists." />;
+  return (
+    <div className="dashboard-performance-row">
+      <MetricTile label="Overall Score" value={summary.score === undefined ? "Not scored" : summary.score} />
+      <MetricTile label="Confidence" value={statusLabel(summary.confidence)} />
+      <MetricTile label="Trend" value={statusLabel(summary.trend)} />
+      <MetricTile label="Open Signals" value={(summary.dimensions ?? []).filter((dimension) => Number(dimension.normalized_score ?? 100) < 70).length} />
+      <p className="partner-safe-text">{(summary.improvement_items ?? []).slice(0, 2).map(statusLabel).join(" · ") || "No Partner-safe improvement signal is currently published."}</p>
     </div>
   );
 }

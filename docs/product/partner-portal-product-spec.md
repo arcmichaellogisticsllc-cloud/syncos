@@ -10,6 +10,14 @@ Data source: server-derived Partner context, onboarding, compliance, crews, Work
 
 Actions: link to required Partner tasks. Do not execute Sync-owned approval, QC, settlement, or payment actions.
 
+Sections: fixed company identity, data freshness, company summary, Partner Action Center, Today by Crew, active Work Orders, Production & QC, Settlements & Payments, and Partner-only Performance.
+
+Action ownership: Partner Admin tasks, Crew / Foreman actions, and Waiting / Informational items are separated. Waiting on Sync review, Customer QC, Customer reinspection, Customer funds, or payment processing is not attributed as a Partner failure.
+
+Financial behavior: accepted production awaiting settlement, issued settlements, outstanding payable, eligible amount, awaiting Customer funds, processing amount, and paid-this-month amount are displayed separately from server-returned Partner financial records. The frontend does not calculate settlement line amounts and does not expose customer rate or Sync margin.
+
+Quantity behavior: reported, Customer accepted, and correction quantities are separate and unit-aware.
+
 Mobile: stack summary cards, attention items, work summary, and financial summary.
 
 ## Onboarding

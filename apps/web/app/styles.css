@@ -2699,6 +2699,65 @@ th {
   gap: 16px;
 }
 
+.partner-dashboard-command {
+  gap: 18px;
+}
+
+.partner-dashboard-hero {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgb(7 19 38 / 0.05);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.partner-dashboard-hero h3 {
+  font-size: 1.75rem;
+  letter-spacing: 0;
+  line-height: 1.12;
+  margin: 0;
+}
+
+.partner-dashboard-hero p:not(.eyebrow) {
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.partner-dashboard-refresh {
+  align-items: flex-end;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  min-width: 190px;
+}
+
+.partner-dashboard-refresh span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.partner-dashboard-metrics,
+.dashboard-finance-grid,
+.dashboard-performance-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.partner-dashboard-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(320px, 0.42fr) minmax(0, 0.58fr);
+}
+
 .partner-dashboard-grid,
 .mobilization-lanes {
   display: grid;
@@ -2782,6 +2841,111 @@ th {
   font-size: 1rem;
   letter-spacing: 0;
   margin: 0 0 12px;
+}
+
+.dashboard-action-group {
+  border-top: 1px solid #eef1f5;
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.dashboard-action-group + .dashboard-action-group {
+  margin-top: 14px;
+}
+
+.dashboard-action-group h4 {
+  color: var(--navy);
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.dashboard-action-card {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: inherit;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+  text-decoration: none;
+}
+
+.dashboard-action-card:hover {
+  border-color: var(--accent);
+}
+
+.dashboard-action-card strong,
+.dashboard-action-card span,
+.dashboard-action-card small {
+  display: block;
+}
+
+.dashboard-action-card strong {
+  margin-top: 8px;
+}
+
+.dashboard-action-card span,
+.dashboard-action-card small {
+  color: var(--muted);
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.dashboard-action-card b {
+  color: var(--accent);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.today-crew-list,
+.dashboard-quantity-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.today-crew-card,
+.dashboard-quantity-row {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.today-crew-title {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.today-crew-title strong,
+.today-crew-title span,
+.dashboard-quantity-row strong,
+.dashboard-quantity-row span {
+  display: block;
+}
+
+.today-crew-title span,
+.dashboard-quantity-row span {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.dashboard-quantity-row {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(160px, 1fr) repeat(3, minmax(120px, 0.8fr));
+}
+
+.dashboard-performance-row .partner-safe-text {
+  align-self: center;
+  margin: 0;
 }
 
 .onboarding-workflow {
@@ -3430,11 +3594,16 @@ th {
   }
 
   .partner-dashboard-grid,
+  .partner-dashboard-layout,
   .onboarding-gates,
   .onboarding-hero,
   .onboarding-layout,
   .partner-invite-grid,
   .mobilization-lanes {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-quantity-row {
     grid-template-columns: 1fr;
   }
 
@@ -3503,6 +3672,34 @@ th {
   .field-status-band,
   .field-map-header,
   .syncfield-assignment-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .partner-dashboard-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .partner-dashboard-refresh {
+    justify-items: stretch;
+    min-width: 0;
+  }
+
+  .partner-dashboard-refresh span {
+    text-align: left;
+  }
+
+  .dashboard-action-card {
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-action-card b {
+    white-space: normal;
+  }
+
+  .today-crew-title {
     align-items: stretch;
     flex-direction: column;
   }
