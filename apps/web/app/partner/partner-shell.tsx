@@ -338,6 +338,7 @@ type PortalData = {
   context?: PartnerContext;
   actions?: PartnerActions;
   dashboard?: PartnerDashboardReadModel;
+  readiness?: PartnerReadinessReadModel;
   loadedAt?: string;
   onboarding?: OnboardingChecklist;
   compliance?: ComplianceSummary;
@@ -441,6 +442,44 @@ type PartnerDashboardWorkOrder = {
   qcState?: string;
   partnerRateAvailability?: string;
   route?: string;
+};
+type PartnerReadinessReason = {
+  code?: string;
+  label?: string;
+  owner?: string;
+  severity?: string;
+  description?: string;
+  route?: string;
+};
+type PartnerReadinessItem = {
+  key?: string;
+  group?: string;
+  label?: string;
+  required?: boolean;
+  complete?: boolean;
+  status?: string;
+  route?: string;
+  nextActionLabel?: string;
+};
+type PartnerReadinessReadModel = {
+  organization?: { name?: string; status?: string; capacityProviderName?: string; providerStatus?: string; verificationStatus?: string; contractStatus?: string };
+  freshness?: { asOf?: string; calculatedAt?: string; staleAfterSeconds?: number };
+  onboarding?: { state?: string; requiredComplete?: number; requiredTotal?: number; progressPercent?: number; readyForReview?: boolean; nextAction?: PartnerReadinessItem | null; items?: PartnerReadinessItem[] };
+  companyProfile?: { status?: string; legalBusinessName?: string; dbaName?: string | null; entityType?: string | null; stateOfFormation?: string | null; primaryContact?: Record<string, unknown> | null; complianceContact?: Record<string, unknown> | null; settlementContact?: Record<string, unknown> | null; submittedAt?: string | null; reviewedAt?: string | null; actionRequiredReason?: string | null };
+  tax?: { status?: string; legalNameOnW9?: string | null; taxClassification?: string | null; tinDisplay?: string; submittedAt?: string | null; reviewedAt?: string | null; documentAvailable?: boolean; actionRequiredReason?: string | null };
+  paymentSetup?: { status?: string; method?: string; priorityPassportStatus?: string; accountDisplay?: string; enrollmentContact?: Record<string, unknown> | null; submittedAt?: string | null; reviewedAt?: string | null; actionRequiredReason?: string | null };
+  insurance?: { status?: string; requiredPolicies?: Array<{ type?: string; status?: string; carrier?: string | null; policyReference?: string; effectiveDate?: string | null; expirationDate?: string | null; documentAvailable?: boolean; reviewState?: string; actionRequiredReason?: string | null }> };
+  agreements?: { status?: string; items?: Array<Record<string, unknown>>; blockingReasons?: PartnerReadinessReason[] };
+  workers?: { total?: number; active?: number; foremen?: number; credentialIssues?: number; unassigned?: number; items?: Array<Record<string, unknown>> };
+  foremen?: Array<Record<string, unknown>>;
+  crews?: { total?: number; ready?: number; actionRequired?: number; inactive?: number; items?: Array<Record<string, unknown>> };
+  vehiclesEquipment?: { total?: number; assigned?: number; actionRequired?: number; supportedTypes?: string[]; items?: Array<Record<string, unknown>> };
+  capabilities?: { capabilities?: Array<Record<string, unknown>>; territories?: string[] };
+  territories?: string[];
+  companyApproval?: { state?: string; label?: string; partnerCanApprove?: boolean };
+  blockingReasons?: PartnerReadinessReason[];
+  actionRequired?: PartnerReadinessReason[];
+  panelStatus?: Record<string, "READY" | "EMPTY" | "UNAVAILABLE" | "STALE" | "LOCKED">;
 };
 type CrewToday = {
   crewName?: string;
@@ -688,9 +727,11 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const needsAgreements = section === "onboarding" || section === "agreements" || section === "agreement-detail";
   const needsWorkOrders = section === "work-orders" || section === "work-order-detail" || section === "mobilization";
   const needsVehicles = section === "onboarding" || section === "vehicles";
+  const needsReadiness = ["onboarding", "company", "compliance", "workforce", "workers", "worker-detail", "crews", "crew-detail", "agreements", "agreement-detail", "vehicles"].includes(section);
   const needsMobilization = section === "mobilization";
-  const [dashboard, onboarding, compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
+  const [dashboard, readiness, onboarding, compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
     needsDashboard ? safeFetch<PartnerDashboardReadModel>("partner/dashboard") : undefined,
+    needsReadiness ? safeFetch<PartnerReadinessReadModel>("partner/readiness") : undefined,
     needsOnboarding ? safeFetch<OnboardingChecklist>("partner-invitations/me/onboarding-checklist") : undefined,
     needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
@@ -725,7 +766,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const versionId = str(selectedWorkOrder?.id);
   const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, dashboard, loadedAt: dashboard?.freshness?.calculatedAt ?? new Date().toISOString(), onboarding, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
+  return { context, actions, dashboard, readiness, loadedAt: dashboard?.freshness?.calculatedAt ?? readiness?.freshness?.calculatedAt ?? new Date().toISOString(), onboarding, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
 }
 
 async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section, selectedAssignmentId?: string): Promise<PortalData> {
@@ -849,18 +890,19 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
 }
 
 function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
+  const readiness = data.readiness;
   const checklist = data.onboarding;
-  const items = checklist?.items ?? [];
+  const items = readiness?.onboarding?.items ?? checklist?.items ?? [];
   const steps = onboardingSteps(data);
-  const completedRequired = steps.filter((step) => step.required).filter((step) => step.complete).length;
-  const totalRequired = steps.filter((step) => step.required).length;
-  const companyApproved = /approved/.test(str(data.context?.organization.status).toLowerCase());
-  const readyForReview = Boolean(checklist?.ready_for_review || checklist?.readiness_status === "READY_FOR_REVIEW");
+  const completedRequired = readiness?.onboarding?.requiredComplete ?? steps.filter((step) => step.required).filter((step) => step.complete).length;
+  const totalRequired = readiness?.onboarding?.requiredTotal ?? steps.filter((step) => step.required).length;
+  const companyApproved = readiness?.companyApproval?.state === "APPROVED" || /approved/.test(str(data.context?.organization.status).toLowerCase());
+  const readyForReview = Boolean(readiness?.onboarding?.readyForReview || checklist?.ready_for_review || checklist?.readiness_status === "READY_FOR_REVIEW");
   const companyGate = companyApproved ? "approved" : readyForReview ? "ready for sync review" : "not ready";
   const crewGate = crewReadinessStatus(data);
   const mobilizationGate = data.mobilization?.overall_status ?? "locked";
   const nextStep = steps.find((step) => !step.complete && step.required) ?? steps.find((step) => !step.complete);
-  const progress = totalRequired ? Math.round((completedRequired / totalRequired) * 100) : 0;
+  const progress = readiness?.onboarding?.progressPercent ?? (totalRequired ? Math.round((completedRequired / totalRequired) * 100) : 0);
   const groupedSteps = onboardingStepGroups(steps);
   return (
     <div className="partner-stack onboarding-workflow">
@@ -868,11 +910,11 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
         <div className="onboarding-hero-copy">
           <p className="eyebrow">Partner Onboarding</p>
           <h3>{data.context?.organization.name ?? "Partner company"}</h3>
-          <p>{nextStep ? `Next step: ${nextStep.action}` : "Ready for Sync review."}</p>
+          <p>{nextStep ? `Next step: ${nextStep.action}` : readiness?.onboarding?.state === "UNDER_REVIEW" ? "Under Sync review." : "Ready for Sync review."}</p>
         </div>
         <div className="onboarding-status-card">
           <span>Status</span>
-          <strong>{companyApproved ? "Approved" : readyForReview ? "Ready for Sync Review" : "Not Ready"}</strong>
+          <strong>{statusLabel(readiness?.onboarding?.state ?? (companyApproved ? "Approved" : readyForReview ? "Ready for Sync Review" : "Not Ready"))}</strong>
           <small>{completedRequired} of {totalRequired} required gates complete</small>
           <div className="onboarding-progress" aria-label={`${progress}% complete`}><span style={{ width: `${progress}%` }} /></div>
         </div>
@@ -891,7 +933,7 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
             <h3>Required order</h3>
             {nextStep ? <p className="partner-safe-text">Next: {nextStep.label}</p> : <p className="partner-safe-text">Ready for Sync review.</p>}
           </div>
-          <OnboardingStatusBadge status={readyForReview ? "READY_FOR_REVIEW" : "ACCOUNT_ACTIVATED"} />
+          <OnboardingStatusBadge status={readiness?.onboarding?.state ?? (readyForReview ? "READY_FOR_REVIEW" : "ACCOUNT_ACTIVATED")} />
         </div>
         <div className="onboarding-layout">
           <nav className="onboarding-step-list" aria-label="Partner-controlled onboarding tasks">
@@ -932,6 +974,7 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
           {readyForReview ? <span className="partner-button primary disabled-action">Ready for Sync Review</span> : <button className="partner-button primary" type="button" disabled>Submit for Sync Review</button>}
           <span>{readyForReview ? "Sync Admin can review and approve the Partner." : "Approval remains locked until required gates are complete."}</span>
         </div>
+        <ActionList blockers={readiness?.actionRequired ?? []} />
       </section>
 
       <section className="partner-panel">
@@ -967,24 +1010,29 @@ type OnboardingStepGroup = "Company" | "Workforce" | "Capacity" | "Final";
 type GroupedOnboardingStep = OnboardingStep & { group: OnboardingStepGroup; action: string };
 
 function onboardingSteps(data: PortalData): GroupedOnboardingStep[] {
-  const byKey = new Map((data.onboarding?.items ?? []).map((item) => [item.key ?? "", item]));
+  const readinessItems = data.readiness?.onboarding?.items ?? [];
+  const byKey = new Map([...(data.onboarding?.items ?? []), ...readinessItems].map((item) => [item.key ?? "", item]));
   const fromItem = (key: string) => byKey.get(key);
   const itemComplete = (key: string) => Boolean(fromItem(key)?.complete);
   const itemStatus = (key: string) => fromItem(key)?.status ?? "required";
-  const vehiclesComplete = (data.vehicles ?? []).length > 0;
-  const safetyComplete = itemComplete("insurance") && itemComplete("credentials") && itemComplete("headshots");
-  const finalReviewComplete = Boolean(data.onboarding?.ready_for_review || data.onboarding?.readiness_status === "READY_FOR_REVIEW");
+  const itemAction = (key: string, fallback: string) => {
+    const item = fromItem(key) as PartnerReadinessItem | undefined;
+    return str(item?.nextActionLabel) || fallback;
+  };
+  const vehiclesComplete = itemComplete("equipment") || (data.vehicles ?? []).length > 0;
+  const safetyComplete = itemComplete("insurance") && (itemComplete("credentials") || (data.readiness?.workers?.credentialIssues ?? 0) === 0);
+  const finalReviewComplete = Boolean(data.readiness?.onboarding?.readyForReview || data.onboarding?.ready_for_review || data.onboarding?.readiness_status === "READY_FOR_REVIEW");
   return [
-    { group: "Company", key: "company_setup", label: "Company Setup", action: "Complete company profile", detail: "Legal company name, DBA, tax classification, address, contacts, territories, capabilities, and emergency contact.", route: "/partner/company", required: true, complete: itemComplete("company_profile"), status: itemStatus("company_profile") },
-    { group: "Company", key: "w9_tax", label: "W-9 / Tax Information", action: "Upload signed W-9", detail: "Signed W-9 and secure tax profile for internal Sync review.", route: "/partner/compliance", required: true, complete: itemComplete("w9"), status: itemStatus("w9") },
-    { group: "Company", key: "payment_setup", label: "Payment Setup", action: "Complete payment setup", detail: "Payment contact, remittance email, setup method, and required authorization. This does not enable automatic payouts.", route: "/partner/compliance", required: true, complete: itemComplete("payment_setup"), status: itemStatus("payment_setup") },
-    { group: "Company", key: "insurance", label: "Insurance", action: "Upload insurance documents", detail: "General liability, auto liability, Workers' Comp, umbrella coverage, COI, limits, and expiration tracking.", route: "/partner/compliance", required: true, complete: itemComplete("insurance"), status: itemStatus("insurance") },
-    { group: "Company", key: "agreements", label: "Agreements", action: "Review issued agreements", detail: "Master Partner Agreement, NDA, safety acknowledgements, payment terms, and countersignature status.", route: "/partner/agreements", required: false, complete: itemComplete("agreement"), status: itemStatus("agreement") },
-    { group: "Workforce", key: "workers", label: "Workers", action: "Add workforce roster", detail: "Worker roster, role, phone, email where needed, certifications, credential evidence, and headshot status.", route: "/partner/workers", required: true, complete: itemComplete("workers"), status: itemStatus("workers") },
-    { group: "Workforce", key: "foremen", label: "Foremen", action: "Designate at least one Foreman", detail: "Foreman designation, active status, assigned crew, and SyncField eligibility.", route: "/partner/workers", required: true, complete: itemComplete("foreman"), status: itemStatus("foreman") },
-    { group: "Workforce", key: "crews", label: "Crews", action: "Create crew structure", detail: "Crew name, Foreman, worker count, capabilities, availability, home market, travel radius, and deployable status.", route: "/partner/crews", required: true, complete: itemComplete("crew"), status: itemStatus("crew") },
+    { group: "Company", key: "company_setup", label: "Company Setup", action: itemAction("company_profile", "Complete company profile"), detail: "Legal company name, DBA, tax classification, address, contacts, territories, capabilities, and emergency contact.", route: "/partner/company", required: true, complete: itemComplete("company_profile"), status: itemStatus("company_profile") },
+    { group: "Company", key: "w9_tax", label: "W-9 / Tax Information", action: itemAction("w9", "Upload signed W-9"), detail: "Signed W-9 and secure tax profile for internal Sync review.", route: "/partner/compliance", required: true, complete: itemComplete("w9"), status: itemStatus("w9") },
+    { group: "Company", key: "payment_setup", label: "Payment Setup", action: itemAction("payment_setup", "Complete payment setup"), detail: "Payment contact, remittance email, setup method, and required authorization. This does not enable automatic payouts.", route: "/partner/compliance", required: true, complete: itemComplete("payment_setup"), status: itemStatus("payment_setup") },
+    { group: "Company", key: "insurance", label: "Insurance", action: itemAction("insurance", "Upload insurance documents"), detail: "General liability, auto liability, Workers' Comp, umbrella coverage, COI, limits, and expiration tracking.", route: "/partner/compliance", required: true, complete: itemComplete("insurance"), status: itemStatus("insurance") },
+    { group: "Company", key: "agreements", label: "Agreements", action: itemAction("agreements", "Review issued agreements"), detail: "Master Partner Agreement, NDA, safety acknowledgements, payment terms, and countersignature status.", route: "/partner/agreements", required: true, complete: itemComplete("agreements"), status: itemStatus("agreements") },
+    { group: "Workforce", key: "workers", label: "Workers", action: itemAction("workers", "Add workforce roster"), detail: "Worker roster, role, phone, email where needed, certifications, credential evidence, and headshot status.", route: "/partner/workers", required: true, complete: itemComplete("workers"), status: itemStatus("workers") },
+    { group: "Workforce", key: "crews", label: "Crews", action: itemAction("crews", "Create crew structure"), detail: "Crew name, Foreman, worker count, capabilities, availability, home market, travel radius, and deployable status.", route: "/partner/crews", required: true, complete: itemComplete("crews"), status: itemStatus("crews") },
     { group: "Capacity", key: "equipment", label: "Vehicles / Equipment", action: "Add deployable equipment", detail: "Trucks, bucket trucks, reel trailers, lashers, drills, trailers, inspections, and crew assignments.", route: "/partner/vehicles", required: false, complete: vehiclesComplete, status: vehiclesComplete ? "complete" : "pending" },
     { group: "Capacity", key: "safety", label: "Safety / Compliance", action: "Clear safety documentation", detail: "Insurance, worker qualifications, headshots, credentials, safety acknowledgements, and missing documentation.", route: "/partner/compliance", required: true, complete: safetyComplete, status: safetyComplete ? "complete" : "required" },
+    { group: "Capacity", key: "capabilities", label: "Capabilities / Territories", action: itemAction("capabilities", "Report capabilities"), detail: "Partner-reported capabilities and canonical territories remain separate from Sync-verified capacity.", route: "/partner/company", required: true, complete: itemComplete("capabilities"), status: itemStatus("capabilities") },
     { group: "Final", key: "final_review", label: "Review & Submit", action: "Review company package", detail: "Sync reviews the completed company package. Partner approval, crew readiness, and project mobilization stay separate.", route: "/partner/onboarding", required: false, complete: finalReviewComplete, status: finalReviewComplete ? "ready for sync review" : "locked" },
   ];
 }
@@ -1010,6 +1058,11 @@ function onboardingStatusLabel(status: string) {
 }
 
 function crewReadinessStatus(data: PortalData) {
+  if (data.readiness?.crews) {
+    if (!data.readiness.crews.total) return "not ready";
+    if ((data.readiness.crews.ready ?? 0) > 0) return (data.readiness.crews.actionRequired ?? 0) > 0 ? "some crews ready" : "ready";
+    return "setup required";
+  }
   const crews = data.crews ?? [];
   if (!crews.length) return "not ready";
   const readiness = crews.map((crew) => data.readinessByCrew?.[str(crew.id)]?.overall_status).filter(Boolean);
@@ -1262,7 +1315,7 @@ function workDateLabel(value?: string, timezone?: string) {
   return value ? `Work date ${value}${timezone ? ` · ${timezone}` : ""}` : timezone ? `Timezone ${timezone}` : "Work date not set";
 }
 
-function statusLabel(value?: string | null) {
+function statusLabel(value?: unknown) {
   const raw = str(value).trim();
   if (!raw) return "Not Started";
   const normalized = raw.toLowerCase().replace(/[_-]+/g, " ");
@@ -2481,54 +2534,65 @@ function TotalsView({ totals, annotationCount, coilActual = 0 }: { totals?: Dail
 }
 
 function CompanyWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
-  if (!data.company) return <EmptyPortal title="Company profile not submitted" body="Submit the company profile through the approved Partner compliance workflow." />;
+  const profile = data.readiness?.companyProfile;
+  if (!data.company && !profile) return <EmptyPortal title="Company profile not submitted" body="Submit the company profile through the approved Partner compliance workflow." />;
   return (
     <Panel title="Company" eyebrow="Partner Admin">
       <StatusRows rows={[
-        ["Legal Business Name", str(data.company.legal_business_name)],
-        ["DBA", str(data.company.dba_name) || "None"],
-        ["Entity Type", str(data.company.entity_type)],
-        ["State of Formation", str(data.company.state_of_formation)],
-        ["Business Contact", contactLine(data.company, "primary")],
-        ["Compliance Contact", contactLine(data.company, "compliance")],
-        ["Settlement Contact", contactLine(data.company, "settlement")],
-        ["Profile Review", str(data.company.status)],
-        ["Correction Reason", str(data.company.external_return_reason) || "None"],
+        ["Legal Business Name", profile?.legalBusinessName ?? str(data.company?.legal_business_name)],
+        ["DBA", (profile?.dbaName ?? str(data.company?.dba_name)) || "None"],
+        ["Entity Type", statusLabel(profile?.entityType ?? data.company?.entity_type)],
+        ["State of Formation", profile?.stateOfFormation ?? str(data.company?.state_of_formation)],
+        ["Business Contact", contactLine(profile?.primaryContact ?? data.company ?? {}, "primary")],
+        ["Compliance Contact", contactLine(profile?.complianceContact ?? data.company ?? {}, "compliance")],
+        ["Settlement Contact", contactLine(profile?.settlementContact ?? data.company ?? {}, "settlement")],
+        ["Profile Review", statusLabel(profile?.status ?? data.company?.status)],
+        ["Company Approval", statusLabel(data.readiness?.companyApproval?.state ?? data.context?.organization.status)],
+        ["Correction Reason", (profile?.actionRequiredReason ?? str(data.company?.external_return_reason)) || "None"],
+        ["Updated", freshnessLabel(data.readiness?.freshness?.calculatedAt ?? data.loadedAt)],
       ]} />
+      <CapabilityRows readiness={data.readiness} />
       <ActionPermission permission="partner_compliance.profile.submit" permissions={permissions} label="Profile edits use the certified P3 submission workflow." />
     </Panel>
   );
 }
 
 function ComplianceWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const readiness = data.readiness;
+  const tax = readiness?.tax;
+  const payment = readiness?.paymentSetup;
+  const policies = (readiness?.insurance?.requiredPolicies ?? data.policies ?? []) as Array<Record<string, unknown>>;
   return (
     <div className="partner-stack">
       <Panel title="Compliance Summary" eyebrow="Company readiness">
         <StatusRows rows={[
-          ["Overall", data.compliance?.overall_status],
-          ["Company Profile", data.compliance?.profile_status],
-          ["W-9", data.compliance?.w9_status ?? statusFrom(data.tax, "status")],
-          ["Payment Setup", data.compliance?.payment_status ?? statusFrom(data.payment, "status")],
-          ["Insurance", data.compliance?.insurance_status],
-          ["Evaluated", data.compliance?.evaluated_at],
+          ["Overall", statusLabel(readiness?.onboarding?.state ?? data.compliance?.overall_status)],
+          ["Company Profile", statusLabel(readiness?.companyProfile?.status ?? data.compliance?.profile_status)],
+          ["W-9", statusLabel(tax?.status ?? data.compliance?.w9_status ?? statusFrom(data.tax, "status"))],
+          ["Tax ID", tax?.tinDisplay ?? "Tax information securely on file"],
+          ["Payment Setup", statusLabel(payment?.status ?? data.compliance?.payment_status ?? statusFrom(data.payment, "status"))],
+          ["Payment Method", payment?.accountDisplay ?? "Payment setup status only"],
+          ["Insurance", statusLabel(readiness?.insurance?.status ?? data.compliance?.insurance_status)],
+          ["Evaluated", readiness?.freshness?.calculatedAt ?? data.compliance?.evaluated_at],
         ]} />
-        <ActionList blockers={externalBlockers(undefined, data.compliance)} />
+        <ActionList blockers={readiness?.actionRequired ?? externalBlockers(undefined, data.compliance)} />
       </Panel>
       <Panel title="Insurance" eyebrow="Structured policies">
         <div className="partner-card-grid">
-          {(data.policies ?? []).map((policy) => (
-            <RecordCard key={str(policy.id)} title={str(policy.policy_type)} status={str(policy.status)}>
+          {policies.map((policy, index) => (
+            <RecordCard key={`${str(policy.type ?? policy.policy_type)}-${index}`} title={statusLabel(policy.type ?? policy.policy_type)} status={statusLabel(policy.status)}>
               <StatusRows rows={[
                 ["Carrier", str(policy.carrier)],
-                ["Effective", str(policy.effective_date)],
-                ["Expires", str(policy.expiration_date)],
-                ["Additional Insured", str(policy.additional_insured_status)],
-                ["Correction", str(policy.external_return_reason) || "None"],
+                ["Effective", str(policy.effectiveDate ?? policy.effective_date)],
+                ["Expires", str(policy.expirationDate ?? policy.expiration_date)],
+                ["Document", policy.documentAvailable ? "Private file on record" : "Not submitted"],
+                ["Review", statusLabel(policy.reviewState ?? policy.status)],
+                ["Correction", str(policy.actionRequiredReason ?? policy.external_return_reason) || "None"],
               ]} />
             </RecordCard>
           ))}
         </div>
-        {!(data.policies ?? []).length ? <EmptyPortal title="No insurance policies" body="Insurance requirements appear here after submission." /> : null}
+        {!policies.length ? <EmptyPortal title="No insurance policies" body="Insurance requirements appear here after submission." /> : null}
         <ActionPermission permission="partner_compliance.insurance.submit" permissions={permissions} label="Insurance updates use the certified P3 submission workflow." />
       </Panel>
     </div>
@@ -2536,16 +2600,30 @@ function ComplianceWorkspace({ data, permissions }: { data: PortalData; permissi
 }
 
 function WorkforceWorkspace({ data }: { data: PortalData }) {
+  const workerCount = data.readiness?.workers?.total ?? data.workers?.length ?? 0;
+  const crewCount = data.readiness?.crews?.total ?? data.crews?.length ?? 0;
   return (
     <div className="partner-dashboard-grid">
-      <Panel title="Workers" eyebrow={`${data.workers?.length ?? 0} records`}><WorkersList workers={data.workers ?? []} /></Panel>
-      <Panel title="Crews" eyebrow={`${data.crews?.length ?? 0} records`}><CrewsList data={data} /></Panel>
+      <Panel title="Workers" eyebrow={`${workerCount} records`}><WorkersList workers={data.workers ?? []} readinessWorkers={data.readiness?.workers?.items} /></Panel>
+      <Panel title="Crews" eyebrow={`${crewCount} records`}><CrewsList data={data} /></Panel>
     </div>
   );
 }
 
 function WorkersWorkspace({ data }: { data: PortalData }) {
-  return <Panel title="Workers" eyebrow="Partner Admin-safe roster"><WorkersList workers={data.workers ?? []} /></Panel>;
+  return (
+    <div className="partner-stack">
+      <Panel title="Workers" eyebrow="Partner Admin-safe roster">
+        <StatusRows rows={[
+          ["Active Workers", String(data.readiness?.workers?.active ?? data.workers?.length ?? 0)],
+          ["Foremen", String(data.readiness?.workers?.foremen ?? 0)],
+          ["Credential Issues", String(data.readiness?.workers?.credentialIssues ?? 0)],
+          ["Unassigned Workers", String(data.readiness?.workers?.unassigned ?? 0)],
+        ]} />
+        <WorkersList workers={data.workers ?? []} readinessWorkers={data.readiness?.workers?.items} />
+      </Panel>
+    </div>
+  );
 }
 
 function WorkerDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
@@ -2566,7 +2644,17 @@ function WorkerDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
 }
 
 function CrewsWorkspace({ data }: { data: PortalData }) {
-  return <Panel title="Crews" eyebrow="Current Crew readiness"><CrewsList data={data} /></Panel>;
+  return (
+    <Panel title="Crews" eyebrow="Current Crew readiness">
+      <StatusRows rows={[
+        ["Ready", String(data.readiness?.crews?.ready ?? 0)],
+        ["Action Required", String(data.readiness?.crews?.actionRequired ?? 0)],
+        ["Inactive", String(data.readiness?.crews?.inactive ?? 0)],
+        ["Crew Readiness", crewReadinessStatus(data)],
+      ]} />
+      <CrewsList data={data} />
+    </Panel>
+  );
 }
 
 function CrewDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
@@ -2649,16 +2737,21 @@ function ForemanCrew({ data }: { data: PortalData }) {
 }
 
 function AgreementsWorkspace({ data }: { data: PortalData }) {
+  const readinessAgreements = (data.readiness?.agreements?.items ?? []) as Array<Record<string, unknown>>;
   return (
     <Panel title="Agreements" eyebrow="Executed artifacts use P5 authorization">
       <div className="partner-card-grid">
-        {(data.agreements ?? []).map((agreement) => (
+        {readinessAgreements.length ? readinessAgreements.map((agreement, index) => (
+          <RecordCard key={`${str(agreement.name)}-${index}`} title={str(agreement.name) || "Agreement"} status={statusLabel(agreement.status)}>
+            <StatusRows rows={[["Version", str(agreement.version)], ["Effective", str(agreement.effectiveDate)], ["Partner Signature", statusLabel(agreement.partnerSignature)], ["Sync Countersignature", statusLabel(agreement.syncCountersignature)], ["Execution", statusLabel(agreement.executionState)]]} />
+          </RecordCard>
+        )) : (data.agreements ?? []).map((agreement) => (
           <RecordCard key={str(agreement.version_id)} title={str(agreement.contract_number) || str(agreement.name)} status={str(agreement.status)} href={`/partner/agreements/${str(agreement.version_id)}`}>
             <StatusRows rows={[["Version", str(agreement.version_number)], ["Effective", str(agreement.effective_date)], ["Artifact", "Authorized through P5 only"]]} />
           </RecordCard>
         ))}
       </div>
-      {!(data.agreements ?? []).length ? <EmptyPortal title="No Agreements" body="Executed Agreements appear after Sync issues them." /> : null}
+      {!readinessAgreements.length && !(data.agreements ?? []).length ? <EmptyPortal title="No Agreements" body="Executed Agreements appear after Sync issues them." /> : null}
     </Panel>
   );
 }
@@ -2679,7 +2772,7 @@ function WorkOrdersWorkspace({ data }: { data: PortalData }) {
     <Panel title="Work Orders" eyebrow="Partner-safe assignments">
       <div className="partner-card-grid">
         {workOrders.map((workOrder) => (
-          <RecordCard key={str(workOrder.id) || str(workOrder.work_order_id)} title={str(workOrder.work_order_number) || str(workOrder.work_order_id)} status={str(workOrder.status)} href={data.context?.persona === "partner_foreman" ? "/partner/work-orders" : `/partner/work-orders/${str(workOrder.id)}`}>
+          <RecordCard key={str(workOrder.id) || str(workOrder.work_order_id)} title={str(workOrder.work_order_number) || "Work Order"} status={statusLabel(workOrder.status)} href={data.context?.persona === "partner_foreman" ? "/partner/work-orders" : `/partner/work-orders/${str(workOrder.id)}`}>
             <StatusRows rows={[
               ["Project", str(workOrder.project_name)],
               ["Customer", str(workOrder.customer_name)],
@@ -2708,7 +2801,7 @@ function ForemanWorkload({ data }: { data: PortalData }) {
 
 function WorkOrderSummary({ workOrder, foreman }: { workOrder: WorkOrder; foreman: boolean }) {
   return (
-    <Panel title={str(workOrder.work_order_number) || str(workOrder.work_order_id) || "Work Order"} eyebrow={foreman ? "Assigned workload" : "Partner Admin"}>
+    <Panel title={str(workOrder.work_order_number) || "Work Order"} eyebrow={foreman ? "Assigned workload" : "Partner Admin"}>
       <StatusRows rows={[
         ["Project", str(workOrder.project_name)],
         ["Customer", str(workOrder.customer_name)],
@@ -2724,23 +2817,41 @@ function WorkOrderSummary({ workOrder, foreman }: { workOrder: WorkOrder; forema
 }
 
 function VehiclesWorkspace({ data }: { data: PortalData }) {
+  const readinessVehicles = (data.readiness?.vehiclesEquipment?.items ?? []) as Array<Record<string, unknown>>;
   return (
-    <Panel title="Vehicles" eyebrow="Assigned equipment">
+    <Panel title="Vehicles & Equipment" eyebrow="Assigned equipment">
+      <StatusRows rows={[
+        ["Total Assets", String(data.readiness?.vehiclesEquipment?.total ?? data.vehicles?.length ?? 0)],
+        ["Assigned", String(data.readiness?.vehiclesEquipment?.assigned ?? 0)],
+        ["Action Required", String(data.readiness?.vehiclesEquipment?.actionRequired ?? 0)],
+        ["Supported Types", data.readiness?.vehiclesEquipment?.supportedTypes?.join(", ") || "Configured by Sync"],
+      ]} />
       <div className="partner-card-grid">
-        {(data.vehicles ?? []).map((vehicle) => (
-          <RecordCard key={str(vehicle.id)} title={str(vehicle.equipment_name) || str(vehicle.equipment_id)} status={str(vehicle.status)}>
+        {readinessVehicles.length ? readinessVehicles.map((vehicle, index) => (
+          <RecordCard key={`${str(vehicle.name)}-${index}`} title={str(vehicle.name) || "Equipment"} status={statusLabel(vehicle.status)}>
+            <StatusRows rows={[
+              ["Type", statusLabel(vehicle.type)],
+              ["Assigned Crew", str(vehicle.assignedCrew) || "None"],
+              ["Availability", statusLabel(vehicle.availability)],
+              ["Inspection", statusLabel(vehicle.inspectionStatus)],
+              ["Inspection Expiration", str(vehicle.inspectionExpiration)],
+              ["Document", vehicle.documentAvailable ? "Private file on record" : "Not submitted"],
+            ]} />
+          </RecordCard>
+        )) : (data.vehicles ?? []).map((vehicle) => (
+          <RecordCard key={str(vehicle.id)} title={str(vehicle.equipment_name) || "Equipment"} status={statusLabel(vehicle.status)}>
             <StatusRows rows={[
               ["Type", str(vehicle.equipment_type)],
-              ["Crew", str(vehicle.crew_id)],
+              ["Crew", str(vehicle.crew_name) || "Assigned Crew"],
               ["Custody Start", str(vehicle.partner_custody_start_date)],
               ["Return", str(vehicle.partner_return_release_date) || "Not returned"],
-              ["Allocation Preview", vehicle.daily_allocation_amount ? `${str(vehicle.currency)} ${str(vehicle.daily_allocation_amount)}` : "Not shown"],
+              ["Allocation Preview", "Available in assignment detail"],
               ["Condition", str(vehicle.odometer_at_assignment) ? "Recorded" : "Pending"],
             ]} />
           </RecordCard>
         ))}
       </div>
-      {!(data.vehicles ?? []).length ? <EmptyPortal title="No assigned vehicles" body="Vehicle assignments appear after Sync assigns equipment." /> : null}
+      {!readinessVehicles.length && !(data.vehicles ?? []).length ? <EmptyPortal title="No assigned vehicles" body="Vehicle assignments appear after Sync assigns equipment." /> : null}
     </Panel>
   );
 }
@@ -2752,13 +2863,13 @@ function MobilizationWorkspace({ data, acknowledgeNotice }: { data: PortalData; 
     <div className="partner-stack">
       <div className="mobilization-lanes" aria-label="Mobilization states">
         <Panel title="Readiness" eyebrow="Derived evaluation">
-          <StatusRows rows={[["Status", readiness?.overall_status ?? "not_evaluated"], ["Passed Checks", String(readiness?.passed_check_count ?? 0)], ["Blockers", String(readiness?.blocker_count ?? 0)], ["Warnings", String(readiness?.warning_count ?? 0)]]} />
+          <StatusRows rows={[["Status", statusLabel(readiness?.overall_status ?? "not_evaluated")], ["Passed Checks", String(readiness?.passed_check_count ?? 0)], ["Blockers", String(readiness?.blocker_count ?? 0)], ["Warnings", String(readiness?.warning_count ?? 0)]]} />
         </Panel>
         <Panel title="Approval to Mobilize" eyebrow="Internal Sync decision">
-          <StatusRows rows={[["Decision", readiness?.decision?.decision ?? "pending"], ["Conditions", readiness?.decision?.external_conditions?.join("; ") || "None"], ["Expires", readiness?.decision?.expires_at ?? "No expiration"], ["Revocation", readiness?.decision?.revocation_reason ?? "None"]]} />
+          <StatusRows rows={[["Decision", statusLabel(readiness?.decision?.decision ?? "pending")], ["Conditions", readiness?.decision?.external_conditions?.join("; ") || "None"], ["Expires", readiness?.decision?.expires_at ?? "No expiration"], ["Revocation", readiness?.decision?.revocation_reason ?? "None"]]} />
         </Panel>
         <Panel title="Production Start" eyebrow="Operational authorization">
-          <StatusRows rows={[["Authorization", notice?.production_start?.authorization_status ?? notice?.production_start_status ?? "not_authorized"], ["Start Date", notice?.production_start_date ?? notice?.production_start?.start_date ?? "Not authorized"], ["Start Time", notice?.production_start_time ?? notice?.production_start?.start_time ?? "Not authorized"], ["Timezone", notice?.timezone ?? notice?.production_start?.timezone ?? "Not set"]]} />
+          <StatusRows rows={[["Authorization", statusLabel(notice?.production_start?.authorization_status ?? notice?.production_start_status ?? "not_authorized")], ["Start Date", notice?.production_start_date ?? notice?.production_start?.start_date ?? "Not authorized"], ["Start Time", notice?.production_start_time ?? notice?.production_start?.start_time ?? "Not authorized"], ["Timezone", notice?.timezone ?? notice?.production_start?.timezone ?? "Not set"]]} />
         </Panel>
       </div>
       <Panel title="Partner-Safe Blockers and Warnings" eyebrow="No internal notes">
@@ -2768,7 +2879,7 @@ function MobilizationWorkspace({ data, acknowledgeNotice }: { data: PortalData; 
       <Panel title="Notice to Proceed" eyebrow={notice?.notice_number ?? "Not issued"}>
         <StatusRows rows={[
           ["Version", notice?.version_number ? String(notice.version_number) : "None"],
-          ["Status", notice?.status ?? "not_issued"],
+          ["Status", statusLabel(notice?.status ?? "not_issued")],
           ["Map Package", notice?.initial_map_work_package_ref ?? "Not issued"],
           ["Initial Work Area", notice?.initial_work_area ?? "Not assigned"],
           ["Instructions", notice?.external_instructions ?? "None issued"],
@@ -2780,15 +2891,28 @@ function MobilizationWorkspace({ data, acknowledgeNotice }: { data: PortalData; 
   );
 }
 
-function WorkersList({ workers }: { workers: Worker[] }) {
+function WorkersList({ workers, readinessWorkers }: { workers: Worker[]; readinessWorkers?: Array<Record<string, unknown>> }) {
+  if (readinessWorkers?.length) {
+    return (
+      <div className="partner-list">
+        {readinessWorkers.map((worker, index) => (
+          <div className="partner-list-row static" key={`${str(worker.name)}-${index}`}>
+            <Avatar name={str(worker.name) || "Worker"} status={str(worker.status)} />
+            <span><strong>{str(worker.name) || "Worker"}</strong><small>{statusLabel(worker.role)} · {statusLabel(worker.reviewStatus)}</small></span>
+            <StatusPill label="Readiness" value={str(worker.ready) === "true" ? "ready" : str(worker.credentialStatus) || str(worker.reviewStatus)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (!workers.length) return <EmptyPortal title="No Workers" body="Workers appear after they are added through P4." />;
   return (
     <div className="partner-list">
       {workers.map((worker) => (
         <Link className="partner-list-row" key={str(worker.id)} href={`/partner/workers/${str(worker.id)}`}>
           <Avatar name={workerName(worker)} status={str(worker.status)} />
-          <span><strong>{workerName(worker)}</strong><small>{str(worker.worker_role) || "Worker"} · {str(worker.review_status) || str(worker.status)}</small></span>
-          <StatusPill label="Readiness" value={str(worker.review_status) || str(worker.status)} />
+          <span><strong>{workerName(worker)}</strong><small>{statusLabel(worker.worker_role) || "Worker"} · {statusLabel(worker.review_status ?? worker.status)}</small></span>
+          <StatusPill label="Readiness" value={statusLabel(worker.review_status ?? worker.status)} />
         </Link>
       ))}
     </div>
@@ -2796,12 +2920,31 @@ function WorkersList({ workers }: { workers: Worker[] }) {
 }
 
 function CrewsList({ data }: { data: PortalData }) {
+  const readinessCrews = (data.readiness?.crews?.items ?? []) as Array<Record<string, unknown>>;
+  if (readinessCrews.length) {
+    return (
+      <div className="partner-card-grid">
+        {readinessCrews.map((crew, index) => (
+          <RecordCard key={`${str(crew.name)}-${index}`} title={str(crew.name) || "Crew"} status={statusLabel(crew.status)}>
+            <StatusRows rows={[
+              ["Type", statusLabel(crew.type)],
+              ["Primary Foreman", str(crew.primaryForeman) || "Not assigned"],
+              ["Workers", `${str(crew.workerCount) || "0"} of ${str(crew.targetStaffing) || "target"}`],
+              ["Equipment", Array.isArray(crew.equipment) && crew.equipment.length ? crew.equipment.map(str).join(", ") : "Not assigned"],
+              ["Availability", statusLabel(crew.availability)],
+              ["Missing", Array.isArray(crew.blockingReasons) && crew.blockingReasons.length ? crew.blockingReasons.map(statusLabel).join(", ") : "None"],
+            ]} />
+          </RecordCard>
+        ))}
+      </div>
+    );
+  }
   if (!(data.crews ?? []).length) return <EmptyPortal title="No Crews" body="Crews appear after they are created through P4." />;
   return (
     <div className="partner-card-grid">
       {(data.crews ?? []).map((crew) => (
-        <RecordCard key={str(crew.id)} title={str(crew.name)} status={data.readinessByCrew?.[str(crew.id)]?.overall_status ?? str(crew.lifecycle_status)} href={`/partner/crews/${str(crew.id)}`}>
-          <StatusRows rows={[["Type", str(crew.crew_type)], ["Target Staffing", str(crew.target_staffing_level)], ["Active Staffing", String(data.rosterByCrew?.[str(crew.id)]?.length ?? 0)], ["Blockers", String(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0)]]} />
+        <RecordCard key={str(crew.id)} title={str(crew.name)} status={statusLabel(data.readinessByCrew?.[str(crew.id)]?.overall_status ?? crew.lifecycle_status)} href={`/partner/crews/${str(crew.id)}`}>
+          <StatusRows rows={[["Type", statusLabel(crew.crew_type)], ["Target Staffing", str(crew.target_staffing_level)], ["Active Staffing", String(data.rosterByCrew?.[str(crew.id)]?.length ?? 0)], ["Blockers", String(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0)]]} />
         </RecordCard>
       ))}
     </div>
@@ -2859,6 +3002,20 @@ function WarningsList({ warnings }: { warnings: Array<Record<string, unknown>> }
 function ActionPermission({ permission, permissions, label }: { permission: string; permissions: string[]; label: string }) {
   if (!permissions.includes(permission)) return null;
   return <p className="partner-safe-text">{label}</p>;
+}
+
+function CapabilityRows({ readiness }: { readiness?: PartnerReadinessReadModel }) {
+  const capabilities = readiness?.capabilities?.capabilities ?? [];
+  if (!capabilities.length && !readiness?.territories?.length) return null;
+  return (
+    <div className="readiness-inline-section" aria-label="Capabilities and territories">
+      <StatusRows rows={[
+        ["Capabilities", capabilities.map((item) => statusLabel(item.capability)).filter(Boolean).join(", ") || "Not reported"],
+        ["Territories", readiness?.territories?.join(", ") || "Not assigned"],
+        ["Capacity Status", capabilities.map((item) => statusLabel(item.verification)).filter(Boolean)[0] || "Partner reported"],
+      ]} />
+    </div>
+  );
 }
 
 function Avatar({ name, status }: { name: string; status?: string }) {
@@ -3040,7 +3197,7 @@ function workerName(worker?: Record<string, unknown>) {
 }
 
 function contactLine(row: Record<string, unknown>, prefix: "primary" | "compliance" | "settlement") {
-  return [row[`${prefix}_contact_name`], row[`${prefix}_contact_email`], row[`${prefix}_contact_phone`]].map(str).filter(Boolean).join(" · ");
+  return [row.name ?? row[`${prefix}_contact_name`], row.email ?? row[`${prefix}_contact_email`], row.phone ?? row[`${prefix}_contact_phone`]].map(str).filter(Boolean).join(" · ");
 }
 
 function vehicleLabel(vehicle?: Record<string, unknown>) {

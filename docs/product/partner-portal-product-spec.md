@@ -26,9 +26,13 @@ Purpose: guide the Partner from invited to ready for Sync review.
 
 Route: `/partner/onboarding`
 
+Data source: `GET /partner/readiness` for company, compliance, workforce, crew, equipment, action-required, and freshness state. Existing detail endpoints remain the edit/detail path.
+
 Actions: complete Partner-owned setup tasks and submit for Sync review only when server readiness allows.
 
 Restrictions: no password fields, no Partner self-approval, no project mobilization task.
+
+Progress counts only Partner-controlled required items. Sync review, company approval, Crew deployment, Work Order mobilization, Customer QC, and payment eligibility are not Partner-controlled onboarding progress.
 
 ## Company
 
@@ -40,7 +44,7 @@ Editable fields: only fields supported by current company profile APIs.
 
 Read-only fields: company status and reviewed legal/tax identity state when changes require Sync review.
 
-Security: no raw organization ID.
+Security: no raw organization ID, capacity-provider ID, tenant ID, Customer rate, Sync margin, full TIN, full bank data, or internal reviewer note.
 
 ## Compliance
 
@@ -52,6 +56,8 @@ Actions: upload or replace supported Partner documents. Sync review/approval rem
 
 Security: restricted files are accessed through authorized endpoints only; storage keys and raw paths are hidden.
 
+Payment setup is readiness/configuration only. It is not a payment-due, payment-eligible, processing, or paid state.
+
 ## Agreements
 
 Purpose: show agreement versions, signatures, countersignature, execution state, and supported downloads.
@@ -59,6 +65,8 @@ Purpose: show agreement versions, signatures, countersignature, execution state,
 Route: `/partner/agreements`
 
 Actions: view or complete supported agreement actions. Do not expose raw agreement IDs.
+
+Partner cannot fabricate an executed agreement state. Superseded versions remain historical where canonical source data supports them.
 
 ## Workers
 
@@ -70,6 +78,8 @@ Actions: add/edit supported Worker profile data. Ordinary Workers do not automat
 
 Security: Partner sees only its own Workers.
 
+Foreman is a Worker designation/relationship. Partner Admin cannot type an arbitrary non-Worker email and create a Foreman disconnected from the Worker record.
+
 ## Crews
 
 Purpose: show deployable capacity by crew.
@@ -80,6 +90,8 @@ Fields: crew name, Foreman, Workers, crew size, capabilities, territories, equip
 
 Rule: Company Approved, Crew Ready, and Project Mobilization Approved remain separate.
 
+Crew readiness is server-derived. Creating a Crew does not automatically make it ready or authorize it for a Work Order.
+
 ## Vehicles & Equipment
 
 Purpose: track Partner equipment relevant to crew and mobilization readiness.
@@ -87,6 +99,8 @@ Purpose: track Partner equipment relevant to crew and mobilization readiness.
 Route: `/partner/vehicles`
 
 Fields: asset name, type, availability, inspection status, assigned crew, and readiness effect where supported.
+
+Partner cannot self-verify inspection or assign equipment across Partner organizations. Equipment deactivation preserves historical assignment evidence.
 
 ## Work Orders
 

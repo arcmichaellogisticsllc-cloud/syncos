@@ -83,6 +83,8 @@ Purpose:
 
 SyncOS owns the private workflows for demand, Partner network, capacity, work, production, Customer QC, finance, performance, and executive decision support.
 
+Partner Portal company readiness is a Partner Admin workspace for maintaining company profile, W-9, payment setup readiness, insurance, agreements, Workers, Foremen, Crews, vehicles/equipment, capabilities, territories, and readiness blockers. It handles Partner onboarding complete, company approved visibility, and general Crew ready visibility. It does not approve the Partner, verify Partner documents, authorize Work Order mobilization, authorize production start, change Customer QC, issue settlements, execute payments, or expose Customer rates or Sync margin.
+
 ## D. Sync Admin
 
 Sync Admin is the internal operating control layer. It should be represented by internal navigation and permissions composed from existing Executive, Operations, Finance, and administrative roles unless a future audit proves a distinct new role is required.

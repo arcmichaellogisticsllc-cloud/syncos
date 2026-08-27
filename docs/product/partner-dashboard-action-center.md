@@ -53,6 +53,8 @@ Priority policy:
 
 Actions are deduplicated by reason and source before the response is returned. Every CTA routes to an existing page such as `/partner/onboarding`, `/partner/compliance`, `/partner/workers`, `/partner/crews`, `/partner/work-orders`, `/partner/production`, `/partner/customer-qc`, `/partner/settlements`, `/partner/payments`, or valid SyncField routes.
 
+Slice C company-readiness actions route to the canonical Partner workspaces: company profile to `/partner/company`, W-9/payment/insurance to `/partner/compliance`, agreement status to `/partner/agreements`, Worker and Foreman setup to `/partner/workers`, Crew readiness to `/partner/crews`, and equipment readiness to `/partner/vehicles`. Actions resolve by correcting source truth and refreshing the Dashboard; Slice C does not add a manual action ledger.
+
 ## Daily Crew Status
 
 Today by Crew shows Crew name, Foreman, Work Order, JSA status, production status, reported quantities by unit, Customer QC state, correction state, and last server activity.

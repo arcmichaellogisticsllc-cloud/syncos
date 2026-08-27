@@ -65,3 +65,20 @@ The Partner Dashboard is the daily command page for a single subcontractor compa
 14. Dashboard actions are derived by the server read model, not from raw domain records in React.
 15. Dashboard `asOf` and `calculatedAt` are server timestamps. Browser fetch time is not source freshness.
 16. `UNAVAILABLE` panel state is distinct from a legitimate zero count or zero-dollar amount.
+
+## Company Readiness
+
+1. Company-readiness pages use server-derived readiness truth from `GET /partner/readiness`.
+2. Onboarding progress counts only Partner-controlled required items. Sync review, company approval, Crew readiness, project mobilization, Customer QC, settlement, payable, eligibility, processing, and payment states are not onboarding checklist progress.
+3. Company Approved, Crew Ready, and Project Mobilization Authorized remain separate gates.
+4. Partner Portal may show company profile, W-9, payment setup readiness, insurance, agreements, Workers, Foremen, Crews, vehicles/equipment, capabilities, territories, and blocking reasons.
+5. Partner Admin cannot self-approve the company, approve insurance, verify credentials, fabricate agreement execution, override Crew readiness, authorize mobilization, or authorize production start.
+6. Partner Foreman-only users do not receive company-readiness management pages.
+7. Readiness unavailable is distinct from complete. A missing or failed readiness source must not be shown as complete.
+8. W-9, payment setup, insurance, Worker headshots, credentials, agreement artifacts, and equipment documents are private file states. UI may show safe presence/review status only.
+9. No Partner page displays full TIN, full bank account, routing number, provider secret, raw storage key, raw path, raw UUID, tenant ID, capacity-provider ID, raw readiness enum, Customer rate, Customer cash detail, Sync margin, or other Partner data.
+10. Worker creation does not automatically create SyncOS login or Partner Admin access.
+11. Foreman designation is tied to an eligible Worker and same Partner organization.
+12. Crew readiness is server-derived from company, compliance, Foreman, Worker, credential, capability, equipment, active, and availability facts.
+13. Equipment assignment is same-Partner scoped and server-validated.
+14. Readiness pages support loading, empty, ready, under-review, action-required, locked, stale, and error states without browser alerts.

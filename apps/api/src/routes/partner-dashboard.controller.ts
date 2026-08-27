@@ -6,6 +6,7 @@ import type { AuthenticatedRequest } from "./intelligence.types";
 
 type PanelState = "READY" | "EMPTY" | "UNAVAILABLE" | "STALE" | "LOCKED";
 type DashboardActionCategory = "needsYourAction" | "crewForemanAction" | "waitingInformational";
+type ReadinessState = "READY" | "ACTION_REQUIRED" | "UNDER_REVIEW" | "IN_PROGRESS" | "NOT_STARTED" | "APPROVED" | "SUSPENDED" | "LOCKED";
 type PartnerDashboardContext = {
   tenantId: string;
   userId: string;
@@ -80,6 +81,86 @@ export class PartnerDashboardController {
     }
   }
 
+  @Get("readiness")
+  @RequirePermission("partner_profile.read")
+  async readiness(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Headers() headers: Record<string, string | string[] | undefined>) {
+    this.rejectBrowserOrganizationScope(query, headers);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const clock = await client.query("SELECT now() AS as_of");
+      const asOf = this.iso(clock.rows[0]?.as_of);
+      const context = await this.resolvePartnerAdminContext(client, request);
+      const company = await this.companyReadiness(client, context, asOf);
+      const workforce = await this.workforceReadiness(client, context, asOf);
+      const agreements = await this.agreementReadiness(client, context);
+      const vehiclesEquipment = await this.vehicleReadiness(client, context, asOf);
+      const capabilities = await this.capacityReadiness(client, context);
+      const onboardingItems = this.onboardingItems(company, workforce, agreements, vehiclesEquipment, capabilities);
+      const requiredComplete = onboardingItems.filter((item) => item.required && item.complete).length;
+      const requiredTotal = onboardingItems.filter((item) => item.required).length;
+      const blockingReasons = [
+        ...company.blockingReasons,
+        ...workforce.blockingReasons,
+        ...agreements.blockingReasons,
+        ...vehiclesEquipment.blockingReasons,
+        ...capabilities.blockingReasons,
+      ];
+      const readyForReview = requiredTotal > 0 && requiredComplete === requiredTotal && !blockingReasons.some((reason) => reason.severity === "CRITICAL");
+      await client.query("COMMIT");
+      return {
+        organization: {
+          name: context.organizationName,
+          status: this.readinessStatus(context.organizationStatus),
+          capacityProviderName: context.capacityProviderName,
+          providerStatus: this.readinessStatus(context.providerStatus),
+          verificationStatus: this.readinessStatus(context.providerVerificationStatus),
+          contractStatus: this.readinessStatus(context.providerContractStatus),
+        },
+        freshness: { asOf, calculatedAt: asOf, staleAfterSeconds: 300 },
+        onboarding: {
+          state: this.companyOnboardingState(context, readyForReview, blockingReasons),
+          requiredComplete,
+          requiredTotal,
+          progressPercent: requiredTotal ? Math.round((requiredComplete / requiredTotal) * 100) : 0,
+          readyForReview,
+          nextAction: onboardingItems.find((item) => item.required && !item.complete) ?? null,
+          items: onboardingItems,
+        },
+        companyProfile: company.profile,
+        tax: company.tax,
+        paymentSetup: company.paymentSetup,
+        insurance: company.insurance,
+        agreements,
+        workers: workforce.workers,
+        foremen: workforce.foremen,
+        crews: workforce.crews,
+        vehiclesEquipment,
+        capabilities,
+        territories: capabilities.territories,
+        companyApproval: {
+          state: this.isApproved(context.organizationStatus) ? "APPROVED" : context.organizationStatus === "suspended" ? "SUSPENDED" : "UNDER_REVIEW",
+          label: this.isApproved(context.organizationStatus) ? "Company Approved" : context.organizationStatus === "suspended" ? "Suspended" : "Sync Review Required",
+          partnerCanApprove: false,
+        },
+        blockingReasons,
+        actionRequired: blockingReasons.filter((reason) => reason.owner === "PARTNER"),
+        panelStatus: {
+          company: "READY",
+          workforce: "READY",
+          agreements: agreements.status === "NOT_STARTED" ? "EMPTY" : "READY",
+          vehiclesEquipment: vehiclesEquipment.total === 0 ? "EMPTY" : "READY",
+          capabilities: capabilities.capabilities.length === 0 ? "EMPTY" : "READY",
+        },
+      };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async resolvePartnerAdminContext(client: PoolClient, request: AuthenticatedRequest): Promise<PartnerDashboardContext> {
     const rows = await client.query(
       `
@@ -126,6 +207,296 @@ export class PartnerDashboardController {
       providerVerificationStatus: selected.verification_status,
       providerContractStatus: selected.contract_status,
     };
+  }
+
+  private async companyReadiness(client: PoolClient, context: PartnerDashboardContext, asOf: string) {
+    const [profile, tax, payment, policies] = await Promise.all([
+      client.query("SELECT * FROM partner_company_profiles WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded' ORDER BY updated_at DESC LIMIT 1", [context.tenantId, context.organizationId]),
+      client.query("SELECT * FROM partner_tax_profiles WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded' ORDER BY updated_at DESC LIMIT 1", [context.tenantId, context.organizationId]),
+      client.query("SELECT * FROM partner_payment_profiles WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded' ORDER BY updated_at DESC LIMIT 1", [context.tenantId, context.organizationId]),
+      client.query("SELECT * FROM partner_insurance_policies WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded' ORDER BY policy_type", [context.tenantId, context.organizationId]),
+    ]);
+    const currentProfile = profile.rows[0] ?? null;
+    const currentTax = tax.rows[0] ?? null;
+    const currentPayment = payment.rows[0] ?? null;
+    const insuranceRows = policies.rows;
+    const requiredPolicyTypes = ["commercial_general_liability", "commercial_auto", "workers_compensation"];
+    const blockingReasons: Array<Record<string, unknown>> = [];
+    if (!currentProfile) blockingReasons.push(this.reason("COMPANY_PROFILE_INCOMPLETE", "PARTNER", "HIGH", "Company profile is incomplete.", "/partner/company"));
+    else if (!this.isVerified(currentProfile.status)) blockingReasons.push(this.reason("COMPANY_PROFILE_UNDER_REVIEW", currentProfile.status === "returned" || currentProfile.status === "rejected" ? "PARTNER" : "SYNC", currentProfile.status === "returned" || currentProfile.status === "rejected" ? "HIGH" : "LOW", currentProfile.external_return_reason ?? "Company profile is awaiting Sync review.", "/partner/company"));
+    if (!currentTax) blockingReasons.push(this.reason("W9_MISSING", "PARTNER", "HIGH", "W-9 / tax information is missing.", "/partner/compliance"));
+    else if (!this.isVerified(currentTax.status)) blockingReasons.push(this.reason("W9_UNDER_REVIEW", currentTax.status === "returned" || currentTax.status === "rejected" ? "PARTNER" : "SYNC", currentTax.status === "returned" || currentTax.status === "rejected" ? "HIGH" : "LOW", currentTax.external_return_reason ?? "W-9 is awaiting Sync review.", "/partner/compliance"));
+    if (!currentPayment) blockingReasons.push(this.reason("PAYMENT_PROFILE_INCOMPLETE", "PARTNER", "HIGH", "Payment setup is incomplete.", "/partner/compliance"));
+    else if (!["active", "verified"].includes(String(currentPayment.status))) blockingReasons.push(this.reason("PAYMENT_PROFILE_INCOMPLETE", currentPayment.status === "hold" || currentPayment.status === "rejected" ? "PARTNER" : "SYNC", currentPayment.status === "hold" || currentPayment.status === "rejected" ? "HIGH" : "LOW", currentPayment.external_return_reason ?? "Payment setup is awaiting verification.", "/partner/compliance"));
+    for (const type of requiredPolicyTypes) {
+      const policy = insuranceRows.find((row) => row.policy_type === type);
+      if (!policy) blockingReasons.push(this.reason(this.policyMissingCode(type), "PARTNER", "HIGH", `${this.presentationStatus(type)} policy is missing.`, "/partner/compliance"));
+      else if (this.isExpiredDate(policy.expiration_date, asOf)) blockingReasons.push(this.reason("INSURANCE_EXPIRED", "PARTNER", "CRITICAL", `${this.presentationStatus(type)} policy is expired.`, "/partner/compliance"));
+      else if (!this.isVerified(policy.status)) blockingReasons.push(this.reason("INSURANCE_UNDER_REVIEW", policy.status === "returned" || policy.status === "rejected" ? "PARTNER" : "SYNC", policy.status === "returned" || policy.status === "rejected" ? "HIGH" : "LOW", policy.external_return_reason ?? `${this.presentationStatus(type)} policy is awaiting Sync review.`, "/partner/compliance"));
+    }
+    return {
+      profile: {
+        status: currentProfile ? this.readinessStatus(currentProfile.status) : "NOT_STARTED",
+        legalBusinessName: currentProfile?.legal_business_name ?? context.organizationName,
+        dbaName: currentProfile?.dba_name ?? null,
+        entityType: currentProfile?.entity_type ?? null,
+        stateOfFormation: currentProfile?.state_of_formation ?? null,
+        primaryContact: currentProfile ? this.safeContact(currentProfile, "primary") : null,
+        complianceContact: currentProfile ? this.safeContact(currentProfile, "compliance") : null,
+        settlementContact: currentProfile ? this.safeContact(currentProfile, "settlement") : null,
+        submittedAt: this.isoOrNull(currentProfile?.submitted_at),
+        reviewedAt: this.isoOrNull(currentProfile?.reviewed_at),
+        actionRequiredReason: currentProfile?.external_return_reason ?? null,
+      },
+      tax: {
+        status: currentTax ? this.readinessStatus(currentTax.status) : "NOT_STARTED",
+        legalNameOnW9: currentTax?.legal_name_on_w9 ?? null,
+        taxClassification: currentTax?.federal_tax_classification ?? null,
+        tinDisplay: currentTax?.tin_last_four ? `**-***${currentTax.tin_last_four}` : currentTax ? "Tax information securely on file" : "Not submitted",
+        submittedAt: this.isoOrNull(currentTax?.submitted_at),
+        reviewedAt: this.isoOrNull(currentTax?.verified_at),
+        documentAvailable: Boolean(currentTax?.evidence_id),
+        actionRequiredReason: currentTax?.external_return_reason ?? null,
+      },
+      paymentSetup: {
+        status: currentPayment ? this.readinessStatus(currentPayment.status) : "NOT_STARTED",
+        method: currentPayment?.primary_payment_method ? this.presentationStatus(currentPayment.primary_payment_method) : "Not started",
+        priorityPassportStatus: this.presentationStatus(currentPayment?.priority_passport_status ?? "not_started"),
+        accountDisplay: currentPayment?.account_last_four ? `Account ending ${currentPayment.account_last_four}` : currentPayment?.card_last_four ? `Card ending ${currentPayment.card_last_four}` : "No full bank details stored here",
+        enrollmentContact: currentPayment ? this.safePaymentContact(currentPayment) : null,
+        submittedAt: this.isoOrNull(currentPayment?.submitted_at),
+        reviewedAt: this.isoOrNull(currentPayment?.verified_at),
+        actionRequiredReason: currentPayment?.external_return_reason ?? currentPayment?.hold_reason ?? null,
+      },
+      insurance: {
+        status: blockingReasons.some((reason) => String(reason.code).includes("INSURANCE")) ? "ACTION_REQUIRED" : insuranceRows.length ? "READY" : "NOT_STARTED",
+        requiredPolicies: requiredPolicyTypes.map((type) => {
+          const policy = insuranceRows.find((row) => row.policy_type === type);
+          return {
+            type: this.presentationStatus(type),
+            status: policy ? this.readinessStatus(policy.status) : "NOT_STARTED",
+            carrier: policy?.carrier ?? null,
+            policyReference: policy?.policy_reference ? "Reference on file" : "Not provided",
+            effectiveDate: this.dateOnlyOrNull(policy?.effective_date),
+            expirationDate: this.dateOnlyOrNull(policy?.expiration_date),
+            documentAvailable: Boolean(policy?.coi_evidence_id),
+            reviewState: policy ? this.presentationStatus(policy.status) : "Missing",
+            actionRequiredReason: policy?.external_return_reason ?? null,
+          };
+        }),
+      },
+      blockingReasons,
+    };
+  }
+
+  private async workforceReadiness(client: PoolClient, context: PartnerDashboardContext, asOf: string) {
+    const [workers, crews, memberships, headshots, credentials] = await Promise.all([
+      client.query("SELECT id, first_name, last_name, worker_role, status, review_status, external_return_reason, created_at, updated_at FROM workers WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 100", [context.tenantId, context.organizationId]),
+      client.query("SELECT id, name, crew_type, status, lifecycle_status, target_staffing_level, suspended_reason, created_at, updated_at FROM crews WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 50", [context.tenantId, context.organizationId]),
+      client.query("SELECT m.*, concat_ws(' ', w.first_name, w.last_name) AS worker_name FROM partner_crew_memberships m JOIN workers w ON w.tenant_id = m.tenant_id AND w.id = m.worker_id WHERE m.tenant_id = $1 AND m.organization_id = $2 AND m.deleted_at IS NULL AND m.status = 'active'", [context.tenantId, context.organizationId]),
+      client.query("SELECT worker_id, status FROM partner_worker_headshots WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded'", [context.tenantId, context.organizationId]),
+      client.query("SELECT worker_id, credential_type, status, expiration_date, required FROM partner_worker_credentials WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded'", [context.tenantId, context.organizationId]),
+    ]);
+    const headshotByWorker = new Map(headshots.rows.map((row) => [String(row.worker_id), row]));
+    const credentialsByWorker = new Map<string, QueryResultRow[]>();
+    for (const credential of credentials.rows) {
+      const key = String(credential.worker_id);
+      credentialsByWorker.set(key, [...(credentialsByWorker.get(key) ?? []), credential]);
+    }
+    const blockingReasons: Array<Record<string, unknown>> = [];
+    if (!workers.rows.length) blockingReasons.push(this.reason("NO_ACTIVE_WORKERS", "PARTNER", "HIGH", "No Workers have been added.", "/partner/workers"));
+    const assignedWorkerIds = new Set(memberships.rows.map((membership) => String(membership.worker_id)));
+    const workerSummaries = workers.rows.map((worker) => {
+      const workerId = String(worker.id);
+      const workerCredentials = credentialsByWorker.get(workerId) ?? [];
+      const credentialIssue = workerCredentials.some((credential) => credential.required && (credential.status !== "verified" || this.isExpiredDate(credential.expiration_date, asOf)));
+      const headshot = headshotByWorker.get(workerId);
+      const ready = ["approved", "conditional"].includes(String(worker.review_status)) && !credentialIssue && (!headshot || headshot.status === "approved");
+      if (!["approved", "conditional"].includes(String(worker.review_status))) blockingReasons.push(this.reason("WORKER_PROFILE_UNAPPROVED", "PARTNER", "MEDIUM", `${this.workerName(worker)} is not approved for Crew readiness.`, "/partner/workers"));
+      if (credentialIssue) blockingReasons.push(this.reason("WORKER_CREDENTIAL_EXPIRED", "PARTNER", "HIGH", `${this.workerName(worker)} has a missing, expired, or unverified required credential.`, "/partner/workers"));
+      return {
+        name: this.workerName(worker),
+        role: this.presentationStatus(worker.worker_role ?? "Worker"),
+        status: this.presentationStatus(worker.status),
+        reviewStatus: this.presentationStatus(worker.review_status),
+        credentialStatus: credentialIssue ? "Action Required" : workerCredentials.length ? "Complete" : "Not Required",
+        headshotStatus: headshot ? this.presentationStatus(headshot.status) : "Not Submitted",
+        fieldAccessStatus: memberships.rows.some((membership) => String(membership.worker_id) === workerId && ["foreman", "alternate_foreman"].includes(String(membership.membership_role))) ? "Eligible by Crew role" : "No SyncField login created by Worker record",
+        ready,
+        route: "/partner/workers",
+      };
+    });
+    const crewSummaries = crews.rows.map((crew) => {
+      const crewMembers = memberships.rows.filter((membership) => String(membership.crew_id) === String(crew.id));
+      const foremen = crewMembers.filter((membership) => membership.membership_role === "foreman");
+      const blockers: string[] = [];
+      if (!foremen.length) blockers.push("Primary Foreman");
+      if (crewMembers.length < Number(crew.target_staffing_level ?? 4)) blockers.push("Target staffing");
+      if (crew.lifecycle_status !== "active") blockers.push("Crew active status");
+      const status = blockers.length ? "ACTION_REQUIRED" : "READY";
+      for (const blocker of blockers) blockingReasons.push(this.reason(this.crewBlockerCode(blocker), "PARTNER", "HIGH", `${crew.name} is missing ${blocker}.`, "/partner/crews"));
+      return {
+        name: crew.name,
+        type: this.presentationStatus(crew.crew_type),
+        status,
+        lifecycleStatus: this.presentationStatus(crew.lifecycle_status),
+        primaryForeman: foremen[0]?.worker_name ?? "Not assigned",
+        workerCount: crewMembers.length,
+        targetStaffing: Number(crew.target_staffing_level ?? 0),
+        capabilities: [this.presentationStatus(crew.crew_type)].filter(Boolean),
+        territories: [],
+        equipment: [],
+        availability: crew.lifecycle_status === "active" ? "Available for assignment after readiness approval" : "Unavailable",
+        blockingReasons: blockers,
+        route: "/partner/crews",
+      };
+    });
+    return {
+      workers: {
+        total: workerSummaries.length,
+        active: workerSummaries.filter((worker) => worker.status === "Active").length,
+        foremen: memberships.rows.filter((membership) => membership.membership_role === "foreman").length,
+        credentialIssues: workerSummaries.filter((worker) => worker.credentialStatus === "Action Required").length,
+        unassigned: workers.rows.filter((worker) => !assignedWorkerIds.has(String(worker.id))).length,
+        items: workerSummaries,
+      },
+      foremen: workerSummaries.filter((worker) => worker.fieldAccessStatus === "Eligible by Crew role"),
+      crews: {
+        total: crewSummaries.length,
+        ready: crewSummaries.filter((crew) => crew.status === "READY").length,
+        actionRequired: crewSummaries.filter((crew) => crew.status !== "READY").length,
+        inactive: crewSummaries.filter((crew) => crew.lifecycleStatus !== "Active").length,
+        items: crewSummaries,
+      },
+      blockingReasons,
+    };
+  }
+
+  private async agreementReadiness(client: PoolClient, context: PartnerDashboardContext) {
+    const result = await client.query(
+      `
+      SELECT c.name, c.contract_number, c.status AS contract_status, v.version_number, v.status, v.effective_date, v.executed_at,
+        EXISTS (
+          SELECT 1 FROM partner_document_signatures s
+          JOIN partner_document_signatories ds ON ds.tenant_id = s.tenant_id AND ds.id = s.signatory_id
+          WHERE s.tenant_id = v.tenant_id AND s.organization_id = v.organization_id AND s.document_type = 'master_agreement'
+            AND s.document_version_id = v.id AND s.deleted_at IS NULL AND s.verification_status = 'verified'
+            AND ds.signer_role IN ('partner_representative_1','partner_representative_2')
+        ) AS partner_signed,
+        EXISTS (
+          SELECT 1 FROM partner_document_signatures s
+          JOIN partner_document_signatories ds ON ds.tenant_id = s.tenant_id AND ds.id = s.signatory_id
+          WHERE s.tenant_id = v.tenant_id AND s.organization_id = v.organization_id AND s.document_type = 'master_agreement'
+            AND s.document_version_id = v.id AND s.deleted_at IS NULL AND s.verification_status = 'verified'
+            AND ds.signer_role = 'sync_representative'
+        ) AS sync_signed
+      FROM contracts c
+      JOIN partner_agreement_versions v ON v.tenant_id = c.tenant_id AND v.contract_id = c.id AND v.deleted_at IS NULL
+      WHERE c.tenant_id = $1 AND c.partner_organization_id = $2 AND c.deleted_at IS NULL
+      ORDER BY v.version_number DESC
+      LIMIT 20
+      `,
+      [context.tenantId, context.organizationId],
+    );
+    const items = result.rows.map((row) => ({
+      name: row.contract_number ?? row.name ?? "Agreement",
+      type: "Master Partner Agreement",
+      version: row.version_number,
+      status: this.presentationStatus(row.status),
+      effectiveDate: this.dateOnlyOrNull(row.effective_date),
+      partnerSignature: row.partner_signed ? "Complete" : "Awaiting Partner Signature",
+      syncCountersignature: row.sync_signed ? "Complete" : "Awaiting Sync Countersignature",
+      executionState: row.executed_at || row.status === "effective" ? "Executed" : this.presentationStatus(row.status),
+      route: "/partner/agreements",
+    }));
+    const blockingReasons = items.length ? [] : [this.reason("AGREEMENT_UNSIGNED", "SYNC", "LOW", "No current agreement is available for Partner action.", "/partner/agreements")];
+    return {
+      status: items.some((item) => item.executionState === "Executed" || item.status === "Effective") ? "READY" : items.length ? "UNDER_REVIEW" : "NOT_STARTED",
+      items,
+      blockingReasons,
+    };
+  }
+
+  private async vehicleReadiness(client: PoolClient, context: PartnerDashboardContext, asOf: string) {
+    const result = await client.query(
+      `
+      SELECT va.*, e.name AS equipment_name, e.equipment_type, c.name AS crew_name
+      FROM partner_vehicle_assignments va
+      JOIN equipment e ON e.tenant_id = va.tenant_id AND e.id = va.equipment_id
+      LEFT JOIN crews c ON c.tenant_id = va.tenant_id AND c.id = va.crew_id
+      WHERE va.tenant_id = $1 AND va.organization_id = $2 AND va.deleted_at IS NULL
+      ORDER BY va.created_at DESC
+      LIMIT 50
+      `,
+      [context.tenantId, context.organizationId],
+    );
+    const blockingReasons: Array<Record<string, unknown>> = [];
+    const items = result.rows.map((row) => {
+      const expired = this.isExpiredDate(row.aerial_inspection_expires_at, asOf);
+      if (expired) blockingReasons.push(this.reason("EQUIPMENT_INSPECTION_EXPIRED", "PARTNER", "HIGH", `${row.equipment_name ?? "Equipment"} inspection is expired.`, "/partner/vehicles"));
+      return {
+        name: row.equipment_name ?? "Equipment",
+        type: this.presentationStatus(row.equipment_type),
+        status: this.presentationStatus(row.status),
+        availability: ["assigned", "active_custody"].includes(String(row.status)) ? "Assigned" : "Available",
+        assignedCrew: row.crew_name ?? "None",
+        inspectionStatus: expired ? "Expired" : row.aerial_inspection_expires_at ? "Current" : "Not Recorded",
+        inspectionExpiration: this.dateOnlyOrNull(row.aerial_inspection_expires_at),
+        documentAvailable: Boolean(row.artifact_file_object_id),
+        route: "/partner/vehicles",
+      };
+    });
+    return {
+      total: items.length,
+      assigned: items.filter((item) => item.availability === "Assigned").length,
+      actionRequired: items.filter((item) => item.inspectionStatus === "Expired").length,
+      supportedTypes: Array.from(new Set(items.map((item) => item.type))).filter(Boolean),
+      items,
+      blockingReasons,
+    };
+  }
+
+  private async capacityReadiness(client: PoolClient, context: PartnerDashboardContext) {
+    const result = await client.query(
+      `
+      SELECT cr.capacity_type, cr.unit, cr.quantity::text, cr.compliance_status, cr.insurance_status, t.name AS territory_name
+      FROM capacity_records cr
+      LEFT JOIN territories t ON t.tenant_id = cr.tenant_id AND t.id = cr.territory_id
+      WHERE cr.tenant_id = $1 AND cr.capacity_provider_id = $2 AND cr.deleted_at IS NULL
+      ORDER BY cr.created_at DESC
+      LIMIT 50
+      `,
+      [context.tenantId, context.capacityProviderId],
+    );
+    const items = result.rows.map((row) => ({
+      capability: this.presentationStatus(row.capacity_type),
+      quantity: row.quantity,
+      unit: this.presentationStatus(row.unit),
+      complianceStatus: this.presentationStatus(row.compliance_status),
+      insuranceStatus: this.presentationStatus(row.insurance_status),
+      territory: row.territory_name ?? "Territory not assigned",
+      verification: ["approved", "compliant"].includes(String(row.compliance_status)) ? "Sync Verified" : "Partner Reported",
+    }));
+    const blockingReasons = items.length ? [] : [this.reason("CREW_MISSING_CAPABILITY", "PARTNER", "MEDIUM", "Partner capabilities have not been reported.", "/partner/company")];
+    return {
+      capabilities: items,
+      territories: Array.from(new Set(items.map((item) => item.territory))).filter((territory) => territory !== "Territory not assigned"),
+      blockingReasons,
+    };
+  }
+
+  private onboardingItems(company: Awaited<ReturnType<PartnerDashboardController["companyReadiness"]>>, workforce: Awaited<ReturnType<PartnerDashboardController["workforceReadiness"]>>, agreements: Awaited<ReturnType<PartnerDashboardController["agreementReadiness"]>>, vehiclesEquipment: Awaited<ReturnType<PartnerDashboardController["vehicleReadiness"]>>, capabilities: Awaited<ReturnType<PartnerDashboardController["capacityReadiness"]>>) {
+    return [
+      this.item("company_profile", "COMPANY", "Company Profile", company.profile.status === "READY" || company.profile.status === "APPROVED", "/partner/company", "Complete company profile"),
+      this.item("w9", "COMPANY", "W-9 / Tax Information", company.tax.status === "READY" || company.tax.status === "APPROVED", "/partner/compliance", "Upload W-9"),
+      this.item("payment_setup", "COMPANY", "Payment Setup", company.paymentSetup.status === "READY" || company.paymentSetup.status === "APPROVED", "/partner/compliance", "Complete payment setup"),
+      this.item("insurance", "COMPANY", "Insurance", company.insurance.status === "READY", "/partner/compliance", "Resolve insurance"),
+      this.item("agreements", "COMPANY", "Agreements", agreements.status === "READY", "/partner/agreements", "Review agreements"),
+      this.item("workers", "WORKFORCE", "Workers", workforce.workers.total > 0, "/partner/workers", "Add Workers"),
+      this.item("crews", "WORKFORCE", "Crews", workforce.crews.total > 0 && workforce.crews.actionRequired === 0, "/partner/crews", "Complete Crew setup"),
+      this.item("equipment", "CAPACITY", "Vehicles & Equipment", vehiclesEquipment.total > 0 && vehiclesEquipment.actionRequired === 0, "/partner/vehicles", "Add or update equipment"),
+      this.item("capabilities", "CAPACITY", "Capabilities & Territories", capabilities.capabilities.length > 0, "/partner/company", "Report capabilities"),
+    ];
   }
 
   private async companyPanel(client: PoolClient, context: PartnerDashboardContext, panelStatus: Record<string, PanelState>, warnings: Array<{ panel: string; code: string; message: string }>) {
@@ -524,6 +895,114 @@ export class PartnerDashboardController {
 
   private dedupe(actions: Array<Record<string, unknown>>) {
     return Array.from(new Map(actions.map((action) => [String(action.key), action])).values()).slice(0, 8);
+  }
+
+  private reason(code: string, owner: "PARTNER" | "SYNC" | "CUSTOMER", severity: string, description: string, route: string) {
+    return {
+      code,
+      label: this.presentationStatus(code),
+      owner,
+      severity,
+      description,
+      route,
+    };
+  }
+
+  private item(key: string, group: string, label: string, complete: boolean, route: string, nextActionLabel: string) {
+    return {
+      key,
+      group,
+      label,
+      required: true,
+      complete,
+      status: complete ? "Complete" : "Action Required",
+      route,
+      nextActionLabel,
+    };
+  }
+
+  private policyMissingCode(policyType: string) {
+    if (policyType === "commercial_general_liability") return "GENERAL_LIABILITY_MISSING";
+    if (policyType === "commercial_auto") return "AUTO_LIABILITY_MISSING";
+    if (policyType === "workers_compensation") return "WORKERS_COMP_MISSING";
+    return "INSURANCE_MISSING";
+  }
+
+  private companyOnboardingState(context: PartnerDashboardContext, readyForReview: boolean, blockingReasons: Array<Record<string, unknown>>): ReadinessState {
+    if (context.organizationStatus === "suspended") return "SUSPENDED";
+    if (this.isApproved(context.organizationStatus)) return "APPROVED";
+    if (blockingReasons.some((reason) => reason.owner === "PARTNER" && ["CRITICAL", "HIGH"].includes(String(reason.severity)))) return "ACTION_REQUIRED";
+    if (readyForReview) return "READY";
+    if (["pending_review", "under_review", "submitted"].includes(context.providerVerificationStatus)) return "UNDER_REVIEW";
+    return "IN_PROGRESS";
+  }
+
+  private readinessStatus(value: unknown): ReadinessState {
+    const status = String(value ?? "").toLowerCase();
+    if (["approved", "verified", "active", "effective", "executed", "complete", "compliant"].includes(status)) return "READY";
+    if (["suspended", "inactive"].includes(status)) return "SUSPENDED";
+    if (["returned", "rejected", "hold", "expired", "action_required"].includes(status)) return "ACTION_REQUIRED";
+    if (["pending_review", "under_review", "submitted", "pending", "review"].includes(status)) return "UNDER_REVIEW";
+    if (!status || status === "not_started") return "NOT_STARTED";
+    return "IN_PROGRESS";
+  }
+
+  private isApproved(value: unknown) {
+    return ["approved", "active", "verified"].includes(String(value ?? "").toLowerCase());
+  }
+
+  private isVerified(value: unknown) {
+    return ["approved", "verified", "active", "effective", "executed", "conditional"].includes(String(value ?? "").toLowerCase());
+  }
+
+  private safeContact(row: QueryResultRow, prefix: string) {
+    const name = row[`${prefix}_contact_name`] ?? row[`${prefix}_name`];
+    const email = row[`${prefix}_contact_email`] ?? row[`${prefix}_email`];
+    const phone = row[`${prefix}_contact_phone`] ?? row[`${prefix}_phone`];
+    if (!name && !email && !phone) return null;
+    return {
+      name: name ?? null,
+      email: email ?? null,
+      phone: phone ?? null,
+    };
+  }
+
+  private safePaymentContact(row: QueryResultRow) {
+    const name = row.remittance_contact_name ?? row.payment_contact_name ?? row.enrollment_contact_name;
+    const email = row.remittance_email ?? row.payment_contact_email ?? row.enrollment_contact_email;
+    if (!name && !email) return null;
+    return { name: name ?? null, email: email ?? null };
+  }
+
+  private workerName(worker: Pick<QueryResultRow, string>) {
+    return [worker.first_name, worker.last_name].filter(Boolean).join(" ").trim() || String(worker.worker_name ?? "Worker");
+  }
+
+  private crewBlockerCode(blocker: string) {
+    if (blocker === "Primary Foreman") return "CREW_MISSING_FOREMAN";
+    if (blocker === "Target staffing") return "CREW_MISSING_WORKERS";
+    if (blocker === "Crew active status") return "CREW_INACTIVE";
+    return "CREW_READINESS_INCOMPLETE";
+  }
+
+  private dateOnlyOrNull(value: unknown) {
+    if (!value) return null;
+    const date = new Date(String(value));
+    if (!Number.isFinite(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+  }
+
+  private isoOrNull(value: unknown) {
+    if (!value) return null;
+    const date = new Date(String(value));
+    if (!Number.isFinite(date.getTime())) return null;
+    return date.toISOString();
+  }
+
+  private isExpiredDate(value: unknown, asOf: string) {
+    const date = this.dateOnlyOrNull(value);
+    const today = this.dateOnlyOrNull(asOf);
+    return Boolean(date && today && date < today);
   }
 
   private money(amount: unknown) {

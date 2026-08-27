@@ -135,6 +135,67 @@ test("Partner Dashboard financial summary keeps payment states separate and avoi
   assert.match(dashboardDoc, /Customer rates, customer invoice economics, Customer cash details beyond safe eligibility state, Sync margin/);
 });
 
+test("Partner company readiness uses one server-derived read model without self-approval", () => {
+  const shell = read("apps/web/app/partner/partner-shell.tsx");
+  const dashboardController = read("apps/api/src/routes/partner-dashboard.controller.ts");
+  const productSpec = read("docs/product/partner-portal-product-spec.md");
+  const uxContract = read("docs/product/partner-portal-ux-contract.md");
+  const readinessDoc = read("docs/product/partner-company-readiness.md");
+
+  assert.match(dashboardController, /@Get\("readiness"\)/);
+  assert.match(dashboardController, /@RequirePermission\("partner_profile\.read"\)/);
+  assert.match(dashboardController, /BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/);
+  assert.match(dashboardController, /rejectBrowserOrganizationScope\(query, headers\)/);
+  assert.match(dashboardController, /resolvePartnerAdminContext\(client, request\)/);
+  assert.match(dashboardController, /companyReadiness\(client, context, asOf\)/);
+  assert.match(dashboardController, /workforceReadiness\(client, context, asOf\)/);
+  assert.match(dashboardController, /partnerCanApprove: false/);
+  assert.match(dashboardController, /tinDisplay/);
+  assert.doesNotMatch(dashboardController, /customer_rate/);
+  assert.doesNotMatch(dashboardController, /sync_margin/);
+
+  assert.match(shell, /safeFetch<PartnerReadinessReadModel>\("partner\/readiness"\)/);
+  assert.match(shell, /data\.readiness\?\.onboarding/);
+  assert.match(shell, /data\.readiness\?\.companyProfile/);
+  assert.match(shell, /data\.readiness\?\.workers/);
+  assert.match(shell, /data\.readiness\?\.crews/);
+  assert.match(shell, /data\.readiness\?\.vehiclesEquipment/);
+  assert.match(shell, /Partner edits use the certified P3 submission workflow|Profile edits use the certified P3 submission workflow/);
+  assert.match(shell, /Private file on record/);
+  assert.doesNotMatch(shell, /organization_id=\$\{/);
+  assert.doesNotMatch(shell, /Select Partner/);
+
+  assert.match(productSpec, /Data source: `GET \/partner\/readiness`/);
+  assert.match(productSpec, /Partner cannot fabricate an executed agreement state/);
+  assert.match(uxContract, /Company Approved, Crew Ready, and Project Mobilization Authorized remain separate gates/);
+  assert.match(uxContract, /Partner Admin cannot self-approve/);
+  assert.match(readinessDoc, /No migration is expected for Slice C/);
+  assert.match(readinessDoc, /Ordinary Workers do not automatically receive SyncOS login/);
+});
+
+test("Partner company readiness keeps raw identifiers and private file data out of presentation", () => {
+  const shell = read("apps/web/app/partner/partner-shell.tsx");
+  const dashboardController = read("apps/api/src/routes/partner-dashboard.controller.ts");
+  const readinessDoc = read("docs/product/partner-company-readiness.md");
+
+  assert.match(shell, /title=\{str\(vehicle\.equipment_name\) \|\| "Equipment"\}/);
+  assert.match(shell, /title=\{str\(workOrder\.work_order_number\) \|\| "Work Order"\}/);
+  assert.match(shell, /statusLabel\(worker\.worker_role\)/);
+  assert.match(shell, /statusLabel\(crew\.type\)/);
+  assert.match(shell, /CapabilityRows/);
+  assert.match(dashboardController, /No SyncField login created by Worker record/);
+  assert.doesNotMatch(shell, /title=\{str\(vehicle\.equipment_name\) \|\| str\(vehicle\.equipment_id\)\}/);
+  assert.doesNotMatch(shell, /\["Crew", str\(vehicle\.crew_id\)\]/);
+  assert.doesNotMatch(shell, /storage_key/);
+  assert.doesNotMatch(shell, /routing_number/);
+  assert.doesNotMatch(shell, /tax_id/);
+
+  assert.match(readinessDoc, /full TIN/);
+  assert.match(readinessDoc, /raw storage keys/);
+  assert.match(readinessDoc, /customer rates/);
+  assert.match(readinessDoc, /Sync margin/);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
