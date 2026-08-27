@@ -1043,18 +1043,8 @@ function onboardingStepGroups(steps: GroupedOnboardingStep[]) {
 }
 
 function OnboardingStatusBadge({ status }: { status: string }) {
-  const label = onboardingStatusLabel(status);
+  const label = partnerReadinessStatusLabel(status);
   return <span className={`partner-status-pill ${statusClass(label)}`} aria-label={`Status: ${label}`}>{label}</span>;
-}
-
-function onboardingStatusLabel(status: string) {
-  const value = status.toLowerCase();
-  if (/complete|verified|active|approved|executed|ready/.test(value)) return "Complete";
-  if (/under[_ ]?review|review/.test(value)) return "Under Review";
-  if (/submitted|issued|pending/.test(value)) return "Submitted";
-  if (/returned|rejected|blocked|missing|required|incomplete/.test(value)) return "Action Required";
-  if (/locked|not authorized/.test(value)) return "Locked";
-  return "Not Started";
 }
 
 function crewReadinessStatus(data: PortalData) {
@@ -1316,36 +1306,137 @@ function workDateLabel(value?: string, timezone?: string) {
 }
 
 function statusLabel(value?: unknown) {
-  const raw = str(value).trim();
-  if (!raw) return "Not Started";
-  const normalized = raw.toLowerCase().replace(/[_-]+/g, " ");
-  const specific: Record<string, string> = {
-    active: "Active",
-    accepted: "Accepted",
-    assigned: "Assigned",
-    "awaiting customer funds": "Awaiting Customer Funds",
-    complete: "Complete",
-    completed: "Complete",
-    confirmed: "Paid",
-    "correction required": "Correction Required",
-    draft: "Draft",
-    eligible: "Eligible",
-    failed: "Failed",
-    "in progress": "In Progress",
-    "not authorized": "Not Authorized",
-    "not evaluated": "Not Evaluated",
-    "not ready": "Not Ready",
-    paid: "Paid",
-    "partially accepted": "Partially Accepted",
-    "payment processing": "Processing",
-    pending: "Pending",
-    processing: "Processing",
-    "qc pending": "QC Pending",
-    ready: "Ready",
-    submitted: "Submitted",
-    "under review": "Under Review",
-  };
-  return specific[normalized] ?? normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return partnerReadinessStatusLabel(value);
+}
+
+const partnerReadinessStatusLabels: Record<string, string> = {
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  submitted: "Submitted",
+  under_review: "Under Review",
+  action_required: "Action Required",
+  complete: "Complete",
+  completed: "Complete",
+  approved: "Approved",
+  conditional: "Conditional",
+  hold: "On Hold",
+  locked: "Locked",
+  expired: "Expired",
+  suspended: "Suspended",
+  unavailable: "Unavailable",
+  pending: "Pending",
+  active: "Active",
+  inactive: "Inactive",
+  accepted: "Accepted",
+  active_custody: "Active Custody",
+  approved_to_mobilize: "Approved To Mobilize",
+  assigned: "Assigned",
+  authorized: "Authorized",
+  awaiting_customer_funds: "Awaiting Customer Funds",
+  confirmed: "Paid",
+  correction_required: "Correction Required",
+  corrected: "Corrected",
+  conditionally_approved: "Conditionally Approved",
+  draft: "Draft",
+  effective: "Effective",
+  eligible: "Eligible",
+  failed: "Failed",
+  held: "On Hold",
+  on_hold: "On Hold",
+  not_authorized: "Not Authorized",
+  not_evaluated: "Not Evaluated",
+  not_issued: "Not Issued",
+  not_ready: "Not Ready",
+  paid: "Paid",
+  partially_accepted: "Partially Accepted",
+  payment_processing: "Processing",
+  processing: "Processing",
+  qc_pending: "QC Pending",
+  ready: "Ready",
+  ready_for_review: "Ready for Sync Review",
+  rejected: "Rejected",
+  returned: "Action Required",
+  revoked: "Revoked",
+  setup_required: "Setup Required",
+  some_crews_ready: "Some Crews Ready",
+  terminated: "Terminated",
+  voided: "Voided",
+  account_activated: "Not Started",
+  verified: "Complete",
+  executed: "Complete",
+  issued: "Submitted",
+  blocked: "Action Required",
+  crew_assigned: "Crew Assigned",
+  pending_assignment: "Pending Assignment",
+  selected: "Selected",
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  missing: "Action Required",
+  required: "Action Required",
+  incomplete: "Action Required",
+  see_production: "See Production",
+  see_qc: "See QC",
+};
+
+function partnerReadinessStatusLabel(value?: unknown) {
+  const code = str(value).trim().toLowerCase().replace(/[ -]+/g, "_");
+  return partnerReadinessStatusLabels[code] ?? "Status Unavailable";
+}
+
+const partnerBlockerLabels: Record<string, string> = {
+  COMPANY_PROFILE_INCOMPLETE: "Complete Company Profile",
+  COMPANY_PROFILE_UNDER_REVIEW: "Company Profile Under Sync Review",
+  W9_MISSING: "W-9 Required",
+  W9_UNDER_REVIEW: "W-9 Under Sync Review",
+  PAYMENT_PROFILE_INCOMPLETE: "Complete Payment Setup",
+  GENERAL_LIABILITY_MISSING: "General Liability Insurance Required",
+  AUTO_LIABILITY_MISSING: "Auto Liability Insurance Required",
+  WORKERS_COMP_MISSING: "Workers’ Compensation Required",
+  INSURANCE_MISSING: "Insurance Required",
+  INSURANCE_EXPIRED: "Insurance Expired",
+  INSURANCE_UNDER_REVIEW: "Insurance Under Sync Review",
+  NO_ACTIVE_WORKERS: "Active Workers Required",
+  WORKER_PROFILE_UNAPPROVED: "Worker Approval Required",
+  WORKER_CREDENTIAL_EXPIRED: "Worker Credential Required",
+  AGREEMENT_UNSIGNED: "Agreement Signature Required",
+  CREW_MISSING_FOREMAN: "Primary Foreman Required",
+  CREW_MISSING_WORKERS: "Additional Crew Members Required",
+  EQUIPMENT_INSPECTION_EXPIRED: "Equipment Inspection Required",
+  EQUIPMENT_MISSING: "Required Equipment Missing",
+  CREW_MISSING_CAPABILITY: "Crew Capability Required",
+  PARTNER_UNDER_REVIEW: "Under Sync Review",
+  PARTNER_ACTION_REQUIRED: "Action Required",
+  ONBOARDING_INCOMPLETE: "Complete Partner Onboarding",
+};
+
+function partnerBlockerLabel(value?: unknown) {
+  return partnerBlockerLabels[str(value).trim().toUpperCase()] ?? "Action Required";
+}
+
+const partnerDescriptorLabels: Record<string, string> = {
+  aerial: "Aerial",
+  alternate_foreman: "Alternate Foreman",
+  bucket_truck: "Bucket Truck",
+  commercial_auto: "Commercial Auto",
+  commercial_general_liability: "Commercial General Liability",
+  corporation: "Corporation",
+  driver_operator: "Driver / Operator",
+  employers_liability: "Employer’s Liability",
+  foreman: "Foreman",
+  llc: "LLC",
+  member: "Crew Member",
+  subcontractor: "Subcontractor",
+  umbrella_excess: "Umbrella / Excess",
+  workers_compensation: "Workers’ Compensation",
+};
+
+function partnerDescriptorLabel(value?: unknown) {
+  const text = str(value).trim();
+  if (!text) return "Not Available";
+  const code = text.toLowerCase().replace(/[ -]+/g, "_");
+  return partnerDescriptorLabels[code] ?? (/[_-]/.test(text) ? "Not Available" : text);
 }
 
 function actionCategoryLabel(category: DashboardActionCategory) {
@@ -1378,10 +1469,10 @@ function PerformanceSummaryInline({ summary }: { summary?: PartnerPerformanceSum
   return (
     <div className="dashboard-performance-row">
       <MetricTile label="Overall Score" value={summary.score === undefined ? "Not scored" : summary.score} />
-      <MetricTile label="Confidence" value={statusLabel(summary.confidence)} />
-      <MetricTile label="Trend" value={statusLabel(summary.trend)} />
+      <MetricTile label="Confidence" value={partnerDescriptorLabel(summary.confidence)} />
+      <MetricTile label="Trend" value={partnerDescriptorLabel(summary.trend)} />
       <MetricTile label="Open Signals" value={(summary.dimensions ?? []).filter((dimension) => Number(dimension.normalized_score ?? 100) < 70).length} />
-      <p className="partner-safe-text">{(summary.improvement_items ?? []).slice(0, 2).map(statusLabel).join(" · ") || "No Partner-safe improvement signal is currently published."}</p>
+      <p className="partner-safe-text">{(summary.improvement_items ?? []).slice(0, 2).map(str).filter(Boolean).join(" · ") || "No Partner-safe improvement signal is currently published."}</p>
     </div>
   );
 }
@@ -2327,8 +2418,8 @@ function PartnerSettlementsWorkspace({ data }: { data: PortalData }) {
             {settlements.flatMap((settlement) => settlement.items ?? []).map((item, index) => (
               <div className="partner-list-row static" key={`${str(item.production_code)}-${index}`}>
                 <span><strong>{str(item.production_code)}</strong><small>{quantityText(item.accepted_quantity, item.unit)} Customer Accepted</small></span>
-                <StatusPill label="Partner Rate" value={`${currency(item.partner_rate)} / ${str(item.unit)}`} />
-                <StatusPill label="Gross" value={currency(item.gross_partner_amount)} />
+                <StatusPill label="Partner Rate" value={`${currency(item.partner_rate)} / ${str(item.unit)}`} kind="text" />
+                <StatusPill label="Gross" value={currency(item.gross_partner_amount)} kind="text" />
               </div>
             ))}
           </div>
@@ -2366,7 +2457,7 @@ function PartnerPaymentsWorkspace({ data }: { data: PortalData }) {
               <div className="partner-list-row static" key={str(payment.id)}>
                 <span><strong>{currency(payment.amount)}</strong><small>{str(payment.provider_reference) || "Provider reference pending"}</small></span>
                 <StatusPill label="Status" value={str(payment.status)} />
-                <StatusPill label="Requested" value={shortTime(payment.requested_at)} />
+                <StatusPill label="Requested" value={shortTime(payment.requested_at)} kind="text" />
               </div>
             ))}
           </div>
@@ -2400,8 +2491,8 @@ function PartnerPerformanceWorkspace({ data }: { data: PortalData }) {
             {dimensions.map((dimension) => (
               <div className="partner-list-row static" key={str(dimension.dimension)}>
                 <span><strong>{partnerPerformanceLabel(dimension.dimension)}</strong><small>Sample {dimension.sample_size ?? 0}</small></span>
-                <StatusPill label="Score" value={String(dimension.normalized_score ?? 0)} />
-                <StatusPill label="Reason" value={partnerPerformanceLabel(dimension.reason_code)} />
+                <StatusPill label="Score" value={String(dimension.normalized_score ?? 0)} kind="text" />
+                <StatusPill label="Reason" value={partnerPerformanceLabel(dimension.reason_code)} kind="text" />
               </div>
             ))}
           </div>
@@ -2432,7 +2523,7 @@ function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
           <h3>{str(data.foremanWorkOrder?.work_order_number) || "Assigned Work Order"}</h3>
           <p>Customer decisions and correction instructions for your assigned Crew.</p>
         </div>
-        <StatusPill label="Open" value={String(openCorrections(reports).length)} />
+        <StatusPill label="Open" value={String(openCorrections(reports).length)} kind="text" />
       </section>
       <Panel title="Corrections Required" eyebrow="Customer QC relay">
         <CorrectionList reports={reports} field />
@@ -2541,7 +2632,7 @@ function CompanyWorkspace({ data, permissions }: { data: PortalData; permissions
       <StatusRows rows={[
         ["Legal Business Name", profile?.legalBusinessName ?? str(data.company?.legal_business_name)],
         ["DBA", (profile?.dbaName ?? str(data.company?.dba_name)) || "None"],
-        ["Entity Type", statusLabel(profile?.entityType ?? data.company?.entity_type)],
+        ["Entity Type", partnerDescriptorLabel(profile?.entityType ?? data.company?.entity_type)],
         ["State of Formation", profile?.stateOfFormation ?? str(data.company?.state_of_formation)],
         ["Business Contact", contactLine(profile?.primaryContact ?? data.company ?? {}, "primary")],
         ["Compliance Contact", contactLine(profile?.complianceContact ?? data.company ?? {}, "compliance")],
@@ -2580,7 +2671,7 @@ function ComplianceWorkspace({ data, permissions }: { data: PortalData; permissi
       <Panel title="Insurance" eyebrow="Structured policies">
         <div className="partner-card-grid">
           {policies.map((policy, index) => (
-            <RecordCard key={`${str(policy.type ?? policy.policy_type)}-${index}`} title={statusLabel(policy.type ?? policy.policy_type)} status={statusLabel(policy.status)}>
+            <RecordCard key={`${str(policy.type ?? policy.policy_type)}-${index}`} title={partnerDescriptorLabel(policy.type ?? policy.policy_type)} status={statusLabel(policy.status)}>
               <StatusRows rows={[
                 ["Carrier", str(policy.carrier)],
                 ["Effective", str(policy.effectiveDate ?? policy.effective_date)],
@@ -2830,7 +2921,7 @@ function VehiclesWorkspace({ data }: { data: PortalData }) {
         {readinessVehicles.length ? readinessVehicles.map((vehicle, index) => (
           <RecordCard key={`${str(vehicle.name)}-${index}`} title={str(vehicle.name) || "Equipment"} status={statusLabel(vehicle.status)}>
             <StatusRows rows={[
-              ["Type", statusLabel(vehicle.type)],
+              ["Type", partnerDescriptorLabel(vehicle.type)],
               ["Assigned Crew", str(vehicle.assignedCrew) || "None"],
               ["Availability", statusLabel(vehicle.availability)],
               ["Inspection", statusLabel(vehicle.inspectionStatus)],
@@ -2898,7 +2989,7 @@ function WorkersList({ workers, readinessWorkers }: { workers: Worker[]; readine
         {readinessWorkers.map((worker, index) => (
           <div className="partner-list-row static" key={`${str(worker.name)}-${index}`}>
             <Avatar name={str(worker.name) || "Worker"} status={str(worker.status)} />
-            <span><strong>{str(worker.name) || "Worker"}</strong><small>{statusLabel(worker.role)} · {statusLabel(worker.reviewStatus)}</small></span>
+            <span><strong>{str(worker.name) || "Worker"}</strong><small>{partnerDescriptorLabel(worker.role)} · {statusLabel(worker.reviewStatus)}</small></span>
             <StatusPill label="Readiness" value={str(worker.ready) === "true" ? "ready" : str(worker.credentialStatus) || str(worker.reviewStatus)} />
           </div>
         ))}
@@ -2911,7 +3002,7 @@ function WorkersList({ workers, readinessWorkers }: { workers: Worker[]; readine
       {workers.map((worker) => (
         <Link className="partner-list-row" key={str(worker.id)} href={`/partner/workers/${str(worker.id)}`}>
           <Avatar name={workerName(worker)} status={str(worker.status)} />
-          <span><strong>{workerName(worker)}</strong><small>{statusLabel(worker.worker_role) || "Worker"} · {statusLabel(worker.review_status ?? worker.status)}</small></span>
+          <span><strong>{workerName(worker)}</strong><small>{partnerDescriptorLabel(worker.worker_role)} · {statusLabel(worker.review_status ?? worker.status)}</small></span>
           <StatusPill label="Readiness" value={statusLabel(worker.review_status ?? worker.status)} />
         </Link>
       ))}
@@ -2927,12 +3018,12 @@ function CrewsList({ data }: { data: PortalData }) {
         {readinessCrews.map((crew, index) => (
           <RecordCard key={`${str(crew.name)}-${index}`} title={str(crew.name) || "Crew"} status={statusLabel(crew.status)}>
             <StatusRows rows={[
-              ["Type", statusLabel(crew.type)],
+              ["Type", partnerDescriptorLabel(crew.type)],
               ["Primary Foreman", str(crew.primaryForeman) || "Not assigned"],
               ["Workers", `${str(crew.workerCount) || "0"} of ${str(crew.targetStaffing) || "target"}`],
               ["Equipment", Array.isArray(crew.equipment) && crew.equipment.length ? crew.equipment.map(str).join(", ") : "Not assigned"],
               ["Availability", statusLabel(crew.availability)],
-              ["Missing", Array.isArray(crew.blockingReasons) && crew.blockingReasons.length ? crew.blockingReasons.map(statusLabel).join(", ") : "None"],
+              ["Missing", Array.isArray(crew.blockingReasons) && crew.blockingReasons.length ? crew.blockingReasons.map(partnerBlockerLabel).join(", ") : "None"],
             ]} />
           </RecordCard>
         ))}
@@ -2944,7 +3035,7 @@ function CrewsList({ data }: { data: PortalData }) {
     <div className="partner-card-grid">
       {(data.crews ?? []).map((crew) => (
         <RecordCard key={str(crew.id)} title={str(crew.name)} status={statusLabel(data.readinessByCrew?.[str(crew.id)]?.overall_status ?? crew.lifecycle_status)} href={`/partner/crews/${str(crew.id)}`}>
-          <StatusRows rows={[["Type", statusLabel(crew.crew_type)], ["Target Staffing", str(crew.target_staffing_level)], ["Active Staffing", String(data.rosterByCrew?.[str(crew.id)]?.length ?? 0)], ["Blockers", String(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0)]]} />
+          <StatusRows rows={[["Type", partnerDescriptorLabel(crew.crew_type)], ["Target Staffing", str(crew.target_staffing_level)], ["Active Staffing", String(data.rosterByCrew?.[str(crew.id)]?.length ?? 0)], ["Blockers", String(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0)]]} />
         </RecordCard>
       ))}
     </div>
@@ -2963,7 +3054,7 @@ function RosterList({ roster, foreman = false }: { roster: Worker[]; foreman?: b
       {roster.map((worker) => (
         <div className="partner-list-row static" key={str(worker.id)}>
           <Avatar name={workerName(worker)} status={str(worker.headshot_status) || str(worker.status)} />
-          <span><strong>{workerName(worker)}</strong><small>{str(worker.membership_role) || str(worker.worker_role)} · {str(worker.headshot_status) || "headshot pending"}</small></span>
+          <span><strong>{workerName(worker)}</strong><small>{str(worker.membership_role) || str(worker.worker_role)} · {statusLabel(worker.headshot_status ?? "pending")}</small></span>
           <StatusPill label={foreman ? "Safe status" : "Readiness"} value={str(worker.status) || str(worker.review_status)} />
         </div>
       ))}
@@ -2984,19 +3075,19 @@ function StatusRows({ rows }: { rows: Array<[string, string | undefined | null]>
   return <dl className="partner-status-rows">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "Not set"}</dd></div>)}</dl>;
 }
 
-function StatusPill({ label, value }: { label: string; value?: string | null }) {
-  const status = (value || "unknown").replace(/_/g, " ");
-  return <span className={`partner-status-pill ${statusClass(status)}`} aria-label={`${label}: ${status}`}>{status}</span>;
+function StatusPill({ label, value, kind = "status" }: { label: string; value?: string | null; kind?: "status" | "text" }) {
+  const presentation = kind === "status" ? partnerReadinessStatusLabel(value) : str(value).trim() || "Not Available";
+  return <span className={`partner-status-pill ${kind === "status" ? statusClass(presentation) : "neutral"}`} aria-label={`${label}: ${presentation}`}>{presentation}</span>;
 }
 
 function ActionList({ blockers }: { blockers: Array<Record<string, unknown>> }) {
   if (!blockers.length) return <p className="partner-safe-text">No Partner-facing blockers.</p>;
-  return <ul className="partner-action-list">{blockers.map((blocker, index) => <li key={`${str(blocker.code) || str(blocker.requirement_code) || str(blocker.key)}-${index}`}><strong>{str(blocker.label) || statusLabel(str(blocker.code) || str(blocker.requirement_code) || str(blocker.key)) || "Action Required"}</strong><span>{str(blocker.description) || str(blocker.external_detail) || str(blocker.message) || "Partner action is required."}</span></li>)}</ul>;
+  return <ul className="partner-action-list">{blockers.map((blocker, index) => <li key={`${str(blocker.code) || str(blocker.requirement_code) || str(blocker.key)}-${index}`}><strong>{str(blocker.label) || partnerBlockerLabel(blocker.code ?? blocker.requirement_code ?? blocker.key)}</strong><span>{str(blocker.description) || str(blocker.external_detail) || str(blocker.message) || "Partner action is required."}</span></li>)}</ul>;
 }
 
 function WarningsList({ warnings }: { warnings: Array<Record<string, unknown>> }) {
   if (!warnings.length) return null;
-  return <ul className="partner-warning-list">{warnings.map((warning, index) => <li key={`${str(warning.requirement_code)}-${index}`}>{str(warning.external_detail) || str(warning.requirement_code)}</li>)}</ul>;
+  return <ul className="partner-warning-list">{warnings.map((warning, index) => <li key={`${str(warning.requirement_code)}-${index}`}>{str(warning.external_detail) || partnerBlockerLabel(warning.requirement_code)}</li>)}</ul>;
 }
 
 function ActionPermission({ permission, permissions, label }: { permission: string; permissions: string[]; label: string }) {
@@ -3010,7 +3101,7 @@ function CapabilityRows({ readiness }: { readiness?: PartnerReadinessReadModel }
   return (
     <div className="readiness-inline-section" aria-label="Capabilities and territories">
       <StatusRows rows={[
-        ["Capabilities", capabilities.map((item) => statusLabel(item.capability)).filter(Boolean).join(", ") || "Not reported"],
+        ["Capabilities", capabilities.map((item) => partnerDescriptorLabel(item.capability)).filter(Boolean).join(", ") || "Not reported"],
         ["Territories", readiness?.territories?.join(", ") || "Not assigned"],
         ["Capacity Status", capabilities.map((item) => statusLabel(item.verification)).filter(Boolean)[0] || "Partner reported"],
       ]} />
@@ -3020,7 +3111,8 @@ function CapabilityRows({ readiness }: { readiness?: PartnerReadinessReadModel }
 
 function Avatar({ name, status }: { name: string; status?: string }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "W";
-  return <span className={`partner-avatar ${statusClass(status)}`} aria-label={`${name} headshot status ${status || "unknown"}`}>{initials}</span>;
+  const statusPresentation = partnerReadinessStatusLabel(status);
+  return <span className={`partner-avatar ${statusClass(statusPresentation)}`} aria-label={`${name} headshot status ${statusPresentation}`}>{initials}</span>;
 }
 
 function LoadingPortal({ product = "Partner Portal" }: { product?: string }) {
@@ -3112,7 +3204,7 @@ function personaLabel(persona?: Persona) {
 function externalBlockers(readiness?: Readiness | null, compliance?: ComplianceSummary, notice?: Notice | null) {
   const blockers = [...(readiness?.blockers ?? [])];
   for (const blocker of compliance?.blockers ?? []) blockers.push(blocker);
-  for (const category of compliance?.blocker_categories ?? []) blockers.push({ key: category, message: `${category.replace(/_/g, " ")} requires attention` });
+  for (const category of compliance?.blocker_categories ?? []) blockers.push({ key: category });
   const productionStartStatus = notice?.production_start?.authorization_status ?? notice?.production_start_status;
   if (!productionStartStatus || ["not_authorized", "held", "revoked"].includes(productionStartStatus)) blockers.push({ key: "production_start_not_authorized", message: "Production start is not yet authorized." });
   return blockers;

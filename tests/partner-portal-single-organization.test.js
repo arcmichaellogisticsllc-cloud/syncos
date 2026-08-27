@@ -162,9 +162,32 @@ test("Partner company readiness uses one server-derived read model without self-
   assert.match(shell, /data\.readiness\?\.vehiclesEquipment/);
   assert.match(shell, /Partner edits use the certified P3 submission workflow|Profile edits use the certified P3 submission workflow/);
   assert.match(shell, /Private file on record/);
-  assert.match(shell, /str\(blocker\.label\) \|\| statusLabel\(str\(blocker\.code\)/);
+  assert.match(shell, /action_required: "Action Required"/);
+  assert.match(shell, /partnerReadinessStatusLabels\[code\] \?\? "Status Unavailable"/);
+  const statusMapSource = shell.match(/const partnerReadinessStatusLabels: Record<string, string> = \{([\s\S]*?)\n\};/);
+  assert.ok(statusMapSource);
+  const statusEntries = Object.fromEntries([...statusMapSource[1].matchAll(/\b([a-z_]+): "([^"]+)"/g)].map((entry) => [entry[1], entry[2]]));
+  for (const [code, label] of Object.entries({ not_started: "Not Started", in_progress: "In Progress", submitted: "Submitted", under_review: "Under Review", action_required: "Action Required", complete: "Complete", completed: "Complete", approved: "Approved", conditional: "Conditional", hold: "On Hold", on_hold: "On Hold", locked: "Locked", expired: "Expired", suspended: "Suspended", unavailable: "Unavailable", pending: "Pending", active: "Active", inactive: "Inactive" })) {
+    assert.equal(statusEntries[code], label);
+    assert.equal(statusEntries[code.toUpperCase().toLowerCase()], label);
+  }
+  assert.equal(statusEntries.unexpected_internal_state ?? "Status Unavailable", "Status Unavailable");
+  assert.equal(statusEntries.foo_bar_private_status ?? "Status Unavailable", "Status Unavailable");
+  const reasonMapSource = shell.match(/const partnerBlockerLabels: Record<string, string> = \{([\s\S]*?)\n\};/);
+  assert.ok(reasonMapSource);
+  const reasonEntries = Object.fromEntries([...reasonMapSource[1].matchAll(/\b([A-Z0-9_]+): "([^"]+)"/g)].map((entry) => [entry[1], entry[2]]));
+  for (const [code, label] of Object.entries({ COMPANY_PROFILE_INCOMPLETE: "Complete Company Profile", W9_MISSING: "W-9 Required", PAYMENT_PROFILE_INCOMPLETE: "Complete Payment Setup", GENERAL_LIABILITY_MISSING: "General Liability Insurance Required", AUTO_LIABILITY_MISSING: "Auto Liability Insurance Required", WORKERS_COMP_MISSING: "Workers’ Compensation Required", INSURANCE_EXPIRED: "Insurance Expired", AGREEMENT_UNSIGNED: "Agreement Signature Required", CREW_MISSING_FOREMAN: "Primary Foreman Required", CREW_MISSING_WORKERS: "Additional Crew Members Required", CREW_MISSING_CAPABILITY: "Crew Capability Required", EQUIPMENT_MISSING: "Required Equipment Missing", WORKER_CREDENTIAL_EXPIRED: "Worker Credential Required" })) {
+    assert.equal(reasonEntries[code], label);
+  }
+  assert.equal(reasonEntries.UNKNOWN_PRIVATE_BLOCKER ?? "Action Required", "Action Required");
+  assert.match(shell, /str\(blocker\.label\) \|\| partnerBlockerLabel/);
   assert.match(shell, /str\(blocker\.description\) \|\| str\(blocker\.external_detail\)/);
   assert.doesNotMatch(shell, /\|\| "action_required"/);
+  assert.doesNotMatch(shell, /partnerBlockerLabel[^}]+statusLabel/s);
+  assert.doesNotMatch(shell, /const status = \(value \|\| "unknown"\)\.replace\(\/_\/g/);
+  assert.match(shell, /aria-label=\{`\$\{label\}: \$\{presentation\}`\}/);
+  assert.match(shell, /const statusPresentation = partnerReadinessStatusLabel\(status\)/);
+  assert.doesNotMatch(shell, /\$\{category\.replace\(\/_\/g, " "\)\} requires attention/);
   assert.doesNotMatch(shell, /organization_id=\$\{/);
   assert.doesNotMatch(shell, /Select Partner/);
 
@@ -183,8 +206,8 @@ test("Partner company readiness keeps raw identifiers and private file data out 
 
   assert.match(shell, /title=\{str\(vehicle\.equipment_name\) \|\| "Equipment"\}/);
   assert.match(shell, /title=\{str\(workOrder\.work_order_number\) \|\| "Work Order"\}/);
-  assert.match(shell, /statusLabel\(worker\.worker_role\)/);
-  assert.match(shell, /statusLabel\(crew\.type\)/);
+  assert.match(shell, /partnerDescriptorLabel\(worker\.worker_role\)/);
+  assert.match(shell, /partnerDescriptorLabel\(crew\.type\)/);
   assert.match(shell, /CapabilityRows/);
   assert.match(dashboardController, /No SyncField login created by Worker record/);
   assert.doesNotMatch(shell, /title=\{str\(vehicle\.equipment_name\) \|\| str\(vehicle\.equipment_id\)\}/);
