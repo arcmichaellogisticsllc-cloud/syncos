@@ -23,7 +23,7 @@ test("Partner onboarding shows ordered readiness gates without partner-side appr
   assert.match(shell, /Crew Ready/);
   assert.match(shell, /Project Mobilization/);
   assert.match(shell, /Approval remains locked until required gates are complete/);
-  assert.match(shell, /onboardingStatusLabel/);
+  assert.match(shell, /partnerReadinessStatusLabel/);
   assert.doesNotMatch(shell, /Approve my company/i);
 });
 
@@ -70,7 +70,8 @@ test("Partner onboarding presentation protects against raw enums and IDs", () =>
   const shell = read("apps/web/app/partner/partner-shell.tsx");
 
   assert.match(shell, /OnboardingStatusBadge/);
-  assert.match(shell, /onboardingStatusLabel/);
+  assert.match(shell, /partnerReadinessStatusLabel/);
+  assert.match(shell, /partnerReadinessStatusLabels\[code\] \?\? "Status Unavailable"/);
   assert.doesNotMatch(shell, /organization_id/);
   assert.doesNotMatch(shell, /MOBILIZATION_LOCKED/);
   assert.doesNotMatch(shell, /INTERNAL_REVIEW_PENDING/);
