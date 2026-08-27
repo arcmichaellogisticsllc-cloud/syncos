@@ -1333,8 +1333,10 @@ const partnerReadinessStatusLabels: Record<string, string> = {
   assigned: "Assigned",
   authorized: "Authorized",
   awaiting_customer_funds: "Awaiting Customer Funds",
+  awaiting_customer_reinspection: "Awaiting Customer Reinspection",
   confirmed: "Paid",
   correction_required: "Correction Required",
+  customer_correction_required: "Customer Correction Required",
   corrected: "Corrected",
   conditionally_approved: "Conditionally Approved",
   draft: "Draft",
@@ -1343,6 +1345,7 @@ const partnerReadinessStatusLabels: Record<string, string> = {
   failed: "Failed",
   held: "On Hold",
   on_hold: "On Hold",
+  open: "Open",
   not_authorized: "Not Authorized",
   not_evaluated: "Not Evaluated",
   not_issued: "Not Issued",
@@ -1409,6 +1412,7 @@ const partnerBlockerLabels: Record<string, string> = {
   PARTNER_UNDER_REVIEW: "Under Sync Review",
   PARTNER_ACTION_REQUIRED: "Action Required",
   ONBOARDING_INCOMPLETE: "Complete Partner Onboarding",
+  INSUFFICIENT_SCHEDULE_DATA: "Schedule Information Unavailable",
 };
 
 function partnerBlockerLabel(value?: unknown) {
@@ -1419,6 +1423,8 @@ const partnerDescriptorLabels: Record<string, string> = {
   aerial: "Aerial",
   alternate_foreman: "Alternate Foreman",
   bucket_truck: "Bucket Truck",
+  express_splice: "Express Splice",
+  front_easement: "Front Easement",
   commercial_auto: "Commercial Auto",
   commercial_general_liability: "Commercial General Liability",
   corporation: "Corporation",
@@ -1427,6 +1433,8 @@ const partnerDescriptorLabels: Record<string, string> = {
   foreman: "Foreman",
   llc: "LLC",
   member: "Crew Member",
+  other: "Other",
+  rear_easement: "Rear Easement",
   subcontractor: "Subcontractor",
   umbrella_excess: "Umbrella / Excess",
   workers_compensation: "Workers’ Compensation",
@@ -1437,6 +1445,16 @@ function partnerDescriptorLabel(value?: unknown) {
   if (!text) return "Not Available";
   const code = text.toLowerCase().replace(/[ -]+/g, "_");
   return partnerDescriptorLabels[code] ?? (/[_-]/.test(text) ? "Not Available" : text);
+}
+
+const partnerFieldLabels: Record<string, string> = {
+  asset_identifier: "Asset Identifier",
+  notes: "Notes",
+};
+
+function partnerFieldLabel(value?: unknown) {
+  const code = str(value).trim().toLowerCase();
+  return partnerFieldLabels[code] ?? "Details";
 }
 
 function actionCategoryLabel(category: DashboardActionCategory) {
@@ -1866,7 +1884,7 @@ function ChecklistGrid({ options, values, onToggle }: { options: ChecklistOption
 
 function jsaLabel(value: string) {
   const options: ChecklistOption[] = [...jsaScopeOptions, ...jsaHazardOptions, ...jsaControlGroups.flatMap((group) => group.options)];
-  return options.find(([optionValue]) => optionValue === value)?.[1] ?? str(value).replace(/_/g, " ");
+  return options.find(([optionValue]) => optionValue === value)?.[1] ?? "Safety Item";
 }
 
 function AdminJsaWorkspace({ data }: { data: PortalData }) {
@@ -2238,7 +2256,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
         <div className="field-construction-list" aria-label="Coil and slack evidence">
           {coilObservations.slice(0, 4).map((coil) => (
             <div className="field-construction-list-item coil" key={coil.id}>
-              <span>{str(coil.coil_type).replace(/_/g, " ")}</span>
+              <span>{partnerDescriptorLabel(coil.coil_type)}</span>
               <strong>{coil.asset_identifier || "Asset"} · actual {quantityText(coil.actual_length_ft, "FT")}</strong>
             </div>
           ))}
@@ -2263,8 +2281,8 @@ function ReviewDayWorkspace({ data }: { data: PortalData }) {
     <div className="partner-stack">
       <Panel title="Review & Submit" eyebrow={report?.work_date || "Today"}>
         <StatusRows rows={[
-          ["Report", report?.status ?? "not_started"],
-          ["Daily JSA", data.jsaToday?.status ?? "required"],
+          ["Report", statusLabel(report?.status ?? "not_started")],
+          ["Daily JSA", statusLabel(data.jsaToday?.status ?? "required")],
           ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
           ["Record Count", String(report?.totals?.record_count ?? 0)],
           ["Map Annotation Count", String(report?.annotation_count ?? 0)],
@@ -2314,8 +2332,8 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
           <MetricTile label="Blocked / Rework" value={dashboard?.headline?.blocked_rework ?? 0} />
         </div>
         <StatusRows rows={[
-          ["Closeout", str(dashboard?.closeout?.status) || "in_progress"],
-          ["Missing Reports", str(dashboard?.missing_reports?.status) || "insufficient_schedule_data"],
+          ["Closeout", statusLabel(dashboard?.closeout?.status ?? "in_progress")],
+          ["Missing Reports", partnerBlockerLabel(dashboard?.missing_reports?.status ?? "insufficient_schedule_data")],
           ["Artifacts", str(dashboard?.closeout?.artifact_count) || "0"],
           ["Recorded Coil / Slack", quantityText(dashboard?.headline?.recorded_coil_slack_ft ?? 0, "FT")],
           ["Coil Commercial Treatment", str(dashboard?.headline?.coil_commercial_treatment) || "not configured"],
@@ -2327,7 +2345,7 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
       <Panel title="Daily Production" eyebrow="Submitted reports">
         <div className="partner-card-grid">
           {(dashboard?.recent_reports ?? data.productionReports ?? []).map((report) => (
-            <RecordCard key={str(report.id)} title={str(report.work_date) || "Work date"} status={str(report.customer_qc_outcome ?? report.status)}>
+            <RecordCard key={str(report.id)} title={str(report.work_date) || "Work date"} status={statusLabel(report.customer_qc_outcome ?? report.status)}>
               <StatusRows rows={[["Work Order", str(report.work_order_number ?? report.work_order_version_id)], ["Submitted", str(report.submitted_at) || "Not submitted"], ["Revision", str(report.revision_number) || "1"], ["Customer Accepted", quantityText(report.customer_accepted_quantity, "")]]} />
             </RecordCard>
           ))}
@@ -2370,14 +2388,14 @@ function CustomerQcWorkspace({ data }: { data: PortalData }) {
       <Panel title="Customer QC" eyebrow="Customer authority decisions">
         <div className="partner-card-grid">
           {reports.map((report) => (
-            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_order_number || "Work Order"} · ${report.work_date || "Work date"}`} status={report.report_outcome}>
+            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_order_number || "Work Order"} · ${report.work_date || "Work date"}`} status={statusLabel(report.report_outcome)}>
               <StatusRows rows={[
                 ["Crew", report.crew_name],
-                ["Completeness", report.completeness_status],
+                ["Completeness", statusLabel(report.completeness_status)],
                 ["Submitted Revision", str(report.revision_number)],
-                ["Customer Outcome", report.report_outcome],
+                ["Customer Outcome", statusLabel(report.report_outcome)],
                 ["QC Authority", report.qc_authority_name || "Not assigned"],
-                ["Decision", report.decision?.decision || "Pending"],
+                ["Decision", statusLabel(report.decision?.decision ?? "pending")],
                 ["Accepted Quantity", report.decision?.customer_accepted_quantity === null || report.decision?.customer_accepted_quantity === undefined ? "Not set" : `${report.decision.customer_accepted_quantity} ${report.decision.unit_of_measure ?? ""}`],
               ]} />
             </RecordCard>
@@ -2509,8 +2527,23 @@ function PartnerPerformanceWorkspace({ data }: { data: PortalData }) {
   );
 }
 
+const partnerPerformanceLabels: Record<string, string> = {
+  available_low_confidence: "Available — Low Confidence",
+  customer_acceptance: "Customer Acceptance",
+  documentation: "Documentation",
+  low: "Low",
+  medium: "Medium",
+  production: "Production",
+  quality: "Quality",
+  suspend_review: "Suspension Review",
+  workmanship: "Workmanship",
+};
+
 function partnerPerformanceLabel(value: unknown) {
-  return str(value).replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "None";
+  const text = str(value).trim();
+  if (!text) return "None";
+  const code = text.toLowerCase();
+  return partnerPerformanceLabels[code] ?? (/[_-]/.test(text) ? "Performance Unavailable" : text);
 }
 
 function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
@@ -2531,13 +2564,13 @@ function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
       <Panel title="Customer QC Status" eyebrow="Own Crew">
         <div className="partner-card-grid">
           {reports.map((report) => (
-            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_date || "Work date"} · Rev ${report.revision_number ?? 1}`} status={report.report_outcome}>
+            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_date || "Work date"} · Rev ${report.revision_number ?? 1}`} status={statusLabel(report.report_outcome)}>
               <StatusRows rows={[
                 ["Work Order", report.work_order_number],
-                ["Completeness", report.completeness_status],
-                ["Customer Outcome", report.report_outcome],
+                ["Completeness", statusLabel(report.completeness_status)],
+                ["Customer Outcome", statusLabel(report.report_outcome)],
                 ["QC Authority", report.qc_authority_name || "Not assigned"],
-                ["Decision", report.decision?.decision || "Pending"],
+                ["Decision", statusLabel(report.decision?.decision ?? "pending")],
               ]} />
             </RecordCard>
           ))}
@@ -2554,7 +2587,7 @@ function CorrectionList({ reports, field = false }: { reports: CustomerQcItem[];
   return (
     <div className="partner-card-grid">
       {corrections.map(({ report, correction }) => (
-        <RecordCard key={correction.id} title={`${report.work_order_number || "Work Order"} · ${correction.correction_type || "Correction"}`} status={correction.status}>
+        <RecordCard key={correction.id} title={`${report.work_order_number || "Work Order"} · ${partnerFieldLabel(correction.correction_type)}`} status={statusLabel(correction.status)}>
           <StatusRows rows={[
             ["Work Date", report.work_date],
             ["QC Cycle", report.cycle_number === undefined || report.cycle_number === null ? "Current" : `Cycle ${report.cycle_number}`],
@@ -2562,7 +2595,7 @@ function CorrectionList({ reports, field = false }: { reports: CustomerQcItem[];
             ["Production", report.decision?.description || report.decision?.code],
             ["Reported Quantity", report.decision?.reported_quantity === undefined ? "Not set" : `${report.decision.reported_quantity} ${report.decision.unit_of_measure ?? ""}`],
             ["Customer Instruction", correction.partner_safe_instructions || correction.customer_reason],
-            ["Allowed Fields", (correction.allowed_fields ?? []).join(", ") || "Correction scope required"],
+            ["Allowed Fields", (correction.allowed_fields ?? []).map(partnerFieldLabel).join(", ") || "Correction scope required"],
             ["Due", correction.due_date || "Not set"],
           ]} />
           {field ? <p className="partner-safe-text">Save Correction and Resubmit Correction are server-controlled P10 actions. Customer acceptance fields are not editable by Partner users.</p> : null}

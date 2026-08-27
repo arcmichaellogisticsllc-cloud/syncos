@@ -508,7 +508,8 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await page.setViewportSize({ width: 390, height: 860 });
     await page.goto("/syncfield/production/review");
     await expect(page.getByRole("heading", { name: "Review & Submit" })).toBeVisible();
-    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Submit Daily Production" })).toBeDisabled();
     await expect(page.getByText("Customer QC")).toHaveCount(0);
     await expect(page.getByText("accepted quantity")).toHaveCount(0);
@@ -546,7 +547,12 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner/production");
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
-    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("In Progress", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Schedule Information Unavailable", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("in_progress", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("insufficient_schedule_data", { exact: true })).toHaveCount(0);
     await expect(page.getByText("contractor_rate")).toHaveCount(0);
     await expect(page.getByText("storage_key")).toHaveCount(0);
 

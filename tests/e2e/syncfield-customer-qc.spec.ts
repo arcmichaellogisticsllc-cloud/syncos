@@ -190,7 +190,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await page.setViewportSize({ width: 390, height: 860 });
     await page.goto("/syncfield/production/review");
     await expect(page.getByRole("heading", { name: "Review & Submit" })).toBeVisible();
-    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Submit Daily Production" })).toBeDisabled();
     await expect(page.getByText("Customer QC")).toHaveCount(0);
     await expect(page.getByText("accepted quantity")).toHaveCount(0);
@@ -276,7 +277,12 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner/customer-qc");
     await expect(page.locator("h2").filter({ hasText: "QC & Corrections" })).toBeVisible();
-    await expect(page.getByText("customer correction required").first()).toBeVisible();
+    await expect(page.getByText("Customer Correction Required", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Correction Required", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Asset Identifier/ }).first()).toBeVisible();
+    await expect(page.getByText("customer_correction_required", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("correction_required", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("asset_identifier", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Customer Accepted", { exact: false })).toHaveCount(0);
     await expect(page.getByText("approved by Sync", { exact: false })).toHaveCount(0);
 
@@ -318,7 +324,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.goto("/partner/corrections");
     await expect(page.locator("h2").filter({ hasText: "Corrections" })).toBeVisible();
-    await expect(page.getByText("awaiting customer reinspection")).toBeVisible();
+    await expect(page.getByText("Awaiting Customer Reinspection", { exact: true })).toBeVisible();
+    await expect(page.getByText("awaiting_customer_reinspection", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Partner Rate")).toHaveCount(0);
     await expect(page.getByText("storage_key")).toHaveCount(0);
     expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 6 });
@@ -356,7 +363,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await installSession(page, seeded.adminToken, seeded.adminPermissions);
     await page.goto("/partner/production");
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible();
-    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true })).toHaveCount(0);
     await expect(page.getByText("contractor_rate")).toHaveCount(0);
     await expect(page.getByText("storage_key")).toHaveCount(0);
 
