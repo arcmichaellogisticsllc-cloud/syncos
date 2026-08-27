@@ -2991,7 +2991,7 @@ function StatusPill({ label, value }: { label: string; value?: string | null }) 
 
 function ActionList({ blockers }: { blockers: Array<Record<string, unknown>> }) {
   if (!blockers.length) return <p className="partner-safe-text">No Partner-facing blockers.</p>;
-  return <ul className="partner-action-list">{blockers.map((blocker, index) => <li key={`${str(blocker.requirement_code) || str(blocker.key)}-${index}`}><strong>{str(blocker.requirement_code) || str(blocker.key) || "action_required"}</strong><span>{str(blocker.external_detail) || str(blocker.message) || "Partner action is required."}</span></li>)}</ul>;
+  return <ul className="partner-action-list">{blockers.map((blocker, index) => <li key={`${str(blocker.code) || str(blocker.requirement_code) || str(blocker.key)}-${index}`}><strong>{str(blocker.label) || statusLabel(str(blocker.code) || str(blocker.requirement_code) || str(blocker.key)) || "Action Required"}</strong><span>{str(blocker.description) || str(blocker.external_detail) || str(blocker.message) || "Partner action is required."}</span></li>)}</ul>;
 }
 
 function WarningsList({ warnings }: { warnings: Array<Record<string, unknown>> }) {

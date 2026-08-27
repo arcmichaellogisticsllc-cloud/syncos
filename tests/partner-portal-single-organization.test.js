@@ -162,6 +162,9 @@ test("Partner company readiness uses one server-derived read model without self-
   assert.match(shell, /data\.readiness\?\.vehiclesEquipment/);
   assert.match(shell, /Partner edits use the certified P3 submission workflow|Profile edits use the certified P3 submission workflow/);
   assert.match(shell, /Private file on record/);
+  assert.match(shell, /str\(blocker\.label\) \|\| statusLabel\(str\(blocker\.code\)/);
+  assert.match(shell, /str\(blocker\.description\) \|\| str\(blocker\.external_detail\)/);
+  assert.doesNotMatch(shell, /\|\| "action_required"/);
   assert.doesNotMatch(shell, /organization_id=\$\{/);
   assert.doesNotMatch(shell, /Select Partner/);
 
