@@ -1381,6 +1381,14 @@ const partnerReadinessStatusLabels: Record<string, string> = {
   incomplete: "Action Required",
   see_production: "See Production",
   see_qc: "See QC",
+  synced: "Synced",
+  review_required: "Review Required",
+  within_tolerance: "Within Tolerance",
+  within_expectation: "Within Expectation",
+  variance: "Variance",
+  not_applicable: "Not Applicable",
+  draft_editable: "Draft — Editable",
+  read_only_submitted: "Submitted — Read Only",
 };
 
 function partnerReadinessStatusLabel(value?: unknown) {
@@ -1417,6 +1425,10 @@ const partnerBlockerLabels: Record<string, string> = {
 
 function partnerBlockerLabel(value?: unknown) {
   return partnerBlockerLabels[str(value).trim().toUpperCase()] ?? "Action Required";
+}
+
+function partnerReasonListLabel(values: string[]) {
+  return values.map(partnerBlockerLabel).join(", ");
 }
 
 const partnerDescriptorLabels: Record<string, string> = {
@@ -1512,15 +1524,15 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
       <div className="partner-dashboard-grid">
         <Panel title="Start Instructions" eyebrow="Notice to Proceed">
           <StatusRows rows={[
-            ["Mobilization", data.mobilization?.decision?.decision ?? "pending"],
-            ["Notice", notice?.status ?? "not_issued"],
+            ["Mobilization", statusLabel(data.mobilization?.decision?.decision ?? "pending")],
+            ["Notice", statusLabel(notice?.status ?? "not_issued")],
             ["Start Date", notice?.production_start_date ?? notice?.production_start?.start_date ?? "Not authorized"],
             ["Start Time", notice?.production_start_time ?? notice?.production_start?.start_time ?? "Not authorized"],
             ["Timezone", notice?.timezone ?? notice?.production_start?.timezone ?? "Not set"],
             ["Map Package", notice?.initial_map_work_package_ref ?? str(data.foremanWorkOrder?.map_work_package_ref) ?? "Not issued"],
             ["Initial Work Area", notice?.initial_work_area ?? "Not assigned"],
             ["Map Version", map?.name ? `${map.name} Rev ${map.revision_number ?? "0"}` : "Not assigned"],
-            ["Daily JSA", jsa?.status === "completed" ? `complete - ${shortTime(jsa.meeting_completed_at)}` : "required"],
+            ["Daily JSA", jsa?.status === "completed" ? `Complete — ${shortTime(jsa.meeting_completed_at)}` : "Required"],
           ]} />
           <p className="partner-safe-text">{notice?.external_instructions || "Use the authorized start instructions when issued. Production remains blocked until the day is ready for field submission."}</p>
           {notice?.id ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
@@ -1531,12 +1543,12 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
           </div>
         </Panel>
         <Panel title="Crew" eyebrow={str(data.foremanCrew?.name)}>
-          <StatusRows rows={[["Crew Readiness", data.mobilization?.overall_status ?? "not_evaluated"], ["Roster", `${data.foremanRoster?.length ?? 0} active Workers`]]} />
+          <StatusRows rows={[["Crew Readiness", statusLabel(data.mobilization?.overall_status ?? "not_evaluated")], ["Roster", `${data.foremanRoster?.length ?? 0} active Workers`]]} />
           <RosterList roster={data.foremanRoster ?? []} foreman />
         </Panel>
         <Panel title="Workload" eyebrow="Assigned work package">
           <StatusRows rows={[
-            ["Work Order", str(data.foremanWorkOrder?.work_order_id) || "Not assigned"],
+            ["Work Order", str(data.foremanWorkOrder?.work_order_number) || "Not assigned"],
             ["Customer", str(data.foremanWorkOrder?.customer_name) || "Not shown"],
             ["Vehicle", vehicleLabel(data.foremanWorkOrder?.vehicle as Record<string, unknown> | undefined)],
             ["Operator", "Use assigned vehicle authorization"],
@@ -2130,11 +2142,11 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
     <div className="partner-stack">
       <Panel title="Daily Production" eyebrow={report?.work_date || "Today"}>
         <StatusRows rows={[
-          ["Report", report?.status ?? "not_started"],
-          ["Gate", blockers.length ? blockers.join(", ") : "ready"],
-          ["Sync", queue.label],
+          ["Report", statusLabel(report?.status ?? "not_started")],
+          ["Gate", blockers.length ? partnerReasonListLabel(blockers) : "Ready"],
+          ["Sync", statusLabel(queue.label)],
           ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
-          ["Daily JSA", data.jsaToday?.status ?? "required"],
+          ["Daily JSA", statusLabel(data.jsaToday?.status ?? "required")],
         ]} />
         {error ? <p className="partner-safe-text error-text">{error}</p> : null}
         {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
@@ -2158,7 +2170,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
           <StatusRows rows={[
             ["Calculated Footage", quantityText(sequenceCalc.calculated, "FT")],
             ["Variance", quantityText(sequenceCalc.variance, "FT")],
-            ["Review", sequenceCalc.status],
+            ["Review", statusLabel(sequenceCalc.status)],
           ]} />
           <button className="partner-button primary wide-touch" type="submit">Save Fiber Span</button>
         </form>
@@ -2235,7 +2247,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
             ["Input / Output Tick", selectedCoilAsset ? `${selectedCoilAsset.input_tick ?? "not set"} / ${selectedCoilAsset.output_tick ?? "not set"}` : "Create pole observation first"],
             ["Tick Difference", selectedCoilAsset?.tick_difference === null || selectedCoilAsset?.tick_difference === undefined ? "unknown" : quantityText(selectedCoilAsset.tick_difference, "FT")],
             ["Coil Variance", quantityText(coilVariance.variance, "FT")],
-            ["Variance Status", coilVariance.status],
+            ["Variance Status", statusLabel(coilVariance.status)],
             ["Commercial Treatment", "not configured"],
           ]} />
           <button className="partner-button primary wide-touch" type="submit" disabled={!selectedCoilAsset?.id}>Save Coil / Slack</button>
@@ -2619,8 +2631,8 @@ function ProductionList({ records }: { records: ProductionRecord[] }) {
             ["Reel / Cable", record.reel_cable_id || ""],
             ["Fiber Sequence", fiberSequenceText(record)],
             ["Sequence Variance", record.sequence_reported_variance === null || record.sequence_reported_variance === undefined ? "" : quantityText(record.sequence_reported_variance, "FT")],
-            ["Sequence Review", record.sequence_variance_status],
-            ["Record", record.locked ? "read_only_submitted" : "draft_editable"],
+            ["Sequence Review", statusLabel(record.sequence_variance_status)],
+            ["Record", statusLabel(record.locked ? "read_only_submitted" : "draft_editable")],
           ]} />
         </RecordCard>
       ))}
