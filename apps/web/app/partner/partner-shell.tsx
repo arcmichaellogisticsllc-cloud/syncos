@@ -2144,7 +2144,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
         <StatusRows rows={[
           ["Report", statusLabel(report?.status ?? "not_started")],
           ["Gate", blockers.length ? partnerReasonListLabel(blockers) : "Ready"],
-          ["Sync", statusLabel(queue.label)],
+          ["Sync", queue.label],
           ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
           ["Daily JSA", statusLabel(data.jsaToday?.status ?? "required")],
         ]} />
