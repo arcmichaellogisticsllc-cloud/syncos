@@ -108,7 +108,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByRole("heading", { name: "Readiness" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { name: "Approval to Mobilize" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Production Start" })).toBeVisible();
-    await expect(page.getByText("Approved To Mobilize")).toBeVisible();
+    await expect(page.getByText("Approved to Mobilize")).toBeVisible();
     await expect(page.getByText("approved_to_mobilize")).toHaveCount(0);
     await page.getByRole("button", { name: "Acknowledge Notice" }).first().click();
     await expect(page.getByText("Notice acknowledgment recorded as receipt only.")).toBeVisible();

@@ -1329,7 +1329,7 @@ const partnerReadinessStatusLabels: Record<string, string> = {
   inactive: "Inactive",
   accepted: "Accepted",
   active_custody: "Active Custody",
-  approved_to_mobilize: "Approved To Mobilize",
+  approved_to_mobilize: "Approved to Mobilize",
   assigned: "Assigned",
   authorized: "Authorized",
   awaiting_customer_funds: "Awaiting Customer Funds",
@@ -2317,7 +2317,7 @@ function ReviewDayWorkspace({ data }: { data: PortalData }) {
       <Panel title="Production History" eyebrow="Own Crew">
         <div className="partner-card-grid">
           {(data.productionHistory?.reports ?? []).map((history) => (
-            <RecordCard key={str(history.id)} title={`${str(history.work_date) || "Work date"} · ${str(history.work_order_number) || "Work Order"}`} status={str(history.customer_qc_outcome)}>
+            <RecordCard key={str(history.id)} title={`${str(history.work_date) || "Work date"} · ${str(history.work_order_number) || "Work Order"}`} status={statusLabel(history.customer_qc_outcome)}>
               <StatusRows rows={[
                 ["Reported", quantityText(history.reported_quantity, "")],
                 ["Customer Accepted", quantityText(history.customer_accepted_quantity, "")],
@@ -2358,7 +2358,7 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
         <div className="partner-card-grid">
           {(dashboard?.recent_reports ?? data.productionReports ?? []).map((report) => (
             <RecordCard key={str(report.id)} title={str(report.work_date) || "Work date"} status={statusLabel(report.customer_qc_outcome ?? report.status)}>
-              <StatusRows rows={[["Work Order", str(report.work_order_number ?? report.work_order_version_id)], ["Submitted", str(report.submitted_at) || "Not submitted"], ["Revision", str(report.revision_number) || "1"], ["Customer Accepted", quantityText(report.customer_accepted_quantity, "")]]} />
+              <StatusRows rows={[["Work Order", str(report.work_order_number) || "Work Order Unavailable"], ["Submitted", str(report.submitted_at) || "Not submitted"], ["Revision", str(report.revision_number) || "1"], ["Customer Accepted", quantityText(report.customer_accepted_quantity, "")]]} />
             </RecordCard>
           ))}
         </div>
