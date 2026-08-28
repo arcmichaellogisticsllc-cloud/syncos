@@ -132,7 +132,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     try {
       await context.setOffline(false);
       await page.evaluate(() => window.dispatchEvent(new Event("online")));
-      await expect(page.getByText("sync failed")).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("Sync Failed")).toBeVisible({ timeout: 15000 });
       await expect(page.getByText("Production start is no longer authorized. Local changes were not applied.")).toBeVisible();
       const after = await productionCountsForReport(client, seeded.tenantA, reportId);
       expect(after).toEqual(before);
@@ -525,7 +525,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    await expect(page.getByText("sync failed")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Sync Failed")).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("REPORT ALREADY SUBMITTED - LOCAL CHANGES NOT APPLIED")).toBeVisible();
     expect(await productionCountsForReport(client, seeded.tenantA, reportId)).toEqual(before);
   });
