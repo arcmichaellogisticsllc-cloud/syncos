@@ -3470,13 +3470,13 @@ function useFieldProductionQueue(data: PortalData) {
 
 function syncLabel(mutations: OfflineMutation[], online: boolean) {
   const failed = mutations.filter((mutation) => mutation.status === "FAILED" || mutation.status === "CONFLICT").length;
-  if (failed) return "sync failed";
+  if (failed) return "Sync Failed";
   const syncing = mutations.filter((mutation) => mutation.status === "SYNCING").length;
-  if (syncing) return "syncing";
+  if (syncing) return "Syncing";
   const pending = mutations.filter((mutation) => mutation.status === "PENDING").length;
-  if (pending && !online) return `offline - ${pending} ${pending === 1 ? "change" : "changes"} saved locally`;
-  if (pending) return `syncing ${pending} pending ${pending === 1 ? "change" : "changes"}`;
-  return online ? "synced" : "offline";
+  if (pending && !online) return `Offline — ${pending} ${pending === 1 ? "change" : "changes"} saved locally`;
+  if (pending) return `Syncing — ${pending} pending ${pending === 1 ? "change" : "changes"}`;
+  return online ? "Synchronized" : "Offline";
 }
 
 function fieldQueueScope(data: PortalData) {

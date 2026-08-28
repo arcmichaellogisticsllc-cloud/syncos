@@ -222,6 +222,18 @@ test("Partner company readiness keeps raw identifiers and private file data out 
   assert.match(readinessDoc, /Sync margin/);
 });
 
+test("SyncField queue renders controlled operational copy without machine-status remapping", () => {
+  const shell = read("apps/web/app/partner/partner-shell.tsx");
+
+  assert.match(shell, /\["Sync", queue\.label\]/);
+  assert.doesNotMatch(shell, /\["Sync", statusLabel\(queue\.label\)\]/);
+  assert.match(shell, /`Offline — \$\{pending\} \$\{pending === 1 \? "change" : "changes"\} saved locally`/);
+  assert.match(shell, /`Syncing — \$\{pending\} pending \$\{pending === 1 \? "change" : "changes"\}`/);
+  assert.match(shell, /return online \? "Synchronized" : "Offline"/);
+  assert.match(shell, /if \(failed\) return "Sync Failed"/);
+  assert.match(shell, /if \(syncing\) return "Syncing"/);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

@@ -93,7 +93,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await page.getByRole("button", { name: "Asset" }).click();
     await page.getByRole("button", { name: "Route / Span" }).click();
     await page.getByRole("button", { name: "Daily" }).click();
-    await expect(page.getByText("offline - 3 changes saved locally")).toBeVisible();
+    await expect(page.getByText("Offline — 3 changes saved locally")).toBeVisible();
 
     const queued = await queuedFieldMutations(page);
     expect(queued).toHaveLength(3);
@@ -106,7 +106,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText("synced", { exact: true }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Synchronized", { exact: true }).first()).toBeVisible({ timeout: 15000 });
 
     const after = await productionCountsForReport(client, seeded.tenantA, reportId);
     expect(after.records).toBe(before.records + 3);
@@ -126,7 +126,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
     await page.getByRole("button", { name: "Asset" }).click();
-    await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
+    await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
 
     await client.query("UPDATE production_start_authorizations SET authorization_status = 'held' WHERE tenant_id = $1 AND current = true", [seeded.tenantA]);
     try {
@@ -522,7 +522,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
     await page.getByRole("button", { name: "Daily" }).click();
-    await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
+    await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(page.getByText("sync failed")).toBeVisible({ timeout: 15000 });
@@ -536,11 +536,11 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 30_000 });
     await context.setOffline(true);
     await page.getByRole("button", { name: "Asset" }).click();
-    await expect(page.getByText("offline - 1 change saved locally")).toBeVisible();
+    await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
     await installSession(page, seeded.tenantBToken, seeded.adminPermissions);
     await context.setOffline(false);
     await page.goto("/syncfield/production");
-    await expect(page.getByText("offline - 1 change saved locally")).toHaveCount(0);
+    await expect(page.getByText("Offline — 1 change saved locally")).toHaveCount(0);
   });
 
   test("Partner Admin receives safe read-only report and duplicate submitted work requires traceability", async ({ request, page }) => {
