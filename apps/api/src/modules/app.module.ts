@@ -30,6 +30,7 @@ import { PartnerDashboardController } from "../routes/partner-dashboard.controll
 import { PartnerInvitationsController } from "../routes/partner-invitations.controller";
 import { PartnerPersonasController } from "../routes/partner-personas.controller";
 import { PartnerWorkforceController } from "../routes/partner-workforce.controller";
+import { RestrictedFileService } from "../restricted-files/restricted-file.service";
 import { PartnerAgreementsController } from "../routes/partner-agreements.controller";
 import { PartnerMobilizationController } from "../routes/partner-mobilization.controller";
 import { PartnerPerformanceCapacityController } from "../routes/partner-performance-capacity.controller";
@@ -104,6 +105,7 @@ import { DatabaseModule } from "./database.module";
     { provide: APP_GUARD, useClass: TenantIsolationGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
     OrganizationScopeService,
+    RestrictedFileService,
   ],
 })
 export class AppModule implements NestModule {

@@ -1,5 +1,7 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { Response } from "express";
 import type { PermissionKey } from "@syncos/permissions";
 import { appendAuditLog, executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import { DATABASE_POOL } from "../modules/database.module";
@@ -7,6 +9,8 @@ import { OrganizationScopeService } from "../security/organization-scope";
 import { RequirePermission } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { requireAllowed, requireString } from "./intelligence.types";
+import { detectRestrictedFileMime, restrictedFileExtensionForMime, sanitizeRestrictedFileName } from "../restricted-files/restricted-file.primitives";
+import { RestrictedFileService } from "../restricted-files/restricted-file.service";
 
 const partnerProviderTypes = new Set(["subcontractor", "crew_provider"]);
 const partnerRoleKeys = new Set(["partner_admin", "partner_foreman"]);
@@ -30,6 +34,7 @@ const policyTypes = new Set([
   "employers_liability",
 ]);
 const reviewActions = new Set(["under_review", "verified", "returned", "rejected", "hold"]);
+const submissionReviewActions = new Set(["under_review", "approved", "action_required"]);
 
 type PartnerScopeRow = QueryResultRow & {
   user_id: string;
@@ -56,6 +61,8 @@ type PartnerContext = {
 
 type DbRow = QueryResultRow & { id: string; tenant_id: string; organization_id: string; status: string };
 type EvidenceRow = DbRow & {
+  restricted_file_object_id?: string | null;
+  client_mutation_id?: string | null;
   category: string;
   related_entity_type: string | null;
   related_entity_id: string | null;
@@ -77,6 +84,7 @@ export class PartnerComplianceController {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     private readonly organizationScope: OrganizationScopeService,
+    private readonly restrictedFileService: RestrictedFileService,
   ) {}
 
   @Get("me/summary")
@@ -97,6 +105,96 @@ export class PartnerComplianceController {
     });
   }
 
+  @Get("me/submission")
+  @RequirePermission("partner_compliance.submission.read")
+  async ownSubmission(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      return this.safeSubmission(await this.currentSubmission(client, context.tenant_id, context.organization.id));
+    });
+  }
+
+  @Post("me/evidence/upload")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @RequirePermission("partner_compliance.w9.submit")
+  async uploadEvidence(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>, @UploadedFile() file?: { originalname: string; mimetype: string; buffer: Buffer }) {
+    return this.withClient(async (client) => {
+      const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
+      this.rejectSpoofedOrganization(body, context.organization.id);
+      if (!file?.buffer) throw new BadRequestException("file is required");
+      const category = requireAllowed(body.document_category ?? body.category, evidenceCategories, "document_category");
+      const mutation = requireString(body.client_mutation_id, "client_mutation_id is required");
+      const existing = await client.query("SELECT * FROM partner_restricted_evidence WHERE tenant_id = $1 AND organization_id = $2 AND client_mutation_id = $3 LIMIT 1", [context.tenant_id, context.organization.id, mutation]);
+      if (existing.rows[0]) return this.safeEvidence(existing.rows[0]);
+      return this.writeWithClient(client, request, "restricted_evidence.upload", "restricted_evidence.uploaded", "partner_restricted_evidence", async (writeClient) => {
+        const evidence = await this.createEvidence(writeClient, context, request.auth.userId, category, { ...body, file_name: file.originalname, mime_type: file.mimetype, content_base64: file.buffer.toString("base64") }, "partner_compliance", context.organization.id);
+        await writeClient.query("UPDATE partner_restricted_evidence SET client_mutation_id = $3 WHERE tenant_id = $1 AND id = $2", [context.tenant_id, evidence.id, mutation]);
+        return { entityType: "partner_restricted_evidence", entityId: evidence.id, afterState: this.safeEvidence(evidence) };
+      });
+    });
+  }
+
+  @Get("me/evidence/:evidenceId/download")
+  @RequirePermission("partner_compliance.w9.read")
+  async downloadEvidence(@Req() request: AuthenticatedRequest, @Param("evidenceId") evidenceId: string, @Query() query: Record<string, string | undefined>, @Res() response: Response) {
+    return this.withClient(async (client) => {
+      const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
+      const evidence = await this.requireEvidence(client, context.tenant_id, context.organization.id, evidenceId);
+      const file = evidence.restricted_file_object_id ? await client.query("SELECT * FROM partner_restricted_file_objects WHERE tenant_id = $1 AND organization_id = $2 AND id = $3 AND deleted_at IS NULL LIMIT 1", [context.tenant_id, context.organization.id, evidence.restricted_file_object_id]) : null;
+      if (!file?.rows[0]) throw new NotFoundException("document unavailable");
+      const bytes = await this.restrictedFileService.readRestrictedFile(file.rows[0]).catch(() => { throw new NotFoundException("document unavailable"); });
+      await this.auditEvidenceAccess(client, request, evidence);
+      return this.sendBinary(response, bytes, evidence.file_name, evidence.mime_type);
+    });
+  }
+
+  @Get("organizations/:organizationId/evidence/:evidenceId/download")
+  @RequirePermission("partner_compliance.review")
+  async downloadEvidenceForReview(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("evidenceId") evidenceId: string, @Res() response: Response) {
+    return this.withClient(async (client) => {
+      await this.requireInternalPartnerOrganization(client, request, organizationId, "partner_compliance.review");
+      const evidence = await this.requireEvidence(client, request.auth.tenantId, organizationId, evidenceId);
+      if (!evidence.restricted_file_object_id) throw new NotFoundException("document unavailable");
+      const file = await client.query("SELECT * FROM partner_restricted_file_objects WHERE tenant_id = $1 AND organization_id = $2 AND id = $3 AND deleted_at IS NULL LIMIT 1", [request.auth.tenantId, organizationId, evidence.restricted_file_object_id]);
+      if (!file.rows[0]) throw new NotFoundException("document unavailable");
+      const bytes = await this.restrictedFileService.readRestrictedFile(file.rows[0]).catch(() => { throw new NotFoundException("document unavailable"); });
+      await this.auditEvidenceAccess(client, request, evidence);
+      return this.sendBinary(response, bytes, evidence.file_name, evidence.mime_type);
+    });
+  }
+
+  @Post("me/submit")
+  @RequirePermission("partner_compliance.submission.submit")
+  async submitOnboarding(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
+      this.rejectSpoofedOrganization(body, context.organization.id);
+      const clientMutationId = requireString(body.client_mutation_id, "client_mutation_id is required");
+      return this.writeWithClient(client, request, "partner_company_submission.submit", "partner_company_submission.submitted", "partner_company_submission", async (writeClient) => {
+        await writeClient.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`partner-company-submission:${context.tenant_id}:${context.organization.id}:COMPANY_FOUNDATION`]);
+        const prior = await writeClient.query("SELECT * FROM partner_company_submissions WHERE tenant_id = $1 AND client_mutation_id = $2 LIMIT 1", [context.tenant_id, clientMutationId]);
+        if (prior.rows[0]) return { entityType: "partner_company_submission", entityId: prior.rows[0].id, afterState: this.safeSubmission(prior.rows[0]) ?? {} };
+        const current = await this.currentSubmission(writeClient, context.tenant_id, context.organization.id);
+        if (current && ["submitted", "under_review", "resubmitted"].includes(String(current.status))) throw new ConflictException("Company onboarding is already with Sync for review");
+        const completeness = await this.submissionCompleteness(writeClient, context.tenant_id, context.organization.id);
+        if (!completeness.complete) throw new BadRequestException({ message: "Complete the required Partner onboarding sections before submitting", blockers: completeness.blockers });
+        const revision = Number(current?.revision ?? 0) + 1;
+        if (current) await writeClient.query("UPDATE partner_company_submissions SET status = 'superseded', updated_at = now() WHERE tenant_id = $1 AND id = $2", [context.tenant_id, current.id]);
+        const inserted = await writeClient.query(
+          `INSERT INTO partner_company_submissions (tenant_id, organization_id, capacity_provider_id, submission_scope, revision, status, submitted_by_user_id, submitted_at, client_mutation_id, supersedes_submission_id)
+           VALUES ($1, $2, $3, 'COMPANY_FOUNDATION', $4, $5, $6, now(), $7, $8) RETURNING *`,
+          [context.tenant_id, context.organization.id, context.capacityProvider.id, revision, current ? "resubmitted" : "submitted", request.auth.userId, clientMutationId, current?.id ?? null],
+        );
+        const after = inserted.rows[0];
+        if (current) await writeClient.query("UPDATE partner_company_submissions SET superseded_by_submission_id = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2", [context.tenant_id, current.id, after.id]);
+        return { entityType: "partner_company_submission", entityId: after.id, beforeState: current ? (this.safeSubmission(current) ?? undefined) : undefined, afterState: this.safeSubmission(after) ?? {} };
+      });
+    });
+  }
+
   @Get("me/company-profile")
   @RequirePermission("partner_compliance.profile.read")
   async ownCompanyProfile(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
@@ -111,6 +209,7 @@ export class PartnerComplianceController {
   async submitCompanyProfile(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
       this.rejectSpoofedOrganization(body, context.organization.id);
       const values = this.companyProfileValues(body, context, request.auth.userId);
       return this.writeWithClient(client, request, "partner_company_profile.submit", "partner_company_profile.submitted", "partner_company_profile", async (writeClient) => {
@@ -135,6 +234,7 @@ export class PartnerComplianceController {
   async submitW9(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
       this.rejectSpoofedOrganization(body, context.organization.id);
       this.rejectSensitiveBody(body);
       return this.writeWithClient(client, request, "partner_w9.submit", "partner_w9.submitted", "partner_tax_profile", async (writeClient) => {
@@ -168,6 +268,7 @@ export class PartnerComplianceController {
   async submitPaymentProfile(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
       this.rejectSpoofedOrganization(body, context.organization.id);
       this.rejectSensitiveBody(body);
       return this.writeWithClient(client, request, "partner_payment_profile.submit", "partner_payment_profile.submitted", "partner_payment_profile", async (writeClient) => {
@@ -207,6 +308,7 @@ export class PartnerComplianceController {
   async submitPolicy(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>) {
     return this.withClient(async (client) => {
       const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
       this.rejectSpoofedOrganization(body, context.organization.id);
       const policyType = requireAllowed(body.policy_type, policyTypes, "policy_type");
       return this.writeWithClient(client, request, "partner_insurance_policy.submit", "partner_insurance_policy.submitted", "partner_insurance_policy", async (writeClient) => {
@@ -259,6 +361,26 @@ export class PartnerComplianceController {
     return this.reviewCurrentRecord(request, organizationId, "partner_company_profiles", "partner_company_profile", "partner_company_profile", body);
   }
 
+  @Post("organizations/:organizationId/submission/review")
+  @RequirePermission("partner_compliance.review")
+  async reviewSubmission(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async (client) => {
+      await this.requireInternalPartnerOrganization(client, request, organizationId, "partner_compliance.review");
+      const action = requireAllowed(body.status, submissionReviewActions, "status");
+      return this.writeWithClient(client, request, "partner_company_submission.review", `partner_company_submission.${action}`, "partner_company_submission", async (writeClient) => {
+        const before = await this.currentSubmission(writeClient, request.auth.tenantId, organizationId);
+        if (!before) throw new NotFoundException("onboarding submission not found");
+        const status = action === "approved" ? "approved" : action;
+        const result = await writeClient.query(
+          `UPDATE partner_company_submissions SET status = $3, reviewed_by_user_id = $4, reviewed_at = now(), external_return_reason = $5, internal_review_notes = $6, updated_at = now()
+           WHERE tenant_id = $1 AND organization_id = $2 AND id = $7 RETURNING *`,
+          [request.auth.tenantId, organizationId, status, request.auth.userId, this.optionalString(body.external_return_reason), this.optionalString(body.internal_review_notes), before.id],
+        );
+        return { entityType: "partner_company_submission", entityId: before.id, beforeState: this.safeSubmission(before) ?? undefined, afterState: this.safeSubmission(result.rows[0]) ?? {} };
+      });
+    });
+  }
+
   @Post("organizations/:organizationId/w9/review")
   @RequirePermission("partner_compliance.review")
   async reviewW9(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Body() body: Record<string, unknown>) {
@@ -309,17 +431,16 @@ export class PartnerComplianceController {
   }
 
   private async resolvePartnerContext(client: PoolClient, request: AuthenticatedRequest, queryOrganizationId?: string): Promise<PartnerContext> {
-    const requestedScope = this.requestedOrganizationScope(request, queryOrganizationId);
-    const rows = await this.partnerScopeRows(client, request.auth.tenantId, request.auth.userId, requestedScope);
+    if (queryOrganizationId || request.header("x-scope-type") || request.header("x-scope-id")) {
+      throw new ForbiddenException("Partner organization is derived from authenticated membership");
+    }
+    const rows = await this.partnerScopeRows(client, request.auth.tenantId, request.auth.userId);
     if (!rows.length) {
-      if (requestedScope) throw new ForbiddenException("Partner organization scope is not assigned");
       throw new ForbiddenException("Partner role with active organization scope is required");
     }
     const organizationIds = Array.from(new Set(rows.map((row) => row.organization_id)));
-    if (!requestedScope && organizationIds.length > 1) throw new ConflictException("Multiple Partner organization scopes require explicit organization selection");
-    const selectedOrganizationId = requestedScope ?? organizationIds[0];
-    const selectedRows = rows.filter((row) => row.organization_id === selectedOrganizationId);
-    if (!selectedRows.length) throw new ForbiddenException("Partner organization scope is not assigned");
+    if (organizationIds.length > 1) throw new ConflictException("Multiple Partner organization scopes are not allowed for a Partner account");
+    const selectedRows = rows;
     const first = selectedRows[0];
     return {
       user: { id: first.user_id, display_name: first.display_name },
@@ -369,6 +490,10 @@ export class PartnerComplianceController {
       return headerScopeId;
     }
     return queryOrganizationId;
+  }
+
+  private requirePartnerAdmin(context: PartnerContext) {
+    if (context.persona !== "partner_admin") throw new ForbiddenException("Partner Administrator access is required for company onboarding changes");
   }
 
   private async requireInternalPartnerOrganization(client: PoolClient, request: AuthenticatedRequest, organizationId: string, permission: PermissionKey) {
@@ -666,21 +791,40 @@ export class PartnerComplianceController {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new BadRequestException("evidence metadata is required");
     const body = raw as Record<string, unknown>;
     this.rejectSensitiveBody(body);
-    const fileName = requireString(body.file_name, "evidence.file_name is required");
+    const fileName = sanitizeRestrictedFileName(requireString(body.file_name, "evidence.file_name is required"));
     const mimeType = requireString(body.mime_type ?? body.content_type, "evidence.mime_type is required");
-    const sizeBytes = Number(body.size_bytes);
-    if (!Number.isFinite(sizeBytes) || sizeBytes < 0) throw new BadRequestException("evidence.size_bytes must be a non-negative number");
+    const contentBase64 = requireString(body.content_base64, "evidence.content_base64 is required");
+    const bytes = Buffer.from(contentBase64, "base64");
+    const sizeBytes = bytes.length;
+    if (!sizeBytes || sizeBytes > 5 * 1024 * 1024) throw new BadRequestException("evidence file size is invalid");
+    const detected = detectRestrictedFileMime(bytes);
+    if (detected !== mimeType || !restrictedFileExtensionForMime(detected) || !fileName.toLowerCase().endsWith(restrictedFileExtensionForMime(detected))) throw new BadRequestException("evidence content type is invalid");
     if (body.storage_provider !== undefined || body.bucket !== undefined || body.object_key !== undefined) {
       throw new BadRequestException("storage references must be created by the file service");
     }
     for (const value of [fileName, mimeType, body.checksum]) this.rejectSensitiveString(value);
+    const upload = await this.restrictedFileService.createRestrictedFileObject({
+      client,
+      tenantId: context.tenant_id,
+      organizationId: context.organization.id,
+      capacityProviderId: context.capacityProvider.id,
+      actorUserId: userId,
+      category: category === "partner_w9" ? "partner_w9" : "partner_coi",
+      relatedEntityType: "partner_compliance",
+      relatedEntityId: relatedEntityId ?? context.organization.id,
+      raw: { file_name: fileName, mime_type: detected, content_base64: contentBase64 },
+      maxSize: 5 * 1024 * 1024,
+      allowedMimes: new Set(["application/pdf", "image/jpeg", "image/png"]),
+    });
+    const fileObject = upload.file;
+    const checksum = String(fileObject.checksum ?? "");
     const result = await client.query<EvidenceRow>(
       `
       INSERT INTO partner_restricted_evidence (
         tenant_id, organization_id, capacity_provider_id, category, related_entity_type, related_entity_id,
-        file_name, mime_type, size_bytes, checksum, storage_provider, bucket, object_key, uploaded_by_user_id
+        file_name, mime_type, size_bytes, checksum, storage_provider, bucket, object_key, uploaded_by_user_id, restricted_file_object_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
       `,
       [
@@ -693,11 +837,12 @@ export class PartnerComplianceController {
         fileName,
         mimeType,
         sizeBytes,
-        this.optionalString(body.checksum),
+        checksum,
         null,
         null,
         null,
         userId,
+        fileObject.id,
       ],
     );
     return result.rows[0];
@@ -724,6 +869,37 @@ export class PartnerComplianceController {
   private async currentRow(client: PoolClient, table: string, tenantId: string, organizationId: string) {
     const result = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded' ORDER BY updated_at DESC LIMIT 1`, [tenantId, organizationId]);
     return result.rows[0] ?? null;
+  }
+
+  private async currentSubmission(client: PoolClient, tenantId: string, organizationId: string) {
+    const result = await client.query(
+      "SELECT * FROM partner_company_submissions WHERE tenant_id = $1 AND organization_id = $2 AND status <> 'superseded' ORDER BY revision DESC LIMIT 1",
+      [tenantId, organizationId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  private async submissionCompleteness(client: PoolClient, tenantId: string, organizationId: string) {
+    const [profile, tax, payment, policies] = await Promise.all([
+      this.currentRow(client, "partner_company_profiles", tenantId, organizationId),
+      this.currentRow(client, "partner_tax_profiles", tenantId, organizationId),
+      this.currentRow(client, "partner_payment_profiles", tenantId, organizationId),
+      this.policyRows(client, tenantId, organizationId),
+    ]);
+    const blockers: string[] = [];
+    if (!profile || !["submitted", "under_review", "verified", "returned"].includes(String(profile.status))) blockers.push("company_profile");
+    if (!tax || !tax.evidence_id || ["rejected"].includes(String(tax.status))) blockers.push("w9");
+    if (!payment || ["rejected"].includes(String(payment.status))) blockers.push("payment_setup");
+    for (const type of policyTypes) {
+      const policy = policies.find((candidate) => candidate.policy_type === type);
+      if (!policy || !policy.coi_evidence_id || ["rejected", "expired"].includes(String(policy.status))) blockers.push(type);
+    }
+    return { complete: blockers.length === 0, blockers };
+  }
+
+  private safeSubmission(row: QueryResultRow | null) {
+    if (!row) return null;
+    return this.pick(row, ["id", "organization_id", "capacity_provider_id", "revision", "status", "submitted_at", "reviewed_at", "external_return_reason", "created_at", "updated_at"]);
   }
 
   private async requireCurrentRow(client: PoolClient, table: string, tenantId: string, organizationId: string) {
@@ -880,6 +1056,7 @@ export class PartnerComplianceController {
 
   private rejectSpoofedOrganization(body: Record<string, unknown>, organizationId: string) {
     if (body.organization_id !== undefined && body.organization_id !== organizationId) throw new ForbiddenException("organization_id does not match authorized Partner scope");
+    if (body.capacity_provider_id !== undefined) throw new ForbiddenException("capacity_provider_id is derived from authenticated Partner membership");
   }
 
   private rejectSensitiveBody(body: Record<string, unknown>) {
@@ -951,6 +1128,20 @@ export class PartnerComplianceController {
       ipAddress: request.ip,
       userAgent: request.header("user-agent"),
     });
+  }
+
+  private sendBinary(response: Response, bytes: Buffer, fileName: string, mimeType: string) {
+    if (!["application/pdf", "image/jpeg", "image/png"].includes(mimeType)) throw new NotFoundException("document unavailable");
+    const safeName = sanitizeRestrictedFileName(fileName);
+    const fallback = safeName.replace(/[^A-Za-z0-9._-]/g, "_");
+    response.setHeader("Content-Type", mimeType);
+    response.setHeader("Content-Disposition", `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("Expires", "0");
+    response.setHeader("Content-Length", String(bytes.length));
+    return response.end(bytes);
   }
 
   private async writeWithClient<T>(

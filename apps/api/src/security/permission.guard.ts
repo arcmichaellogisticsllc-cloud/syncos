@@ -13,6 +13,8 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_profile.read",
   "partner_actions.read",
   "partner_compliance.summary.read",
+  "partner_compliance.submission.read",
+  "partner_compliance.submission.submit",
   "partner_compliance.profile.read",
   "partner_compliance.profile.submit",
   "partner_compliance.w9.read",

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { signE2EJwt } from "./helpers/partner-compliance-fixtures";
 import { Client } from "pg";
 
 type Seeded = {

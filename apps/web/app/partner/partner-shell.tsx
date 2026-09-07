@@ -54,6 +54,7 @@ type ComplianceSummary = {
   blocker_categories?: string[];
   evaluated_at?: string;
 };
+type CompanySubmission = { id?: string; revision?: number; status?: string; submitted_at?: string; reviewed_at?: string; external_return_reason?: string | null } | null;
 
 type CompanyProfile = Record<string, unknown> | null;
 type TaxProfile = Record<string, unknown> | null;
@@ -342,6 +343,7 @@ type PortalData = {
   loadedAt?: string;
   onboarding?: OnboardingChecklist;
   compliance?: ComplianceSummary;
+  submission?: CompanySubmission;
   company?: CompanyProfile;
   tax?: TaxProfile;
   payment?: PaymentProfile;
@@ -654,7 +656,7 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
             ) : null}
             {isSyncField && (data.foremanAssignments?.length ?? 0) > 1 && !data.selectedAssignment
               ? <EmptyPortal title="Select a SyncField assignment" body="Choose the Crew and Work Order you are working before opening JSA, map, production, or corrections. SyncOS will not silently decide where production is recorded." />
-              : renderSection(section, data, permissions, itemId, acknowledgeNotice, completeJsa)}
+              : renderSection(section, data, permissions, itemId, acknowledgeNotice, completeJsa, submitOnboarding)}
           </>
         )}
       </section>
@@ -675,6 +677,17 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
       setMessage("Daily JSA completed.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Daily JSA completion failed.");
+    }
+  }
+
+  async function submitOnboarding() {
+    try {
+      setMessage(null);
+      const submission = await syncosFetch<CompanySubmission>("partner-compliance/me/submit", { method: "POST", body: {} });
+      setState((current) => ({ ...current, data: { ...current.data, submission } }));
+      setMessage("Company onboarding submitted for Sync review.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Company onboarding submission failed.");
     }
   }
 }
@@ -735,9 +748,9 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
     needsOnboarding ? safeFetch<OnboardingChecklist>("partner-invitations/me/onboarding-checklist") : undefined,
     needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
     needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
-    section === "compliance" ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
+    needsCompliance ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
     needsCompliance ? safeFetch<PaymentProfile>("partner-compliance/me/payment-profile") : undefined,
-    section === "compliance" ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
+    needsCompliance ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
     section === "onboarding" || section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
     needsCrews ? safeFetch<Crew[]>("partner-workforce/me/crews", []) : [],
     needsAgreements ? safeFetch<Agreement[]>("partner-agreements/me/agreements", []) : [],
@@ -766,7 +779,8 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
   const versionId = str(selectedWorkOrder?.id);
   const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
   const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
-  return { context, actions, dashboard, readiness, loadedAt: dashboard?.freshness?.calculatedAt ?? readiness?.freshness?.calculatedAt ?? new Date().toISOString(), onboarding, compliance, company, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
+  const submission = needsOnboarding ? await safeFetch<CompanySubmission>("partner-compliance/me/submission", null) : null;
+  return { context, actions, dashboard, readiness, loadedAt: dashboard?.freshness?.calculatedAt ?? readiness?.freshness?.calculatedAt ?? new Date().toISOString(), onboarding, compliance, company, submission, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
 }
 
 async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section, selectedAssignmentId?: string): Promise<PortalData> {
@@ -821,7 +835,7 @@ async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
   }
 }
 
-function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: (payload: JsaCompletionPayload) => Promise<void>) {
+function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: (payload: JsaCompletionPayload) => Promise<void>, submitOnboarding: () => Promise<void>) {
     if (data.context?.persona === "partner_foreman" && ["onboarding", "company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments", "performance"].includes(section)) {
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
@@ -841,7 +855,7 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     case "dashboard":
       return <AdminDashboard data={data} acknowledgeNotice={acknowledgeNotice} />;
     case "onboarding":
-      return <OnboardingChecklistWorkspace data={data} />;
+      return <OnboardingChecklistWorkspace data={data} submitOnboarding={submitOnboarding} />;
     case "company":
       return <CompanyWorkspace data={data} permissions={permissions} />;
     case "compliance":
@@ -889,7 +903,7 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
   }
 }
 
-function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
+function OnboardingChecklistWorkspace({ data, submitOnboarding }: { data: PortalData; submitOnboarding: () => Promise<void> }) {
   const readiness = data.readiness;
   const checklist = data.onboarding;
   const items = readiness?.onboarding?.items ?? checklist?.items ?? [];
@@ -898,6 +912,7 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
   const totalRequired = readiness?.onboarding?.requiredTotal ?? steps.filter((step) => step.required).length;
   const companyApproved = readiness?.companyApproval?.state === "APPROVED" || /approved/.test(str(data.context?.organization.status).toLowerCase());
   const readyForReview = Boolean(readiness?.onboarding?.readyForReview || checklist?.ready_for_review || checklist?.readiness_status === "READY_FOR_REVIEW");
+  const c2aReady = Boolean(data.company && data.tax && data.payment && (data.policies?.length ?? 0) >= 5);
   const companyGate = companyApproved ? "approved" : readyForReview ? "ready for sync review" : "not ready";
   const crewGate = crewReadinessStatus(data);
   const mobilizationGate = data.mobilization?.overall_status ?? "locked";
@@ -971,8 +986,10 @@ function OnboardingChecklistWorkspace({ data }: { data: PortalData }) {
         </div>
         {!items.length ? <EmptyPortal title="No checklist available" body="The onboarding checklist appears after the Partner Admin invitation is accepted." /> : null}
         <div className="onboarding-submit-row">
-          {readyForReview ? <span className="partner-button primary disabled-action">Ready for Sync Review</span> : <button className="partner-button primary" type="button" disabled>Submit for Sync Review</button>}
-          <span>{readyForReview ? "Sync Admin can review and approve the Partner." : "Approval remains locked until required gates are complete."}</span>
+          {data.submission?.status === "submitted" || data.submission?.status === "under_review" || data.submission?.status === "resubmitted"
+            ? <span className="partner-button primary disabled-action">Submitted for Sync Review</span>
+            : <button className="partner-button primary" type="button" onClick={() => void submitOnboarding()} disabled={!c2aReady}>Submit for Sync Review</button>}
+          <span>{data.submission?.status === "action_required" ? `Action Required: ${data.submission.external_return_reason || "Review the requested corrections."}` : c2aReady ? "Sync Admin will review the Partner-controlled package. Approval remains separate." : "Approval remains locked until required gates are complete. Complete the required Partner-controlled tasks before submitting."}</span>
         </div>
         <ActionList blockers={readiness?.actionRequired ?? []} />
       </section>

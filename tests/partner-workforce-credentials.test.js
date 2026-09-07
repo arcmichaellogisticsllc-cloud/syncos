@@ -56,11 +56,12 @@ test("P4 Partner self-service permissions are organization-scoped but internal r
 
 test("P4 secure file-byte implementation rejects client storage keys and public URL responses", () => {
   const controller = read("apps/api/src/routes/partner-workforce.controller.ts");
-  assert.match(controller, /writeFile\(fullPath, buffer/);
-  assert.match(controller, /readFile\(this\.storagePath/);
-  assert.match(controller, /SYNCOS_RESTRICTED_FILE_STORAGE_DIR/);
+  const service = read("apps/api/src/restricted-files/restricted-file.service.ts");
+  assert.match(service, /writeFile\(fullPath, buffer/);
+  assert.match(service, /readFile\(fullPath/);
+  assert.match(service, /SYNCOS_RESTRICTED_FILE_STORAGE_DIR/);
   assert.match(controller, /storage references are server-generated/);
-  assert.match(controller, /image\/svg\+xml/);
+  assert.match(service, /restricted-file\.primitives/);
   assert.match(controller, /restricted_personnel_evidence\.access/);
   assert.doesNotMatch(controller, /public\/static/i);
   assert.doesNotMatch(controller, /apps\/web\/public/i);

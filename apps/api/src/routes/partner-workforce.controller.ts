@@ -14,7 +14,6 @@ import {
   Req,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { PermissionKey } from "@syncos/permissions";
@@ -24,6 +23,7 @@ import { OrganizationScopeService } from "../security/organization-scope";
 import { RequirePermission } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { requireAllowed, requireString } from "./intelligence.types";
+import { RestrictedFileService } from "../restricted-files/restricted-file.service";
 
 const partnerProviderTypes = new Set(["subcontractor", "crew_provider"]);
 const partnerRoleKeys = new Set(["partner_admin", "partner_foreman"]);
@@ -99,6 +99,7 @@ export class PartnerWorkforceController {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     private readonly organizationScope: OrganizationScopeService,
+    private readonly restrictedFileService: RestrictedFileService,
   ) {}
 
   @Get("me/workers")
@@ -199,7 +200,7 @@ export class PartnerWorkforceController {
       await this.requireWorker(client, context, workerId);
       if (body.attestation_accepted !== true) throw new BadRequestException("Partner workforce attestation is required");
       return this.writeWithClient(client, request, "worker_headshot.submit", "worker_headshot.submitted", "worker_headshot", async (writeClient) => {
-        const upload = await this.createRestrictedFileObject(writeClient, context, request.auth.userId, "worker_headshot", "worker", workerId, body, "headshot");
+        const upload = await this.restrictedFileService.createRestrictedFileObject({ client: writeClient, tenantId: context.tenant_id, organizationId: context.organization.id, capacityProviderId: context.capacityProvider.id, actorUserId: request.auth.userId, category: "worker_headshot", relatedEntityType: "worker", relatedEntityId: workerId, raw: body, maxSize: 2 * 1024 * 1024, allowedMimes: imageMimeTypes });
         const before = await this.currentHeadshot(writeClient, context, workerId);
         if (before) await this.supersedeHeadshot(writeClient, context, before.id);
         const inserted = await writeClient.query(
@@ -234,7 +235,7 @@ export class PartnerWorkforceController {
       const context = await this.requirePartnerAdmin(client, request, query.organization_id);
       await this.requireWorker(client, context, workerId);
       const file = await this.requireHeadshotFile(client, context, headshotId, { workerId });
-      return this.readAuthorizedFile(client, request, file);
+      return this.readAuthorizedWorkforceFile(client, request, file);
     });
   }
 
@@ -263,7 +264,7 @@ export class PartnerWorkforceController {
       return this.writeWithClient(client, request, "worker_credential.submit", "worker_credential.submitted", "worker_credential", async (writeClient) => {
         const before = await this.currentCredential(writeClient, context, workerId, credentialType);
         if (before) await this.supersedeCredential(writeClient, context, before.id);
-        const file = body.evidence ? await this.createRestrictedFileObject(writeClient, context, request.auth.userId, "worker_credential_evidence", "worker", workerId, body.evidence, "credential") : null;
+        const file = body.evidence ? await this.restrictedFileService.createRestrictedFileObject({ client: writeClient, tenantId: context.tenant_id, organizationId: context.organization.id, capacityProviderId: context.capacityProvider.id, actorUserId: request.auth.userId, category: "worker_credential_evidence", relatedEntityType: "worker", relatedEntityId: workerId, raw: body.evidence as Record<string, unknown>, maxSize: 5 * 1024 * 1024, allowedMimes: credentialMimeTypes }) : null;
         const inserted = await writeClient.query(
           `
           INSERT INTO partner_worker_credentials (
@@ -462,7 +463,7 @@ export class PartnerWorkforceController {
       const context = await this.requirePartnerForeman(client, request, query.organization_id);
       const crew = await this.requireForemanCrew(client, context);
       const file = await this.requireHeadshotFile(client, context, headshotId, { crewId: crew.id, approvedOnly: true });
-      return this.readAuthorizedFile(client, request, file);
+      return this.readAuthorizedWorkforceFile(client, request, file);
     });
   }
 
@@ -535,7 +536,7 @@ export class PartnerWorkforceController {
     return this.withClient(async (client) => {
       await this.requireInternalPartnerOrganization(client, request, organizationId, "partner_workforce.evidence.review");
       const file = await this.requireFileObject(client, request.auth.tenantId, organizationId, fileObjectId);
-      return this.readAuthorizedFile(client, request, file);
+      return this.readAuthorizedWorkforceFile(client, request, file);
     });
   }
 
@@ -653,47 +654,8 @@ export class PartnerWorkforceController {
     );
   }
 
-  private async createRestrictedFileObject(client: PoolClient, context: PartnerContext, userId: string, category: string, relatedType: string, relatedId: string, raw: unknown, mode: "headshot" | "credential") {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new BadRequestException("file payload is required");
-    const body = raw as Record<string, unknown>;
-    this.rejectFileStorageInput(body);
-    const fileName = this.sanitizeFileName(requireString(body.file_name, "file_name is required"));
-    const requestedMime = requireString(body.mime_type ?? body.content_type, "mime_type is required");
-    const contentBase64 = requireString(body.content_base64, "content_base64 is required");
-    const buffer = Buffer.from(contentBase64, "base64");
-    const maxSize = mode === "headshot" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
-    if (buffer.length <= 0 || buffer.length > maxSize) throw new BadRequestException("file size is outside permitted limits");
-    const detectedMime = this.detectMime(buffer);
-    const allowed = mode === "headshot" ? imageMimeTypes : credentialMimeTypes;
-    if (!allowed.has(detectedMime) || detectedMime !== requestedMime) throw new BadRequestException("file content type is not supported");
-    if (detectedMime === "image/svg+xml") throw new BadRequestException("SVG files are not permitted");
-    const checksum = createHash("sha256").update(buffer).digest("hex");
-    const extension = this.extensionForMime(detectedMime);
-    const storageKey = `${context.tenant_id}/${context.organization.id}/${randomUUID()}${extension}`;
-    const fullPath = this.storagePath(storageKey);
-    await mkdir(path.dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, buffer, { flag: "wx" });
-    try {
-      const result = await client.query<FileObjectRow>(
-        `
-        INSERT INTO partner_restricted_file_objects (
-          tenant_id, organization_id, capacity_provider_id, category, related_entity_type, related_entity_id,
-          file_name, mime_type, size_bytes, checksum, storage_key, uploaded_by_user_id
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        RETURNING *
-        `,
-        [context.tenant_id, context.organization.id, context.capacityProvider.id, category, relatedType, relatedId, fileName, detectedMime, buffer.length, checksum, storageKey, userId],
-      );
-      return { file: result.rows[0], storageKey };
-    } catch (error) {
-      await unlink(fullPath).catch(() => undefined);
-      throw error;
-    }
-  }
-
-  private async readAuthorizedFile(client: PoolClient, request: AuthenticatedRequest, file: FileObjectRow) {
-    const content = await readFile(this.storagePath(file.storage_key));
+  private async readAuthorizedWorkforceFile(client: PoolClient, request: AuthenticatedRequest, file: FileObjectRow) {
+    const content = await this.restrictedFileService.readRestrictedFile(file);
     await appendAuditLog(client, {
       tenantId: request.auth.tenantId,
       actorUserId: request.auth.userId,
@@ -1101,37 +1063,6 @@ export class PartnerWorkforceController {
     const number = Number(value);
     if (!Number.isInteger(number) || number <= 0) throw new BadRequestException("value must be a positive integer");
     return number;
-  }
-
-  private detectMime(buffer: Buffer): string {
-    if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
-    if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-    if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
-    if (buffer.length >= 5 && buffer.subarray(0, 5).toString("ascii") === "%PDF-") return "application/pdf";
-    if (buffer.subarray(0, Math.min(buffer.length, 200)).toString("utf8").toLowerCase().includes("<svg")) return "image/svg+xml";
-    throw new BadRequestException("unsupported file content");
-  }
-
-  private extensionForMime(mimeType: string): string {
-    if (mimeType === "image/jpeg") return ".jpg";
-    if (mimeType === "image/png") return ".png";
-    if (mimeType === "image/webp") return ".webp";
-    if (mimeType === "application/pdf") return ".pdf";
-    throw new BadRequestException("unsupported file content");
-  }
-
-  private sanitizeFileName(value: string): string {
-    const base = path.basename(value).replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 120);
-    if (!base || base === "." || base === "..") throw new BadRequestException("file_name is invalid");
-    return base;
-  }
-
-  private storagePath(storageKey: string): string {
-    const root = process.env.SYNCOS_RESTRICTED_FILE_STORAGE_DIR ?? "/private/tmp/syncos-restricted-files";
-    const resolvedRoot = path.resolve(root);
-    const resolvedPath = path.resolve(resolvedRoot, ...storageKey.split("/"));
-    if (!resolvedPath.startsWith(`${resolvedRoot}${path.sep}`)) throw new BadRequestException("storage key is invalid");
-    return resolvedPath;
   }
 
   private async writeWithClient<T>(

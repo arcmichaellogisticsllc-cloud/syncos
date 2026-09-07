@@ -480,6 +480,8 @@ export type PermissionKey =
   | "partner_foreman_invitation.resend"
   | "partner_foreman_invitation.revoke"
   | "partner_compliance.summary.read"
+  | "partner_compliance.submission.read"
+  | "partner_compliance.submission.submit"
   | "partner_compliance.profile.read"
   | "partner_compliance.profile.submit"
   | "partner_compliance.w9.read"
