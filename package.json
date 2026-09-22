@@ -84,10 +84,17 @@
     "accounting-export:smoke": "npm run smoke:accounting-export -w @syncos/api",
     "account-onboarding:smoke": "npm run smoke:account-onboarding -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh",
-    "release:production:migrate": "node scripts/production-migrate.js"
+    "release:production:migrate": "node scripts/production-migrate.js",
+    "security:dependencies": "npm audit --omit=dev --audit-level=high"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "typescript": "^5.5.4"
+  },
+  "overrides": {
+    "multer": "^2.4.0",
+    "postcss": "^8.5.28",
+    "nanoid@^3.0.0": "^3.3.19",
+    "qs": "^6.16.0"
   }
 }

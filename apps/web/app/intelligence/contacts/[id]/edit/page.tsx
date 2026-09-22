@@ -1,5 +1,5 @@
 import { ContactForm } from "../../contact-workspace";
 
-export default function EditContactPage({ params }: { params: { id: string } }) {
-  return <ContactForm mode="edit" contactId={params.id} />;
+export default async function EditContactPage({ params }: { params: Promise<{ id: string }> }) {
+  return <ContactForm mode="edit" contactId={(await params).id} />;
 }

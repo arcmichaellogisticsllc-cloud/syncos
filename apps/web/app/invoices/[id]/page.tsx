@@ -1,5 +1,5 @@
 import { InvoiceDetail } from "../invoice-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <InvoiceDetail invoiceId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <InvoiceDetail invoiceId={(await params).id} />;
 }

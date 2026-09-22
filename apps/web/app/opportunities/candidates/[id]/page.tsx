@@ -1,6 +1,6 @@
 import { CandidateDetail } from "../candidate-workspace";
 
-export default function OpportunityCandidateDetailPage({ params }: { params: { id: string } }) {
-  return <CandidateDetail candidateId={params.id} />;
+export default async function OpportunityCandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return <CandidateDetail candidateId={(await params).id} />;
 }
 

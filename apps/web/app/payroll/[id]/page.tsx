@@ -1,5 +1,5 @@
 import { PayrollRunDetail } from "../payroll-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <PayrollRunDetail payrollRunId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <PayrollRunDetail payrollRunId={(await params).id} />;
 }

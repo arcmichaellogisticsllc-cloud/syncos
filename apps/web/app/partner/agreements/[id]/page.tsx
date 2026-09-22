@@ -1,5 +1,5 @@
 import { PartnerShell } from "../../partner-shell";
 
-export default function PartnerAgreementDetailPage({ params }: { params: { id: string } }) {
-  return <PartnerShell section="agreement-detail" itemId={params.id} />;
+export default async function PartnerAgreementDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return <PartnerShell section="agreement-detail" itemId={(await params).id} />;
 }

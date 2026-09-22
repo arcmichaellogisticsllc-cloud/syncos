@@ -1,5 +1,5 @@
 import { CoveragePlanFormPage } from "../coverage-planning-workspace";
 
-export default function Page({ searchParams }: { searchParams?: { opportunityId?: string } }) {
-  return <CoveragePlanFormPage mode="create" initialOpportunityId={searchParams?.opportunityId} />;
+export default async function Page({ searchParams }: { searchParams?: Promise<{ opportunityId?: string }> }) {
+  return <CoveragePlanFormPage mode="create" initialOpportunityId={(await searchParams)?.opportunityId} />;
 }

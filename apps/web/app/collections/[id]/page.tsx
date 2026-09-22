@@ -1,5 +1,5 @@
 import { CollectionCaseDetail } from "../collections-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <CollectionCaseDetail caseId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <CollectionCaseDetail caseId={(await params).id} />;
 }

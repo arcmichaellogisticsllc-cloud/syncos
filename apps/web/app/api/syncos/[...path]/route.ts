@@ -8,8 +8,8 @@ function apiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100";
 }
 
-async function proxy(request: NextRequest, context: { params: { path: string[] } }) {
-  const target = new URL(`${apiBaseUrl()}/${context.params.path.join("/")}`);
+async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  const target = new URL(`${apiBaseUrl()}/${(await context.params).path.join("/")}`);
   request.nextUrl.searchParams.forEach((value, key) => target.searchParams.set(key, value));
 
   const headers = new Headers();

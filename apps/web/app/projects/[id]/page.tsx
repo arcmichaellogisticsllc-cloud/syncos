@@ -1,5 +1,5 @@
 import { ProjectDetail } from "../project-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <ProjectDetail projectId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <ProjectDetail projectId={(await params).id} />;
 }

@@ -1,6 +1,6 @@
 import { CandidateForm } from "../../candidate-workspace";
 
-export default function EditOpportunityCandidatePage({ params }: { params: { id: string } }) {
-  return <CandidateForm mode="edit" candidateId={params.id} />;
+export default async function EditOpportunityCandidatePage({ params }: { params: Promise<{ id: string }> }) {
+  return <CandidateForm mode="edit" candidateId={(await params).id} />;
 }
 

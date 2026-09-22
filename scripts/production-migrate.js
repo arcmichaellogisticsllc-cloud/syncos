@@ -1,5 +1,6 @@
 const childProcess = require("node:child_process");
 const { Client } = require("pg");
+const { checkMigrationState } = require("@syncos/database");
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -24,6 +25,9 @@ async function main() {
   const postMigrationClient = new Client({ connectionString: databaseUrl });
   await postMigrationClient.connect();
   try {
+    const applied = await postMigrationClient.query("SELECT id FROM schema_migrations ORDER BY id");
+    const state = checkMigrationState(applied.rows.map(row => row.id));
+    if (!state.ok) throw new Error(`Production migration verification failed: ${JSON.stringify(state)}`);
     const latest = await postMigrationClient.query("SELECT id, applied_at FROM schema_migrations ORDER BY id DESC LIMIT 1");
     console.log(JSON.stringify({ migration_gate: "applied", latest_migration: latest.rows[0] ?? null }));
   } finally {

@@ -1,5 +1,5 @@
 import { SettlementEdit } from "../../settlement-workspace";
 
-export default function SettlementEditPage({ params }: { params: { id: string } }) {
-  return <SettlementEdit settlementId={params.id} />;
+export default async function SettlementEditPage({ params }: { params: Promise<{ id: string }> }) {
+  return <SettlementEdit settlementId={(await params).id} />;
 }

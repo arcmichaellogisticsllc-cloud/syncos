@@ -7,3 +7,5 @@ export type TenantScopedRecord = {
 };
 
 export * from "./tenant-repository";
+
+export * from "./migration-state";

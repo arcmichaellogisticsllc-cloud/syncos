@@ -5,7 +5,7 @@ import { validateEnvironment } from "../config/environment";
 import { DATABASE_POOL } from "../modules/database.module";
 import { Public } from "../security/public.decorator";
 
-const currentMigrationCeiling = "059_syncfield_coil_commercial_policy.sql";
+import { checkMigrationState } from "@syncos/database";
 
 @Public()
 @Controller("health")
@@ -46,50 +46,9 @@ export class HealthController {
   }
 
   private async checkMigrations() {
-    const expected = [
-      "001_tenants_users_roles_permissions.sql",
-      "002_territories_organizations.sql",
-      "003_contacts_relationships.sql",
-      "004_signals_evidence.sql",
-      "005_relationship_maps_paths.sql",
-      "006_opportunity_candidates_opportunities.sql",
-      "007_capacity_providers_crews_workers_equipment.sql",
-      "008_compliance_documents_capacity_records.sql",
-      "009_projects_work_orders_production.sql",
-      "010_contracts_rates_settlements_invoices_payments.sql",
-      "011_constraints_recommendations.sql",
-      "012_events_actions_approvals_audit.sql",
-      "013_workflows_tasks_escalations.sql",
-      "014_kpis_learning.sql",
-      "015_files_file_links.sql",
-      "016_tenant_fk_hardening.sql",
-      "017_intelligence_signal_contract_hardening.sql",
-      "018_organization_contract_hardening.sql",
-      "019_contact_contract_hardening.sql",
-      "020_relationship_contract_hardening.sql",
-      "021_opportunity_candidate_contract_hardening.sql",
-      "022_opportunity_pipeline_contract_hardening.sql",
-      "023_opportunity_approval_policy_hardening.sql",
-      "024_coverage_planning_contract_foundation.sql",
-      "025_coverage_planning_backend_hardening.sql",
-      "026_project_handoff_contract_foundation.sql",
-      "027_project_backend_contract_hardening.sql",
-      "028_work_order_contract_hardening.sql",
-      "029_production_contract_hardening.sql",
-      "030_qc_review_contract_foundation.sql",
-      "031_billable_contract_foundation.sql",
-    ];
     const result = await this.pool.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id");
     const applied = result.rows.map((row) => row.id);
-    const missing = expected.filter((id) => !applied.includes(id));
-    const hasCurrentCeiling = applied.includes(currentMigrationCeiling);
-    return {
-      ok: missing.length === 0 && hasCurrentCeiling && applied.join("|") === [...applied].sort().join("|"),
-      appliedCount: applied.length,
-      missing,
-      currentCeiling: currentMigrationCeiling,
-      hasCurrentCeiling,
-    };
+    return checkMigrationState(applied);
   }
 
   private async checkRequiredTables() {

@@ -13,6 +13,7 @@ export HOST="127.0.0.1"
 
 cd "${ROOT_DIR}"
 
+npm run security:dependencies
 node scripts/check-e2e-certification.js --ci
 
 npm run typecheck

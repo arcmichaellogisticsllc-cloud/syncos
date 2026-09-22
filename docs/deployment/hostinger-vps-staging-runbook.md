@@ -1,3 +1,5 @@
+> Current security/pilot procedure: [security-pilot-release.md](security-pilot-release.md). The historical SHA, migration ceiling and ports below are superseded by that procedure.
+
 # Hostinger VPS Staging Runbook
 
 ## Source

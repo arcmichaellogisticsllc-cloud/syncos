@@ -112,6 +112,6 @@ import { DatabaseModule } from "./database.module";
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationMiddleware).forRoutes({ path: "*", method: RequestMethod.ALL });
+    consumer.apply(CorrelationMiddleware).forRoutes({ path: "{*path}", method: RequestMethod.ALL });
   }
 }
