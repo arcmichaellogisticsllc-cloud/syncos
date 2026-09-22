@@ -1,3 +1,4 @@
+import { InternalWorkforceController } from "../routes/internal-workforce.controller";
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
@@ -56,6 +57,7 @@ import { DatabaseModule } from "./database.module";
   imports: [DatabaseModule],
   controllers: [
     HealthController,
+    InternalWorkforceController,
     AcceptedProductionFinancialsController,
     AccountingExportController,
     AccountOnboardingController,

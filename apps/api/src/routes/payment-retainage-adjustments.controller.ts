@@ -69,6 +69,53 @@ export class PaymentRetainageAdjustmentsController {
     });
   }
 
+  @Get("external-payments")
+  @RequirePermission("partner_payment.execute")
+  async externalPayments(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => (await client.query(`
+      SELECT ep.id,ep.amount,ep.payment_date,ep.method,ep.reference,ep.evidence_reference,ep.created_at,
+        cp.payable_number,o.name AS partner_name,u.display_name AS recorded_by
+      FROM external_partner_payments ep
+      JOIN contractor_payables cp ON cp.tenant_id=ep.tenant_id AND cp.id=ep.contractor_payable_id
+      LEFT JOIN organizations o ON o.tenant_id=cp.tenant_id AND o.id=cp.partner_organization_id
+      LEFT JOIN users u ON u.id=ep.recorded_by
+      WHERE ep.tenant_id=$1 ORDER BY ep.created_at DESC LIMIT 100`,[request.auth.tenantId])).rows);
+  }
+
+  @Post("external-payments")
+  @RequirePermission("partner_payment.confirm")
+  async recordExternalPayment(@Req() request: AuthenticatedRequest, @Body() body: Row) {
+    return this.write(request, "partner_payment.external_recorded", "partner_payment.external_recorded", "external_partner_payment", async client => {
+      const payable = await this.requirePayable(client, request.auth.tenantId, requireString(body.contractor_payable_id,"Payable is required"));
+      const key = requireString(body.idempotency_key,"Payment request identifier is required");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[`${request.auth.tenantId}:external-payment-key:${key}`]);
+      const existing = await client.query("SELECT * FROM external_partner_payments WHERE tenant_id=$1 AND idempotency_key=$2",[request.auth.tenantId,key]);
+      const amount = this.positive(body.amount,"amount");
+      if(amount!==this.roundMoney(amount))throw new BadRequestException("Payment amount must use whole cents");
+      const reference = requireString(body.reference,"External payment reference is required");
+      const evidence = requireString(body.evidence_reference,"Receipt or bank confirmation reference is required");
+      const method = requireString(body.method,"Payment method is required");
+      const date = requireString(body.payment_date,"Payment date is required");
+      if(!['ach','wire','check','passport','other'].includes(method))throw new BadRequestException("Unsupported payment method");
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date||date>this.today())throw new BadRequestException("Use the completed payment date, not a future date");
+      if(body.confirmed_completed!==true)throw new BadRequestException("Confirm the external payment has completed");
+      if(existing.rows[0]) {
+        const e=existing.rows[0];
+        if(e.contractor_payable_id!==payable.id||Number(e.amount)!==amount||e.reference!==reference||e.method!==method||String(e.payment_date instanceof Date ? e.payment_date.toISOString().slice(0,10) : e.payment_date).slice(0,10)!==date||e.evidence_reference!==evidence)throw new BadRequestException("Payment request identifier was already used for different details");
+        return {entityType:"external_partner_payment",entityId:e.id,afterState:e,skipEventAudit:true};
+      }
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[`${request.auth.tenantId}:external-payment:${method}:${reference}`]);
+      if((await client.query("SELECT id FROM external_partner_payments WHERE tenant_id=$1 AND method=$2 AND reference=$3",[request.auth.tenantId,method,reference])).rows.length)throw new BadRequestException("This external payment reference has already been recorded");
+      if(amount>await this.availableToPay(client,request.auth.tenantId,payable))throw new BadRequestException("Payment exceeds eligible unpaid balance");
+      const payment=(await client.query("INSERT INTO payments (tenant_id,settlement_id,amount,payment_amount,payment_date,payment_reference,status) VALUES ($1,$2,$3,$3,$4,$5,'recorded') RETURNING *",[request.auth.tenantId,payable.settlement_id,amount,date,reference])).rows[0];
+      const recorded=(await client.query("INSERT INTO external_partner_payments (tenant_id,contractor_payable_id,payment_id,amount,payment_date,method,reference,evidence_reference,idempotency_key,recorded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",[request.auth.tenantId,payable.id,payment.id,amount,date,method,reference,evidence,key,request.auth.userId])).rows[0];
+      const paid=this.roundMoney(Number(payable.paid_amount??0)+amount);
+      const status=paid>=Number(payable.net_payable_amount)?'paid_later':'partially_paid_later';
+      await client.query("UPDATE contractor_payables SET paid_amount=$3,payment_status=$4,status=$4,payment_execution_status='confirmed',updated_by=$5,updated_at=now() WHERE tenant_id=$1 AND id=$2",[request.auth.tenantId,payable.id,paid,status,request.auth.userId]);
+      return {entityType:"external_partner_payment",entityId:recorded.id,afterState:recorded};
+    });
+  }
+
   @Post("payment-instructions")
   @RequirePermission("partner_payment.execute")
   async createInstruction(@Req() request: AuthenticatedRequest, @Body() body: Row) {
@@ -100,7 +147,7 @@ export class PaymentRetainageAdjustmentsController {
   @Post("payment-instructions/:id/submit")
   @RequirePermission("partner_payment.submit")
   async submitInstruction(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
-    if (process.env.NODE_ENV === "production" && process.env.LIVE_AUTOMATED_PARTNER_PAYMENTS !== "true") {
+    if (["production", "staging"].includes(process.env.NODE_ENV ?? "")) {
       throw new BadRequestException("Live automated Partner payment submission is disabled");
     }
     return this.write(request, "partner_payment.submitted", "partner_payment.submitted", "partner_payment_instruction", async (client) => {
@@ -286,7 +333,9 @@ export class PaymentRetainageAdjustmentsController {
             'status', ppi.status,
             'provider_reference', ppi.provider_reference,
             'requested_at', ppi.requested_at
-          ) ORDER BY ppi.created_at DESC) FILTER (WHERE ppi.id IS NOT NULL), '[]'::json) AS payments
+          ) ORDER BY ppi.created_at DESC) FILTER (WHERE ppi.id IS NOT NULL), '[]'::json)::jsonb || COALESCE((SELECT jsonb_agg(jsonb_build_object(
+            'id',ep.id,'amount',ep.amount,'status','confirmed','provider_reference',ep.reference,'requested_at',ep.payment_date
+          ) ORDER BY ep.created_at DESC) FROM external_partner_payments ep WHERE ep.tenant_id=cp.tenant_id AND ep.contractor_payable_id=cp.id),'[]'::jsonb) AS payments
         FROM contractor_payables cp
         LEFT JOIN partner_payment_instructions ppi ON ppi.tenant_id = cp.tenant_id AND ppi.contractor_payable_id = cp.id AND ppi.deleted_at IS NULL
         WHERE cp.tenant_id = $1 AND cp.partner_organization_id = $2 AND cp.deleted_at IS NULL
@@ -301,13 +350,13 @@ export class PaymentRetainageAdjustmentsController {
   }
 
   private async requirePayable(client: PoolClient, tenantId: string, id: string) {
-    const result = await client.query("SELECT * FROM contractor_payables WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, id]);
+    const result = await client.query("SELECT * FROM contractor_payables WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE", [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException("contractor payable not found");
     return result.rows[0] as Row;
   }
 
   private async requireInstruction(client: PoolClient, tenantId: string, id: string) {
-    const result = await client.query("SELECT * FROM partner_payment_instructions WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, id]);
+    const result = await client.query("SELECT * FROM partner_payment_instructions WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE", [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException("payment instruction not found");
     return result.rows[0] as Row;
   }

@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
@@ -10,7 +11,7 @@ export const restrictedFileMimeExtensions = {
 
 export function sanitizeRestrictedFileName(value: string): string {
   const safe = path.basename(value).replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 120);
-  if (!safe || safe === "." || safe === "..") throw new Error("file_name is invalid");
+  if (!safe || safe === "." || safe === "..") throw new BadRequestException("file_name is invalid");
   return safe;
 }
 
@@ -19,7 +20,7 @@ export function detectRestrictedFileMime(buffer: Buffer): string {
   if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
   if (buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "image/png";
   if (buffer.length >= 12 && buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP") return "image/webp";
-  throw new Error("unsupported file content");
+  throw new BadRequestException("unsupported file content");
 }
 
 export function restrictedFileExtensionForMime(mime: string): string {

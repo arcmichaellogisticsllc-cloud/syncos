@@ -236,6 +236,8 @@ export class AcceptedProductionFinancialsController {
       }
       const sources = await this.sourcesForSettlement(client, request.auth.tenantId, body);
       if (!sources.length) throw new BadRequestException("accepted production sources are required");
+      const internal = await client.query("SELECT id FROM capacity_providers WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND provider_type='internal_workforce'",[request.auth.tenantId,sources.map(row=>row.capacity_provider_id)]);
+      if(internal.rows.length) throw new BadRequestException("Sync employee work is not eligible for partner settlement; use the internal payroll workflow");
       if (sources.some((row) => !row.partner_rate_code_id || Number(row.partner_rate ?? 0) <= 0)) {
         const exception = await this.createException(client, request, "missing_partner_rate", sources[0], "SETTLEMENT EXCEPTION - MISSING PARTNER RATE");
         return { entityType: "financial_exception", entityId: exception.id, eventType: "financial_exception.created", afterState: exception };
@@ -616,10 +618,13 @@ export class AcceptedProductionFinancialsController {
 
   private async resolveRate(client: PoolClient, tenantId: string, scheduleId: unknown, code: unknown, unit: unknown, mode: "customer" | "partner") {
     if (!scheduleId) return null;
+    const requestedUnit = String(unit).toUpperCase();
+    const aliases: Record<string,string[]> = {LF:["LF","FEET"],FEET:["FEET","LF"],EA:["EA","EACH"],EACH:["EACH","EA"],HR:["HR","HOURS"],HOURS:["HOURS","HR"]};
+    const units = aliases[requestedUnit] ?? [requestedUnit];
     const column = mode === "customer" ? "COALESCE(customer_rate, amount)" : "contractor_rate";
     const result = await client.query(
-      `SELECT id, rate_schedule_id, ${column} AS rate, unit, updated_at FROM rate_codes WHERE tenant_id = $1 AND rate_schedule_id = $2 AND code = $3 AND upper(unit) = upper($4::text) AND status = 'active' AND deleted_at IS NULL LIMIT 1`,
-      [tenantId, scheduleId, code, unit],
+      `SELECT id, rate_schedule_id, ${column} AS rate, unit, updated_at FROM rate_codes WHERE tenant_id = $1 AND rate_schedule_id = $2 AND code = $3 AND upper(unit) = ANY($4::text[]) AND status = 'active' AND deleted_at IS NULL ORDER BY CASE WHEN upper(unit)=$5 THEN 0 ELSE 1 END, updated_at DESC, id LIMIT 1`,
+      [tenantId, scheduleId, code, units, requestedUnit],
     );
     return result.rows[0] ?? null;
   }
@@ -999,7 +1004,7 @@ export class AcceptedProductionFinancialsController {
   }
 
   private async requireRecord(client: PoolClient, table: string, tenantId: string, id: unknown, message: string) {
-    const result = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`, [tenantId, id]);
+    const result = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`, [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException(message);
     return result.rows[0];
   }

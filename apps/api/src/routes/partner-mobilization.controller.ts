@@ -1,3 +1,4 @@
+import { resolveFieldIdentity } from "../security/field-identity";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -621,6 +622,7 @@ export class PartnerMobilizationController {
   }
 
   private async requirePartner(client: PoolClient, request: AuthenticatedRequest, roleKey: "partner_admin" | "partner_foreman", requestedOrganizationId?: string): Promise<PartnerContext> {
+    if (roleKey === "partner_foreman") return resolveFieldIdentity(client, request.auth.tenantId, request.auth.userId);
     if (!partnerRoles.has(roleKey)) throw new ForbiddenException("invalid Partner persona");
     const result = await client.query<PartnerScopeRow>(
       `

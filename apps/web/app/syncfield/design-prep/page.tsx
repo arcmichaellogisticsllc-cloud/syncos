@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
 import { syncosFetch } from "../../intelligence/api";
 
@@ -23,6 +23,11 @@ export default function SyncFieldDesignPrepPage() {
   const [label, setLabel] = useState("ARL aerial span 15-12-2 to 15-12-4");
   const [segments, setSegments] = useState<DesignSegment[]>([]);
   const [message, setMessage] = useState("");
+  useEffect(() => {
+    const query=new URLSearchParams(window.location.search);
+    setOrganizationId(query.get("organization_id")??"");
+    setMapVersionId(query.get("map_version_id")??"");
+  }, []);
 
   async function loadSegments(event?: FormEvent) {
     event?.preventDefault();

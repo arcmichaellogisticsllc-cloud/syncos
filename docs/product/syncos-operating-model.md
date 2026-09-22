@@ -318,7 +318,7 @@ SyncField route rules:
 - Partner Admin routes remain under `/partner`.
 - A Partner Admin may access SyncField only if that user also has a canonical active Foreman Worker/Crew assignment.
 - Partner Admin + Foreman dual-role users default to `/partner` for company oversight and may explicitly enter `/syncfield/today` when a valid Foreman assignment exists.
-- Sync-owned Foremen and Partner Foremen share the SyncField product model. Current v0.9 implementation is fully certified for Partner Foremen and structurally reuses Organization, Worker, Crew, membership, and assignment objects; explicit Sync-owned workforce representation remains a documented production-model extension before Sync employee crews are piloted.
+- Sync-owned Foremen and Partner Foremen share the SyncField product. Sync employees use an explicit `internal_workforce` provider and an organization-scoped `sync_foreman` role. Internal assignments use management-reviewed evidence and an expiring readiness clearance, plus the same map and daily JSA gates. They do not require a fictitious Partner agreement and are excluded from Partner settlement creation. See `docs/releases/field-readiness-2026-09-22.md` for verification and rollout boundaries.
 
 Foreman:
 

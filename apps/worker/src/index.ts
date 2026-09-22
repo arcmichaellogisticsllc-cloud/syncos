@@ -1,5 +1,5 @@
 import { Queue, Worker, type JobsOptions } from "bullmq";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { runExecutiveCommandRefreshScan, runMobilizationExpirationScan, runOpportunityCapacityMatchingScan, runPartnerPerformanceRecalculationScan } from "@syncos/shared";
 
 const connection = {
@@ -56,14 +56,15 @@ export function startMobilizationExpirationScheduler(options: { pool?: Pool; int
   const runOnce = async () => {
     if (running) return;
     running = true;
-    const client = await pool.connect();
+    let client: PoolClient | undefined;
     try {
+      client = await pool.connect();
       const result = await runMobilizationExpirationScan(client, { batchSize });
       console.log(`mobilization expiration scan completed emitted=${result.emittedEvents}`);
     } catch (error) {
       console.error(`mobilization expiration scan failed: ${(error as Error).message}`);
     } finally {
-      client.release();
+      client?.release();
       running = false;
     }
   };
@@ -93,14 +94,15 @@ export function startPartnerPerformanceScheduler(options: { pool?: Pool; interva
   const runOnce = async () => {
     if (running) return;
     running = true;
-    const client = await pool.connect();
+    let client: PoolClient | undefined;
     try {
+      client = await pool.connect();
       const result = await runPartnerPerformanceRecalculationScan(client, { batchSize });
       console.log(`partner performance scan completed scanned=${result.scannedPartners} created=${result.createdSnapshots} locked=${result.locked}`);
     } catch (error) {
       console.error(`partner performance scan failed: ${(error as Error).message}`);
     } finally {
-      client.release();
+      client?.release();
       running = false;
     }
   };
@@ -130,14 +132,15 @@ export function startOpportunityCapacityMatchingScheduler(options: { pool?: Pool
   const runOnce = async () => {
     if (running) return;
     running = true;
-    const client = await pool.connect();
+    let client: PoolClient | undefined;
     try {
+      client = await pool.connect();
       const result = await runOpportunityCapacityMatchingScan(client, { batchSize });
       console.log(`opportunity capacity matching scan completed scanned=${result.scannedOpportunities} created=${result.createdPartnerMatches} locked=${result.locked}`);
     } catch (error) {
       console.error(`opportunity capacity matching scan failed: ${(error as Error).message}`);
     } finally {
-      client.release();
+      client?.release();
       running = false;
     }
   };
@@ -167,14 +170,15 @@ export function startExecutiveCommandScheduler(options: { pool?: Pool; intervalM
   const runOnce = async () => {
     if (running) return;
     running = true;
-    const client = await pool.connect();
+    let client: PoolClient | undefined;
     try {
+      client = await pool.connect();
       const result = await runExecutiveCommandRefreshScan(client, { batchSize });
       console.log(`executive command scan completed scanned=${result.scannedTenants} created=${result.createdSnapshots} locked=${result.locked}`);
     } catch (error) {
       console.error(`executive command scan failed: ${(error as Error).message}`);
     } finally {
-      client.release();
+      client?.release();
       running = false;
     }
   };

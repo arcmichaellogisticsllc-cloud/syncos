@@ -22,6 +22,8 @@ Production startup validation requires this value until a live payout provider i
 - Track contractor payable.
 - Track eligibility.
 - Track payment due and status.
+- Record completed external payments through `/payment-retainage-adjustments`, with the actual date, method, payment reference, proof reference and explicit confirmation. Amounts are limited to the eligible unpaid balance after pending instructions. Retries are idempotent.
+- Review the most recent 100 recorded payments and their proof references; Partners see their own payment references and updated balances without internal proof references.
 - Manually review failed/returned payment states.
 
 ## Not Allowed in Initial Production

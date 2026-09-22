@@ -235,6 +235,7 @@ export class AuthController {
 
   private workspaceFor(roles: string[], permissions: string[], partnerContext: Record<string, unknown> | null) {
     const has = (permission: string) => permissions.includes(permission);
+    if (roles.includes("sync_foreman")) return "/syncfield/today";
     const internal = roles.some((role) => !["partner_admin", "partner_foreman"].includes(role));
     if (internal && (has("executive_command.read") || has("dashboard.executive.read"))) return "/command-center";
     if (internal && (has("project.read") || has("work_order.read") || has("production.read") || has("qc_review.read"))) return "/operations";

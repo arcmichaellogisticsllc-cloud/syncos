@@ -34,6 +34,7 @@ ALTER TABLE partner_restricted_file_objects ADD CONSTRAINT partner_restricted_fi
   'partner_work_order_executed',
   'partner_vehicle_agreement_executed',
   'syncfield_map_original_pdf',
+  'syncfield_production_export',
   'partner_w9',
   'partner_coi',
   'partner_insurance_endorsement',
@@ -44,7 +45,7 @@ ALTER TABLE partner_restricted_file_objects DROP CONSTRAINT IF EXISTS partner_re
 ALTER TABLE partner_restricted_file_objects ADD CONSTRAINT partner_restricted_file_objects_related_entity_type_check CHECK (related_entity_type IN (
   'worker', 'worker_headshot', 'worker_credential',
   'partner_agreement_version', 'partner_work_order_version', 'partner_vehicle_assignment',
-  'syncfield_map_version', 'partner_compliance'
+  'syncfield_map_version', 'production_export_artifact', 'partner_compliance'
 ));
 ALTER TABLE partner_restricted_evidence ADD COLUMN IF NOT EXISTS restricted_file_object_id UUID;
 ALTER TABLE partner_restricted_evidence ADD COLUMN IF NOT EXISTS client_mutation_id TEXT;

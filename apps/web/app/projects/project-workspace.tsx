@@ -67,7 +67,6 @@ export function ProjectDirectory() {
   return (
     <ProjectShell title="Project Directory" purpose="Manage execution-side project readiness without creating work orders, production, or finance records.">
       <SessionPanel session={session} />
-      <div className="warning-box">Project Workspace is an operator surface only. Work Orders and Production are placeholders in this sprint.</div>
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Projects.</div> : null}
       {loading ? <div className="empty-state">Loading projects...</div> : null}
@@ -357,8 +356,8 @@ function ProjectShell({ title, purpose, children }: { title: string; purpose: st
     ["#risks", "Constraints / Risks", "placeholder"],
     ["#timeline", "Timeline", "placeholder"],
     ["#audit", "Audit", "placeholder"],
-    ["#work-orders", "Future Work Orders", "placeholder"],
-    ["#production", "Future Production", "placeholder"],
+    ["/work-orders", "Work Orders", "active"],
+    ["/production", "Production", "active"],
   ];
   return (
     <CommandShell title={title} purpose={purpose}>
@@ -448,8 +447,8 @@ function ProjectTab({ tab, detail, project, session }: { tab: string; detail: Pr
     if (!hasPermission(session.permissions, "project.audit.read")) return <Panel title="Audit"><div className="empty-state">You do not have permission to view project audit details.</div></Panel>;
     return <Panel title="Audit"><ObjectTable rows={detail._audit ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} /></Panel>;
   }
-  if (tab === "work_orders") return <PlaceholderPanel title="Future Work Orders" message="Work Orders are not available in this sprint. A Work Order will represent a specific package of assigned work under this project." columns={["Work package", "Assigned crew/provider", "Start date", "Due date", "Status", "Quantity", "Unit"]} />;
-  if (tab === "production") return <PlaceholderPanel title="Future Production" message="Production entry is not available in this sprint. Production records will capture field-completed work against work orders." columns={["Date", "Crew/provider", "Quantity completed", "Unit", "Evidence/photos", "QC status", "Billable status"]} />;
+  if (tab === "work_orders") return <Panel title="Work Orders"><p>Manage assigned work and crew readiness for this project.</p><Link className="link-button" href={`/work-orders?project_id=${encodeURIComponent(String(project.id))}`}>Open project work orders</Link></Panel>;
+  if (tab === "production") return <Panel title="Production"><p>Review reported work, evidence, and acceptance for this project.</p><Link className="link-button" href={`/production?project_id=${encodeURIComponent(String(project.id))}`}>Open project production</Link></Panel>;
   return null;
 }
 

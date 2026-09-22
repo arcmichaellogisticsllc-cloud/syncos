@@ -1,3 +1,4 @@
+import { resolveFieldIdentity } from "../security/field-identity";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -709,7 +710,7 @@ export class PartnerAgreementsController {
   }
 
   private async requirePartnerForeman(client: PoolClient, request: AuthenticatedRequest): Promise<PartnerContext> {
-    return this.partnerContext(client, request, "partner_foreman");
+    return resolveFieldIdentity(client, request.auth.tenantId, request.auth.userId);
   }
 
   private async partnerContext(client: PoolClient, request: AuthenticatedRequest, roleKey: "partner_admin" | "partner_foreman", requestedOrganizationId?: string): Promise<PartnerContext> {

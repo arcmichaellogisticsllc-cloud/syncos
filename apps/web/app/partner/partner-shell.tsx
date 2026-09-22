@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { clearAuthContext, readPermissions, readToken, sessionEmailFromToken, syncosFetch } from "../intelligence/api";
+import { clearAuthContext, readPermissions, readToken, sessionEmailFromToken, syncosFetch, SyncosApiError } from "../intelligence/api";
 
 type Persona = "partner_admin" | "partner_foreman";
 type Section =
@@ -33,6 +33,7 @@ type Section =
   | "performance";
 
 type PartnerContext = {
+  workforce_kind?: "internal" | "partner";
   user: { id: string; display_name: string };
   persona: Persona;
   organization: { id: string; name: string; status: string };
@@ -537,20 +538,20 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
         return;
       }
       try {
-        const context = await syncosFetch<PartnerContext>("partner-personas/me/context");
+        const context = await syncosFetch<PartnerContext>(product === "syncfield" ? "syncfield/foreman/context" : "partner-personas/me/context");
         const permissions = readPermissions();
         const canEnterSyncField = context.persona === "partner_foreman" || foremanFieldPermissions.some((permission) => permissions.includes(permission));
         if (product === "syncfield" && !canEnterSyncField) {
           setState({ loading: false, denied: true, error: "SyncField requires an active Foreman assignment.", data: { context } });
           return;
         }
-        const actions = await safeFetch<PartnerActions>("partner-personas/me/actions");
+        const actions = product === "syncfield" ? {} : await safeFetch<PartnerActions>("partner-personas/me/actions");
         const effectiveContext = product === "syncfield" && canEnterSyncField ? { ...context, persona: "partner_foreman" as const } : context;
         const data = effectiveContext.persona === "partner_foreman" ? await loadForeman(effectiveContext, actions, section, selectedAssignmentId) : await loadAdmin(effectiveContext, actions, section, itemId);
         if (!cancelled) setState({ loading: false, data });
       } catch (error) {
-        const text = error instanceof Error ? error.message : String(error);
-        if (!cancelled) setState({ loading: false, denied: /401|403|forbidden|unauthorized/i.test(text), error: text, data: {} });
+        const text = product === "syncfield" && error instanceof SyncosApiError && error.status === 403 ? "SyncField requires an active Foreman assignment." : error instanceof Error ? error.message : String(error);
+        if (!cancelled) setState({ loading: false, denied: error instanceof SyncosApiError ? [401,403].includes(error.status) : /401|403|forbidden|unauthorized/i.test(text), error: text, data: {} });
       }
     }
     void load();
@@ -823,7 +824,9 @@ async function loadForeman(context: PartnerContext, actions: PartnerActions | un
     (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
     needsProductionHistory && permissions.includes("partner_production_history.read_own") ? safeFetch<ProductionDashboard | null>("syncfield/foreman/production-history", null) : null,
   ]);
-  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, coilObservations, spanCompletions, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
+  const internalReadiness = context.workforce_kind === "internal" && selectedAssignment
+    ? await syncosFetch<{readiness:Readiness;notice:Notice}>(`syncfield/foreman/internal-readiness${assignmentQuery}`) : null;
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization: internalReadiness?.readiness ?? mobilization, notice: internalReadiness?.notice ?? notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, coilObservations, spanCompletions, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
 }
 
 async function safeFetch<T>(path: string, fallback?: T): Promise<T> {

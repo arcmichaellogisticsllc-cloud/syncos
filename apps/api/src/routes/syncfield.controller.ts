@@ -1,3 +1,4 @@
+import { resolveFieldIdentity } from "../security/field-identity";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
@@ -210,6 +211,24 @@ export class SyncfieldController {
     private readonly organizationScope: OrganizationScopeService,
   ) {}
 
+  @Get("setup/assignments")
+  @RequirePermission("syncfield_map.create")
+  async setupAssignments(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => {
+      const scope = await this.organizationScope.resolveForPermission(client,request.auth.tenantId,request.auth.userId,"syncfield_map.create");
+      const result = await client.query(`SELECT v.id,v.organization_id,v.work_order_number,v.assigned_crew_id AS crew_id,v.execution_model,
+        c.name AS crew_name,o.name AS organization_name,m.worker_id AS foreman_worker_id,
+        a.map_version_id,a.map_document_id
+        FROM partner_work_order_versions v JOIN crews c ON c.tenant_id=v.tenant_id AND c.id=v.assigned_crew_id
+        JOIN organizations o ON o.tenant_id=v.tenant_id AND o.id=v.organization_id
+        LEFT JOIN partner_crew_memberships m ON m.tenant_id=c.tenant_id AND m.crew_id=c.id AND m.membership_role='foreman' AND m.status='active' AND m.deleted_at IS NULL
+        LEFT JOIN syncfield_map_assignments a ON a.tenant_id=v.tenant_id AND a.work_order_version_id=v.id AND a.current=true AND a.assignment_status='active' AND a.deleted_at IS NULL
+        WHERE v.tenant_id=$1 AND v.status='active' AND v.deleted_at IS NULL AND ($2::uuid[] IS NULL OR v.organization_id=ANY($2::uuid[]))
+        ORDER BY v.created_at DESC LIMIT 250`,[request.auth.tenantId,scope.kind==='tenant'?null:scope.organizationIds]);
+      return result.rows;
+    });
+  }
+
   @Post("organizations/:organizationId/work-order-versions/:versionId/map-documents")
   @RequirePermission("syncfield_map.create")
   async createMapDocument(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("versionId") versionId: string, @Body() body: Record<string, unknown>) {
@@ -416,6 +435,32 @@ export class SyncfieldController {
       const context = await this.requirePartnerAdmin(client, request, query.organization_id);
       const assignment = await this.latestPartnerAssignment(client, context.tenant_id, context.organization.id);
       return assignment ? this.safeAssignmentDetail(client, await this.hydrateAssignment(client, assignment)) : null;
+    });
+  }
+
+  @Get("foreman/context")
+  @RequirePermission("partner_context.read")
+  async fieldContext(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => {
+      const context = await resolveFieldIdentity(client, request.auth.tenantId, request.auth.userId);
+      return { ...context, capacity_provider: context.capacityProvider };
+    });
+  }
+
+  @Get("foreman/internal-readiness")
+  @RequirePermission("partner_map.read_assigned")
+  async internalReadiness(@Req() request: AuthenticatedRequest,@Query("assignment_id") assignmentId?:string) {
+    return this.withClient(async client=>{
+      const context=await resolveFieldIdentity(client,request.auth.tenantId,request.auth.userId);
+      if(context.workforce_kind!=="internal")throw new ForbiddenException("Sync employee assignment required");
+      const assignment=await this.requireForemanOperationalAssignment(client,context,assignmentId);
+      const gate=await this.productionGate(client,assignment,new Date().toISOString().slice(0,10));
+      const blockers=gate.blockers.filter(b=>b!=="daily_jsa_incomplete");
+      const ready=blockers.length===0;
+      return {readiness:{overall_status:ready?"ready":"blocked",blockers:blockers.map(message=>({message}))},
+        notice:{status:ready?"issued":"held",production_start_status:ready?"authorized":"held",initial_work_area:assignment.primary_work_area,
+          production_start:{authorization_status:ready?"authorized":"held",work_area:assignment.primary_work_area}},
+        boundary:{internal_management_clearance:true,partner_agreement_required:false}};
     });
   }
 
@@ -1066,6 +1111,7 @@ export class SyncfieldController {
         const before = await this.requireScopedProductionRecord(writeClient, assignment, recordId);
         const report = await this.requireDailyReportById(writeClient, assignment.tenant_id, before.daily_production_report_id);
         if (report.status !== "draft" || before.locked_at) throw new BadRequestException("submitted production is read-only");
+        await this.assertProductionGate(writeClient, assignment, this.workDate(String(before.production_date instanceof Date ? before.production_date.toISOString().slice(0,10) : before.production_date).slice(0,10)));
         const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
         const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "update_draft_production");
         if (receipt?.entity_id) return { entityType: "production_record", entityId: before.id, afterState: await this.safeProductionRecordDetail(writeClient, before) };
@@ -1545,7 +1591,8 @@ export class SyncfieldController {
             ],
           };
         } catch (error) {
-          await writeClient.query("UPDATE production_export_artifacts SET status = 'failed', updated_at = now() WHERE tenant_id = $1 AND id = $2", [request.auth.tenantId, created.rows[0].id]);
+          // executeWriteAction rolls back the artifact; preserve the original error,
+          // rather than issuing another query against an aborted transaction.
           throw error;
         }
       });
@@ -2647,6 +2694,21 @@ export class SyncfieldController {
 
   private async productionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
     const blockers: string[] = [];
+    const execution = await client.query("SELECT execution_model,status FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [assignment.tenant_id,assignment.work_order_version_id]);
+    if (execution.rows[0]?.status !== "active") blockers.push("work_order_not_active");
+    if (execution.rows[0]?.execution_model === "internal") {
+      const clearance = await client.query("SELECT id FROM internal_field_clearances WHERE tenant_id=$1 AND work_order_version_id=$2 AND status='authorized' AND valid_until >= CURRENT_DATE AND valid_until >= $3::date", [assignment.tenant_id,assignment.work_order_version_id,workDate]);
+      if (!clearance.rows[0]) blockers.push("internal_readiness_not_authorized");
+      const crew = await client.query(`SELECT c.target_staffing_level,c.lifecycle_status,p.status AS provider_status,
+        count(w.id)::int AS active_members,bool_or(m.membership_role='foreman' AND w.id IS NOT NULL) AS has_foreman
+        FROM crews c JOIN capacity_providers p ON p.tenant_id=c.tenant_id AND p.id=c.capacity_provider_id
+        LEFT JOIN partner_crew_memberships m ON m.tenant_id=c.tenant_id AND m.crew_id=c.id AND m.status='active' AND m.deleted_at IS NULL
+        LEFT JOIN workers w ON w.tenant_id=m.tenant_id AND w.id=m.worker_id AND w.status='active' AND w.deleted_at IS NULL
+        WHERE c.tenant_id=$1 AND c.id=$2 AND c.deleted_at IS NULL AND p.deleted_at IS NULL
+        GROUP BY c.id,p.status`,[assignment.tenant_id,assignment.crew_id]);
+      const row=crew.rows[0];
+      if(!row||row.lifecycle_status!=='active'||row.provider_status!=='activated'||!row.has_foreman||row.active_members<row.target_staffing_level)blockers.push("internal_crew_not_ready");
+    } else {
     const authorization = await client.query(
       `
       SELECT psa.authorization_status
@@ -2663,6 +2725,7 @@ export class SyncfieldController {
       [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_assignment_id, assignment.organization_id, assignment.crew_id],
     );
     if (!authorization.rows[0]) blockers.push("production_start_not_authorized");
+    }
     const jsa = await this.findJsa(client, assignment, workDate);
     if (!jsa || jsa.status !== "completed") blockers.push("daily_jsa_incomplete");
     if (assignment.version_status !== "ready" || assignment.processing_status !== "ready") blockers.push("map_version_not_ready");
@@ -3315,7 +3378,7 @@ export class SyncfieldController {
   }
 
   private async requirePartnerForeman(client: PoolClient, request: AuthenticatedRequest): Promise<PartnerContext> {
-    return this.partnerContext(client, request, "partner_foreman");
+    return resolveFieldIdentity(client, request.auth.tenantId, request.auth.userId);
   }
 
   private async partnerContext(client: PoolClient, request: AuthenticatedRequest, roleKey: "partner_admin" | "partner_foreman", requestedOrganizationId?: string): Promise<PartnerContext> {

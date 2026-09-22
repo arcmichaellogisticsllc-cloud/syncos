@@ -1,3 +1,4 @@
+import { resolveFieldIdentity } from "../security/field-identity";
 import {
   BadRequestException,
   Body,
@@ -741,8 +742,8 @@ export class PartnerWorkforceController {
   }
 
   private async requirePartnerForeman(client: PoolClient, request: AuthenticatedRequest, organizationId?: string) {
-    const context = await this.resolvePartnerContext(client, request, organizationId);
-    if (context.persona !== "partner_foreman") throw new ForbiddenException("Partner Foreman persona is required");
+    const context = await resolveFieldIdentity(client, request.auth.tenantId, request.auth.userId);
+    if (organizationId && organizationId !== context.organization.id) throw new ForbiddenException("Field organization mismatch");
     return context;
   }
 

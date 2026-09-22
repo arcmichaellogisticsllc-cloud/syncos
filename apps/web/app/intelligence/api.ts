@@ -359,6 +359,13 @@ export function workspaceRouteFor(context: AuthContext) {
   return "/";
 }
 
+export class SyncosApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "SyncosApiError";
+  }
+}
+
 export async function syncosFetch<T>(path: string, options: { method?: string; body?: unknown; token?: string } = {}): Promise<T> {
   const token = options.token ?? readToken();
   const response = await fetch(`/api/syncos/${path.replace(/^\//, "")}`, {
@@ -373,7 +380,7 @@ export async function syncosFetch<T>(path: string, options: { method?: string; b
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new Error(readableError(response.status, data));
+    throw new SyncosApiError(response.status, readableError(response.status, data));
   }
   return data as T;
 }

@@ -6,9 +6,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${PORT:-3120}"
 export NODE_ENV="${NODE_ENV:-test}"
-export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-release-validation-secret}"
-export API_BASE_URL="${API_BASE_URL:-http://localhost:${PORT}}"
+export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-syncos-isolated-release-validation-secret}"
+export API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:${PORT}}"
 export PORT
+export HOST="127.0.0.1"
 
 cd "${ROOT_DIR}"
 
@@ -21,7 +22,7 @@ npm run build -w @syncos/web
 npm test
 npm run db:verify
 
-npm run start -w @syncos/api &
+node apps/api/dist/main.js &
 API_PID=$!
 trap 'kill "${API_PID}" 2>/dev/null || true' EXIT
 

@@ -55,6 +55,11 @@ export function WorkOrderDirectory() {
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "default", queue: "ready_to_start" });
 
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project_id");
+    if (projectId) setFilters((current) => ({ ...current, project_id: projectId, queue: "all" }));
+  }, []);
+
   async function load() {
     setLoading(true);
     setError("");
@@ -75,12 +80,12 @@ export function WorkOrderDirectory() {
   useEffect(() => {
     if (session.token) void load();
     else setLoading(false);
-  }, [session.token, filters.archived]);
+  }, [session.token, filters.archived, filters.project_id]);
 
   const visible = useMemo(() => sortWorkOrders(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
   const activeQueue = filters.queue ?? "ready_to_start";
-  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "default", queue, ...nextFilters });
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "default", queue, ...(filters.project_id ? { project_id: filters.project_id } : {}), ...nextFilters });
 
   return (
     <WorkOrderShell title="Work Orders" purpose="Plan, assign, and monitor executable telecom work before production and QC.">

@@ -413,8 +413,7 @@ function evidence(file_name: string, checksum: string) {
   return {
     file_name,
     mime_type: "application/pdf",
-    size_bytes: 1234,
-    checksum,
+    content_base64: Buffer.from(`%PDF-1.4\nSynthetic evidence ${checksum}\n%%EOF`).toString("base64"),
   };
 }
 

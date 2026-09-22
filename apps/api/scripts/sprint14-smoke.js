@@ -22,7 +22,14 @@ async function main() {
       NODE_ENV: "production",
       DATABASE_URL: process.env.DATABASE_URL,
       AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET,
-      API_BASE_URL: apiBaseUrl,
+      // This subprocess validates configuration only; it never contacts these URLs.
+      API_BASE_URL: "https://api.syncos-test.invalid",
+      APPLICATION_BASE_URL: "https://app.syncos-test.invalid",
+      WEB_BASE_URL: "https://app.syncos-test.invalid",
+      SYNCOS_ALLOWED_ORIGINS: "https://app.syncos-test.invalid",
+      PUBLIC_PARTNER_INQUIRY_TENANT_ID: "00000000-0000-4000-8000-000000000001",
+      EMAIL_PROVIDER: "disabled",
+      LIVE_AUTOMATED_PARTNER_PAYMENTS: "false",
       REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
     },
     encoding: "utf8",
@@ -123,6 +130,16 @@ async function main() {
     "052_partner_performance_capacity_intelligence.sql",
     "053_opportunity_capacity_matching.sql",
     "054_executive_command_throughput.sql",
+    "055_partner_onboarding_invitations.sql",
+    "056_syncfield_field_traceability.sql",
+    "057_syncfield_design_segments_redlines.sql",
+    "058_syncfield_coil_slack_observations.sql",
+    "059_syncfield_coil_commercial_policy.sql",
+    "060_partner_onboarding_submissions.sql",
+    "061_internal_workforce_and_external_payments.sql",
+    "062_internal_account_invitations.sql",
+    "063_field_billing_units.sql",
+    "064_restore_production_export_file_types.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));

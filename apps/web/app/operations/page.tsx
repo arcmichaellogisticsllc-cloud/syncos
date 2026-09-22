@@ -21,6 +21,8 @@ export default async function OperationsPage() {
         description="The Operations Board connects capacity, work orders, field production, stop-work signals, and QC outcomes so managers can decide what to unblock first."
         actions={
           <>
+            <OperatorLink href="/internal-workforce">Manage Sync Crews</OperatorLink>
+            <OperatorLink href="/field-setup">Assign Field Maps</OperatorLink>
             <OperatorLink href="/work-orders" variant="primary">Open Work Orders</OperatorLink>
             <OperatorLink href="/production">Review Production</OperatorLink>
             <OperatorLink href="/qc">Open QC Queue</OperatorLink>

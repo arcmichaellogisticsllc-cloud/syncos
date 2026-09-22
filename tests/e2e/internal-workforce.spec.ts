@@ -1,0 +1,110 @@
+import { test, expect, type APIRequestContext } from '@playwright/test';
+import { Client } from 'pg';
+import crypto from 'node:crypto';
+function token(user: string, tenant: string) { const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url'); const p = Buffer.from(JSON.stringify({ sub: user, tenant_id: tenant, exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url'); return `${h}.${p}.${crypto.createHmac('sha256', process.env.AUTH_JWT_SECRET!).update(`${h}.${p}`).digest('base64url')}`; }
+async function api(r: APIRequestContext, bearer: string, path: string, data?: any) { const response = await r.fetch(`${process.env.API_BASE_URL}/${path}`, { method: data ? 'POST' : 'GET', headers: { authorization: `Bearer ${bearer}` }, data }); expect(response.ok(), `${path}: ${await response.text()}`).toBeTruthy(); return response.json(); }
+test('Sync management provisions a real internal crew through field production with strict readiness and access boundaries', async ({ request, page }) => {
+    test.setTimeout(120000);
+    const db = new Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+        const admin = (await db.query(`SELECT tu.tenant_id,tu.user_id FROM tenant_users tu JOIN user_roles ur ON ur.tenant_user_id=tu.id JOIN roles r ON r.id=ur.role_id WHERE r.system_key='system_admin' AND ur.scope_type='tenant' ORDER BY tu.created_at LIMIT 1`)).rows[0];
+        const t = admin.tenant_id;
+        const management = token(admin.user_id, t);
+        const org = crypto.randomUUID();
+        const customer = crypto.randomUUID();
+        const schedule = crypto.randomUUID();
+        const project = crypto.randomUUID();
+        const wo = crypto.randomUUID();
+        await db.query("INSERT INTO organizations (id,tenant_id,name,status) VALUES ($1,$2,'Synthetic Sync operating company','active')", [org, t]);
+        const email = `${crypto.randomUUID()}@syncos.test`;
+        const invitation = await api(request, management, 'internal-workforce/accounts', { email, display_name: 'Synthetic employee foreman' });
+        const staff = invitation.id;
+        const replaced = await api(request, management, 'internal-workforce/accounts', { email, display_name: 'Synthetic employee foreman' });
+        const oldToken = new URL(invitation.activation_path, 'http://localhost').searchParams.get('token');
+        expect((await request.post(`${process.env.API_BASE_URL}/internal-workforce/activate`, { data: { token: oldToken, password: 'Synthetic-test-password-2026' } })).status()).toBe(400);
+        invitation.activation_path = replaced.activation_path;
+        const activationToken = new URL(invitation.activation_path, 'http://localhost').searchParams.get('token');
+        const activation = { token: activationToken, password: 'Synthetic-test-password-2026' };
+        const activated = await request.post(`${process.env.API_BASE_URL}/internal-workforce/activate`, { data: activation });
+        expect(activated.ok(), await activated.text()).toBeTruthy();
+        expect((await request.post(`${process.env.API_BASE_URL}/internal-workforce/activate`, { data: activation })).status()).toBe(400);
+        const login = await request.post(`${process.env.API_BASE_URL}/auth/login`, { data: { email, password: activation.password } });
+        expect(login.ok(), await login.text()).toBeTruthy();
+        await db.query("INSERT INTO projects (id,tenant_id,name,status) VALUES ($1,$2,'Synthetic internal project','active')", [project, t]);
+        await db.query("INSERT INTO work_orders (id,tenant_id,project_id,title,work_type,expected_units,unit_type,status,work_order_number) VALUES ($1,$2,$3,'Internal aerial work','fiber',1000,'feet','assigned',$4)", [wo, t, project, `SYNC-${wo.slice(0, 8)}`]);
+        await db.query("INSERT INTO organizations (id,tenant_id,name,organization_type,status) VALUES ($1,$2,'Synthetic customer','customer','active')", [customer, t]);
+        await db.query("INSERT INTO rate_schedules (id,tenant_id,organization_id,name,effective_date,status) VALUES ($1,$2,$3,'Synthetic customer rates','2026-01-01','active')", [schedule, t, customer]);
+        await db.query("INSERT INTO rate_codes (tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,status) VALUES ($1,$2,'LABOR','Crew labor','hours','hours',100,100,'active')", [t, schedule]);
+        await db.query("INSERT INTO rate_codes (tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,status) VALUES ($1,$2,'FIBER','Fiber placement','feet','feet',2,2,'active'),($1,$2,'POLE-ATT','Pole attachment','each','each',50,50,'active')",[t,schedule]);
+        await db.query("UPDATE projects SET customer_organization_id=$3 WHERE tenant_id=$1 AND id=$2", [t, project, customer]);
+        await db.query("UPDATE work_orders SET customer_rate_schedule_id=$3,qc_authority_organization_id=$4 WHERE tenant_id=$1 AND id=$2", [t, wo, schedule, customer]);
+        const crew = await api(request, management, 'internal-workforce/crews', { organization_id: org, name: 'Sync employee crew', crew_type: 'aerial', target_staffing_level: 1 });
+        const worker = await api(request, management, `internal-workforce/crews/${crew.id}/members`, { first_name: 'Synthetic', last_name: 'Foreman', role: 'foreman', user_id: staff });
+        const employee = token(staff, t);
+        const identity = await api(request, employee, 'syncfield/foreman/context');
+        expect(identity.workforce_kind).toBe('internal');
+        expect(identity.capacity_provider.provider_type).toBe('internal_workforce');
+        const auth = await api(request, employee, 'auth/me');
+        expect(auth.routing.workspace).toBe('/syncfield/today');
+        expect((await request.get(`${process.env.API_BASE_URL}/partner-personas/me/context`, { headers: { authorization: `Bearer ${employee}` } })).status()).toBe(403);
+        expect((await request.get(`${process.env.API_BASE_URL}/internal-workforce`, { headers: { authorization: `Bearer ${employee}` } })).status()).toBe(403);
+        const assignment = await api(request, management, 'internal-workforce/assignments', { crew_id: crew.id, work_order_id: wo, scope_summary: 'Aerial fiber', work_area: 'Synthetic block', map_reference: 'CUSTOMER-01' });
+        expect(assignment.execution_model).toBe('internal');
+        expect(assignment.governing_agreement_version_id).toBeNull();
+        const managerAuth = await api(request, management, 'auth/me');
+        const setupPage = await page.context().newPage();
+        await setupPage.addInitScript(({ bearer, permissions }) => { localStorage.setItem('syncos.apiToken', bearer); localStorage.setItem('syncos.permissions', permissions.join(',')); }, { bearer: management, permissions: managerAuth.permissions });
+        await setupPage.goto('/field-setup');
+        await setupPage.getByLabel('Work assignment').selectOption(assignment.id);
+        await setupPage.getByLabel('Map name').fill('Customer map');
+        await setupPage.getByLabel('Revision', { exact: true }).fill('A');
+        await setupPage.getByLabel('Source / customer').fill('Synthetic customer');
+        await setupPage.getByLabel('Customer map PDF').setInputFiles({ name: 'map.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n1 0 obj << /Type /Page /MediaBox [0 0 612 792] >> endobj\n%%EOF') });
+        await setupPage.getByRole('button', { name: 'Upload and assign map' }).click();
+        await expect(setupPage.getByRole('status')).toContainText('Map assigned');
+        await setupPage.close();
+        const date = new Date().toISOString().slice(0, 10);
+        const produce = () => request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/today`, { headers: { authorization: `Bearer ${employee}` }, data: { work_date: date, client_mutation_id: crypto.randomUUID() } });
+        expect((await produce()).status()).toBe(400);
+        const checklist = Object.fromEntries(['customer_authorization', 'crew_qualifications', 'insurance', 'equipment_inspection', 'safety_plan'].map(k => [k, true]));
+        const invalidDecision=await request.post(`${process.env.API_BASE_URL}/internal-workforce/assignments/${assignment.id}/clearance`,{headers:{authorization:`Bearer ${management}`},data:{status:'typo',checklist,evidence_reference:'SYNTHETIC',valid_until:date}});expect(invalidDecision.status()).toBe(400);
+        await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'authorized', checklist, evidence_reference: 'SYNTHETIC-READINESS-PACK', valid_until: date });
+        expect((await produce()).status()).toBe(400); // daily JSA still mandatory
+        await api(request, employee, 'syncfield/foreman/jsa/today/complete', { work_date: date, work_location: 'Synthetic block', hazards: ['traffic'], controls: ['ppe_reviewed', 'emergency_procedures_reviewed', 'stop_work_authority_reviewed'], foreman_certified: true });
+        expect((await produce()).ok()).toBeTruthy();
+        const codes = await api(request, employee, 'syncfield/foreman/production/codes');
+        const code = codes.find((r: any) => r.code === 'LABOR');
+        const record = await api(request, employee, 'syncfield/foreman/production/records', { work_date: date, client_mutation_id: crypto.randomUUID(), production_code_id: code.id, location_type: 'daily', reported_quantity: 8, status: 'complete', notes: 'Synthetic employee work' });
+        expect(record.id).toBeTruthy();
+        const fiber=await api(request,employee,'syncfield/foreman/production/records',{work_date:date,client_mutation_id:crypto.randomUUID(),production_code_id:codes.find((r:any)=>r.code==='FIBER').id,location_type:'route',from_asset_identifier:'P-1',to_asset_identifier:'P-2',map_page:1,start_x_ratio:0.2,start_y_ratio:0.3,end_x_ratio:0.6,end_y_ratio:0.3,reported_quantity:10,status:'complete'});
+        const pole=await api(request,employee,'syncfield/foreman/production/records',{work_date:date,client_mutation_id:crypto.randomUUID(),production_code_id:codes.find((r:any)=>r.code==='POLE-ATT').id,location_type:'asset',asset_type:'pole',asset_identifier:'P-1',map_page:1,x_ratio:0.2,y_ratio:0.3,reported_quantity:1,status:'complete'});
+        await page.addInitScript(({ bearer, permissions }) => { localStorage.setItem('syncos.apiToken', bearer); localStorage.setItem('syncos.permissions', permissions.join(',')); }, { bearer: employee, permissions: auth.permissions });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto('/syncfield/production');
+        await expect(page.getByRole('heading', { name: 'Production', exact: true })).toBeVisible();
+        await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'held', evidence_reference: 'SYNTHETIC-HOLD', valid_until: date });
+        const blocked = await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/records`, { headers: { authorization: `Bearer ${employee}` }, data: { work_date: date, client_mutation_id: crypto.randomUUID(), production_code_id: code.id, location_type: 'daily', reported_quantity: 1, status: 'complete' } });
+        expect(blocked.status()).toBe(400);
+        const editOnHold = await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/records/${record.id}`, { headers: { authorization: `Bearer ${employee}` }, data: { client_mutation_id: crypto.randomUUID(), reported_quantity: 9 } });
+        expect(editOnHold.status()).toBe(400);
+        await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'authorized', checklist, evidence_reference: 'SYNTHETIC-REVIEWED', valid_until: date });
+        const submitted = await api(request, employee, 'syncfield/foreman/production/review-day/submit', { work_date: date, client_mutation_id: crypto.randomUUID() });
+        expect(submitted.status).toBe('submitted');
+        await api(request, management, `syncfield/customer-qc/reports/${submitted.id}/complete`, { qc_authority_organization_id: customer, client_mutation_id: crypto.randomUUID() });
+        const cycle = await api(request, management, `syncfield/customer-qc/reports/${submitted.id}/cycles`, { source_type: 'manual_recorded_from_customer', source_reference: 'SYNTHETIC-CUSTOMER-ACCEPTANCE', client_mutation_id: crypto.randomUUID() });
+        const decision = await api(request, management, `syncfield/customer-qc/cycles/${cycle.id}/decisions`, { production_record_id: record.id, decision: 'accepted', customer_accepted_quantity: 8, client_mutation_id: crypto.randomUUID() });
+        const billable = await api(request, management, 'accepted-production-financials/billables/convert', { customer_qc_decision_id: decision.id });
+        expect(Number(billable.net_billable_amount)).toBe(800);
+        expect(billable.unit).toBe('HR');
+        for(const item of [{record:fiber,quantity:10,amount:20,unit:'LF'},{record:pole,quantity:1,amount:50,unit:'EA'}]){
+          const accepted=await api(request,management,`syncfield/customer-qc/cycles/${cycle.id}/decisions`,{production_record_id:item.record.id,decision:'accepted',customer_accepted_quantity:item.quantity,client_mutation_id:crypto.randomUUID()});
+          const billed=await api(request,management,'accepted-production-financials/billables/convert',{customer_qc_decision_id:accepted.id});expect(Number(billed.net_billable_amount)).toBe(item.amount);expect(billed.unit).toBe(item.unit);
+        }
+        const effects = await db.query("SELECT (SELECT count(*) FROM contractor_payables WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS payables,(SELECT count(*) FROM partner_agreement_versions WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS agreements", [t, crew.capacity_provider_id]);
+        expect(effects.rows[0]).toEqual({ payables: 0, agreements: 0 });
+    }
+    finally {
+        await db.end();
+    }
+});

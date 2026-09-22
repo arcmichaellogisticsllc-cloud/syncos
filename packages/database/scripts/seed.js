@@ -27,6 +27,7 @@ const roles = [
   "Customer Financial Authority",
   "Partner Admin",
   "Partner Foreman",
+  "Sync Foreman",
   "System Admin",
   "AI/System",
 ];
@@ -983,6 +984,7 @@ async function main() {
         ],
       },
     ];
+    partnerRolePermissions.push({ name: "Sync Foreman", permissions: partnerRolePermissions.find(role => role.name === "Partner Foreman").permissions.filter(key => !["partner_compliance.summary.read", "partner_notice.foreman.acknowledge"].includes(key)) });
     for (const partnerRole of partnerRolePermissions) {
       const role = await client.query("SELECT id FROM roles WHERE tenant_id = $1 AND name = $2", [tenantId, partnerRole.name]);
       for (const key of partnerRole.permissions) {

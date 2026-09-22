@@ -252,3 +252,28 @@ function token(userId: string, tenantId: string, secret: string) {
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
+
+test('external payment records are idempotent, evidence-backed, and serialized against concurrent overpayment', async ({request}) => {
+  const client=new Client({connectionString:process.env.DATABASE_URL});await client.connect();
+  try {
+    const f=await seedP13Fixture(client,process.env.AUTH_JWT_SECRET!);
+    const balance=(await client.query('SELECT eligible_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.payableId])).rows[0];
+    const amount=Number(balance.eligible_amount);
+    const body={contractor_payable_id:f.payableId,amount,payment_date:new Date().toISOString().slice(0,10),method:'ach',reference:crypto.randomUUID(),evidence_reference:'Synthetic bank confirmation',idempotency_key:crypto.randomUUID(),confirmed_completed:true};
+    const url=apiUrl('/payment-retainage-adjustments/external-payments');
+    const denied=await request.post(url,{headers:auth(f.foremanToken),data:body});expect(denied.status()).toBe(403);
+    const noEvidence=await request.post(url,{headers:auth(f.internalToken),data:{...body,evidence_reference:''}});expect(noEvidence.status()).toBe(400);
+    const fractional=await request.post(url,{headers:auth(f.internalToken),data:{...body,amount:1.001}});expect(fractional.status()).toBe(400);
+    const invalidDate=await request.post(url,{headers:auth(f.internalToken),data:{...body,payment_date:'2026-02-31'}});expect(invalidDate.status()).toBe(400);
+    const attempts=await Promise.all([request.post(url,{headers:auth(f.internalToken),data:body}),request.post(url,{headers:auth(f.internalToken),data:{...body,idempotency_key:crypto.randomUUID(),reference:crypto.randomUUID()}})]);
+    expect(attempts.filter(r=>r.ok())).toHaveLength(1);expect(attempts.filter(r=>r.status()===400)).toHaveLength(1);
+    const winner=await attempts.find(r=>r.ok())!.json();
+    const retryBody={...body,idempotency_key:winner.idempotency_key,reference:winner.reference};
+    const retry=await request.post(url,{headers:auth(f.internalToken),data:retryBody});expect(retry.ok()).toBeTruthy();expect((await retry.json()).id).toBe(winner.id);
+    const changed=await request.post(url,{headers:auth(f.internalToken),data:{...retryBody,amount:amount/2}});expect(changed.status()).toBe(400);
+    const stored=await client.query('SELECT paid_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.payableId]);expect(Number(stored.rows[0].paid_amount)).toBe(amount);
+    const history=await apiJson(request,f.internalToken,'GET','/payment-retainage-adjustments/external-payments');expect(history.some((r:any)=>r.id===winner.id&&r.evidence_reference===body.evidence_reference)).toBe(true);
+    const partnerHistory=await apiJson(request,f.partnerToken,'GET','/payment-retainage-adjustments/partner/payments');expect(JSON.stringify(partnerHistory)).toContain(winner.reference);expect(JSON.stringify(partnerHistory)).not.toContain(body.evidence_reference);
+    const rows=await client.query('SELECT count(*)::int AS count FROM external_partner_payments WHERE tenant_id=$1 AND contractor_payable_id=$2',[f.tenantA,f.payableId]);expect(rows.rows[0].count).toBe(1);
+  } finally {await client.end();}
+});

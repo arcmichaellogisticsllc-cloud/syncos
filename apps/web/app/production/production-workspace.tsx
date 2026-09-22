@@ -54,6 +54,11 @@ export function ProductionDirectory() {
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "production_date_desc", queue: "draft" });
 
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project_id");
+    if (projectId) setFilters((current) => ({ ...current, project_id: projectId, queue: "all" }));
+  }, []);
+
   async function load() {
     setLoading(true);
     setError("");
@@ -74,12 +79,12 @@ export function ProductionDirectory() {
   useEffect(() => {
     if (session.token) void load();
     else setLoading(false);
-  }, [session.token, filters.archived]);
+  }, [session.token, filters.archived, filters.project_id]);
 
   const visible = useMemo(() => sortProduction(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
   const activeQueue = filters.queue ?? "draft";
-  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "production_date_desc", queue, ...nextFilters });
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "production_date_desc", queue, ...(filters.project_id ? { project_id: filters.project_id } : {}), ...nextFilters });
 
   return (
     <ProductionShell title="Production Board" purpose="Track field production from draft through review, correction, approval, and billable readiness.">

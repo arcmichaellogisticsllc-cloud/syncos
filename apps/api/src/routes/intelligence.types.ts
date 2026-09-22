@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import type { Request } from "express";
 
 export type AuthenticatedRequest = Request & {
@@ -13,7 +14,7 @@ export function pick(input: Record<string, unknown>, allowed: string[]): Record<
 
 export function requireString(value: unknown, message: string): string {
   if (typeof value !== "string" || !value.trim()) {
-    throw new Error(message);
+    throw new BadRequestException(message);
   }
   return value.trim();
 }

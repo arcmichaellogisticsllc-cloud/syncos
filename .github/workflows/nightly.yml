@@ -25,11 +25,11 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_e2e
-      AUTH_JWT_SECRET: e2e-secret-for-ci
-      API_BASE_URL: http://localhost:3137
+      AUTH_JWT_SECRET: syncos-isolated-ci-validation-secret-2026
+      API_BASE_URL: http://127.0.0.1:3137
       PORT: 3137
-      SYNCOS_API_BASE_URL: http://localhost:3137
-      WEB_BASE_URL: http://localhost:3138
+      SYNCOS_API_BASE_URL: http://127.0.0.1:3137
+      WEB_BASE_URL: http://127.0.0.1:3138
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,7 +45,7 @@ jobs:
       - name: Build Web
         run: npm run build -w @syncos/web
       - name: Migrate E2E database
-        run: npm run db:migrate -w @syncos/database
+        run: npm run db:migrate
       - name: Seed base permissions/catalog
         run: npm run db:seed
       - name: Seed E2E database
@@ -58,20 +58,20 @@ jobs:
         run: |
           npm run start -w @syncos/api &
           for i in $(seq 1 30); do
-            curl -fsS http://localhost:3137/health && break
+            curl -fsS http://127.0.0.1:3137/health && break
             sleep 2
           done
-          curl -fsS http://localhost:3137/health
+          curl -fsS http://127.0.0.1:3137/health
       - name: Start Web
         env:
           PORT: 3138
         run: |
-          npm run start -w @syncos/web &
+          npm run start -w @syncos/web -- -H 127.0.0.1 &
           for i in $(seq 1 30); do
-            curl -fsS http://localhost:3138 && break
+            curl -fsS http://127.0.0.1:3138 && break
             sleep 2
           done
-          curl -fsS http://localhost:3138
+          curl -fsS http://127.0.0.1:3138
       - name: E2E full suite
         run: npm run e2e:ci:nightly
       - name: Upload Playwright report
