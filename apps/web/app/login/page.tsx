@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   async function signIn() {
+    if (loading) return;
     if (!email.trim() || !password) {
       setMessage("Enter your email and password to continue.");
       return;
@@ -26,7 +27,7 @@ export default function LoginPage() {
       const result = await syncosFetch<LoginResult>("auth/login", {
         method: "POST",
         token: "",
-        body: { email, password },
+        body: { email: email.trim(), password },
       });
       saveToken(result.token);
       window.location.assign(workspaceRouteFor(result.context));
@@ -62,18 +63,20 @@ export default function LoginPage() {
             </div>
           </div>
           <p className="login-copy">Access your workspace securely.</p>
+          <form onSubmit={(event) => { event.preventDefault(); void signIn(); }} aria-busy={loading}>
           <label className="form-field login-field">
             <span>Email</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" inputMode="email" />
+            <input type="email" name="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" inputMode="email" />
           </label>
           <label className="form-field login-field">
             <span>Password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={12} maxLength={128} />
+            <input name="password" required type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={128} />
           </label>
-          <p id="login-note" className="login-copy">{message}</p>
+          <p id="login-note" className="login-copy" role="status" aria-live="polite">{message}</p>
           <div className="login-actions">
-            <button className="primary-button login-submit" type="button" onClick={signIn} disabled={loading}>{loading ? "Signing In..." : "Sign In"}</button>
+            <button className="primary-button login-submit" type="submit" disabled={loading}>{loading ? "Signing In..." : "Sign In"}</button>
           </div>
+          </form>
           <div className="new-partner-cta">
             <span>New Partner?</span>
             <Link className="operator-link login-secondary" href="https://synccommsystems.com/partner.html">Become a Sync Partner</Link>

@@ -1582,6 +1582,36 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
 
 function FieldMapWorkspace({ data }: { data: PortalData }) {
   const assignment = data.mapAssignment;
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [zoom, setZoom] = useState(100);
+  const versionId = assignment?.map?.version_id;
+  const assignmentId = assignment?.id;
+  const canReadFile = data.context?.persona === "partner_foreman";
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+    setPdfUrl(null);
+    setMapError(null);
+    setPageNumber(1);
+    setZoom(100);
+    if (!versionId || !canReadFile) return;
+    void syncosFetch<{ mime_type: string; content_base64: string }>(`syncfield/foreman/map-versions/${encodeURIComponent(versionId)}/bytes${assignmentId ? `?assignment_id=${encodeURIComponent(assignmentId)}` : ""}`)
+      .then((file) => {
+        if (disposed) return;
+        if (file.mime_type !== "application/pdf") throw new Error("The assigned document is not a PDF.");
+        const bytes = Uint8Array.from(atob(file.content_base64), character => character.charCodeAt(0));
+        objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+        setPdfUrl(objectUrl);
+      }).catch(() => {
+        if (!disposed) setMapError("The assigned PDF could not be opened. Refresh to retry or contact your supervisor.");
+      });
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [versionId, assignmentId, canReadFile]);
   if (!assignment?.map || assignment.map.status !== "ready") {
     return <EmptyPortal title="No assigned field map" body="A read-only field map appears after Sync assigns a READY Map Version to your Work Order and Crew." />;
   }
@@ -1602,44 +1632,29 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
       </section>
       <section className="field-map-viewer" aria-label="PDF map viewer">
         <div className="field-map-toolbar" aria-label="Map controls">
-          <button className="partner-button" type="button" aria-label="Previous PDF page">Page -</button>
-          <span>Page 1 / {assignment.map.page_count ?? 1}</span>
-          <button className="partner-button" type="button" aria-label="Next PDF page">Page +</button>
-          <button className="partner-button" type="button" aria-label="Zoom out">-</button>
-          <button className="partner-button" type="button" aria-label="Zoom in">+</button>
+          <button className="partner-button" type="button" aria-label="Previous PDF page" disabled={!pdfUrl || pageNumber <= 1} onClick={() => setPageNumber(pageNumber - 1)}>Page -</button>
+          <span role="status" aria-live="polite">Page {pageNumber} / {assignment.map.page_count ?? 1} · {zoom}%</span>
+          <button className="partner-button" type="button" aria-label="Next PDF page" disabled={!pdfUrl || pageNumber >= (assignment.map.page_count ?? 1)} onClick={() => setPageNumber(pageNumber + 1)}>Page +</button>
+          <button className="partner-button" type="button" aria-label="Zoom out" disabled={!pdfUrl || zoom <= 50} onClick={() => setZoom(Math.max(50, zoom - 25))}>-</button>
+          <button className="partner-button" type="button" aria-label="Zoom in" disabled={!pdfUrl || zoom >= 300} onClick={() => setZoom(Math.min(300, zoom + 25))}>+</button>
         </div>
-        <div className="field-map-canvas field-construction-canvas" role="img" aria-label={`PDF map ${assignment.map.name} revision ${assignment.map.revision_number ?? 0} with planned and completed overlays`}>
-          <span>{assignment.map.customer_document_number || assignment.map.name}</span>
-          <strong>PDF page preview</strong>
-          <small>Pan, zoom, and review the assigned print before recording production.</small>
-          <div className="field-design-layer" aria-hidden="true">
-            {designSegments.slice(0, 8).map((segment, index) => <MapPolyline key={segment.id ?? index} points={segment.geometry?.points} className="design" />)}
-          </div>
-          <div className="field-redline-layer" aria-hidden="true">
-            {spanCompletions.slice(0, 8).map((span, index) => <MapPolyline key={span.id ?? index} points={span.redline_geometry?.points} className="redline" />)}
-          </div>
-          <div className="field-pole-layer" aria-hidden="true">
-            {observations.slice(0, 12).map((observation) => (
-              <span key={observation.id} className="field-pole-marker" style={{ left: `${Number(observation.pdf_x ?? 0) * 100}%`, top: `${Number(observation.pdf_y ?? 0) * 100}%` }}>
-                {observation.asset_identifier}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-      <section className="field-map-legend" aria-label="Map legend">
-        <span><b className="legend-line design" /> DESIGN / PLANNED</span>
-        <span><b className="legend-line redline" /> COMPLETED REDLINE</span>
-        <span><b className="legend-dot" /> POLE / ASSET OBSERVATION</span>
+        {mapError ? <p role="alert" className="partner-safe-text error-text">{mapError}</p> : !canReadFile ? <p className="partner-safe-text">PDF preview is available to the assigned foreman in SyncField.</p> : !pdfUrl ? <p role="status">Loading assigned PDF…</p> : <>
+          <iframe key={`${pdfUrl}:${pageNumber}:${zoom}`} title={`Assigned PDF map: ${assignment.map.name}`} src={`${pdfUrl}#page=${pageNumber}&zoom=${zoom}`} style={{ width: "100%", height: "65vh", minHeight: 360, border: 0 }} />
+          <a className="partner-button" href={pdfUrl} target="_blank" rel="noopener noreferrer">Open assigned PDF</a>
+          <p className="partner-safe-text">Use your device’s PDF viewer if the preview is unavailable. Production marks are listed below; they are not drawn on this original PDF.</p>
+        </>}
       </section>
       <Panel title="Work Zones" eyebrow="Navigation bookmarks">
         <div className="partner-actions-row">
-          {zones.map((zone) => <button className="partner-button" type="button" key={zone.id}>Jump to {zone.name} · Pg {zone.page_number}</button>)}
+          {zones.map((zone) => <button className="partner-button" type="button" key={zone.id} disabled={!pdfUrl} onClick={() => {
+            setPageNumber(Math.max(1, Math.min(assignment.map?.page_count ?? 1, zone.page_number ?? 1)));
+            setZoom(Math.max(50, Math.min(300, Math.round((zone.zoom_level ?? 1) * 100))));
+          }}>Jump to {zone.name} · Pg {zone.page_number}</button>)}
           {!zones.length ? <span className="partner-safe-text">No Work Zones assigned.</span> : null}
         </div>
       </Panel>
       <Panel title="Field Access" eyebrow="Assigned print">
-        <StatusRows rows={[["State", "Available"], ["Source", "Read-only field map"], ["Map Package", assignment.map.name], ["Production Entry", "Use the Production workspace"]]} />
+        <StatusRows rows={[["State", pdfUrl ? "Available" : mapError ? "Unavailable" : canReadFile ? "Loading" : "Foreman access required"], ["Source", "Read-only field map"], ["Map Package", assignment.map.name], ["Production Entry", "Use the Production workspace"]]} />
       </Panel>
       <Panel title="Production marks" eyebrow="Authoritative quantity remains ProductionRecord">
         <StatusRows rows={[
@@ -1662,7 +1677,7 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
             </div>
           ))}
         </div>
-        <p className="partner-safe-text">Yellow planned segments, red completion overlays, and annotation marks are construction evidence. ProductionRecord remains the reported quantity authority.</p>
+        <p className="partner-safe-text">Planned segments, completed spans, and annotation records are construction evidence. Production records remain the source of reported quantities.</p>
         <p className="partner-safe-text">Recorded coil/slack is material traceability only. It does not create billable production, settlement, payable, or payment eligibility.</p>
         <Link className="partner-button wide-touch" href="/syncfield/production">Open Production</Link>
       </Panel>
@@ -1673,18 +1688,6 @@ function FieldMapWorkspace({ data }: { data: PortalData }) {
 function constructionSpanLabel(from?: string | null, to?: string | null, fallback?: string | null) {
   if (from || to) return `${from ?? "From"} -> ${to ?? "To"}`;
   return fallback || "Unlabeled span";
-}
-
-function MapPolyline({ points, className }: { points?: Array<{ x?: number; y?: number }>; className: "design" | "redline" }) {
-  const valid = (points ?? []).filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
-  if (valid.length < 2) return null;
-  const style = {
-    left: `${Number(valid[0].x) * 100}%`,
-    top: `${Number(valid[0].y) * 100}%`,
-    width: `${Math.max(12, Math.abs(Number(valid[valid.length - 1].x) - Number(valid[0].x)) * 100)}%`,
-    transform: `rotate(${Math.atan2(Number(valid[valid.length - 1].y) - Number(valid[0].y), Number(valid[valid.length - 1].x) - Number(valid[0].x))}rad)`,
-  };
-  return <span className={`field-map-polyline ${className}`} style={style} />;
 }
 
 type ChecklistOption = readonly [string, string];
@@ -2861,7 +2864,7 @@ function ForemanCrew({ data }: { data: PortalData }) {
       <Panel title={str(data.foremanCrew?.name) || "Assigned Crew"} eyebrow="Foreman-safe crew view">
         <StatusRows rows={[["Crew Type", str(data.foremanCrew?.crew_type)], ["Lifecycle", str(data.foremanCrew?.lifecycle_status)], ["Target Staffing", str(data.foremanCrew?.target_staffing_level)], ["Daily Participation", jsaStatus === "completed" ? "confirmed" : "open"]]} />
         <p className="partner-safe-text">SyncField lets Foremen confirm today's active crew participation and report issues. Add/remove roster changes remain Partner Admin or Sync Admin work.</p>
-        {message ? <p className={/failed|error|invalid/i.test(message) ? "partner-safe-text error-text" : "partner-safe-text success-text"}>{message}</p> : null}
+        {message ? <p role="status" aria-live="polite" aria-atomic="true" className={/failed|error|invalid/i.test(message) ? "partner-safe-text error-text" : "partner-safe-text success-text"}>{message}</p> : null}
       </Panel>
       <Panel title="Daily Crew Participation" eyebrow={data.jsaToday?.work_date || "Today"}>
         <div className="partner-form-grid compact-form">
@@ -2871,6 +2874,7 @@ function ForemanCrew({ data }: { data: PortalData }) {
           {(data.foremanRoster ?? []).map((worker) => {
             const workerId = str(worker.id);
             const participant = participantByWorker.get(workerId);
+            const workerName = str(worker.display_name) || `${str(worker.first_name)} ${str(worker.last_name)}`.trim() || "Worker";
             return (
               <div className="syncfield-roster-row" key={workerId || str(worker.display_name)}>
                 <div>
@@ -2878,9 +2882,9 @@ function ForemanCrew({ data }: { data: PortalData }) {
                   <span>{str(worker.membership_role) || str(participant?.role) || "crew"} · {participant?.participation_status ?? "not_marked"}</span>
                 </div>
                 <div className="partner-actions-row compact-actions">
-                  <button className="partner-button" type="button" onClick={() => void updateParticipant(workerId, "present")}>Present</button>
-                  <button className="partner-button" type="button" onClick={() => void updateParticipant(workerId, "absent")}>Absent</button>
-                  <button className="partner-button" type="button" onClick={() => void updateParticipant(workerId, "not_applicable")}>N/A</button>
+                  <button className="partner-button" type="button" aria-label={`${workerName}: Present`} aria-pressed={participant?.participation_status === "present"} onClick={() => void updateParticipant(workerId, "present")}>Present</button>
+                  <button className="partner-button" type="button" aria-label={`${workerName}: Absent`} aria-pressed={participant?.participation_status === "absent"} onClick={() => void updateParticipant(workerId, "absent")}>Absent</button>
+                  <button className="partner-button" type="button" aria-label={`${workerName}: N/A`} aria-pressed={participant?.participation_status === "not_applicable"} onClick={() => void updateParticipant(workerId, "not_applicable")}>N/A</button>
                 </div>
               </div>
             );

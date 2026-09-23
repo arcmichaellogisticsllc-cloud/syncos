@@ -1,3 +1,4 @@
+import { requireCustomerAcceptedBilling, validateAcceptedBillingQuantity } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
@@ -1151,21 +1152,20 @@ export class ProductionController {
         const context = await this.billableContextFromQcReview(client, request.auth.tenantId, this.requiredId(body.qc_review_id, "qc_review_id"));
         if (context.qcReview.review_status !== "approved") throw new BadRequestException("qc_review must be approved");
         if (context.productionRecord.status !== "approved") throw new BadRequestException("production_record must be approved");
+        const customerDecision = await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(context.productionRecord.id));
         const duplicate = await client.query(
-          "SELECT 1 FROM billable_items WHERE tenant_id = $1 AND qc_review_id = $2 AND status NOT IN ('voided', 'archived') AND deleted_at IS NULL LIMIT 1",
-          [request.auth.tenantId, context.qcReview.id],
+          "SELECT 1 FROM billable_items WHERE tenant_id = $1 AND production_record_id = $2 AND status NOT IN ('voided', 'archived') AND deleted_at IS NULL LIMIT 1",
+          [request.auth.tenantId, context.productionRecord.id],
         );
-        if (duplicate.rows[0] && !this.hasOverride(body.override_reasons, "duplicate_billable_override_reason")) {
-          throw new BadRequestException({ message: "Duplicate active billable item requires override.", required_override_fields: ["duplicate_billable_override_reason"] });
+        if (duplicate.rows[0]) {
+          throw new BadRequestException({ message: "Production already has an active billable item." });
         }
-        const approvedQuantity = Number(context.qcReview.approved_quantity ?? context.productionRecord.approved_quantity ?? 0);
+        const approvedQuantity = Number(customerDecision.customer_accepted_quantity);
         if (approvedQuantity <= 0) throw new BadRequestException("approved_quantity must be > 0");
-        const billableQuantity = body.billable_quantity === undefined ? Number(context.qcReview.billable_candidate_quantity ?? approvedQuantity) : this.requirePositive(body.billable_quantity, "billable_quantity");
-        if (billableQuantity > approvedQuantity && !this.hasOverride(body.override_reasons, "billable_quantity_override_reason")) {
-          throw new BadRequestException({ message: "billable_quantity cannot exceed approved_quantity", required_override_fields: ["billable_quantity_override_reason"] });
-        }
+        const billableQuantity = body.billable_quantity === undefined ? approvedQuantity : this.requirePositive(body.billable_quantity, "billable_quantity");
         const unit = this.optionalAllowed(body.unit, workOrderUnits, "unit") ?? context.qcReview.unit ?? context.productionRecord.unit ?? context.productionRecord.unit_type ?? context.workOrder.unit;
         if (!unit) throw new BadRequestException("unit is required");
+        validateAcceptedBillingQuantity(customerDecision, billableQuantity, unit);
         const rate = await this.billableRateContext(client, request.auth.tenantId, body, String(unit));
         const estimatedBillableAmount = this.billableEstimatedAmount(billableQuantity, rate.unitRate);
         const retainage = this.billableRetainage(body, billableQuantity, estimatedBillableAmount);
@@ -1174,6 +1174,7 @@ export class ProductionController {
           work_order_id: context.workOrder.id,
           production_record_id: context.productionRecord.id,
           qc_review_id: context.qcReview.id,
+          customer_qc_decision_id: customerDecision.id,
           customer_organization_id: context.project.customer_organization_id,
           capacity_provider_id: context.productionRecord.capacity_provider_id ?? context.workOrder.assigned_capacity_provider_id,
           crew_id: context.productionRecord.crew_id ?? context.workOrder.assigned_crew_id,
@@ -1194,7 +1195,7 @@ export class ProductionController {
           retainage_amount: retainage.retainageAmount,
           retainage_release_condition: body.retainage_release_condition,
           net_billable_amount: retainage.netBillableAmount,
-          customer_acceptance_status: this.optionalAllowed(body.customer_acceptance_status, billableAcceptanceStatuses, "customer_acceptance_status") ?? this.mapBillableAcceptance(context.qcReview.customer_acceptance_status),
+          customer_acceptance_status: "accepted",
           prime_acceptance_status: this.optionalAllowed(body.prime_acceptance_status, billableAcceptanceStatuses, "prime_acceptance_status") ?? this.mapBillableAcceptance(context.qcReview.prime_acceptance_status),
           billing_package_status: this.optionalAllowed(body.billing_package_status, billablePackageStatuses, "billing_package_status") ?? "not_started",
           documentation_status: this.optionalAllowed(body.documentation_status, billablePackageStatuses, "documentation_status") ?? this.mapBillablePackageStatus(context.qcReview.documentation_status),
@@ -1221,6 +1222,12 @@ export class ProductionController {
         const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
         if (["archived", "voided"].includes(String(before.status))) throw new BadRequestException("archived or voided billable items are view-only");
         if (before.status === "settlement_created") throw new BadRequestException("settlement_created billable items are view-only");
+        if (before.accepted_production_source_id && ["billable_quantity", "unit_rate", "rate_code_id", "customer_acceptance_status", "retainage_percent", "retainage_required"].some(key => body[key] !== undefined)) {
+          throw new BadRequestException("Use controlled financial adjustments for customer-accepted source amounts");
+        }
+        const commercialEdit = ["billable_quantity", "unit_rate", "rate_code_id", "rate_source", "rate_confidence", "customer_acceptance_status", "retainage_percent", "retainage_required"].some(key => body[key] !== undefined);
+        const customerDecision = commercialEdit ? await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(before.production_record_id), before.customer_qc_decision_id) : null;
+        if (customerDecision) validateAcceptedBillingQuantity(customerDecision, Number(body.billable_quantity ?? before.billable_quantity), before.unit);
         const values = pick(body, ["rate_description", "retainage_release_condition", "hold_note", "dispute_note"]);
         if (body.billable_quantity !== undefined) values.billable_quantity = this.requirePositive(body.billable_quantity, "billable_quantity");
         if (body.rate_code_id !== undefined || body.unit_rate !== undefined || body.rate_source !== undefined || body.rate_confidence !== undefined) {
@@ -1232,7 +1239,11 @@ export class ProductionController {
           values.rate_confidence = rate.rateConfidence;
           values.estimated_billable_amount = rate.estimatedBillableAmount;
         }
-        if (body.customer_acceptance_status !== undefined) values.customer_acceptance_status = requireAllowed(body.customer_acceptance_status, billableAcceptanceStatuses, "customer_acceptance_status");
+        if (customerDecision) {
+          values.customer_acceptance_status = "accepted";
+          values.customer_qc_decision_id = customerDecision.id;
+          values.approved_quantity = Number(customerDecision.customer_accepted_quantity);
+        }
         if (body.prime_acceptance_status !== undefined) values.prime_acceptance_status = requireAllowed(body.prime_acceptance_status, billableAcceptanceStatuses, "prime_acceptance_status");
         if (body.billing_package_status !== undefined) values.billing_package_status = requireAllowed(body.billing_package_status, billablePackageStatuses, "billing_package_status");
         if (body.documentation_status !== undefined) values.documentation_status = requireAllowed(body.documentation_status, billablePackageStatuses, "documentation_status");
@@ -1249,7 +1260,8 @@ export class ProductionController {
         }
         if (body.override_reasons !== undefined) values.override_reasons = this.jsonObject(body.override_reasons);
         values.updated_by = request.auth.userId;
-        const next = { ...before, ...values };
+        const enriched = before.accepted_production_source_id ? await this.billableItemRow(client, request.auth.tenantId, id) : before;
+        const next = { ...enriched, ...values };
         const derived = this.deriveBillableState(next);
         Object.assign(values, derived);
         const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, values);
@@ -1268,7 +1280,8 @@ export class ProductionController {
   async recalculateBillableReadiness(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.write(request, "billable_item.recalculate_readiness", "billable_item.readiness_recalculated", "billable_item", async (client) => {
       const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
-      const derived = this.deriveBillableState(before, { preserveStatus: true });
+      const enriched = await this.billableItemRow(client, request.auth.tenantId, id);
+      const derived = this.deriveBillableState(enriched, { preserveStatus: true });
       const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { ...derived, updated_by: request.auth.userId });
       if (!after) throw new NotFoundException("billable item not found");
       return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
@@ -1283,6 +1296,8 @@ export class ProductionController {
       const before = await this.billableItemRow(client, request.auth.tenantId, id);
       if (["archived", "voided", "disputed", "held"].includes(String(before.status))) throw new BadRequestException("billable item is not eligible for ready_for_settlement");
       if (before.settlement_item_id) throw new BadRequestException("settlement already created");
+      const customerDecision = await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(before.production_record_id), before.customer_qc_decision_id);
+      validateAcceptedBillingQuantity(customerDecision, Number(before.billable_quantity), before.unit);
       const blockers = this.billableBlockers(before);
       if (blockers.length) throw new BadRequestException({ message: "Billable blockers must be resolved.", blockers });
       this.assertBillableOverrides(before, body.override_reasons);
@@ -2188,12 +2203,19 @@ export class ProductionController {
       `
       SELECT bi.*, p.name AS project_name, wo.work_order_name, wo.work_order_number, pr.production_type,
         pr.status AS production_record_status, qr.review_status AS qc_review_status,
+        customer_decision.decision AS current_customer_qc_decision,
+        (customer_decision.current = true AND customer_cycle.cycle_number = (
+          SELECT max(latest.cycle_number) FROM customer_qc_cycles latest
+          WHERE latest.tenant_id=customer_cycle.tenant_id AND latest.daily_report_id=customer_cycle.daily_report_id AND latest.deleted_at IS NULL
+        )) AS customer_qc_is_current,
         co.name AS customer_organization_name, cp.name AS capacity_provider_name, c.name AS crew_name
       FROM billable_items bi
       JOIN projects p ON p.tenant_id = bi.tenant_id AND p.id = bi.project_id
       JOIN work_orders wo ON wo.tenant_id = bi.tenant_id AND wo.id = bi.work_order_id
       JOIN production_records pr ON pr.tenant_id = bi.tenant_id AND pr.id = bi.production_record_id
-      JOIN qc_reviews qr ON qr.tenant_id = bi.tenant_id AND qr.id = bi.qc_review_id
+      LEFT JOIN qc_reviews qr ON qr.tenant_id = bi.tenant_id AND qr.id = bi.qc_review_id
+      LEFT JOIN customer_qc_decisions customer_decision ON customer_decision.tenant_id=bi.tenant_id AND customer_decision.id=bi.customer_qc_decision_id AND customer_decision.deleted_at IS NULL
+      LEFT JOIN customer_qc_cycles customer_cycle ON customer_cycle.tenant_id=customer_decision.tenant_id AND customer_cycle.id=customer_decision.qc_cycle_id AND customer_cycle.deleted_at IS NULL
       LEFT JOIN organizations co ON co.tenant_id = bi.tenant_id AND co.id = bi.customer_organization_id
       LEFT JOIN capacity_providers cp ON cp.tenant_id = bi.tenant_id AND cp.id = bi.capacity_provider_id
       LEFT JOIN crews c ON c.tenant_id = bi.tenant_id AND c.id = bi.crew_id
@@ -2342,9 +2364,12 @@ export class ProductionController {
   }
 
   private deriveBillableState(row: Record<string, any>, options: { preserveStatus?: boolean } = {}) {
+    const currentCustomerAcceptance = row.customer_qc_is_current === true && ["accepted", "partially_accepted"].includes(String(row.current_customer_qc_decision));
+    const qcApproved = row.accepted_production_source_id ? currentCustomerAcceptance : row.qc_review_status === undefined || row.qc_review_status === "approved";
+    const productionApproved = row.accepted_production_source_id ? currentCustomerAcceptance : row.production_record_status === undefined || row.production_record_status === "approved";
     const checks = [
-      row.qc_review_status === undefined || row.qc_review_status === "approved",
-      row.production_record_status === undefined || row.production_record_status === "approved",
+      qcApproved,
+      productionApproved,
       Boolean(row.work_order_id),
       Boolean(row.project_id),
       Number(row.billable_quantity ?? 0) > 0,
@@ -2361,8 +2386,7 @@ export class ProductionController {
       !row.settlement_item_id,
     ];
     let score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
-    if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") score = Math.min(score, 39);
-    if (row.production_record_status !== undefined && row.production_record_status !== "approved") score = Math.min(score, 39);
+    if (!qcApproved || !productionApproved) score = Math.min(score, 39);
     if (Number(row.billable_quantity ?? 0) <= 0) score = Math.min(score, 39);
     if (Number(row.billable_quantity ?? 0) > Number(row.approved_quantity ?? 0) && !this.hasOverride(row.override_reasons, "billable_quantity_override_reason")) score = Math.min(score, 39);
     if (["rejected", "correction_required", "disputed"].includes(String(row.customer_acceptance_status)) || ["rejected", "correction_required", "disputed"].includes(String(row.prime_acceptance_status))) score = Math.min(score, 69);
@@ -2413,8 +2437,12 @@ export class ProductionController {
 
   private billableBlockers(row: Record<string, any>) {
     const blockers = [];
-    if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") blockers.push({ blocker_type: "no_approved_qc", severity: "critical", message: "Approved QC review is required." });
-    if (row.production_record_status !== undefined && row.production_record_status !== "approved") blockers.push({ blocker_type: "no_approved_production", severity: "critical", message: "Approved production is required." });
+    if (row.accepted_production_source_id) {
+      if (row.customer_qc_is_current !== true || !["accepted", "partially_accepted"].includes(String(row.current_customer_qc_decision))) blockers.push({ blocker_type: "no_current_customer_acceptance", severity: "critical", message: "Current customer acceptance is required." });
+    } else {
+      if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") blockers.push({ blocker_type: "no_approved_qc", severity: "critical", message: "Approved QC review is required." });
+      if (row.production_record_status !== undefined && row.production_record_status !== "approved") blockers.push({ blocker_type: "no_approved_production", severity: "critical", message: "Approved production is required." });
+    }
     if (Number(row.billable_quantity ?? 0) <= 0) blockers.push({ blocker_type: "no_billable_quantity", severity: "critical", message: "Billable quantity is required." });
     if (Number(row.billable_quantity ?? 0) > Number(row.approved_quantity ?? 0) && !this.hasOverride(row.override_reasons, "billable_quantity_override_reason")) blockers.push({ blocker_type: "billable_exceeds_approved_without_override", severity: "critical", message: "Billable quantity exceeds approved quantity." });
     if (["rejected", "correction_required", "disputed"].includes(String(row.customer_acceptance_status))) blockers.push({ blocker_type: row.customer_acceptance_status === "rejected" ? "customer_rejected" : row.customer_acceptance_status === "correction_required" ? "correction_required" : "hard_stop_dispute", severity: "high", message: "Customer acceptance blocks settlement readiness." });

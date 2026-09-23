@@ -244,18 +244,22 @@ function encode(value) {
 }
 
 function repositoryContainsCreateTable(tableName) {
-  const files = listFiles(root).filter((file) => !file.includes("node_modules") && !file.includes(".git") && !file.includes("synccommsystems.com"));
+  const files = ["apps", "packages", "scripts"].flatMap((directory) => listFiles(path.join(root, directory)));
   return files.some((file) => fs.readFileSync(file, "utf8").includes(`CREATE TABLE ${tableName}`));
 }
 
 function listFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (["node_modules", ".git", ".next", "dist", "test-results", "playwright-report", "coverage"].includes(entry.name)) return [];
     const fullPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? listFiles(fullPath) : [fullPath];
+    if (entry.isDirectory()) return listFiles(fullPath);
+    return entry.isFile() && /\.(sql|[cm]?js|tsx?|prisma)$/.test(entry.name) ? [fullPath] : [];
   });
 }
 
-main().catch((error) => {
+module.exports = { listFiles };
+
+if (require.main === module) main().catch((error) => {
   console.error(error);
   process.exit(1);
 });

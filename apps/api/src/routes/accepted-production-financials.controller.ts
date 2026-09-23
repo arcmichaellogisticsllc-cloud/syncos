@@ -1,3 +1,4 @@
+import { requireCustomerAcceptedBilling, requireLinkedBillableAcceptance, lockProductionBilling } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -66,6 +67,14 @@ export class AcceptedProductionFinancialsController {
   async convertBillables(@Req() request: AuthenticatedRequest, @Body() body: Row) {
     return this.write(request, "billable.created", "billable.created", "billable_item", async (client) => {
       const accepted = await this.requireAcceptedProduction(client, request.auth.tenantId, this.optionalString(body.customer_qc_decision_id));
+      const currentDecision = await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(accepted.production_record_id));
+      if (currentDecision.id !== accepted.customer_qc_decision_id) throw new BadRequestException("Customer acceptance changed; refresh the billable queue");
+      const priorBillable = await client.query(`SELECT b.id FROM billable_items b
+        LEFT JOIN accepted_production_financial_sources src ON src.tenant_id=b.tenant_id AND src.id=b.accepted_production_source_id
+        WHERE b.tenant_id=$1 AND b.production_record_id=$2 AND b.deleted_at IS NULL AND b.status NOT IN ('voided','archived')
+          AND (b.accepted_production_source_id IS NULL OR (src.source_kind='accepted_production' AND src.customer_qc_decision_id <> $3))
+        LIMIT 1`, [request.auth.tenantId, accepted.production_record_id, currentDecision.id]);
+      if (priorBillable.rows.length) throw new BadRequestException("Production already has a billable from another source; use controlled financial adjustments before converting again");
       const source = await this.ensureFinancialSource(client, request.auth.tenantId, request.auth.userId, accepted);
       const existing = await client.query("SELECT * FROM billable_items WHERE tenant_id = $1 AND accepted_production_source_id = $2 AND deleted_at IS NULL AND status <> ALL($3::text[]) LIMIT 1", [request.auth.tenantId, source.id, billableStatuses]);
       if (existing.rows[0]) {
@@ -126,6 +135,10 @@ export class AcceptedProductionFinancialsController {
     return this.write(request, "invoice.created", "invoice.created", "invoice", async (client) => {
       const billables = await this.billablesForBody(client, request.auth.tenantId, body);
       if (!billables.length) throw new BadRequestException("billable_items are required");
+      for (const billable of billables) {
+        if (billable.status !== "ready_for_settlement" || billable.invoice_item_id || billable.hold_reason || billable.dispute_reason) throw new BadRequestException("Only ready, uninvoiced, unheld and undisputed billables may be invoiced");
+        await requireLinkedBillableAcceptance(client, request.auth.tenantId, billable);
+      }
       const customerId = String(billables[0].customer_organization_id);
       if (billables.some((row) => row.customer_organization_id !== customerId)) throw new BadRequestException("cross-customer invoice grouping denied");
       const invoiceNumber = this.optionalString(body.invoice_number) ?? await this.nextNumber(client, request.auth.tenantId, "invoices", "invoice_number", "INV-P12");
@@ -631,11 +644,22 @@ export class AcceptedProductionFinancialsController {
 
   private async billablesForBody(client: PoolClient, tenantId: string, body: Row) {
     if (Array.isArray(body.billable_item_ids) && body.billable_item_ids.length) {
-      const result = await client.query("SELECT * FROM billable_items WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND status <> ALL($3::text[])", [tenantId, body.billable_item_ids, billableStatuses]);
-      return result.rows;
+      const result = await client.query("SELECT * FROM billable_items WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND status <> ALL($3::text[]) ORDER BY id", [tenantId, body.billable_item_ids, billableStatuses]);
+      if (result.rows.length !== new Set(body.billable_item_ids).size) throw new BadRequestException("Every selected billable must exist and remain active");
+      return this.lockInvoiceBillables(client, tenantId, result.rows);
     }
-    const result = await client.query("SELECT * FROM billable_items WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'ready_for_settlement' ORDER BY created_at LIMIT 100", [tenantId]);
-    return result.rows;
+    const result = await client.query("SELECT * FROM billable_items WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'ready_for_settlement' ORDER BY id LIMIT 100", [tenantId]);
+    return this.lockInvoiceBillables(client, tenantId, result.rows);
+  }
+
+  private async lockInvoiceBillables(client: PoolClient, tenantId: string, billables: Row[]) {
+    // Match conversion/edit lock ordering: production lock first, then financial rows.
+    const productionIds = [...new Set(billables.map(row => row.production_record_id).filter(Boolean).map(String))].sort();
+    for (const productionId of productionIds) await lockProductionBilling(client, tenantId, productionId);
+    if (!billables.length) return [];
+    const locked = await client.query("SELECT * FROM billable_items WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL AND status NOT IN ('voided','archived') ORDER BY id FOR UPDATE", [tenantId, billables.map(row => row.id)]);
+    if (locked.rows.length !== billables.length) throw new BadRequestException("A selected billable changed; refresh before invoicing");
+    return locked.rows;
   }
 
   private async sourcesForSettlement(client: PoolClient, tenantId: string, body: Row) {

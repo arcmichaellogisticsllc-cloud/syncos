@@ -17,9 +17,9 @@ test.describe("Operator UI Phase 11 account onboarding workbench", () => {
     await page.goto("/intelligence/account-onboarding");
 
     await expect(page.getByRole("heading", { name: "Account Onboarding Workbench" })).toBeVisible();
-    await expect(page.getByText(/Track prime\/customer and contractor\/vendor onboarding readiness/i)).toBeVisible();
-    await expect(page.getByText(/Account onboarding tracks internal relationship, compliance, commercial, market, and mobilization readiness/i)).toBeVisible();
-    await expect(page.getByText(/does not create contracts, payables, payroll, invoices, tax filings, insurance verification, customer assignments, or guaranteed work/i)).toBeVisible();
+    await expect(page.getByText(/Review customer and contractor accounts, identify missing information, and plan the next step/i)).toBeVisible();
+    await expect(page.getByText("Account readiness and work approval", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Company approval, crew readiness, and work-order mobilization each require their own review before work starts/i)).toBeVisible();
     for (const stage of ["Identified", "Contact Discovered", "Initial Outreach", "Application Submitted", "Documents Requested", "Compliance Review", "Operational Interview", "Rate Negotiation", "Approved", "Market Assigned", "Mobilized"]) {
       await expect(page.getByRole("tab", { name: stage })).toBeVisible();
     }

@@ -130,10 +130,19 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await page.goto("/syncfield/map");
     await expect(page.getByRole("heading", { name: /ARL019 Construction Map Rev 1/i })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Read-only field map")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Next PDF page/i })).toBeVisible();
+    const preview = page.locator('iframe[title^="Assigned PDF map:"]');
+    await expect(preview).toHaveAttribute("src", /^blob:.*#page=1&zoom=100$/);
+    await expect(page.getByRole("button", { name: "Previous PDF page" })).toBeDisabled();
+    await page.getByRole("button", { name: "Next PDF page" }).click();
+    await expect(preview).toHaveAttribute("src", /#page=2&zoom=100$/);
+    await expect(page.getByRole("button", { name: "Next PDF page" })).toBeDisabled();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await expect(preview).toHaveAttribute("src", /#page=2&zoom=125$/);
+    await page.getByRole("button", { name: /Jump to South Ave/i }).click();
+    await expect(preview).toHaveAttribute("src", /#page=1&zoom=150$/);
     await expect(page.getByRole("button", { name: /Zoom in/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /Jump to South Ave/i })).toBeVisible();
-    await expect(page.getByText("Production marks")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Production marks", exact: true })).toBeVisible();
     await expect(page.getByText("annotation", { exact: false })).toBeVisible();
     await expect(page.getByText("storage_key")).toHaveCount(0);
     await expect(page.getByText("Partner Rate")).toHaveCount(0);
@@ -141,9 +150,33 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     const bytes = await apiJson(request, seeded.foremanToken, "GET", `/syncfield/foreman/map-versions/${seeded.mapVersionId}/bytes`);
     expect(bytes.content_base64).toBe(pdfBase64());
     expect(bytes.storage_key).toBeUndefined();
+    const selectedBytes = await apiJson(request, seeded.foremanToken, "GET", `/syncfield/foreman/map-versions/${seeded.mapVersionId}/bytes?assignment_id=${seeded.assignmentId}`);
+    expect(selectedBytes.content_base64).toBe(pdfBase64());
+    const unassignedBytes = await request.get(apiUrl(`/syncfield/foreman/map-versions/${seeded.mapVersionId}/bytes?assignment_id=${crypto.randomUUID()}`), { headers: auth(seeded.foremanToken) });
+    expect(unassignedBytes.status()).toBe(404);
 
     const cross = await request.get(apiUrl("/syncfield/foreman/map-assignment"), { headers: auth(seeded.tenantBToken) });
     expect(cross.status()).toBeGreaterThanOrEqual(403);
+
+    await page.route("**/syncfield/foreman/map-versions/*/bytes*", route => route.fulfill({
+      status: 403, contentType: "application/json", body: JSON.stringify({ message: "forbidden" }),
+    }));
+    await page.reload();
+    await expect(page.getByRole("region", { name: "PDF map viewer" }).getByRole("alert")).toContainText("assigned PDF could not be opened");
+    await expect(preview).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next PDF page" })).toBeDisabled();
+  });
+
+  test("Crew participation buttons identify the worker and announce the saved state", async ({ page }) => {
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/syncfield/crew");
+    const present = page.getByRole("button", { name: /: Present$/ }).first();
+    await expect(present).toBeVisible();
+    const name = await present.getAttribute("aria-label");
+    expect(name?.replace(": Present", "").trim()).toBeTruthy();
+    await present.click();
+    await expect(present).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: "Crew participation updated" })).toBeVisible();
   });
 
   test("Foreman completes one Daily JSA for own Crew without changing mobilization or downstream records", async ({ page, request }) => {

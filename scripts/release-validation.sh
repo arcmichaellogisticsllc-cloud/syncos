@@ -53,8 +53,12 @@ npm run sprint11:smoke
 npm run sprint12:smoke
 npm run sprint13:smoke
 npm run sprint14:smoke
+npm run sprint15:smoke
+npm run sprint16:smoke
+npm run sprint17:smoke
 npm run intelligence:smoke
 npm run organization:smoke
+npm run account-onboarding:smoke
 npm run contact:smoke
 npm run relationship:smoke
 npm run candidate:smoke

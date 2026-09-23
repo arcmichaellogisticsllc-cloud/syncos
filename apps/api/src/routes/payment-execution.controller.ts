@@ -222,7 +222,10 @@ export class PaymentExecutionController {
       const batch = await this.requireBatch(client, request.auth.tenantId, String(before.payment_batch_id));
       if (["approved", "scheduled", "submitted", "executed_later", "voided", "archived"].includes(String(batch.status))) throw new BadRequestException("payment item cannot be updated after batch approval or execution");
       const values = pick(body, ["payment_date", "payee_name", "notes", "override_reasons"]);
-      if (body.payment_amount !== undefined) values.payment_amount = this.requirePositive(body.payment_amount, "payment_amount");
+      if (body.payment_amount !== undefined) {
+        values.payment_amount = this.requirePositive(body.payment_amount, "payment_amount");
+        await this.validateItemAmount(client, request.auth.tenantId, { ...before, ...values }, this.hasOverride(body));
+      }
       if (body.override_reasons !== undefined) values.override_reasons = this.objectValue(body.override_reasons);
       values.updated_by = request.auth.userId;
       values.updated_at = new Date();
@@ -602,10 +605,29 @@ export class PaymentExecutionController {
     if (Number(result.rows[0]?.count ?? 0) <= 0) throw new BadRequestException("payment batch requires at least one active item");
   }
 
+  private async validateItemAmount(client: PoolClient, tenantId: string, item: Row, hasOverride: boolean) {
+    let amountLimit: number;
+    if (item.source_type === "contractor_payable") {
+      const payable = await this.requireContractorPayable(client, tenantId, String(item.contractor_payable_id));
+      const sourceItem = item.contractor_payable_item_id
+        ? await this.requireContractorPayableItem(client, tenantId, String(item.contractor_payable_item_id)) : null;
+      if (sourceItem && sourceItem.contractor_payable_id !== payable.id) throw new BadRequestException("contractor payable item does not belong to contractor payable");
+      amountLimit = Number(sourceItem?.net_payable_amount ?? payable.net_payable_amount ?? 0);
+    } else if (item.source_type === "payroll") {
+      const sourceItem = await this.requirePayrollItem(client, tenantId, String(item.payroll_item_id));
+      if (sourceItem.payroll_run_id !== item.payroll_run_id) throw new BadRequestException("payroll item does not belong to payroll run");
+      amountLimit = Number(sourceItem.net_pay_amount ?? 0);
+    } else {
+      throw new BadRequestException("unsupported payment source");
+    }
+    if (Number(item.payment_amount) > amountLimit && !hasOverride) throw new BadRequestException("payment_amount cannot exceed source amount without override");
+  }
+
   private async validateAllItemsReady(client: PoolClient, tenantId: string, batchId: string, hasOverride: boolean) {
     const items = await client.query("SELECT * FROM payment_items WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')", [tenantId, batchId]);
     for (const item of items.rows) {
       if (Number(item.payment_amount ?? 0) <= 0) throw new BadRequestException("payment item amount must be > 0");
+      await this.validateItemAmount(client, tenantId, item, hasOverride);
       if (item.source_type === "contractor_payable") {
         const payable = await this.requireContractorPayable(client, tenantId, String(item.contractor_payable_id));
         if (payable.status !== "payment_ready" || payable.payment_readiness_status !== "ready_for_payment") throw new BadRequestException("all contractor payable sources must remain payment ready");

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   dateValue,
-  defaultOpportunityPermissions,
   hasPermission,
   numberValue,
   readPermissions,
@@ -80,12 +79,10 @@ export function AccountOnboardingWorkbench() {
   const [activeStage, setActiveStage] = useState<OnboardingStage>("Identified");
   const [lane, setLane] = useState<AccountLane>("all");
   const [query, setQuery] = useState("");
-  const permissions = useMemo(() => {
-    const stored = readPermissions();
-    return stored.length ? stored : defaultOpportunityPermissions;
-  }, []);
+  const [permissions, setPermissions] = useState<string[]>([]);
 
   useEffect(() => {
+    setPermissions(readPermissions());
     async function load() {
       setLoading(true);
       setError("");
@@ -113,10 +110,10 @@ export function AccountOnboardingWorkbench() {
   }
 
   return (
-    <IntelligenceShell title="Account Onboarding Workbench" purpose="Track prime/customer and contractor/vendor onboarding readiness from first identification through mobilization using current SyncOS intelligence records.">
+    <IntelligenceShell title="Account Onboarding Workbench" purpose="Review customer and contractor accounts, identify missing information, and plan the next step.">
       <div className="boundary-notice">
-        <strong>Account onboarding boundary</strong>
-        <span>Account onboarding tracks internal relationship, compliance, commercial, market, and mobilization readiness. It does not create contracts, payables, payroll, invoices, tax filings, insurance verification, customer assignments, or guaranteed work unless a separate supported workflow exists.</span>
+        <strong>Account readiness and work approval</strong>
+        <span>Track relationship and commercial readiness here. Company approval, crew readiness, and work-order mobilization each require their own review before work starts.</span>
       </div>
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       <UnsupportedNotice unavailable={data.unavailable} />
@@ -125,11 +122,11 @@ export function AccountOnboardingWorkbench() {
         <div className="section-toolbar">
           <div>
             <h2>Onboarding pipeline</h2>
-            <p className="muted">Stages are inferred from existing organization, contact, candidate, capacity provider, contract, and rate schedule fields until a dedicated onboarding lifecycle exists.</p>
+            <p className="muted">Stages use saved onboarding profiles where available. Other accounts show an estimate from their existing records; confirm readiness before assigning work.</p>
           </div>
           <div className="form-actions">
-            <Link className="link-button" href="/intelligence/organizations/new" aria-disabled={!hasPermission(permissions, "organization.create")}>Create Organization</Link>
-            <Link className="primary-button link-button" href="/opportunities/candidates/new" aria-disabled={!hasPermission(permissions, "opportunity_candidate.create")}>Create Candidate</Link>
+            {hasPermission(permissions, "organization.create") ? <Link className="link-button" href="/intelligence/organizations/new">Create Organization</Link> : null}
+            {hasPermission(permissions, "opportunity_candidate.create") ? <Link className="primary-button link-button" href="/opportunities/candidates/new">Create Candidate</Link> : null}
           </div>
         </div>
         <div className="summary-grid">
@@ -140,6 +137,7 @@ export function AccountOnboardingWorkbench() {
               value={card.count}
               helper={card.helper}
               active={activeStage === card.stage}
+              disabled={loading}
               onClick={() => selectStage(card.stage)}
             />
           ))}
@@ -150,13 +148,13 @@ export function AccountOnboardingWorkbench() {
         <div className="section-toolbar">
           <div>
             <h2>Account filters</h2>
-            <p className="muted">Use the Prime / Customer lane for companies that may send work to Sync. Use the Contractor / Vendor lane for companies that may become usable capacity.</p>
+            <p className="muted">Filter customers who may send work to Sync or contractors who may supply crews and equipment.</p>
           </div>
           <button type="button" onClick={() => { setActiveStage("Identified"); setLane("all"); setQuery(""); }}>Reset</button>
         </div>
         <div className="queue-tabs" role="tablist" aria-label="Account onboarding stages">
           {onboardingStages.map((stage) => (
-            <button key={stage} type="button" role="tab" aria-selected={activeStage === stage} className={activeStage === stage ? "active" : ""} onClick={() => selectStage(stage)}>
+            <button key={stage} type="button" role="tab" disabled={loading} aria-selected={activeStage === stage} className={activeStage === stage ? "active" : ""} onClick={() => selectStage(stage)}>
               {stage}
             </button>
           ))}
@@ -181,7 +179,7 @@ export function AccountOnboardingWorkbench() {
         <div className="section-toolbar">
           <div>
             <h2>{activeStage}</h2>
-            <p className="muted">{emptyMessage(activeStage)}</p>
+            <p className="muted">{stageHelper(activeStage)}</p>
           </div>
           <span className="badge">{visible.length} shown</span>
         </div>
@@ -269,9 +267,9 @@ function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
   );
 }
 
-function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: number; helper: string; active: boolean; onClick: () => void }) {
+function SummaryCard({ label, value, helper, active, onClick, disabled }: { label: string; value: number; helper: string; active: boolean; onClick: () => void; disabled: boolean }) {
   return (
-    <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}>
+    <button type="button" disabled={disabled} className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{helper}</small>
@@ -343,14 +341,12 @@ const emptyData: OnboardingData = {
 };
 
 function buildRecords(data: OnboardingData): AccountOnboardingRecord[] {
-  if (data.onboardingProfiles.length > 0) {
-    return data.onboardingProfiles
-      .map((profile) => buildContractRecord(profile, data))
-      .sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || probabilityNumber(b.probabilityOfReceivingWork) - probabilityNumber(a.probabilityOfReceivingWork) || a.company.localeCompare(b.company));
-  }
-  return data.organizations
-    .filter((organization) => isOnboardingAccount(organization))
-    .map((organization) => buildRecord(organization, data))
+  const profiledIds = new Set(data.onboardingProfiles.map((profile) => String(profile.organization_id ?? profile.id)));
+  const profiles = data.onboardingProfiles.map((profile) => buildContractRecord(profile, data));
+  const unprofiled = data.organizations
+    .filter((organization) => !profiledIds.has(String(organization.id)) && !organization.deleted_at && organization.status !== "archived" && isOnboardingAccount(organization))
+    .map((organization) => buildRecord(organization, data));
+  return [...profiles, ...unprofiled]
     .sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || probabilityNumber(b.probabilityOfReceivingWork) - probabilityNumber(a.probabilityOfReceivingWork) || a.company.localeCompare(b.company));
 }
 

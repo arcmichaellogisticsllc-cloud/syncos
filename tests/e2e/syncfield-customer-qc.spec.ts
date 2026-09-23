@@ -302,11 +302,15 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     });
     expect(unrelated.status()).toBe(400);
 
-    const resubmitted = await apiJson(request, seeded.foremanToken, "POST", `/syncfield/foreman/corrections/${correctionId}/resubmit`, {
-      asset_identifier: "Pole 12301A",
-      notes: "Customer correction applied.",
-      client_mutation_id: crypto.randomUUID(),
-    });
+    const correctionPayload = { asset_identifier: "Pole 12301A", notes: "Customer correction applied.", client_mutation_id: crypto.randomUUID() };
+    const resubmitted = await apiJson(request, seeded.foremanToken, "POST", `/syncfield/foreman/corrections/${correctionId}/resubmit`, correctionPayload);
+    // A lost response must be safely retryable without a second report revision or QC cycle.
+    const replay = await apiJson(request, seeded.foremanToken, "POST", `/syncfield/foreman/corrections/${correctionId}/resubmit`, correctionPayload);
+    expect(replay.id).toBe(resubmitted.id);
+    const wrongCorrection = await request.post(apiUrl(`/syncfield/foreman/corrections/${crypto.randomUUID()}/resubmit`), { headers: auth(seeded.foremanToken), data: correctionPayload });
+    expect(wrongCorrection.status()).toBe(404);
+    const changedMutation = await request.post(apiUrl(`/syncfield/foreman/corrections/${correctionId}/resubmit`), { headers: auth(seeded.foremanToken), data: { ...correctionPayload, client_mutation_id: crypto.randomUUID() } });
+    expect(changedMutation.status()).toBe(400);
     expect(resubmitted.status).toBe("awaiting_customer_reinspection");
 
     const revisions = await client.query("SELECT revision_number, reason, snapshot_json FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2 ORDER BY revision_number", [seeded.tenantA, reportId]);

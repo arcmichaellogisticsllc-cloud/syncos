@@ -166,6 +166,10 @@ test.describe.serial("P12 accepted production financials", () => {
     await client.query("INSERT INTO customer_qc_decisions (id,tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,customer_reason_code,recorded_by_user_id,source_reference,current) VALUES ($1,$2,$3,$4,'partially_accepted',141,132,'feet','customer_revision',$5,'corrected-source',true)", [newDecision, fixture.tenantA, source.rows[0].customer_qc_cycle_id, source.rows[0].production_record_id, source.rows[0].created_by_user_id]);
     const exception = await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/detect-qc-change", { accepted_production_source_id: source.rows[0].id });
     expect(exception.exception_type).toBe("post_billing_customer_qc_change");
+    const duplicate = await request.post(apiUrl('/accepted-production-financials/billables/convert'), { headers: auth(fixture.internalToken), data: { customer_qc_decision_id: newDecision } });
+    expect(duplicate.status()).toBe(400);
+    expect(await duplicate.text()).toContain('controlled financial adjustments');
+
     const afterInvoice = await client.query("SELECT original_amount,balance_amount FROM invoices WHERE tenant_id = $1 ORDER BY created_at LIMIT 1", [fixture.tenantA]);
     expect(afterInvoice.rows[0]).toEqual(beforeInvoice.rows[0]);
   });
@@ -221,7 +225,7 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
   const coilDecision = crypto.randomUUID();
   const coilObservation = crypto.randomUUID();
   const permissions = [
-    "billing.read", "billing.create_billable", "billing.create_invoice", "billing.issue_invoice", "cash_receipt.record", "payment_application.create",
+    "billable_item.read", "billable_item.mark_ready", "billing.read", "billing.create_billable", "billing.create_invoice", "billing.issue_invoice", "cash_receipt.record", "payment_application.create",
     "partner_settlement.read", "partner_settlement.create", "partner_contractor_payable.read", "partner_payment_eligibility.read", "contractor_payable.create",
     "contractor_payable.calculate_eligibility", "financial_exception.read", "partner_context.read",
   ];
@@ -308,3 +312,36 @@ function token(userId: string, tenantId: string, secret: string) {
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
+
+test('a newer pending customer QC cycle blocks readiness using an older accepted decision', async ({ request }) => {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const fixture = await seedP12Fixture(client, process.env.AUTH_JWT_SECRET!);
+    const billable = await apiJson(request, fixture.internalToken, 'POST', '/accepted-production-financials/billables/convert', { customer_qc_decision_id: fixture.fiberDecision });
+    const detail = await apiJson(request, fixture.internalToken, 'GET', `/billable-items/${billable.id}/detail`);
+    expect(detail.billable_item.id).toBe(billable.id);
+    expect(detail.qc_context).toBeNull();
+    expect(detail.blockers).toEqual([]);
+    const ready = await apiJson(request, fixture.internalToken, 'POST', `/billable-items/${billable.id}/mark-ready-for-settlement`, { approval_note: 'Customer-accepted source is ready without internal QC' });
+    expect(ready.billable_item.status).toBe('ready_for_settlement');
+
+
+    await client.query(`INSERT INTO customer_qc_cycles
+      (tenant_id,project_id,work_order_id,work_order_version_id,daily_report_id,daily_report_revision_id,partner_organization_id,crew_id,qc_authority_organization_id,cycle_number,status,source_reference,created_by_user_id)
+      SELECT c.tenant_id,c.project_id,c.work_order_id,c.work_order_version_id,c.daily_report_id,c.daily_report_revision_id,c.partner_organization_id,c.crew_id,c.qc_authority_organization_id,c.cycle_number+1,'awaiting_customer','new pending review',c.created_by_user_id
+      FROM customer_qc_cycles c JOIN customer_qc_decisions d ON d.tenant_id=c.tenant_id AND d.qc_cycle_id=c.id
+      WHERE d.tenant_id=$1 AND d.id=$2`, [fixture.tenantA, fixture.fiberDecision]);
+    const response = await request.post(apiUrl(`/billable-items/${billable.id}/mark-ready-for-settlement`), { headers: auth(fixture.internalToken), data: { approval_note: 'Cannot reuse acceptance from an older cycle' } });
+    expect(response.status()).toBe(400);
+    expect(await response.text()).toContain('Current customer acceptance is required');
+    const invoice = await request.post(apiUrl('/accepted-production-financials/invoices/create'), { headers: auth(fixture.internalToken), data: { billable_item_ids: [billable.id] } });
+    expect(invoice.status()).toBe(400);
+    expect(await invoice.text()).toContain('Current customer acceptance is required');
+    const invoiceCount = await client.query('SELECT count(*)::int AS count FROM invoices WHERE tenant_id=$1', [fixture.tenantA]);
+    expect(invoiceCount.rows[0].count).toBe(0);
+
+    const stored = await client.query('SELECT customer_qc_decision_id FROM billable_items WHERE tenant_id=$1 AND id=$2', [fixture.tenantA,billable.id]);
+    expect(stored.rows[0].customer_qc_decision_id).toBe(fixture.fiberDecision);
+  } finally { await client.end(); }
+});

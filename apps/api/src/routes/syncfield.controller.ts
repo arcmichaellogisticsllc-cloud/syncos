@@ -758,11 +758,13 @@ export class SyncfieldController {
 
   @Get("foreman/map-versions/:versionId/bytes")
   @RequirePermission("partner_map.read_assigned")
-  async foremanMapBytes(@Req() request: AuthenticatedRequest, @Param("versionId") versionId: string) {
+  async foremanMapBytes(@Req() request: AuthenticatedRequest, @Param("versionId") versionId: string, @Query("assignment_id") assignmentId?: string) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
       const crew = await this.requireForemanCrew(client, context);
-      const assignment = await this.latestForemanAssignment(client, context.tenant_id, context.organization.id, crew.id, crew.worker_id);
+      const assignment = assignmentId
+        ? await this.requireForemanOperationalAssignment(client, context, assignmentId)
+        : await this.latestForemanAssignment(client, context.tenant_id, context.organization.id, crew.id, crew.worker_id);
       if (!assignment || assignment.map_version_id !== versionId) throw new NotFoundException("assigned map not found");
       const file = await this.requireMapFile(client, context.tenant_id, versionId);
       return this.readAuthorizedMapFile(client, request, file);
@@ -1380,12 +1382,15 @@ export class SyncfieldController {
       const crew = await this.requireForemanCrew(client, context);
       return this.writeWithClient(client, request, "partner_correction.resubmit", "partner_correction.resubmitted", "production_correction", async (writeClient) => {
         const correction = await this.requireForemanCorrection(writeClient, context.tenant_id, context.organization.id, crew.id, correctionId);
-        if (!["open", "acknowledged", "in_progress"].includes(correction.status)) throw new BadRequestException("correction is not open for resubmission");
         const mutationId = this.optionalString(body.client_mutation_id);
         if (mutationId) {
           const existing = await writeClient.query("SELECT * FROM production_corrections WHERE tenant_id = $1 AND resubmitted_by_user_id = $2 AND client_mutation_id = $3", [context.tenant_id, request.auth.userId, mutationId]);
-          if (existing.rows[0]) return { entityType: "production_correction", entityId: existing.rows[0].id, afterState: this.safeCorrection(existing.rows[0]), skipEventAudit: true };
+          if (existing.rows[0]) {
+            if (existing.rows[0].id !== correctionId) throw new BadRequestException("client_mutation_id already belongs to another correction");
+            return { entityType: "production_correction", entityId: existing.rows[0].id, afterState: this.safeCorrection(existing.rows[0]), skipEventAudit: true };
+          }
         }
+        if (!["open", "acknowledged", "in_progress"].includes(correction.status)) throw new BadRequestException("correction is not open for resubmission");
         this.validateCorrectionAllowedFields(correction, body);
         const report = await this.requireDailyReportById(writeClient, context.tenant_id, correction.daily_report_id);
         const nextRevision = Number(report.revision_number ?? 1) + 1;
@@ -1931,7 +1936,7 @@ export class SyncfieldController {
     const report = rows[0];
     const lines = ["Sync Comm Systems", `Mode: ${generationMode}`, `Project: ${report.project_name}`, `Work Order: ${report.work_order_number}`, `Partner: ${report.partner_name}`, `Crew: ${report.crew_name}`, `Work Date: ${this.dateOnly(report.work_date)}`, `Map: ${report.map_name ?? "not assigned"}`, `Map Revision: ${report.map_revision_number ?? "not set"}`, `Daily Report Revision: ${report.revision_number ?? 1}`, `Submission Timestamp: ${report.submitted_at ?? "not set"}`, "Production Summary"];
     for (const row of this.aggregateProduction(rows, (entry) => `${entry.code}:${entry.unit_of_measure}`)) {
-      lines.push(`${row.description}: Reported ${row.reported_quantity} ${row.unit_of_measure}; Customer Accepted ${Number(row.customer_accepted_quantity) ? row.customer_accepted_quantity : "Pending Customer QC"}; Variance ${row.variance}`);
+      lines.push(`${row.description}: Reported ${row.reported_quantity} ${row.unit_of_measure}; Customer Accepted ${Number(row.pending_customer_qc) === Number(row.record_count) ? "Pending Customer QC" : row.customer_accepted_quantity}; Variance ${row.variance}`);
     }
     const coilActual = rows.reduce((sum, row) => sum + Number(row.actual_coil_ft ?? 0), 0);
     if (coilActual) lines.push(`Recorded coil/slack: ${Number(coilActual.toFixed(2))} FT; Commercial treatment: not configured`);
@@ -2298,7 +2303,7 @@ export class SyncfieldController {
       SELECT *
       FROM production_corrections
       WHERE tenant_id = $1 AND id = $2 AND partner_organization_id = $3 AND crew_id = $4 AND deleted_at IS NULL
-      LIMIT 1
+      LIMIT 1 FOR UPDATE
       `,
       [tenantId, correctionId, organizationId, crewId],
     );

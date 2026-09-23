@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { Client } = require("pg");
+const { createCustomerAcceptanceFixture } = require("./customer-acceptance-fixture");
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:3100";
 
@@ -56,6 +57,12 @@ async function main() {
       item_type: "customer_billable",
       quantity: 10,
       unit_rate: 10,
+    });
+
+    const withoutAcceptance = await createReadyBillable(client, tenantId, userId, { billableQuantity: 10, customerAccepted: false });
+    await expectStatus("ready status cannot replace customer acceptance", "POST", `/settlements/${settlement.id}/items`, `Bearer ${token}`, 400, {
+      billable_item_id: withoutAcceptance.billableItemId, item_type: "customer_billable", quantity: 10, unit_rate: 12,
+      billing_package_status: "ready", documentation_status: "ready", customer_acceptance_status: "accepted", prime_acceptance_status: "accepted",
     });
 
     const item = await expectStatus("add item works", "POST", `/settlements/${settlement.id}/items`, `Bearer ${token}`, 201, {
@@ -209,6 +216,14 @@ async function createReadyBillable(client, tenantId, userId, options = {}) {
     "INSERT INTO billable_items (tenant_id, project_id, work_order_id, production_record_id, qc_review_id, customer_organization_id, capacity_provider_id, crew_id, status, readiness_status, readiness_score, readiness_band, approved_quantity, billable_quantity, held_quantity, unit, rate_description, unit_rate, rate_source, rate_confidence, estimated_billable_amount, customer_acceptance_status, prime_acceptance_status, billing_package_status, documentation_status, created_by, updated_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ready_for_settlement', 100, 'ready_for_settlement', 100, $10, 0, 'feet', 'Settlement Rate', 12, 'manual_rate', 'confirmed', $11, 'accepted', 'accepted', 'ready', 'ready', $12, $12) RETURNING id",
     [tenantId, project.rows[0].id, workOrder.rows[0].id, production.rows[0].id, review.rows[0].id, organization.rows[0].id, provider.rows[0].id, crew.rows[0].id, status, options.billableQuantity ?? 100, (options.billableQuantity ?? 100) * 12, userId],
   );
+  if (userId && options.customerAccepted !== false) {
+    const decisionId = await createCustomerAcceptanceFixture(client, {
+      tenantId, userId, organizationId: organization.rows[0].id, providerId: provider.rows[0].id,
+      crewId: crew.rows[0].id, projectId: project.rows[0].id, workOrderId: workOrder.rows[0].id,
+      productionId: production.rows[0].id, quantity: 100, unit: "feet",
+    });
+    await client.query("UPDATE billable_items SET customer_qc_decision_id=$3 WHERE tenant_id=$1 AND id=$2", [tenantId,billable.rows[0].id,decisionId]);
+  }
   return {
     projectId: project.rows[0].id,
     workOrderId: workOrder.rows[0].id,

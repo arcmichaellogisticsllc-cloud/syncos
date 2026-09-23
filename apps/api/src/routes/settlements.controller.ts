@@ -1,3 +1,4 @@
+import { requireLinkedBillableAcceptance } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
@@ -892,6 +893,7 @@ export class SettlementsController {
     return this.write(request, "settlement_item.create", "settlement_item.created", "settlement_item", async (client) => {
       const settlement = await this.requireRecord(client, "settlements", request.auth.tenantId, settlementId, "settlement not found");
       const billable = await this.requireRecord(client, "billable_items", request.auth.tenantId, this.requiredId(body.billable_item_id, "billable_item_id"), "billable item not found");
+      await requireLinkedBillableAcceptance(client, request.auth.tenantId, { ...billable, billable_quantity: quantity });
       if (billable.status !== "ready_for_settlement" && !this.hasOverride(body.override_reasons)) throw new BadRequestException("billable_item must be ready_for_settlement");
       if (billable.status === "voided" || billable.status === "archived") throw new BadRequestException("billable_item is not eligible for settlement");
       if (!(await this.billableItemCanBeAdded(client, request.auth.tenantId, String(billable.id))) && !this.hasOverride(body.override_reasons)) throw new BadRequestException("duplicate active settlement item for billable_item");

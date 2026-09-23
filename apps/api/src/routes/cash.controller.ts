@@ -1,3 +1,4 @@
+import { requireLinkedBillableAcceptance } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
@@ -501,6 +502,11 @@ export class CashController {
       }
       await this.ensureNoDuplicateInvoiceItem(client, request.auth.tenantId, source.id, override);
       const quantity = body.quantity === undefined ? Number(source.quantity ?? 0) : this.requirePositive(body.quantity, "quantity");
+      if (source.billable_item_id) {
+        const billable = await this.requireRecord(client, "billable_items", request.auth.tenantId, String(source.billable_item_id), "billable item not found");
+        await requireLinkedBillableAcceptance(client, request.auth.tenantId, { ...billable, billable_quantity: quantity });
+      }
+
       if (quantity > Number(source.quantity ?? 0) && !override) throw new BadRequestException("quantity cannot exceed settlement item quantity without override");
       const unitRate = body.unit_rate === undefined ? Number(source.unit_rate ?? 0) : this.requireNonNegative(body.unit_rate, "unit_rate");
       const grossAmount = this.roundMoney(quantity * unitRate);

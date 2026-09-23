@@ -17,8 +17,9 @@ async function main() {
   assert(e2e.includes("tests/e2e/production-readiness.spec.ts"), "P17 production-readiness E2E is not globally registered");
   assert(packageJson.scripts["sprint17:smoke"], "root sprint17 smoke command is missing");
 
-  const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
-  assert(migrations.at(-1) === "054_executive_command_throughput.sql", "P17 should not add a migration unless a release blocker requires it");
+  const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql")).sort();
+  const manifest = JSON.parse(read("packages/database/src/migration-manifest.json"));
+  assert(JSON.stringify(migrations) === JSON.stringify(manifest), "Shipped migrations must exactly match the release manifest");
   migrations.forEach((migration, index) => {
     const expected = String(index + 1).padStart(3, "0");
     assert(migration.startsWith(expected), `migration ordering gap at ${migration}`);

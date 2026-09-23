@@ -67,17 +67,16 @@ async function main() {
     });
     if (docsItem.billable_item.status !== "needs_documentation") throw new Error("Incomplete package did not create needs_documentation");
 
-    const acceptanceBase = await createBase(client, tenantId, userId, { approvedQuantity: 90, billableCandidateQuantity: 90 });
+    const acceptanceBase = await createBase(client, tenantId, userId, { approvedQuantity: 90, billableCandidateQuantity: 90, customerAccepted: false });
     const acceptanceRate = await createRate(client, tenantId, acceptanceBase.customerOrganizationId);
-    const acceptanceItem = await expectStatus("pending customer acceptance creates needs_customer_acceptance", "POST", "/billable-items", `Bearer ${token}`, 201, {
+    await expectStatus("internal QC without customer acceptance cannot create a billable", "POST", "/billable-items", `Bearer ${token}`, 400, {
       qc_review_id: acceptanceBase.qcReviewId,
       billable_quantity: 90,
       rate_code_id: acceptanceRate.rateCodeId,
       billing_package_status: "ready",
       documentation_status: "ready",
-      customer_acceptance_status: "pending",
+      customer_acceptance_status: "accepted",
     });
-    if (acceptanceItem.billable_item.status !== "needs_customer_acceptance") throw new Error("Pending acceptance did not create needs_customer_acceptance");
 
     const readyBase = await createBase(client, tenantId, userId, { approvedQuantity: 100, billableCandidateQuantity: 100 });
     const readyRate = await createRate(client, tenantId, readyBase.customerOrganizationId, { amount: 12 });
@@ -179,14 +178,14 @@ async function createBase(client, tenantId, userId, options = {}) {
     "INSERT INTO projects (tenant_id, customer_organization_id, territory_id, name, status, work_type, scope_summary, location_summary, created_by, updated_by) VALUES ($1, $2, $3, $4, 'ready_for_work', 'fiber', 'Billable project scope', 'Billable project location', $5, $5) RETURNING id",
     [tenantId, organization.rows[0].id, territory.rows[0].id, `Billable Project ${suffix}`, userId],
   );
-  const provider = await client.query("INSERT INTO capacity_providers (tenant_id, organization_id, name, provider_type, verification_status, contract_status, status) VALUES ($1, $2, $3, 'subcontractor', 'verified', 'contracted', 'activated') RETURNING id", [tenantId, organization.rows[0].id, `Billable Provider ${suffix}`]);
+  const provider = await client.query("INSERT INTO capacity_providers (tenant_id, organization_id, name, provider_type, verification_status, contract_status, status) VALUES ($1, $2, $3, 'internal_workforce', 'verified', 'contracted', 'activated') RETURNING id", [tenantId, organization.rows[0].id, `Billable Provider ${suffix}`]);
   const crew = await client.query("INSERT INTO crews (tenant_id, capacity_provider_id, name, crew_type, status) VALUES ($1, $2, $3, 'splicing', 'active') RETURNING id", [tenantId, provider.rows[0].id, `Billable Crew ${suffix}`]);
   const workOrder = await client.query(
     `INSERT INTO work_orders (
       tenant_id, project_id, assigned_capacity_provider_id, assigned_crew_id, title, work_order_name,
       work_type, territory_id, scope_summary, location_summary, expected_units, planned_quantity, unit_type, unit,
       status, qc_status, billable_status, assignment_type, completed_quantity, approved_quantity, billable_quantity
-    ) VALUES ($1, $2, $3, $4, $5, $5, 'fiber', $6, 'Billable scope', 'Billable location', 100, 100, 'feet', 'feet', 'approved', 'approved', 'not_billable', 'subcontractor', 100, $7, 0) RETURNING id`,
+    ) VALUES ($1, $2, $3, $4, $5, $5, 'fiber', $6, 'Billable scope', 'Billable location', 100, 100, 'feet', 'feet', 'approved', 'approved', 'not_billable', 'internal_crew', 100, $7, 0) RETURNING id`,
     [tenantId, project.rows[0].id, provider.rows[0].id, crew.rows[0].id, `Billable Work Order ${suffix}`, territory.rows[0].id, approvedQuantity],
   );
   const production = await client.query(
@@ -208,6 +207,17 @@ async function createBase(client, tenantId, userId, options = {}) {
       'sufficient', 'valid', 'sufficient', 'valid', 'not_required', 'not_required', 'Approved for billable smoke.', $5, $5) RETURNING id`,
     [tenantId, production.rows[0].id, workOrder.rows[0].id, project.rows[0].id, userId, approvedQuantity, Math.max(0, 100 - approvedQuantity), billableCandidateQuantity],
   );
+  if (userId && options.customerAccepted !== false) {
+    // A separate customer decision is required; internal QC is never financial acceptance.
+    const worker = (await client.query("INSERT INTO workers (tenant_id,capacity_provider_id,crew_id,first_name,last_name) VALUES ($1,$2,$3,'Billing','Fixture') RETURNING id", [tenantId,provider.rows[0].id,crew.rows[0].id])).rows[0];
+    const version = (await client.query("INSERT INTO partner_work_order_versions (tenant_id,organization_id,capacity_provider_id,project_id,work_order_id,assigned_crew_id,work_order_number,scope_summary,map_work_package_ref,production_unit,execution_model) VALUES ($1,$2,$3,$4,$5,$6,$7,'Billing fixture','fixture-map','feet','internal') RETURNING id", [tenantId,organization.rows[0].id,provider.rows[0].id,project.rows[0].id,workOrder.rows[0].id,crew.rows[0].id,`BILL-${suffix}`])).rows[0];
+    const common = [tenantId,project.rows[0].id,workOrder.rows[0].id,version.id,organization.rows[0].id,provider.rows[0].id,crew.rows[0].id,worker.id,userId];
+    const jsa = (await client.query("INSERT INTO daily_jsas (tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,work_location) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,current_date,'Billing fixture') RETURNING id", common)).rows[0];
+    const report = (await client.query("INSERT INTO daily_production_reports (tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,daily_jsa_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,current_date,$10) RETURNING id", [...common,jsa.id])).rows[0];
+    const revision = (await client.query("INSERT INTO daily_production_report_revisions (tenant_id,daily_report_id,revision_number,snapshot_json) VALUES ($1,$2,1,'{}') RETURNING id", [tenantId,report.id])).rows[0];
+    const cycle = (await client.query("INSERT INTO customer_qc_cycles (tenant_id,project_id,work_order_id,work_order_version_id,daily_report_id,daily_report_revision_id,partner_organization_id,crew_id,qc_authority_organization_id,cycle_number,status,source_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,1,'accepted','customer-fixture-evidence') RETURNING id", [tenantId,project.rows[0].id,workOrder.rows[0].id,version.id,report.id,revision.id,organization.rows[0].id,crew.rows[0].id])).rows[0];
+    await client.query("INSERT INTO customer_qc_decisions (tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,recorded_by_user_id,source_reference) VALUES ($1,$2,$3,'accepted',100,$4,'feet',$5,'customer-fixture-evidence')", [tenantId,cycle.id,production.rows[0].id,approvedQuantity,userId]);
+  }
   return {
     projectId: project.rows[0].id,
     workOrderId: workOrder.rows[0].id,

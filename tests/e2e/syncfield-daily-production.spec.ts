@@ -452,8 +452,11 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
 
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.goto("/syncfield/map");
-    await expect(page.getByText("DESIGN / PLANNED")).toBeVisible();
-    await expect(page.getByText("COMPLETED REDLINE", { exact: true })).toBeVisible();
+    await expect(page.locator('iframe[title^="Assigned PDF map:"]')).toHaveAttribute("src", /^blob:.*#page=1&zoom=100$/);
+    await expect(page.getByRole("heading", { name: "Production marks", exact: true })).toBeVisible();
+    await expect(page.getByText("Planned Segments", { exact: true })).toBeVisible();
+    await expect(page.getByText("Completed Redlines", { exact: true })).toBeVisible();
+    await expect(page.getByText("Production marks are listed below; they are not drawn on this original PDF.", { exact: false })).toBeVisible();
     await expect(page.locator(".field-construction-list-item.design").getByText("15-12-2 -> 15-12-4")).toBeVisible();
     await expect(page.locator(".field-construction-list-item.redline").getByText("15-12-2 -> 15-12-4")).toBeVisible();
     await expect(page.getByText("Coil / Slack")).toBeVisible();

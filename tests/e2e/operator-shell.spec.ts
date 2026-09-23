@@ -13,10 +13,21 @@ test.describe("Operator shell and page templates", () => {
 
     const nav = page.getByRole("navigation", { name: "Workspace navigation", exact: true });
     await expect(nav).toBeVisible();
-    for (const label of ["Command Center", "Growth", "Operations", "Finance", "Admin"]) {
-      await expect(nav.getByText(label, { exact: true })).toBeVisible();
+    for (const [label, href] of [
+      ["Demand", "/growth"],
+      ["Partner Network", "/partner-network"],
+      ["Capacity Matching", "/opportunities/capacity-matching"],
+      ["Execution", "/operations"],
+      ["QC", "/qc"],
+      ["Finance", "/finance"],
+      ["Command Center", "/command-center"],
+    ]) {
+      const link = nav.getByRole("link", { name: new RegExp(`^${label} `) });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute("href", href);
     }
-    await expect(nav.getByText("Planned")).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^Command Center / })).toHaveAttribute("aria-current", "page");
+    await expect(nav.locator(".nav-disabled")).toHaveCount(0);
 
     await context.close();
   });
@@ -27,11 +38,18 @@ test.describe("Operator shell and page templates", () => {
     await installStoredSession(page, personas.growthOperator.storageState);
     await page.goto(signalFeedRoute);
 
-    const growthNav = page.getByRole("navigation", { name: "Growth workspace navigation" });
-    await expect(growthNav).toBeVisible();
-    await expect(growthNav.getByRole("link", { name: "Signal Feed" })).toHaveAttribute("aria-current", "page");
-    await expect(growthNav.getByRole("link", { name: "Organizations" })).toBeVisible();
-    await expect(growthNav.getByRole("link", { name: "Contacts" })).toBeVisible();
+    const demandNav = page.getByRole("navigation", { name: "Demand workspace navigation" });
+    await expect(demandNav).toBeVisible();
+    await expect(demandNav.getByRole("link", { name: "Signal Feed" })).toHaveAttribute("aria-current", "page");
+    await expect(demandNav.getByRole("link", { name: "Opportunity Candidates", exact: true })).toHaveAttribute("href", "/opportunities/candidates");
+    await expect(demandNav.getByRole("link", { name: "Opportunities", exact: true })).toHaveAttribute("href", "/opportunities/pipeline");
+
+    // Organization and contact management now belong to Partner Network.
+    await page.getByRole("complementary").getByRole("link", { name: "Organizations", exact: true }).click();
+    const partnerNav = page.getByRole("navigation", { name: "Partner Network workspace navigation" });
+    await expect(partnerNav).toBeVisible();
+    await expect(partnerNav.getByRole("link", { name: "Organizations", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(partnerNav.getByRole("link", { name: "Contacts", exact: true })).toHaveAttribute("href", "/intelligence/contacts");
 
     await context.close();
   });

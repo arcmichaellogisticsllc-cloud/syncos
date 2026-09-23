@@ -372,6 +372,8 @@ export class PaymentRetainageAdjustmentsController {
 
   private async availableToPay(client: PoolClient, tenantId: string, payable: Row, excludingInstructionId?: string) {
     if (!["eligible", "partially_eligible"].includes(String(payable.pay_when_paid_status))) throw new BadRequestException("contractor payable is not eligible for payment");
+    if (["voided", "archived", "rejected", "held", "disputed"].includes(String(payable.status))) throw new BadRequestException("contractor payable lifecycle blocks payment");
+    if (["open", "under_review"].includes(String(payable.dispute_status))) throw new BadRequestException("disputed payable amount unavailable");
     if (payable.hold_status === "hold") throw new BadRequestException("held payable amount unavailable");
     const active = await client.query(
       `
