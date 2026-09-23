@@ -115,7 +115,7 @@ test.describe("Operator UI Phase 7 payout workbenches", () => {
     await page.goto("/contractor-payables");
 
     await expect(page.getByRole("heading", { name: "Contractor Payables Workbench" })).toBeVisible();
-    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Contractor Payable" })).toHaveAttribute("aria-disabled", "true");
+    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Contractor Payable" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Open Detail" }).first()).toBeVisible();
 
     await context.close();

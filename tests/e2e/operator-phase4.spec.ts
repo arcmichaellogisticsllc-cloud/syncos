@@ -22,9 +22,9 @@ test.describe("Operator UI Phase 4 execution queues", () => {
   });
 
   test("Production Board renders operator queue", async ({ browser }) => {
-    const context = await browser.newContext({ storageState: personas.fieldSupervisor.storageState });
+    const context = await browser.newContext({ storageState: personas.qcManager.storageState });
     const page = await context.newPage();
-    await installStoredSession(page, personas.fieldSupervisor.storageState);
+    await installStoredSession(page, personas.qcManager.storageState);
     await page.goto("/production");
 
     await expect(page.getByRole("heading", { name: "Production Board" })).toBeVisible();
@@ -33,8 +33,19 @@ test.describe("Operator UI Phase 4 execution queues", () => {
       await expect(page.getByRole("button", { name: new RegExp(label, "i") }).first()).toBeVisible();
     }
     await expect(page.getByRole("tab", { name: "Draft" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText(/Mark Approved Billable/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Mark Approved Billable/i })).toBeVisible();
 
+    await context.close();
+  });
+
+  test("legacy field permission does not imply production-record access", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: personas.fieldSupervisor.storageState });
+    const page = await context.newPage();
+    await installStoredSession(page, personas.fieldSupervisor.storageState);
+    await page.goto("/production");
+    await expect(page.getByRole("heading", { name: "Access unavailable" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create Production Record", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Mark Approved Billable/i })).toHaveCount(0);
     await context.close();
   });
 
@@ -75,16 +86,16 @@ test.describe("Operator UI Phase 4 execution queues", () => {
     await page.goto("/production");
 
     await expect(page.getByRole("heading", { name: "Production Board" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Create Production Record" })).toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByRole("link", { name: "Create Production Record" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Open Detail" }).first()).toBeVisible();
 
     await context.close();
   });
 
   test("queue tabs can be selected on execution pages", async ({ browser }) => {
-    const context = await browser.newContext({ storageState: personas.opsManager.storageState });
+    const context = await browser.newContext({ storageState: personas.systemAdmin.storageState });
     const page = await context.newPage();
-    await installStoredSession(page, personas.opsManager.storageState);
+    await installStoredSession(page, personas.systemAdmin.storageState);
 
     await page.goto("/work-orders");
     const blocked = page.getByRole("tab", { name: "Blocked" });

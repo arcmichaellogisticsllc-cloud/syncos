@@ -90,7 +90,7 @@ test.describe("Operator UI Phase 8 finance control workbenches", () => {
     await page.goto("/bank-reconciliation");
 
     await expect(page.getByRole("heading", { name: "Bank Reconciliation Workbench" })).toBeVisible();
-    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Bank Account" })).toHaveAttribute("aria-disabled", "true");
+    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Bank Account" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Open Detail" }).first()).toBeVisible();
 
     await context.close();

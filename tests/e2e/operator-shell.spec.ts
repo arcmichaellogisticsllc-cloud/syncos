@@ -93,9 +93,8 @@ test.describe("Operator shell and page templates", () => {
     await page.goto(signalFeedRoute);
 
     await expect(page.getByText("Today's signal work")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create Signal" }).first()).toBeDisabled();
-    await expect(page.getByText("Your role can review signals but cannot create them.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Categorize" }).first()).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Create Signal" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Categorize" })).toHaveCount(0);
 
     await context.close();
   });

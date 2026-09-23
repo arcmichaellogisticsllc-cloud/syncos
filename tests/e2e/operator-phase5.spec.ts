@@ -113,7 +113,7 @@ test.describe("Operator UI Phase 5 finance workbenches", () => {
     await page.goto("/invoices");
 
     await expect(page.getByRole("heading", { name: "Invoice Workbench" })).toBeVisible();
-    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Invoice" })).toHaveAttribute("aria-disabled", "true");
+    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Invoice" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Open Detail" }).first()).toBeVisible();
 
     await context.close();
