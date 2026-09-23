@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -10,11 +11,11 @@ import { DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../o
 
 const reviewTypes = ["internal_qc", "safety_qc", "compliance_qc", "customer_qc", "prime_qc", "billing_qc", "final_acceptance"];
 const reviewStatuses = ["pending", "in_review", "approved", "rejected", "correction_required", "corrected", "voided", "archived"];
-const findingStatuses = ["pending", "not_reviewed", "sufficient", "insufficient", "missing", "not_required"];
+const findingStatuses = ["pending", "sufficient", "insufficient", "not_required"];
 const locationStatuses = ["pending", "valid", "invalid", "not_required"];
 const acceptanceStatuses = ["not_required", "pending", "accepted", "rejected", "correction_required"];
 const archiveReasons = ["duplicate", "no_longer_relevant", "replaced", "created_in_error", "project_cancelled", "other"];
-const tabs = ["overview", "production", "work_order", "project", "quantity", "evidence", "correction", "acceptance", "billable", "timeline", "audit", "future_billable", "future_settlement"];
+const tabs = ["overview", "production", "work_order", "project", "quantity", "evidence", "correction", "acceptance", "billable", "timeline", "audit"];
 
 type QcDetailShape = {
   qc_review?: SyncRecord;
@@ -84,7 +85,7 @@ export function QcReviewQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review production quality and clear correction queues.</div> : null}
       {loading ? <div className="loading-state">Loading QC reviews...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -94,7 +95,7 @@ export function QcReviewQueue() {
                 <p className="muted">Start with pending reviews, active reviews, and correction-required items before downstream billable work.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/qc/new" aria-disabled={!hasPermission(session.permissions, "qc_review.create")}>Create QC Review</Link>
+                <Link className="primary-button" href="/qc/new" allowed={hasPermission(session.permissions, "qc_review.create")}>Create QC Review</Link>
                 <button type="button" onClick={() => setQueue("pending", { review_status: "pending" })}>Review Next QC Item</button>
                 <button type="button" onClick={() => setQueue("correction_required", { hasCorrectionRequired: "true" })}>Open Corrections</button>
                 <button type="button" onClick={() => setQueue("aging", { aging: "true" })}>View Aging Reviews</button>
@@ -198,14 +199,14 @@ export function QcReviewCreate() {
   }
 
   return (
-    <QcShell title="Create QC Review" purpose="Create an acceptance review for a production record without creating billable, settlement, invoice, AR, payment, cash, payroll, or tax records.">
+    <QcShell title="Create QC Review" purpose="Start a quality review of submitted production.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
-        <div className="warning-box">The backend derives Work Order, Project, claimed quantity, and unit from the selected production record. Quantity decisions use lifecycle action routes after creation.</div>
+        <div className="warning-box">Choose the production to review. Its work order, project, quantity and unit carry into this review. Record your quantity decision after creating the review.</div>
         <QcCreateFields form={form} setForm={setForm} related={related} />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "qc_review.create")}>Create QC Review</button>
+          {hasPermission(session.permissions, "qc_review.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "qc_review.create")}>Create QC Review</button> : null}
           <Link className="link-button" href="/qc">Cancel</Link>
         </div>
       </form>
@@ -305,14 +306,14 @@ export function QcReviewDetail({ qcReviewId }: { qcReviewId: string }) {
       {review && detail ? (
         <>
           {!hasPermission(session.permissions, "qc_review.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "qc_review.update") ? <DetailNextActionCard
             status={formatAction(review.review_status)}
             nextActionLabel={nextQcAction(review)}
             helperText="Review production evidence, correction state, quality decision fields, and billable-candidate quantity before approving or sending work back."
             disabled={!hasPermission(session.permissions, "qc_review.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="QC approval protects downstream billable readiness. It does not create invoice or cash records."
-          />
+          /> : null}
           <DetailBoundaryNotice>QC approval protects downstream billable readiness. It does not create settlement, invoice, cash, payment, payroll, bank, or accounting records.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -326,7 +327,7 @@ export function QcReviewDetail({ qcReviewId }: { qcReviewId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/qc/${qcReviewId}/edit`} aria-disabled={!hasPermission(session.permissions, "qc_review.update")}>Edit QC Review</Link>
+                <Link className="link-button" href={`/qc/${qcReviewId}/edit`} allowed={hasPermission(session.permissions, "qc_review.update")}>Edit QC Review</Link>
                 <ActionButton permission="qc_review.start" session={session} disabled={!["pending", "corrected"].includes(String(review.review_status))} onClick={() => setModal("start")}>Start Review</ActionButton>
                 <ActionButton permission="qc_review.approve" session={session} disabled={["approved", "voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("approve")}>Approve</ActionButton>
                 <ActionButton permission="qc_review.reject" session={session} disabled={["rejected", "voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("reject")}>Reject</ActionButton>
@@ -378,7 +379,7 @@ export function QcReviewDetail({ qcReviewId }: { qcReviewId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "qc_review").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <QcTab tab={tab} detail={detail} review={review} />
             </section>
@@ -413,7 +414,7 @@ function QcShell({ title, purpose, children }: { title: string; purpose: string;
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">QC</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -462,10 +463,10 @@ function QcTab({ tab, detail, review }: { tab: string; detail: QcDetailShape; re
   if (tab === "work_order") return <ContextPanel title="Work Order Context" record={detail.work_order_context} href={review.work_order_id ? `/work-orders/${review.work_order_id}` : undefined} fields={["work_order_name", "status", "readiness_status", "production_eligible", "planned_quantity", "completed_quantity", "approved_quantity", "billable_quantity", "unit", "assignment_type", "assigned_capacity_provider_id", "assigned_crew_id"]} />;
   if (tab === "project") return <ContextPanel title="Project Context" record={detail.project_context} href={review.project_id ? `/projects/${review.project_id}` : undefined} fields={["project_name", "name", "status", "project_readiness_score", "customer_organization_id", "territory_id", "work_type", "project_manager_user_id", "field_supervisor_user_id"]} />;
   if (tab === "quantity") return <Panel title="Quantity Acceptance"><dl className="detail-list"><dt>Claimed quantity</dt><dd>{quantity(review.claimed_quantity, review.unit)}</dd><dt>Approved quantity</dt><dd>{quantity(review.approved_quantity, review.unit)}</dd><dt>Rejected quantity</dt><dd>{quantity(review.rejected_quantity, review.unit)}</dd><dt>Correction required quantity</dt><dd>{quantity(review.correction_required_quantity, review.unit)}</dd><dt>Billable candidate quantity</dt><dd>{quantity(review.billable_candidate_quantity, review.unit)}</dd><dt>Unit</dt><dd>{formatAction(review.unit)}</dd></dl><div className="warning-box">Claimed quantity comes from production. Approved quantity comes from QC. Rejected quantity is not billable. Correction-required quantity must be corrected before becoming billable. Billable candidate quantity feeds the Billable layer later.</div></Panel>;
-  if (tab === "evidence") return <Panel title="Evidence Review"><dl className="detail-list"><dt>Evidence status</dt><dd>{formatAction(review.evidence_status)}</dd><dt>Evidence count</dt><dd>{String(numberValue(production.evidence_count ?? evidence.length))}</dd><dt>Missing evidence warning</dt><dd>{String(review.evidence_status) === "missing" ? "Evidence missing" : "No missing-evidence warning returned."}</dd><dt>QC evidence</dt><dd>Placeholder only</dd></dl>{evidence.length ? <ObjectTable rows={evidence} columns={["evidence_type", "filename", "storage_reference", "caption", "uploaded_by", "uploaded_at", "captured_at", "geo_latitude", "geo_longitude", "archived_at"]} /> : <div className="empty-state">No production evidence metadata returned.</div>}<div className="warning-box">Production evidence is shown as read-only. No binary upload is available in this sprint.</div></Panel>;
+  if (tab === "evidence") return <Panel title="Evidence Review"><dl className="detail-list"><dt>Evidence status</dt><dd>{formatAction(review.evidence_status)}</dd><dt>Evidence count</dt><dd>{String(numberValue(production.evidence_count ?? evidence.length))}</dd><dt>Missing evidence warning</dt><dd>{String(review.evidence_status) === "missing" ? "Evidence missing" : "No missing-evidence warning returned."}</dd></dl>{evidence.length ? <ObjectTable rows={evidence} columns={["evidence_type", "filename", "storage_reference", "caption", "uploaded_by", "uploaded_at", "captured_at", "geo_latitude", "geo_longitude", "archived_at"]} /> : <div className="empty-state">No production evidence metadata returned.</div>}<div className="warning-box">Production evidence is shown as read-only. Use the production record to manage supporting files.</div></Panel>;
   if (tab === "correction") return <Panel title="Correction Management"><dl className="detail-list"><dt>Correction reason</dt><dd>{textValue(review.correction_reason ?? detail.correction_context?.correction_reason)}</dd><dt>Correction due date</dt><dd>{dateValue(review.correction_due_date ?? detail.correction_context?.correction_due_date)}</dd><dt>Correction owner</dt><dd>{textValue(review.correction_owner_name ?? review.correction_owner_user_id ?? detail.correction_context?.correction_owner_name)}</dd><dt>Correction required quantity</dt><dd>{quantity(review.correction_required_quantity, review.unit)}</dd><dt>Correction status</dt><dd>{formatAction(review.review_status)}</dd><dt>Source production record</dt><dd>{productionLink(review.production_record_id, production.production_type)}</dd><dt>Source QC review</dt><dd>{textValue(review.source_qc_review_id)}</dd></dl><div className="warning-box">QC can request and mark corrections through QC routes. It does not create correction production records unless a future backend route explicitly supports that workflow.</div></Panel>;
-  if (tab === "acceptance") return <Panel title="Customer / Prime Acceptance"><dl className="detail-list"><dt>Customer acceptance status</dt><dd>{formatAction(review.customer_acceptance_status)}</dd><dt>Prime acceptance status</dt><dd>{formatAction(review.prime_acceptance_status)}</dd><dt>Acceptance notes</dt><dd>{textValue(review.review_notes)}</dd><dt>Customer blocker state</dt><dd>{["rejected", "correction_required"].includes(String(review.customer_acceptance_status)) ? "Blocked" : "Not blocked"}</dd><dt>Prime blocker state</dt><dd>{["rejected", "correction_required"].includes(String(review.prime_acceptance_status)) ? "Blocked" : "Not blocked"}</dd></dl><div className="warning-box">Customer and prime acceptance are tracked here as review fields. No customer or prime portal is available in this sprint.</div></Panel>;
-  if (tab === "billable") return <Panel title="Billable Candidate"><dl className="detail-list"><dt>Approved quantity</dt><dd>{quantity(review.approved_quantity, review.unit)}</dd><dt>Billable candidate quantity</dt><dd>{quantity(review.billable_candidate_quantity, review.unit)}</dd><dt>Unit</dt><dd>{formatAction(review.unit)}</dd><dt>Production billable status</dt><dd>{formatAction(production.billable_status ?? review.production_billable_status)}</dd><dt>Related billable item count</dt><dd>{String(detail._billable_items?.length ?? 0)}</dd></dl><div className="warning-box">Billable Workspace is not available in this sprint. QC may create billable candidate quantity, but it does not create settlement, invoice, AR, payment, cash, or payroll records.</div></Panel>;
+  if (tab === "acceptance") return <Panel title="Customer / Prime Acceptance"><dl className="detail-list"><dt>Customer acceptance status</dt><dd>{formatAction(review.customer_acceptance_status)}</dd><dt>Prime acceptance status</dt><dd>{formatAction(review.prime_acceptance_status)}</dd><dt>Acceptance notes</dt><dd>{textValue(review.review_notes)}</dd><dt>Customer blocker state</dt><dd>{["rejected", "correction_required"].includes(String(review.customer_acceptance_status)) ? "Blocked" : "Not blocked"}</dd><dt>Prime blocker state</dt><dd>{["rejected", "correction_required"].includes(String(review.prime_acceptance_status)) ? "Blocked" : "Not blocked"}</dd></dl><div className="warning-box">Customer and prime acceptance are tracked here as review fields. Record the customer’s actual decision through the customer acceptance workflow. Internal QC does not substitute for that decision.</div></Panel>;
+  if (tab === "billable") return <Panel title="Billable Candidate"><dl className="detail-list"><dt>Approved quantity</dt><dd>{quantity(review.approved_quantity, review.unit)}</dd><dt>Billable candidate quantity</dt><dd>{quantity(review.billable_candidate_quantity, review.unit)}</dd><dt>Unit</dt><dd>{formatAction(review.unit)}</dd><dt>Production billable status</dt><dd>{formatAction(production.billable_status ?? review.production_billable_status)}</dd><dt>Related billable item count</dt><dd>{String(detail._billable_items?.length ?? 0)}</dd></dl><div className="warning-box">Review billable candidates in Finance. Customer acceptance is required before production-backed billing can advance.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view QC audit details.</div>}</Panel>;
   if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Billable Workspace is not available in this sprint. QC may create billable candidate quantity only." columns={["billable_item", "status", "quantity", "unit", "rate", "readiness"]} />;
@@ -488,6 +489,16 @@ function QcLifecycleModal({ type, qcReviewId, review, session, onClose, onSaved 
   });
   const [error, setError] = useState("");
 
+  const [owners, setOwners] = useState<SyncRecord[]>([]);
+  useEffect(() => {
+    if (type !== "correction") return;
+    let active = true;
+    syncosFetch<SyncRecord[]>("/qc-review-correction-owners", { token: session.token })
+      .then(rows => { if (active) setOwners(rows); })
+      .catch(() => { if (active) setError("Could not load correction owners. Close and reopen this review to retry."); });
+    return () => { active = false; };
+  }, [type, session.token]);
+
   const title = modalTitle(type);
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -509,11 +520,11 @@ function QcLifecycleModal({ type, qcReviewId, review, session, onClose, onSaved 
         {type === "start" ? <label>Review note<textarea value={form.review_note ?? ""} onChange={(event) => setForm({ ...form, review_note: event.target.value })} /></label> : null}
         {type === "approve" ? <div className="form-grid"><label>Approval note<textarea value={form.approval_note ?? ""} onChange={(event) => setForm({ ...form, approval_note: event.target.value })} required /></label><label>Approved quantity<input type="number" min="0" value={form.approved_quantity ?? ""} onChange={(event) => setForm({ ...form, approved_quantity: event.target.value })} required /></label><label>Billable candidate quantity<input type="number" min="0" value={form.billable_candidate_quantity ?? ""} onChange={(event) => setForm({ ...form, billable_candidate_quantity: event.target.value })} /></label><label>Approval override reason<textarea value={form.approval_override_reason ?? ""} onChange={(event) => setForm({ ...form, approval_override_reason: event.target.value })} /></label><Select label="Evidence status" value={form.evidence_status ?? ""} options={findingStatuses} onChange={(evidence_status) => setForm({ ...form, evidence_status })} /><Select label="Location status" value={form.location_status ?? ""} options={locationStatuses} onChange={(location_status) => setForm({ ...form, location_status })} /><Select label="Documentation status" value={form.documentation_status ?? ""} options={findingStatuses} onChange={(documentation_status) => setForm({ ...form, documentation_status })} /><Select label="Production status" value={form.production_status ?? ""} options={locationStatuses} onChange={(production_status) => setForm({ ...form, production_status })} /><Select label="Customer acceptance" value={form.customer_acceptance_status ?? ""} options={acceptanceStatuses} onChange={(customer_acceptance_status) => setForm({ ...form, customer_acceptance_status })} /><Select label="Prime acceptance" value={form.prime_acceptance_status ?? ""} options={acceptanceStatuses} onChange={(prime_acceptance_status) => setForm({ ...form, prime_acceptance_status })} /></div> : null}
         {type === "reject" ? <div className="form-grid"><label>Rejection reason<textarea value={form.rejection_reason ?? ""} onChange={(event) => setForm({ ...form, rejection_reason: event.target.value })} required /></label><label>Rejected quantity<input type="number" min="0" value={form.rejected_quantity ?? ""} onChange={(event) => setForm({ ...form, rejected_quantity: event.target.value })} /></label><label>Rejection note<textarea value={form.rejection_note ?? ""} onChange={(event) => setForm({ ...form, rejection_note: event.target.value })} /></label></div> : null}
-        {type === "correction" ? <div className="form-grid"><label>Correction reason<textarea value={form.correction_reason ?? ""} onChange={(event) => setForm({ ...form, correction_reason: event.target.value })} required /></label><label>Correction required quantity<input type="number" min="0" value={form.correction_required_quantity ?? ""} onChange={(event) => setForm({ ...form, correction_required_quantity: event.target.value })} /></label><label>Correction due date<input type="date" value={form.correction_due_date ?? ""} onChange={(event) => setForm({ ...form, correction_due_date: event.target.value })} /></label><label>Correction owner user ID<input value={form.correction_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, correction_owner_user_id: event.target.value })} /></label><label>Correction note<textarea value={form.correction_note ?? ""} onChange={(event) => setForm({ ...form, correction_note: event.target.value })} /></label></div> : null}
+        {type === "correction" ? <div className="form-grid"><label>Correction reason<textarea value={form.correction_reason ?? ""} onChange={(event) => setForm({ ...form, correction_reason: event.target.value })} required /></label><label>Correction required quantity<input type="number" min="0" value={form.correction_required_quantity ?? ""} onChange={(event) => setForm({ ...form, correction_required_quantity: event.target.value })} /></label><label>Correction due date<input type="date" value={form.correction_due_date ?? ""} onChange={(event) => setForm({ ...form, correction_due_date: event.target.value })} /></label><label>Correction owner<select value={form.correction_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, correction_owner_user_id: event.target.value })}><option value="">Unassigned</option>{owners.map(owner => <option key={String(owner.id)} value={String(owner.id)}>{String(owner.display_name || "Unnamed team member")}</option>)}</select></label><label>Correction note<textarea value={form.correction_note ?? ""} onChange={(event) => setForm({ ...form, correction_note: event.target.value })} /></label></div> : null}
         {type === "corrected" ? <div className="form-grid"><label>Correction note<textarea value={form.correction_note ?? ""} onChange={(event) => setForm({ ...form, correction_note: event.target.value })} required /></label><label>Corrected quantity<input type="number" min="0" value={form.corrected_quantity ?? ""} onChange={(event) => setForm({ ...form, corrected_quantity: event.target.value })} /></label></div> : null}
         {type === "void" ? <div className="form-grid"><label>Void reason<textarea value={form.void_reason ?? ""} onChange={(event) => setForm({ ...form, void_reason: event.target.value })} required /></label><label>Void note<textarea value={form.void_note ?? ""} onChange={(event) => setForm({ ...form, void_note: event.target.value })} /></label></div> : null}
         {type === "archive" ? <div className="form-grid"><label>Archive reason<SelectInline value={form.archive_reason ?? ""} options={["", ...archiveReasons]} onChange={(archive_reason) => setForm({ ...form, archive_reason })} /></label><label>Archive note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></div> : null}
-        <div className="warning-box">Lifecycle action uses the backend route. The backend remains authoritative for validation, permissions, tenant boundaries, events, audit, and system actions. No finance records are created.</div>
+        <div className="warning-box">This decision is recorded in the review history. Customer acceptance is reviewed separately before work becomes billable.</div>
         <div className="form-actions"><button className="primary-button" type="submit">{title}</button></div>
       </form>
     </div>
@@ -525,7 +536,7 @@ function QcCreateFields({ form, setForm, related }: { form: Record<string, strin
     <div className="form-grid">
       <label>Production Record<SelectInline value={form.production_record_id ?? ""} options={["", ...related.productionRecords.map((row) => String(row.id))]} labels={labelsFor(related.productionRecords, "production_type")} onChange={(production_record_id) => setForm({ ...form, production_record_id })} /></label>
       <label>Review Type<SelectInline value={form.review_type ?? "internal_qc"} options={reviewTypes} onChange={(review_type) => setForm({ ...form, review_type })} /></label>
-      <label>Reviewer User ID<input value={form.reviewer_user_id ?? ""} onChange={(event) => setForm({ ...form, reviewer_user_id: event.target.value })} /></label>
+      <p>You will be recorded as the reviewer.</p>
       <label>Review Notes<textarea value={form.review_notes ?? ""} onChange={(event) => setForm({ ...form, review_notes: event.target.value })} /></label>
       <Select label="Evidence Status" value={form.evidence_status ?? ""} options={findingStatuses} onChange={(evidence_status) => setForm({ ...form, evidence_status })} />
       <Select label="Location Status" value={form.location_status ?? ""} options={locationStatuses} onChange={(location_status) => setForm({ ...form, location_status })} />
@@ -534,16 +545,16 @@ function QcCreateFields({ form, setForm, related }: { form: Record<string, strin
       <Select label="Customer Acceptance Status" value={form.customer_acceptance_status ?? ""} options={acceptanceStatuses} onChange={(customer_acceptance_status) => setForm({ ...form, customer_acceptance_status })} />
       <Select label="Prime Acceptance Status" value={form.prime_acceptance_status ?? ""} options={acceptanceStatuses} onChange={(prime_acceptance_status) => setForm({ ...form, prime_acceptance_status })} />
       <label>Correction Due Date<input type="date" value={form.correction_due_date ?? ""} onChange={(event) => setForm({ ...form, correction_due_date: event.target.value })} /></label>
-      <label>Correction Owner User ID<input value={form.correction_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, correction_owner_user_id: event.target.value })} /></label>
-      <label>Source QC Review ID<input value={form.source_qc_review_id ?? ""} onChange={(event) => setForm({ ...form, source_qc_review_id: event.target.value })} /></label>
+      <p>Request and assign corrections after creating the review.</p>
+
       <label>Hard Stop<SelectInline value={form.hard_stop ?? "false"} options={["false", "true"]} onChange={(hard_stop) => setForm({ ...form, hard_stop })} /></label>
-      <label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label>
+
     </div>
   );
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test QC actions.</p></div><button type="button" onClick={session.applyDefaults}>Use QC defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -552,7 +563,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : qcDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -646,7 +657,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {

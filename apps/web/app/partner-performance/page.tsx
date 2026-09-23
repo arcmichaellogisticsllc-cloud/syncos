@@ -1,4 +1,5 @@
 "use client";
+import { Capability } from "../access-control";
 
 import { useEffect, useState } from "react";
 import { readToken, syncosFetch } from "../intelligence/api";
@@ -71,7 +72,7 @@ export default function PartnerPerformancePage() {
           <h1>Partner Performance</h1>
           <p>Derived scorecards, capacity intelligence, critical risk flags, and lifecycle recommendations for internal decision support.</p>
         </div>
-        <button className="primary-button" onClick={recalculate}>Recalculate</button>
+        <Capability permission="partner_performance.recalculate"><button className="primary-button" onClick={recalculate}>Recalculate</button></Capability>
       </header>
       <section className="workspace-panel">
         <h2>Executive Ranking</h2>

@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -19,7 +20,7 @@ const sourceTypes = ["approved_time", "production_based", "per_diem", "reimburse
 const earningTypes = ["regular", "overtime", "doubletime", "piece_rate", "per_diem", "reimbursement", "bonus", "incentive", "adjustment", "correction", "deduction", "penalty"];
 const workerClassifications = ["w2_employee", "contractor_1099", "temp_worker", "seasonal_worker", "internal_self_perform", "union_later", "unknown"];
 const itemStatuses = ["draft", "ready", "approved", "held", "disputed", "payroll_ready", "payroll_created_later", "voided", "archived"];
-const tabs = ["overview", "payroll_items", "worker_summary", "crew_context", "project_production_context", "payroll_period_cycle", "financial_summary", "earnings", "reimbursements", "deductions", "compliance_tax_readiness", "holds_disputes", "approval", "payroll_readiness", "timeline", "audit", "future_payment", "future_payroll_provider", "future_tax_accounting"];
+const tabs = ["overview", "payroll_items", "worker_summary", "crew_context", "project_production_context", "payroll_period_cycle", "financial_summary", "earnings", "reimbursements", "deductions", "compliance_tax_readiness", "holds_disputes", "approval", "payroll_readiness", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -111,7 +112,7 @@ export function PayrollRunQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading payroll runs...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -119,7 +120,7 @@ export function PayrollRunQueue() {
                 <h2>Today&apos;s payroll readiness work</h2>
                 <p className="muted">Start with submitted, blocked, disputed, and approved payroll records before marking anything payroll-ready.</p>
               </div>
-              <Link className="primary-button" href="/payroll/new" aria-disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</Link>
+              <Link className="primary-button" href="/payroll/new" allowed={hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</Link>
             </div>
             <div className="summary-grid">
               {payrollQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPayrollQueue(rows, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
@@ -216,7 +217,7 @@ export function PayrollRunCreate() {
         <div className="warning-box">Backend validation is authoritative. Creating a payroll run does not create payment, ACH/card/check, provider submission, tax filing, or accounting export records.</div>
         <PayrollFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</button>
+          {hasPermission(session.permissions, "payroll_run.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</button> : null}
           <Link className="link-button" href="/payroll">Cancel</Link>
         </div>
       </form>
@@ -283,7 +284,7 @@ export function PayrollRunEdit({ payrollRunId }: { payrollRunId: string }) {
           <div className="warning-box">Cannot create payment, submit payroll, mark paid, or file taxes from this form. Lifecycle states use backend action routes.</div>
           <PayrollFormFields form={form} setForm={setForm} related={related} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payroll_run.update")}>Save Payroll Run</button>
+            {hasPermission(session.permissions, "payroll_run.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payroll_run.update")}>Save Payroll Run</button> : null}
             <Link className="link-button" href={`/payroll/${payrollRunId}`}>Cancel</Link>
           </div>
         </form>
@@ -355,7 +356,7 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/payroll/${payrollRunId}/edit`} aria-disabled={!hasPermission(session.permissions, "payroll_run.update")}>Edit Payroll Run</Link>
+                <Link className="link-button" href={`/payroll/${payrollRunId}/edit`} allowed={hasPermission(session.permissions, "payroll_run.update")}>Edit Payroll Run</Link>
                 <ActionButton permission="payroll_run.add_item" session={session} disabled={runInactive(run)} onClick={() => openAction("add_item")}>Add Payroll Item</ActionButton>
                 <ActionButton permission="payroll_run.recalculate_totals" session={session} disabled={runInactive(run)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="payroll_run.submit_review" session={session} disabled={runInactive(run)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
@@ -411,7 +412,7 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "payroll_run").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PayrollTab tab={tab} detail={detail} run={run} items={items} session={session} onAction={openAction} />
             </section>
@@ -452,7 +453,7 @@ function PayrollShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Payroll</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -583,7 +584,7 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   const [token, setToken] = useState(session.token);
   const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
   return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
@@ -591,20 +592,13 @@ function SessionPanel({ session }: { session: Session }) {
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(payrollDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : payrollDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -836,7 +830,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

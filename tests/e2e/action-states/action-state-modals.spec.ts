@@ -25,7 +25,7 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
     test(`[${state.domain}] ${state.stateKey}: modal opens and cancels cleanly`, async ({ page }) => {
       // Modals run mid-suite under sustained load; triple timeout for resilience
       test.slow();
-      await installStoredSession(page, personas.systemAdmin.storageState);
+      await installStoredSession(page, Object.values(personas).find(persona => persona.slug === state.persona)!.storageState);
       await expectRouteHealthy(page, state.route, state.objectType);
 
       // Ensure action button is present before clicking

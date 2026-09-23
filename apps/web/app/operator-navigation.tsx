@@ -32,9 +32,9 @@ export const workspaces: WorkspaceDefinition[] = [
     href: "/growth",
     scope: "Customer demand",
     description: "Signals, opportunity candidates, and active pursuit pipeline",
-    permissions: ["signal.read", "opportunity_candidate.read", "opportunity.read"],
+    permissions: ["dashboard.growth.read", "signal.read", "opportunity_candidate.read", "opportunity.read"],
     items: [
-      { label: "Demand Overview", href: "/growth", workspace: "Demand", description: "Demand and opportunity summary.", permission: "signal.read" },
+      { label: "Demand Overview", href: "/growth", workspace: "Demand", description: "Demand and opportunity summary.", permission: "dashboard.growth.read" },
       { label: "Signal Feed", href: "/intelligence/signals", workspace: "Demand", description: "Review market intelligence and signal queues.", permission: "signal.read" },
       { label: "Opportunity Candidates", href: "/opportunities/candidates", workspace: "Demand", description: "Qualified signals before active pursuit.", permission: "opportunity_candidate.read" },
       { label: "Opportunities", href: "/opportunities/pipeline", workspace: "Demand", description: "Active pursuit pipeline.", permission: "opportunity.read" },
@@ -62,7 +62,7 @@ export const workspaces: WorkspaceDefinition[] = [
     permissions: ["opportunity_capacity_match.read", "opportunity_coverage.read", "partner_capacity_intelligence.read"],
     items: [
       { label: "Opportunity Matching", href: "/opportunities/capacity-matching", workspace: "Capacity Matching", description: "Coverage, gaps, shortlist, and decisions.", permission: "opportunity_capacity_match.read" },
-      { label: "Coverage Plans", href: "/opportunities/coverage", workspace: "Capacity Matching", description: "Coverage planning context.", permission: "opportunity_coverage.read" },
+      { label: "Coverage Plans", href: "/opportunities/coverage", workspace: "Capacity Matching", description: "Coverage planning context.", permission: "coverage_plan.read" },
       { label: "Capacity Intelligence", href: "/partner-performance", workspace: "Capacity Matching", description: "Partner capacity and confidence context.", permission: "partner_capacity_intelligence.read" },
     ],
   },
@@ -71,12 +71,12 @@ export const workspaces: WorkspaceDefinition[] = [
     href: "/operations",
     scope: "Work control",
     description: "Projects, Work Orders, field production, and production dashboards",
-    permissions: ["project.read", "work_order.read", "production.read", "production_record.read"],
+    permissions: ["dashboard.operations.read", "project.read", "work_order.read", "production.read", "production_record.read"],
     items: [
-      { label: "Operations Board", href: "/operations", workspace: "Execution", description: "Capacity, work, production, and blocker summary.", permission: "project.read" },
+      { label: "Operations Board", href: "/operations", workspace: "Execution", description: "Capacity, work, production, and blocker summary.", permission: "dashboard.operations.read" },
       { label: "Projects", href: "/projects", workspace: "Execution", description: "Operational project context.", permission: "project.read" },
       { label: "Work Orders", href: "/work-orders", workspace: "Execution", description: "Executable work packages.", permission: "work_order.read" },
-      { label: "Production", href: "/production", workspace: "Execution", description: "Submitted field production.", permission: "production.read" },
+      { label: "Production", href: "/production", workspace: "Execution", description: "Submitted field production.", permission: "production_record.read" },
       { label: "Production Dashboard", href: "/production-dashboard", workspace: "Execution", description: "Production exports and dashboard.", permission: "production_dashboard.read" },
     ],
   },
@@ -97,6 +97,7 @@ export const workspaces: WorkspaceDefinition[] = [
     scope: "Cash control",
     description: "Bill, collect, pay, reconcile, and prepare handoff",
     permissions: [
+      "dashboard.finance.read",
       "billable_item.read",
       "settlement.read",
       "invoice.read",
@@ -110,6 +111,7 @@ export const workspaces: WorkspaceDefinition[] = [
       "accounting_export_batch.read",
     ],
     items: [
+      { label: "Finance Overview", href: "/finance", workspace: "Finance", description: "Financial dashboard and cash overview.", permission: "dashboard.finance.read" },
       { label: "Billable", href: "/billable", workspace: "Finance", description: "Approved work ready for billing review.", permission: "billable_item.read" },
       { label: "Settlements", href: "/settlements", workspace: "Finance", description: "Settlement workbench.", permission: "settlement.read" },
       { label: "Invoices", href: "/invoices", workspace: "Finance", description: "Customer demand-for-payment state.", permission: "invoice.read" },
@@ -133,9 +135,9 @@ export const workspaces: WorkspaceDefinition[] = [
       { label: "Command Center", href: "/command-center", workspace: "Command Center", description: "Executive throughput, blockers, and daily actions.", permission: "executive_command.read" },
       { label: "Executive Dashboard", href: "/executive", workspace: "Command Center", description: "Business health, blockers, cash, and throughput.", permission: "dashboard.executive.read" },
       { label: "Daily Priorities", href: "/", workspace: "Command Center", description: "Today's cross-workspace operating view.", permission: "dashboard.executive.read" },
-      { label: "Blockers", href: "/constraints-center", workspace: "Command Center", description: "Constraints requiring attention.", permission: "constraint.read" },
-      { label: "Recommendations", href: "/recommendations-center", workspace: "Command Center", description: "Recommended operator actions.", permission: "recommendation.read" },
-      { label: "KPIs", href: "/kpis-center", workspace: "Command Center", description: "KPI definitions, snapshots, and alerts.", permission: "kpi.read" },
+      { label: "Blockers", href: "/constraints-center", workspace: "Command Center", description: "Constraints requiring attention.", permission: "dashboard.constraints.read" },
+      { label: "Recommendations", href: "/recommendations-center", workspace: "Command Center", description: "Recommended operator actions.", permission: "dashboard.recommendations.read" },
+      { label: "KPIs", href: "/kpis-center", workspace: "Command Center", description: "KPI definitions, snapshots, and alerts.", permission: "dashboard.kpis.read" },
     ],
   },
 ];
@@ -160,7 +162,7 @@ export function OperatorNavigation() {
             <small>{workspace.scope}</small>
           </span>
         ) : (
-          <Link href={workspace.href} key={workspace.label} title={workspace.description} aria-current={workspace.label === activeWorkspace.label ? "page" : undefined}>
+          <Link href={workspace.href} key={workspace.label} title={workspace.description} aria-current={workspace.label === activeWorkspace?.label ? "page" : undefined}>
             <span>{workspace.label}</span>
             <small>{workspace.scope}</small>
           </Link>
@@ -173,15 +175,15 @@ export function OperatorNavigation() {
 export function OperatorSubnavigation() {
   const pathname = usePathname();
   const { permissions, visibleWorkspaces, activeWorkspace } = useOperatorNavigationState();
-  const subnavItems = activeWorkspace.items.filter((item) => canSeeItem(item, permissions));
+  const subnavItems = (activeWorkspace?.items ?? []).filter((item) => canSeeItem(item, permissions));
 
   if (permissions === null || !visibleWorkspaces.length || subnavItems.length <= 1) return null;
 
   return (
-    <nav className="workspace-subnav" aria-label={`${activeWorkspace.label} workspace navigation`}>
+    <nav className="workspace-subnav" aria-label={`${activeWorkspace?.label} workspace navigation`}>
       <div className="workspace-subnav-label">
-        <span>{activeWorkspace.label}</span>
-        <small>{activeWorkspace.description}</small>
+        <span>{activeWorkspace?.label}</span>
+        <small>{activeWorkspace?.description}</small>
       </div>
       <div className="workspace-subnav-links">
         {subnavItems.map((item) => item.status === "planned" ? (
@@ -200,8 +202,7 @@ function useOperatorNavigationState() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const cached = readPermissions();
-    if (cached.length) setPermissions(cached);
+
     const token = readToken();
     if (!token) {
       setPermissions([]);
@@ -219,7 +220,7 @@ function useOperatorNavigationState() {
       });
   }, []);
 
-  const visibleWorkspaces = useMemo(() => workspaces.filter((workspace) => canSeeWorkspace(workspace, permissions)), [permissions]);
+  const visibleWorkspaces = useMemo(() => workspaces.filter((workspace) => canSeeWorkspace(workspace, permissions)).map(workspace => ({ ...workspace, href: workspace.items.find(item => item.href === workspace.href && canSeeItem(item, permissions))?.href ?? workspace.items.find(item => canSeeItem(item, permissions))?.href ?? workspace.href })), [permissions]);
   const activeWorkspace = useMemo(() => {
     const matched = visibleWorkspaces
       .filter((workspace) => workspace.status !== "planned")
@@ -229,7 +230,7 @@ function useOperatorNavigationState() {
       }))
       .filter((match) => match.score >= 0)
       .sort((left, right) => right.score - left.score)[0]?.workspace;
-    return matched ?? visibleWorkspaces.find((workspace) => workspace.status !== "planned") ?? visibleWorkspaces[0] ?? workspaces[0];
+    return matched ?? null;
   }, [pathname, visibleWorkspaces]);
   return { permissions, error, visibleWorkspaces, activeWorkspace };
 }
@@ -282,13 +283,13 @@ export function OperatorAccountControl() {
 }
 
 function canSeeWorkspace(workspace: WorkspaceDefinition, permissions: string[] | null) {
-  if (workspace.status === "planned") return true;
+  if (workspace.status === "planned") return false;
   if (!permissions?.length) return false;
-  return workspace.permissions.some((permission) => hasPermission(permissions, permission));
+  return workspace.permissions.some((permission) => hasPermission(permissions, permission)) || workspace.items.some(item => canSeeItem(item, permissions));
 }
 
 function canSeeItem(item: WorkspaceNavItem, permissions: string[] | null) {
-  if (item.status === "planned") return true;
+  if (item.status === "planned") return false;
   if (!item.permission) return true;
   if (!permissions?.length) return false;
   return hasPermission(permissions, item.permission);

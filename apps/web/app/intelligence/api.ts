@@ -1,9 +1,12 @@
 "use client";
+import { actionRoleAuthority } from "../action-role-authority";
 
 export type SyncRecord = Record<string, unknown>;
 
 const tokenKey = "syncos.apiToken";
 const permissionKey = "syncos.permissions";
+let verifiedPermissions: string[] = [];
+let verifiedToken = "";
 const partnerSensitiveStorageKeys = [
   "syncos.syncfieldAssignmentId",
   "syncos.fieldMutations",
@@ -296,14 +299,9 @@ export function saveToken(token: string) {
   window.localStorage.setItem(tokenKey, token.trim());
 }
 
-export function readPermissions() {
-  if (typeof window === "undefined") return [];
-  const stored = window.localStorage.getItem(permissionKey);
-  if (!stored) return [];
-  return stored
-    .split(",")
-    .map((permission) => permission.trim())
-    .filter(Boolean);
+export function readPermissions(): string[] {
+  // Stored UI hints are not authority. Only the current server-verified identity grants access.
+  return verifiedToken === readToken() ? [...verifiedPermissions] : [];
 }
 
 export function savePermissions(permissions: string[]) {
@@ -312,6 +310,8 @@ export function savePermissions(permissions: string[]) {
 
 export function clearAuthContext() {
   if (typeof window === "undefined") return;
+  verifiedPermissions = [];
+  verifiedToken = "";
   window.localStorage.removeItem(tokenKey);
   window.localStorage.removeItem(permissionKey);
   for (const key of partnerSensitiveStorageKeys) window.localStorage.removeItem(key);
@@ -340,22 +340,40 @@ export function hasPermission(permissions: string[], permission: string) {
 
 export async function loadAuthContext(token = readToken()) {
   const context = await syncosFetch<AuthContext>("auth/me", { token });
-  savePermissions(context.permissions ?? []);
+  context.permissions = context.permissions.filter(permission => {
+    const roles = actionRoleAuthority[permission];
+    return !roles || (context.role_names ?? []).some(role => roles.includes(role));
+  });
+  if (token === readToken()) {
+    verifiedToken = token;
+    verifiedPermissions = context.permissions ?? [];
+    savePermissions(verifiedPermissions);
+  }
   return context;
 }
 
 export function workspaceRouteFor(context: AuthContext) {
-  if (context.routing?.workspace) return context.routing.workspace;
   const permissions = context.permissions ?? [];
   const roles = context.roles ?? [];
-  const internal = roles.some((role) => !["partner_admin", "partner_foreman"].includes(role));
   const has = (permission: string) => permissions.includes(permission);
-  if (internal && (has("executive_command.read") || has("dashboard.executive.read"))) return "/command-center";
-  if (internal && (has("project.read") || has("work_order.read") || has("production.read") || has("qc_review.read"))) return "/operations";
-  if (internal && (has("billable_item.read") || has("invoice.read") || has("cash_receipt.read") || has("settlement.read") || has("contractor_payable.read"))) return "/finance";
-  if (!internal && roles.includes("partner_admin")) return "/partner";
-  if (!internal && roles.includes("partner_foreman")) return "/syncfield/today";
-  if (has("partner_context.read")) return roles.includes("partner_foreman") && !roles.includes("partner_admin") ? "/syncfield/today" : "/partner";
+  if (roles.includes("sync_foreman")) return "/syncfield/today";
+  const internal = roles.some(role => !["partner_admin", "partner_foreman"].includes(role));
+  if (!internal && has("partner_context.read")) return roles.includes("partner_admin") ? "/partner" : "/syncfield/today";
+  const destinations = [
+    ["executive_command.read", "/command-center"], ["dashboard.executive.read", "/executive"],
+    ["dashboard.operations.read", "/operations"], ["dashboard.finance.read", "/finance"], ["dashboard.growth.read", "/growth"],
+    ["project.read", "/projects"], ["work_order.read", "/work-orders"], ["production_record.read", "/production"], ["qc_review.read", "/qc"],
+    ["billable_item.read", "/billable"], ["invoice.read", "/invoices"], ["cash_receipt.read", "/cash"], ["settlement.read", "/settlements"],
+    ["contractor_payable.read", "/contractor-payables"], ["payroll_run.read", "/payroll"], ["collection_case.read", "/collections"],
+    ["payment_batch.read", "/payments"], ["bank_transaction.read", "/bank-reconciliation"], ["accounting_export_batch.read", "/accounting-exports"],
+    ["signal.read", "/intelligence/signals"], ["organization.read", "/intelligence/organizations"], ["contact.read", "/intelligence/contacts"],
+  ];
+  // A server-suggested dashboard still needs that dashboard's own read permission.
+  const suggested = destinations.find(([permission, route]) => route === context.routing?.workspace && has(permission));
+  if (suggested) return suggested[1];
+  const destination = destinations.find(([permission]) => has(permission));
+  if (destination) return destination[1];
+  if (has("partner_context.read")) return roles.includes("partner_foreman") ? "/syncfield/today" : "/partner";
   return "/";
 }
 
@@ -389,7 +407,6 @@ function readableError(status: number, data: unknown) {
   const message = typeof data === "object" && data && "message" in data ? String((data as { message?: unknown }).message) : "";
   if (status === 401) return "Sign in with a valid SyncOS account to continue.";
   if (status === 403) return "You do not have permission to perform this action.";
-  if (message.includes("evidence")) return "This signal cannot be verified until evidence is attached.";
   if (message.includes("tenant")) return "This related record does not belong to your organization.";
   if (message) return message;
   return `Request failed with status ${status}.`;
@@ -409,4 +426,14 @@ export function dateValue(value: unknown) {
   if (!value) return "Not captured";
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+}
+
+export function permittedRecordTabs<T extends string | { id: string }>(tabs: T[], resource: string): T[] {
+  const permissions = readPermissions();
+  return tabs.filter(tab => {
+    const id = typeof tab === "string" ? tab : tab.id;
+    if (id === "audit") return hasPermission(permissions, `${resource}.audit.read`);
+    if (id === "timeline" || id === "events") return hasPermission(permissions, `${resource}.timeline.read`);
+    return !id.startsWith("future_");
+  });
 }

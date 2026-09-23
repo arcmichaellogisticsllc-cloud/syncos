@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useState } from "react";
 import { clearAuthContext, saveToken, syncosFetch, workspaceRouteFor, type AuthContext } from "../intelligence/api";
 

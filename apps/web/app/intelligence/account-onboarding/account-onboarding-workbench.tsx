@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { useEffect, useMemo, useState } from "react";
 import {
   dateValue,

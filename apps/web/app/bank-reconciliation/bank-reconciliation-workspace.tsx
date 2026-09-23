@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -20,8 +21,8 @@ const matchTypes = ["payment_batch", "payment_item", "cash_receipt", "payment_ap
 const matchedObjectTypes = ["payment_batch", "payment_item", "cash_receipt", "payment_application", "invoice", "manual"];
 const matchStatuses = ["proposed", "reviewed", "approved", "rejected", "voided", "archived"];
 const matchConfidences = ["exact", "high", "medium", "low", "manual"];
-const transactionTabs = ["overview", "match_payment_batch", "match_payment_item", "match_cash_receipt", "payment_application_context", "matches", "exception", "reconciliation_status", "timeline", "audit", "future_accounting_export", "future_processor_settlement"];
-const accountTabs = ["overview", "transactions", "reconciliation_summary", "exceptions", "timeline", "audit", "future_bank_feed", "future_statement_import"];
+const transactionTabs = ["overview", "match_payment_batch", "match_payment_item", "match_cash_receipt", "payment_application_context", "matches", "exception", "reconciliation_status", "timeline", "audit"];
+const accountTabs = ["overview", "transactions", "reconciliation_summary", "exceptions", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -139,7 +140,7 @@ export function BankReconciliationLanding() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading bank reconciliation workspace...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -148,8 +149,8 @@ export function BankReconciliationLanding() {
                 <p className="muted">Prioritize unmatched credits, unmatched debits, exceptions, and match reviews without implying SyncOS imported bank data or moved money.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/bank-reconciliation/accounts/new" aria-disabled={!hasPermission(session.permissions, "bank_account.create")}>Create Bank Account</Link>
-                <Link className="primary-button" href="/bank-reconciliation/transactions/new" aria-disabled={!hasPermission(session.permissions, "bank_transaction.create")}>Create Manual Bank Transaction</Link>
+                <Link className="primary-button" href="/bank-reconciliation/accounts/new" allowed={hasPermission(session.permissions, "bank_account.create")}>Create Bank Account</Link>
+                <Link className="primary-button" href="/bank-reconciliation/transactions/new" allowed={hasPermission(session.permissions, "bank_transaction.create")}>Create Manual Bank Transaction</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -236,7 +237,7 @@ export function BankAccountCreate() {
         <div className="warning-box">Never enter full account numbers, online banking credentials, passwords, or API tokens.</div>
         <BankAccountFields form={form} setForm={setForm} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_account.create")}>Create Bank Account</button>
+          {hasPermission(session.permissions, "bank_account.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_account.create")}>Create Bank Account</button> : null}
           <Link className="link-button" href="/bank-reconciliation">Cancel</Link>
         </div>
       </form>
@@ -285,7 +286,7 @@ export function BankAccountEdit({ accountId }: { accountId: string }) {
           <div className="warning-box">No full account numbers, credentials, passwords, login information, or API tokens are allowed.</div>
           <BankAccountFields form={form} setForm={setForm} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_account.update")}>Save Bank Account</button>
+            {hasPermission(session.permissions, "bank_account.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_account.update")}>Save Bank Account</button> : null}
             <Link className="link-button" href={`/bank-reconciliation/accounts/${accountId}`}>Cancel</Link>
           </div>
         </form>
@@ -324,7 +325,7 @@ export function ManualBankTransactionCreate() {
         <div className="warning-box">Manual bank transactions are records for reconciliation. They do not move money, create cash receipts, create payments, or update invoice balances.</div>
         <BankTransactionFields form={form} setForm={setForm} accounts={accounts} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_transaction.create")}>Create Manual Bank Transaction</button>
+          {hasPermission(session.permissions, "bank_transaction.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_transaction.create")}>Create Manual Bank Transaction</button> : null}
           <Link className="link-button" href="/bank-reconciliation">Cancel</Link>
         </div>
       </form>
@@ -378,7 +379,7 @@ export function BankTransactionEdit({ transactionId }: { transactionId: string }
           <div className="warning-box">Amount and direction edits after matching rely on backend validation. No money movement, cash receipt creation, or invoice balance update is available here.</div>
           <BankTransactionFields form={form} setForm={setForm} accounts={accounts} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_transaction.update")}>Save Bank Transaction</button>
+            {hasPermission(session.permissions, "bank_transaction.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "bank_transaction.update")}>Save Bank Transaction</button> : null}
             <Link className="link-button" href={`/bank-reconciliation/transactions/${transactionId}`}>Cancel</Link>
           </div>
         </form>
@@ -430,7 +431,7 @@ export function BankAccountDetail({ accountId }: { accountId: string }) {
                 <div className="badge-row"><span className="badge">{formatAction(account.account_type)}</span><span className="badge">{formatAction(account.status)}</span><span className="badge">{textValue(account.currency)}</span></div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/bank-reconciliation/accounts/${accountId}/edit`} aria-disabled={!hasPermission(session.permissions, "bank_account.update")}>Edit Account</Link>
+                <Link className="link-button" href={`/bank-reconciliation/accounts/${accountId}/edit`} allowed={hasPermission(session.permissions, "bank_account.update")}>Edit Account</Link>
                 <ActionButton permission="bank_account.archive" session={session} disabled={account.status === "archived"} onClick={() => setModal("archive_account")}>Archive Account</ActionButton>
               </div>
             </div>
@@ -507,7 +508,7 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
       {transaction && detail ? (
         <>
           {!hasPermission(session.permissions, "bank_transaction.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "bank_transaction.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(transaction.reconciliation_status)}
             nextActionLabel={bankTransactionNextAction(transaction)}
@@ -515,7 +516,7 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
             disabled={!hasPermission(session.permissions, "bank_transaction.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Reconciliation matches bank-side evidence to SyncOS records. It does not import bank feeds, move money, create cash, execute payments, or post accounting entries."
-          />
+          /> : null}
           <DetailBoundaryNotice>Reconciliation matches bank-side evidence to SyncOS records. It does not import bank feeds, move money, create cash receipts, execute payments, change invoice balance, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -524,7 +525,7 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
                 <div className="badge-row"><span className="badge">{formatAction(transaction.direction)}</span><span className="badge">{formatAction(transaction.reconciliation_status)}</span><span className="badge">{formatAction(transaction.cleared_status)}</span><span className="badge">{formatAction(transaction.exception_status)}</span></div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/bank-reconciliation/transactions/${transactionId}/edit`} aria-disabled={!hasPermission(session.permissions, "bank_transaction.update")}>Edit Transaction</Link>
+                <Link className="link-button" href={`/bank-reconciliation/transactions/${transactionId}/edit`} allowed={hasPermission(session.permissions, "bank_transaction.update")}>Edit Transaction</Link>
                 <ActionButton permission="bank_transaction.match" session={session} disabled={transactionInactive(transaction)} onClick={() => setModal("match_payment_batch")}>Match Payment Batch</ActionButton>
                 <ActionButton permission="bank_transaction.match" session={session} disabled={transactionInactive(transaction)} onClick={() => setModal("match_payment_item")}>Match Payment Item</ActionButton>
                 <ActionButton permission="bank_transaction.match" session={session} disabled={transactionInactive(transaction)} onClick={() => setModal("match_cash_receipt")}>Match Cash Receipt</ActionButton>
@@ -564,7 +565,7 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
               <div className="warning-box">No invoice balance changed. No accounting export created. No payment, bank transfer, ACH, wire, card payout, check, or payroll provider workflow exists here.</div>
             </aside>
             <section className="workspace-panel">
-              <div className="tabs" role="tablist" aria-label="Bank transaction detail sections">{transactionTabs.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>
+              <div className="tabs" role="tablist" aria-label="Bank transaction detail sections">{permittedRecordTabs(transactionTabs, "bank_transaction").map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>
               <TransactionTab tab={tab} detail={detail} transaction={transaction} matches={matches} related={related} session={session} onAction={setModal} />
             </section>
           </div>
@@ -669,7 +670,7 @@ function BankShell({ title, purpose, children }: { title: string; purpose: strin
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Bank Reconciliation</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -729,7 +730,7 @@ function TransactionTab({ tab, detail, transaction, matches, related, session, o
   if (tab === "match_payment_batch") return <MatchPanel title="Match To Payment Batch" message="This links bank truth to payment intent. It does not execute payment or create bank movement." action="match_payment_batch" related={related} onAction={onAction} />;
   if (tab === "match_payment_item") return <MatchPanel title="Match To Payment Item" message="This verifies a bank debit against a payment item. It does not execute payment." action="match_payment_item" related={related} onAction={onAction} />;
   if (tab === "match_cash_receipt") return <MatchPanel title="Match To Cash Receipt" message="This verifies bank deposit context. It does not create a cash receipt or payment application." action="match_cash_receipt" related={related} onAction={onAction} />;
-  if (tab === "payment_application_context") return <Panel title="Payment Application Context"><button type="button" disabled={!hasPermission(session.permissions, "bank_transaction.match") || transactionInactive(transaction)} onClick={() => onAction("match_payment_application")}>Create Context Match</button><JsonBlock value={related.paymentApplications.slice(0, 10)} /><div className="warning-box">Payment applications allocate cash to invoices. Bank reconciliation does not update invoice balances.</div></Panel>;
+  if (tab === "payment_application_context") return <Panel title="Payment Application Context">{hasPermission(session.permissions, "bank_transaction.match") ? <button type="button" disabled={!hasPermission(session.permissions, "bank_transaction.match") || transactionInactive(transaction)} onClick={() => onAction("match_payment_application")}>Create Context Match</button> : null}<JsonBlock value={related.paymentApplications.slice(0, 10)} /><div className="warning-box">Payment applications allocate cash to invoices. Bank reconciliation does not update invoice balances.</div></Panel>;
   if (tab === "matches") return <Panel title="Matches"><MatchTable rows={matches} /><div className="warning-box">Review, approve, reject, void, and archive actions are available from match detail.</div></Panel>;
   if (tab === "exception") return <Panel title="Exception"><dl className="detail-list"><dt>Exception Status</dt><dd>{formatAction(transaction.exception_status)}</dd><dt>Exception Reason</dt><dd>{textValue(transaction.exception_reason)}</dd></dl><div className="form-actions"><ActionButton permission="bank_transaction.open_exception" session={session} disabled={transactionInactive(transaction)} onClick={() => onAction("open_exception")}>Open Exception</ActionButton><ActionButton permission="bank_transaction.resolve_exception" session={session} disabled={transactionInactive(transaction)} onClick={() => onAction("resolve_exception")}>Resolve Exception</ActionButton></div></Panel>;
   if (tab === "reconciliation_status") return <Panel title="Reconciliation Status"><dl className="detail-list"><dt>Reconciliation Status</dt><dd>{formatAction(transaction.reconciliation_status)}</dd><dt>Cleared Status</dt><dd>{formatAction(transaction.cleared_status)}</dd><dt>Exception Status</dt><dd>{formatAction(transaction.exception_status)}</dd><dt>Approved Match Amount</dt><dd>{money(transaction.approved_match_amount)}</dd><dt>Unmatched Amount</dt><dd>{money(transaction.unmatched_amount)}</dd><dt>Active Match Count</dt><dd>{formatCell(transaction.active_match_count ?? matches.length)}</dd><dt>Recommended Next Action</dt><dd>{formatAction(transaction.recommended_next_action ?? detail.recommended_next_action)}</dd></dl><div className="warning-box">Matched means linked to SyncOS record. Cleared means bank-posted/confirmed. Reconciled means reviewed and accepted. These are separate states.</div></Panel>;
@@ -833,29 +834,17 @@ function FuturePlaceholders() {
   return <section className="workspace-panel"><h2>Future Workflow Placeholders</h2><div className="summary-grid"><Metric label="Future Bank Feed" value="Bank feed integration is not available in this sprint. Bank credentials and API tokens must not be entered." /><Metric label="Future Statement Import" value="Statement import is not available in this sprint. Manual bank transactions are supported for controlled reconciliation." /><Metric label="Future Processor Settlement" value="Payment processor settlement reconciliation is not available in this sprint." /><Metric label="Future Accounting Export" value="Accounting export and GL posting are not available in this sprint." /><Metric label="Future Treasury" value="Treasury forecasting, funding optimization, and cash forecasting are not available in this sprint." /></div></section>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  const [token, setToken] = useState(session.token);
-  const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
-  return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(bankDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : bankDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -1120,7 +1109,7 @@ function plainError(message: string) {
 
 function Tabs({ tabs, render }: { tabs: string[]; render: (tab: string) => ReactNode }) {
   const [tab, setTab] = useState(tabs[0]);
-  return <><div className="tabs" role="tablist" aria-label="Bank reconciliation detail sections">{tabs.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>{render(tab)}</>;
+  return <><div className="tabs" role="tablist" aria-label="Bank reconciliation detail sections">{permittedRecordTabs(tabs, "bank_account").map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}</div>{render(tab)}</>;
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled, required }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean; required?: boolean }) {
@@ -1136,7 +1125,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -16,7 +17,7 @@ const billableStatuses = ["not_billable", "pending_approval", "billable", "bille
 const assignmentTypes = ["unassigned", "internal_crew", "subcontractor", "partner_contractor", "vendor_equipment", "staffing_source"];
 const units = ["feet", "miles", "drops", "addresses", "passings", "splice_cases", "nodes", "poles", "permits", "inspections", "restoration_items", "days", "crews", "workers", "equipment_units", "each"];
 const archiveReasons = ["duplicate", "no_longer_relevant", "replaced", "created_in_error", "project_cancelled", "other"];
-const tabs = ["overview", "project", "coverage", "assignment", "schedule", "scope", "quantity", "readiness", "production", "qc", "billable", "constraints", "timeline", "audit", "future_production", "future_settlement"];
+const tabs = ["overview", "project", "coverage", "assignment", "schedule", "scope", "quantity", "readiness", "production", "qc", "billable", "constraints", "timeline", "audit"];
 
 type WorkOrderDetailShape = {
   work_order: SyncRecord;
@@ -94,7 +95,7 @@ export function WorkOrderDirectory() {
       {error ? <div className="error-banner" role="alert">{plainError(error)}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to plan, assign, and monitor executable telecom work.</div> : null}
       {loading ? <div className="loading-state">Loading work orders...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -104,7 +105,7 @@ export function WorkOrderDirectory() {
                 <p className="muted">Start with blocked work, ready execution, and work orders that need production or QC movement.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/work-orders/new" aria-disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</Link>
+                <Link className="primary-button" href="/work-orders/new" allowed={hasPermission(session.permissions, "work_order.create")}>Create Work Order</Link>
                 <button type="button" onClick={() => setQueue("blocked", { hasBlockers: "true" })}>Open Next Blocked Work Order</button>
                 <button type="button" onClick={() => setQueue("active", { status: "in_progress" })}>Review Active Work</button>
               </div>
@@ -219,7 +220,7 @@ export function WorkOrderCreate() {
           <WorkOrderFormFields form={form} setForm={setForm} related={related} includeRequired />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</button>
+          {hasPermission(session.permissions, "work_order.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</button> : null}
           <Link className="link-button" href="/work-orders">Cancel</Link>
         </div>
       </form>
@@ -306,7 +307,7 @@ export function WorkOrderEdit({ workOrderId }: { workOrderId: string }) {
           <div className="warning-box">Status changes use lifecycle actions from Work Order Detail. Assignment uses the Assign action. This form does not create production or finance records.</div>
           <WorkOrderFormFields form={form} setForm={setForm} related={related} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.update")}>Save Work Order</button>
+            {hasPermission(session.permissions, "work_order.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.update")}>Save Work Order</button> : null}
             <Link className="link-button" href={`/work-orders/${workOrderId}`}>Cancel</Link>
           </div>
         </form>
@@ -359,14 +360,14 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
       {workOrder && detail ? (
         <>
           {!hasPermission(session.permissions, "work_order.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "work_order.update") ? <DetailNextActionCard
             status={formatAction(workOrder.status)}
             nextActionLabel={nextWorkOrderAction(workOrder)}
             helperText="Use this detail page to understand field execution state, assignment, production readiness, QC movement, and billable readiness before taking an action."
             disabled={!hasPermission(session.permissions, "work_order.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Work order actions manage field execution state. They do not create production, QC approval, invoice, cash, or payment records unless a separate supported action exists."
-          />
+          /> : null}
           <DetailBoundaryNotice>Work order actions manage field execution state. They do not create production, QC approval, invoice, cash, payment, payroll, bank, or accounting records unless a separate supported action exists.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -380,7 +381,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/work-orders/${workOrderId}/edit`} aria-disabled={!hasPermission(session.permissions, "work_order.update")}>Edit Work Order</Link>
+                <Link className="link-button" href={`/work-orders/${workOrderId}/edit`} allowed={hasPermission(session.permissions, "work_order.update")}>Edit Work Order</Link>
                 <ActionButton permission="work_order.recalculate_readiness" session={session} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="work_order.mark_ready" session={session} disabled={String(workOrder.status) !== "draft"} onClick={() => setModal("mark_ready")}>Mark Ready To Assign</ActionButton>
                 <ActionButton permission="work_order.assign" session={session} disabled={closedStatus(workOrder)} onClick={() => setModal("assign")}>Assign Provider/Crew</ActionButton>
@@ -436,7 +437,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "work_order").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <WorkOrderTab tab={tab} detail={detail} workOrder={workOrder} session={session} />
             </section>
@@ -472,7 +473,7 @@ function WorkOrderShell({ title, purpose, children }: { title: string; purpose: 
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Work Orders</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -664,7 +665,7 @@ function WorkOrderFormFields({ form, setForm, related, includeRequired = false }
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test work order actions.</p></div><button type="button" onClick={session.applyDefaults}>Use work order defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -673,7 +674,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -749,7 +750,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {

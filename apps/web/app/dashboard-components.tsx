@@ -1,3 +1,4 @@
+import { PermissionLink } from "./access-control";
 import type { ReactNode } from "react";
 import { formatValue, type DashboardData, valueAt } from "./dashboard-data";
 import { OperatorAccountControl, OperatorNavigation, OperatorSubnavigation } from "./operator-navigation";
@@ -7,9 +8,9 @@ export function CommandShell({ title, purpose, children }: { title: string; purp
     <main className="shell">
       <header className="topbar">
         <div className="brand-block">
-          <a className="app-logo-link" href="/command-center" aria-label="SyncOS home">
+          <PermissionLink className="app-logo-link" href="/command-center" aria-label="SyncOS home">
             <img src="/brand/sync-comm-systems-logo.png" alt="Sync Comm Systems" />
-          </a>
+          </PermissionLink>
           <div>
             <div className="brand">SyncOS</div>
             <div className="brand-subtitle">Telecom Operations Platform</div>
@@ -67,9 +68,9 @@ export function CommandHero({
 
 export function OperatorLink({ href, children, variant = "secondary" }: { href: string; children: ReactNode; variant?: "primary" | "secondary" | "danger" }) {
   return (
-    <a className={`operator-link operator-link-${variant}`} href={href}>
+    <PermissionLink className={`operator-link operator-link-${variant}`} href={href}>
       {children}
-    </a>
+    </PermissionLink>
   );
 }
 
@@ -98,9 +99,9 @@ export function PriorityDecisionCard({
   );
   if (href) {
     return (
-      <a className={`priority-decision-card priority-decision-card-${tone}`} href={href}>
+      <PermissionLink className={`priority-decision-card priority-decision-card-${tone}`} href={href}>
         {content}
-      </a>
+      </PermissionLink>
     );
   }
   return <div className={`priority-decision-card priority-decision-card-${tone}`}>{content}</div>;
@@ -136,9 +137,9 @@ export function WorkQueue({
               </>
             );
             return row.href ? (
-              <a className="work-queue-row" href={row.href} key={`${row.label}-${row.href}`}>
+              <PermissionLink className="work-queue-row" href={row.href} key={`${row.label}-${row.href}`}>
                 {rowContent}
-              </a>
+              </PermissionLink>
             ) : (
               <div className="work-queue-row" key={row.label}>
                 {rowContent}
@@ -170,13 +171,13 @@ export function BoardColumn({
       </div>
       <div className="board-column-list">
         {rows.length ? rows.map((row) => (
-          <a className="board-column-row" href={row.href ?? "#"} key={`${row.label}-${row.href ?? "static"}`} aria-disabled={row.href ? undefined : "true"}>
+          <PermissionLink className="board-column-row" href={row.href ?? "#"} key={`${row.label}-${row.href ?? "static"}`} aria-disabled={row.href ? undefined : "true"}>
             <span>
               <strong>{row.label}</strong>
               {row.helper ? <small>{row.helper}</small> : null}
             </span>
             <b>{row.value}</b>
-          </a>
+          </PermissionLink>
         )) : <div className="empty-state">No records need attention.</div>}
       </div>
     </section>

@@ -2313,6 +2313,14 @@ export class SyncfieldController {
 
   private validateCorrectionAllowedFields(correction: QueryResultRow, body: Record<string, unknown>) {
     const allowed = new Set(correction.allowed_fields ?? []);
+    // Never accept a field that the immutable revision snapshot would discard.
+    for (const field of ["production_code_id", "map_location", "evidence"]) {
+      if (body[field] !== undefined) throw new BadRequestException(`correction field is not supported by this revision workflow: ${field}`);
+    }
+    if (body.reported_quantity !== undefined && (body.reported_quantity === null || body.reported_quantity === "" || !Number.isFinite(Number(body.reported_quantity)) || Number(body.reported_quantity) < 0)) {
+      throw new BadRequestException("corrected quantity must be a non-negative number");
+    }
+
     const requested = ["reported_quantity", "production_code_id", "asset_identifier", "route_endpoint", "map_location", "notes", "evidence"].filter((field) => body[field] !== undefined);
     for (const field of requested) {
       if (!allowed.has(field)) throw new BadRequestException(`correction field not allowed: ${field}`);

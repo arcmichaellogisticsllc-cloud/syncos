@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useEffect, useState, type FormEvent } from "react";
 import { syncosFetch } from "../intelligence/api";
 export default function ActivateEmployee() {

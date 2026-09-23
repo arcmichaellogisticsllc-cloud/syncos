@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
-import { getDashboardData, valueAt } from "../dashboard-data";
+import { valueAt } from "../dashboard-data";
 
-export default async function KpisCenterPage() {
-  const data = await getDashboardData("kpis");
+export default function KpisCenterPage() {
+  const dashboard = useDashboardData("kpis");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="KPI Center" state={dashboard} />;
   return (
     <CommandShell title="KPI Center" purpose="KPI definitions, history, alerts, and trends.">
       <div className="grid">

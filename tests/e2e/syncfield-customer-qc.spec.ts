@@ -86,9 +86,9 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
 
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
-    await page.getByRole("button", { name: "Asset" }).click();
-    await page.getByRole("button", { name: "Route / Span" }).click();
-    await page.getByRole("button", { name: "Daily" }).click();
+    await enterObservedProduction(page, "asset");
+    await enterObservedProduction(page, "route");
+    await enterObservedProduction(page, "daily");
     await expect(page.getByText("Offline — 3 changes saved locally")).toBeVisible();
 
     const queued = await queuedFieldMutations(page);
@@ -121,7 +121,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
-    await page.getByRole("button", { name: "Asset" }).click();
+    await enterObservedProduction(page, "asset");
     await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
 
     await client.query("UPDATE production_start_authorizations SET authorization_status = 'held' WHERE tenant_id = $1 AND current = true", [seeded.tenantA]);
@@ -302,8 +302,23 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     });
     expect(unrelated.status()).toBe(400);
 
-    const correctionPayload = { asset_identifier: "Pole 12301A", notes: "Customer correction applied.", client_mutation_id: crypto.randomUUID() };
-    const resubmitted = await apiJson(request, seeded.foremanToken, "POST", `/syncfield/foreman/corrections/${correctionId}/resubmit`, correctionPayload);
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/syncfield/corrections");
+    const editor = page.getByRole("form", { name: "Correction editor" });
+    await expect(editor.getByLabel("Corrected asset identifier")).toBeVisible();
+    await expect(editor.getByLabel("Corrected quantity")).toHaveCount(0);
+    await editor.getByLabel("Corrected asset identifier").fill("Pole 12301A");
+    await editor.getByLabel("Correction notes").fill("Customer correction applied.");
+    await editor.getByRole("button", { name: "Review correction", exact: true }).click();
+    const beforeSend = await client.query("SELECT revision_number FROM daily_production_reports WHERE tenant_id=$1 AND id=$2", [seeded.tenantA, reportId]);
+    expect(beforeSend.rows[0].revision_number).toBe(1);
+    const submission = page.waitForResponse((response) => response.url().includes(`/corrections/${correctionId}/resubmit`) && response.request().method() === "POST");
+    await editor.getByRole("button", { name: "Resubmit Correction", exact: true }).click();
+    const response = await submission;
+    expect(response.ok()).toBe(true);
+    const correctionPayload = response.request().postDataJSON();
+    const resubmitted = await response.json();
+    await expect(page.getByText("Correction submitted for customer reinspection.", { exact: false })).toBeVisible();
     // A lost response must be safely retryable without a second report revision or QC cycle.
     const replay = await apiJson(request, seeded.foremanToken, "POST", `/syncfield/foreman/corrections/${correctionId}/resubmit`, correctionPayload);
     expect(replay.id).toBe(resubmitted.id);
@@ -341,7 +356,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
     const before = await productionCountsForReport(client, seeded.tenantA, reportId);
     await context.setOffline(true);
-    await page.getByRole("button", { name: "Daily" }).click();
+    await enterObservedProduction(page, "daily");
     await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
@@ -355,7 +370,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await page.goto("/syncfield/production");
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 30_000 });
     await context.setOffline(true);
-    await page.getByRole("button", { name: "Asset" }).click();
+    await enterObservedProduction(page, "asset");
     await expect(page.getByText("Offline — 1 change saved locally")).toBeVisible();
     await installSession(page, seeded.tenantBToken, seeded.adminPermissions);
     await context.setOffline(false);
@@ -634,4 +649,23 @@ function token(userId: string, tenantId: string, secret: string) {
 
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+async function enterObservedProduction(page: Page, kind: "asset" | "route" | "daily") {
+  await page.getByRole("button", { name: kind === "asset" ? "Asset" : kind === "route" ? "Route / Span" : "Daily", exact: true }).click();
+  if (kind === "route") {
+    const form = page.getByRole("form", { name: "Fiber span entry" });
+    await expect(form.getByLabel("From pole", { exact: true })).toHaveValue("");
+    for (const [label, value] of Object.entries({ "From pole": "Pole 12301", "To pole": "Pole 12312", "Reel / cable": "REEL-A", "Fiber type": "144ct", "Sequence start": "14826", "Sequence end": "14685", "Reported footage": "141", "Map page": "1", "Start across page (%)": "42", "Start down page (%)": "48", "End across page (%)": "66", "End down page (%)": "52" })) await form.getByLabel(label, { exact: true }).fill(value);
+    await form.getByRole("button", { name: "Save Fiber Span" }).click();
+  } else {
+    const form = page.getByRole("form", { name: "Production entry" });
+    await form.getByLabel("Quantity", { exact: true }).fill("1");
+    if (kind === "asset") {
+      await form.getByRole("combobox", { name: "Asset type", exact: true }).selectOption("pole");
+      for (const [label, value] of Object.entries({ "Asset identifier": "Pole 12301", "Map page": "1", "Across page (%)": "42", "Down page (%)": "48" })) await form.getByLabel(label, { exact: true }).fill(value);
+    }
+    await form.getByLabel("Work notes", { exact: true }).fill("Observed pilot test work");
+    await form.getByRole("button", { name: "Save production", exact: true }).click();
+  }
 }

@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -146,7 +147,7 @@ export function RelationshipMapDirectory() {
             <h2>Relationship Map Directory</h2>
             <p className="muted">Filters are shown over the tenant-scoped enriched relationship read model.</p>
           </div>
-          <Link className="primary-button link-button" href="/intelligence/relationship-maps/new" aria-disabled={!hasPermission(session.permissions, "relationship_map.create")}>Create Relationship Map</Link>
+          <Link className="primary-button link-button" href="/intelligence/relationship-maps/new" allowed={hasPermission(session.permissions, "relationship_map.create")}>Create Relationship Map</Link>
         </div>
         <div className="filter-grid">
           <input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search maps, organizations, contacts" />
@@ -301,7 +302,7 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
         </div>
         <div className="warning-box">This form uses the hardened relationship map API. Owner choices appear when the backend exposes tenant users to the UI.</div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update")}>{mode === "create" ? "Create Relationship Map" : "Save Relationship Map"}</button>
+          {hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update")}>{mode === "create" ? "Create Relationship Map" : "Save Relationship Map"}</button> : null}
           <Link href={mapId ? `/intelligence/relationship-maps/${mapId}` : "/intelligence/relationship-maps"}>Cancel</Link>
         </div>
       </form>
@@ -369,10 +370,10 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
               </div>
               <div className="form-actions">
                 <Link href={`/intelligence/relationship-maps/${map.id}/edit`}>Edit Map</Link>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_path.create") || map.status === "archived"} onClick={() => setModal("path")}>Add Path</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("status")}>Update Status</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("introduction")}>Request Introduction</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.archive") || map.status === "archived"} onClick={() => setModal("archive")}>Archive Map</button>
+                {hasPermission(session.permissions, "relationship_path.create") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_path.create") || map.status === "archived"} onClick={() => setModal("path")}>Add Path</button> : null}
+                {hasPermission(session.permissions, "relationship_map.status") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("status")}>Update Status</button> : null}
+                {hasPermission(session.permissions, "relationship_map.status") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("introduction")}>Request Introduction</button> : null}
+                {hasPermission(session.permissions, "relationship_map.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.archive") || map.status === "archived"} onClick={() => setModal("archive")}>Archive Map</button> : null}
                 <button type="button" onClick={() => setModal("analysis")}>Analyze Relationship</button>
               </div>
             </div>
@@ -407,7 +408,7 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "relationship_map").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <RelationshipTab tab={tab} map={map} data={data} permissions={session.permissions} onRank={load} onEditPath={(path) => setModal(`edit-path:${path.id}`)} />
             </section>
@@ -502,10 +503,10 @@ function PathList({ map, data, permissions, onRank, onEditPath }: { map: MapView
               </div>
             </div>
             <div className="form-actions">
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.update")} onClick={() => onEditPath(path)}>Edit Path</button>
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, Math.max(1, numberValue(path.rank, 1) - 1), onRank)}>Move Up</button>
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, numberValue(path.rank, 1) + 1, onRank)}>Move Down</button>
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.archive")} onClick={() => void archivePath(path, onRank)}>Archive Path</button>
+              {hasPermission(permissions, "relationship_path.update") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.update")} onClick={() => onEditPath(path)}>Edit Path</button> : null}
+              {hasPermission(permissions, "relationship_path.rank") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, Math.max(1, numberValue(path.rank, 1) - 1), onRank)}>Move Up</button> : null}
+              {hasPermission(permissions, "relationship_path.rank") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, numberValue(path.rank, 1) + 1, onRank)}>Move Down</button> : null}
+              {hasPermission(permissions, "relationship_path.archive") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.archive")} onClick={() => void archivePath(path, onRank)}>Archive Path</button> : null}
             </div>
           </div>
           <dl>
@@ -967,24 +968,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return (
-    <section className="workspace-panel">
-      <div className="section-toolbar">
-        <div>
-          <h2>Session</h2>
-          <p className="muted">Paste a JWT and comma-separated permissions to test permission-aware relationship actions.</p>
-        </div>
-        <button type="button" onClick={() => session.applyDefaults()}>Use relationship defaults</button>
-      </div>
-      <div className="session-grid">
-        <input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" />
-        <input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" />
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) { return null; }
 
 function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
   return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
@@ -1017,7 +1001,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function useSession() {
   const [token, setTokenState] = useState(readToken());
-  const [permissions, setPermissionsState] = useState<string[]>(unique([...defaultRelationshipPermissions, ...readPermissions()]));
+  const [permissions, setPermissionsState] = useState<string[]>(readPermissions());
   function setToken(next: string) {
     setTokenState(next);
     saveToken(next);

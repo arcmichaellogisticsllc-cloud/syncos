@@ -36,6 +36,17 @@ test.describe.serial("P12 accepted production financials", () => {
     await client?.end();
   });
 
+  test("production item choices stay tenant-scoped and exclude unauthorized partners", async ({ request }) => {
+    const foreignCode = crypto.randomUUID();
+    await client.query("INSERT INTO syncfield_production_codes (id,tenant_id,code,description,unit_of_measure,location_type) VALUES ($1,$2,'FOREIGN','Other tenant item','each','daily')", [foreignCode, fixture.tenantB]);
+    const choices = await apiJson(request, fixture.internalToken, "GET", "/accepted-production-financials/production-code-choices");
+    expect(choices.length).toBeGreaterThan(0);
+    for (const choice of choices) expect(Object.keys(choice).sort()).toEqual(["code", "id", "name", "unit"]);
+    expect(choices.some((choice: { id: string }) => choice.id === foreignCode)).toBe(false);
+    const forbidden = await request.get(apiUrl("/accepted-production-financials/production-code-choices"), { headers: auth(fixture.partnerToken) });
+    expect(forbidden.status()).toBe(403);
+  });
+
   test("Customer-accepted production converts to one Billable using Customer rate only", async ({ request }) => {
     const queue = await apiJson(request, fixture.internalToken, "GET", "/accepted-production-financials/billable-queue");
     expect(queue.length).toBeGreaterThanOrEqual(2);

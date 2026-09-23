@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -17,8 +18,8 @@ const actionTypes = ["call", "email", "text", "portal_message", "internal_note",
 const actionStatuses = ["planned", "completed", "failed", "cancelled", "archived"];
 const contactMethods = ["phone", "email", "sms", "portal", "in_person", "internal"];
 const outcomes = ["no_response", "left_message", "contacted", "promise_received", "payment_received_later", "dispute_reported", "wrong_contact", "follow_up_needed", "escalated", "resolved"];
-const closeReasons = ["paid", "resolved", "duplicate", "opened_in_error", "transferred", "unresolved_close", "future_writeoff_review"];
-const caseTabs = ["overview", "invoice_context", "customer_context", "cash_application_context", "actions", "promise_to_pay", "dispute", "escalation", "writeoff_review", "aging_priority", "timeline", "audit", "future_cash_application", "future_legal", "future_accounting_tax"];
+const closeReasons = ["paid", "resolved", "duplicate", "opened_in_error", "transferred", "unresolved_close"];
+const caseTabs = ["overview", "invoice_context", "customer_context", "cash_application_context", "actions", "promise_to_pay", "dispute", "escalation", "writeoff_review", "aging_priority", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -106,7 +107,7 @@ export function CollectionCaseQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to manage collection cases and follow-up actions.</div> : null}
       {loading ? <div className="loading-state">Loading collection cases...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -116,7 +117,7 @@ export function CollectionCaseQueue() {
                 <p className="muted">Start with due actions, unassigned cases, promises, disputes, and aging balances.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/collections/new" aria-disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</Link>
+                <Link className="primary-button" href="/collections/new" allowed={hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</Link>
                 <Link className="link-button" href={firstCaseHref(rows.filter((row) => !row.assigned_owner_user_id), "/collections")} aria-disabled={!rows.some((row) => !row.assigned_owner_user_id)}>Assign Owner</Link>
                 <Link className="link-button" href={firstCaseHref(visible, "/collections")} aria-disabled={!visible.length}>Add Collection Action</Link>
                 <button type="button" onClick={() => selectQueue("needs_action")}>Complete Due Action</button>
@@ -133,7 +134,7 @@ export function CollectionCaseQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyCollectionQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptyCollectionQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("needs_action"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -226,7 +227,7 @@ export function CollectionCaseCreate() {
           <label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} placeholder='{"reason":"Reviewed"}' /></label>
         </div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</button>
+          {hasPermission(session.permissions, "collection_case.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</button> : null}
           <Link className="link-button" href="/collections">Cancel</Link>
         </div>
       </form>
@@ -292,7 +293,7 @@ export function CollectionCaseEdit({ caseId }: { caseId: string }) {
             <label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} disabled={archived} /></label>
           </div>
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={archived || !hasPermission(session.permissions, "collection_case.update")}>Save Case</button>
+            {hasPermission(session.permissions, "collection_case.update") ? <button className="primary-button" type="submit" disabled={archived || !hasPermission(session.permissions, "collection_case.update")}>Save Case</button> : null}
             <Link className="link-button" href={`/collections/${caseId}`}>Cancel</Link>
           </div>
         </form>
@@ -359,7 +360,7 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/collections/${caseId}/edit`} aria-disabled={!hasPermission(session.permissions, "collection_case.update")}>Edit Case</Link>
+                <Link className="link-button" href={`/collections/${caseId}/edit`} allowed={hasPermission(session.permissions, "collection_case.update")}>Edit Case</Link>
                 <ActionButton permission="collection_case.assign_owner" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("assign_owner")}>Assign Owner</ActionButton>
                 <ActionButton permission="collection_action.create" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("add_action")}>Add Action</ActionButton>
                 <ActionButton permission="collection_case.close" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("close_case")}>Close Case</ActionButton>
@@ -408,7 +409,7 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {caseTabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(caseTabs, "collection_case").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <CollectionCaseTab tab={tab} detail={detail} collectionCase={collectionCase} actions={actions} session={session} onAction={openAction} />
             </section>
@@ -458,7 +459,7 @@ export function CollectionActionQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review collection actions.</div> : null}
       {loading ? <div className="loading-state">Loading collection actions...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -619,7 +620,7 @@ function CollectionsShell({ title, purpose, children }: { title: string; purpose
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Collections</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -753,41 +754,17 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
   return <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  const [token, setToken] = useState(session.token);
-  const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
-  return (
-    <section className="workspace-panel">
-      <div className="section-toolbar">
-        <h2>API Session</h2>
-        <span>{session.permissions.length} permissions loaded</span>
-      </div>
-      <div className="session-grid">
-        <input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" />
-        <input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" />
-        <button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button>
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(collectionsDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : collectionsDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -1102,7 +1079,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

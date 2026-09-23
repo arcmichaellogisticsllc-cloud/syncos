@@ -1,9 +1,17 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "./dashboard-loader";
+import { useCapability } from "./access-control";
 import { CommandHero, CommandShell, InsightStrip, OperatorLink, PriorityDecisionCard, WorkQueue } from "./dashboard-components";
-import { formatValue, getDashboardData, valueAt } from "./dashboard-data";
+import { formatValue, valueAt } from "./dashboard-data";
 
-export default async function Home() {
-  const executive = await getDashboardData("executive");
-  const operations = await getDashboardData("operations");
+export default function Home() {
+  const executiveState = useDashboardData("executive");
+  const canReadOperations = useCapability("dashboard.operations.read");
+  const operationsState = useDashboardData("operations", canReadOperations);
+  const executive = executiveState.data;
+  const operations = operationsState.data;
+  if (!executive) return <DashboardStatus title="Daily priorities" state={executiveState} />;
+  if (canReadOperations && !operations) return <DashboardStatus title="Daily priorities" state={operationsState} />;
 
   const openConstraints = valueAt(executive, "constraintSummary.openConstraints");
   const overdueTasks = valueAt(executive, "workflowSummary.overdueTasks");
@@ -31,7 +39,7 @@ export default async function Home() {
             { label: "Blocked work", value: formatValue(openConstraints), helper: "Open constraints that need owner decisions." },
             { label: "Overdue tasks", value: formatValue(overdueTasks), helper: "Workflow tasks past due." },
             { label: "Open AR", value: formatValue(openAr), helper: "Cash still exposed in receivables." },
-            { label: "Stop work", value: formatValue(stopWorkCount), helper: "Production records with active stop-work state." },
+            ...(canReadOperations ? [{ label: "Stop work", value: formatValue(stopWorkCount), helper: "Production records with active stop-work state." }] : []),
           ]}
         />
       </CommandHero>
@@ -58,7 +66,7 @@ export default async function Home() {
           title="Decisions to make"
           description="These decisions move work forward or reduce financial risk."
           rows={[
-            { label: "Can operations execute today's work?", value: formatValue(valueAt(operations, "capacityCoverageRatio.currentValue")), href: "/operations", helper: "Check capacity coverage, gaps, and stop-work signals." },
+            ...(canReadOperations ? [{ label: "Can operations execute today's work?", value: formatValue(valueAt(operations, "capacityCoverageRatio.currentValue")), href: "/operations", helper: "Check capacity coverage, gaps, and stop-work signals." }] : []),
             { label: "Is approved production ready for billing?", value: formatValue(approvedProduction), href: "/billable", helper: "Approved production should progress toward billing controls." },
             { label: "Which recommendations need action?", value: formatValue(valueAt(executive, "workflowSummary.openWorkflowInstances")), href: "/recommendations-center", helper: "Review recommendations and open workflow instances." },
           ]}

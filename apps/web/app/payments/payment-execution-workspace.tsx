@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -15,7 +16,7 @@ const executionStatuses = ["not_submitted", "ready_for_execution", "submitted_la
 const itemStatuses = ["draft", "ready", "approved", "scheduled", "submitted_later", "executed_later", "failed", "cancelled", "voided", "archived"];
 const sourceTypes = ["contractor_payable", "payroll", "correction", "reversal"];
 const payeeTypes = ["capacity_provider", "crew", "worker", "vendor_later", "internal_self_perform"];
-const tabs = ["overview", "payment_items", "contractor_sources", "payroll_sources", "payee_summary", "payment_method", "financial_summary", "approval", "schedule", "execution_status", "failure_cancellation", "timeline", "audit", "future_ach", "future_check", "future_payroll_provider", "future_bank_reconciliation", "future_accounting_tax"];
+const tabs = ["overview", "payment_items", "contractor_sources", "payroll_sources", "payee_summary", "payment_method", "financial_summary", "approval", "schedule", "execution_status", "failure_cancellation", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -108,7 +109,7 @@ export function PaymentBatchQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading payment batches...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -116,7 +117,7 @@ export function PaymentBatchQueue() {
                 <h2>Today&apos;s payment execution work</h2>
                 <p className="muted">Review, approve, schedule, and record external/manual execution status without implying SyncOS moved money.</p>
               </div>
-              <Link className="primary-button" href="/payments/new" aria-disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</Link>
+              <Link className="primary-button" href="/payments/new" allowed={hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</Link>
             </div>
             <div className="summary-grid">
               {paymentQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPaymentQueue(rows, paymentItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
@@ -218,7 +219,7 @@ export function PaymentBatchCreate() {
           <PaymentFormFields form={form} setForm={setForm} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</button>
+          {hasPermission(session.permissions, "payment_batch.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</button> : null}
           <Link className="link-button" href="/payments">Cancel</Link>
         </div>
       </form>
@@ -268,7 +269,7 @@ export function PaymentBatchEdit({ paymentBatchId }: { paymentBatchId: string })
           <div className="warning-box">Cannot move money, create bank transactions, submit providers, mark paid, reconcile, file taxes, or export accounting from this form.</div>
           <PaymentFormFields form={form} setForm={setForm} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payment_batch.update")}>Save Payment Batch</button>
+            {hasPermission(session.permissions, "payment_batch.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payment_batch.update")}>Save Payment Batch</button> : null}
             <Link className="link-button" href={`/payments/${paymentBatchId}`}>Cancel</Link>
           </div>
         </form>
@@ -328,7 +329,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
       {batch && detail ? (
         <>
           {!hasPermission(session.permissions, "payment_batch.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "payment_batch.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(batch.status)}
             nextActionLabel={nextPaymentAction(batch)}
@@ -336,7 +337,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
             disabled={!hasPermission(session.permissions, "payment_batch.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Payment Execution records internal/manual status only. SyncOS does not initiate ACH, wire, card payout, check, payroll, or bank movement."
-          />
+          /> : null}
           <DetailBoundaryNotice>Payment Execution records internal/manual status only. SyncOS does not initiate ACH, wire, card payout, check, payroll, bank movement, tax filing, or accounting posting.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -352,7 +353,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/payments/${paymentBatchId}/edit`} aria-disabled={!hasPermission(session.permissions, "payment_batch.update")}>Edit Batch</Link>
+                <Link className="link-button" href={`/payments/${paymentBatchId}/edit`} allowed={hasPermission(session.permissions, "payment_batch.update")}>Edit Batch</Link>
                 <ActionButton permission="payment_batch.add_item" session={session} disabled={batchInactive(batch)} onClick={() => openAction("add_contractor")}>Add Contractor Payable Item</ActionButton>
                 <ActionButton permission="payment_batch.add_item" session={session} disabled={batchInactive(batch)} onClick={() => openAction("add_payroll")}>Add Payroll Item</ActionButton>
                 <ActionButton permission="payment_batch.recalculate_totals" session={session} disabled={batchInactive(batch)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
@@ -405,7 +406,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
             </aside>
             <section className="workspace-panel">
               <div className="tabs" role="tablist" aria-label="Payment batch detail sections">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" role="tab" aria-selected={tab === itemTab} className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "payment_batch").map((itemTab) => <button key={itemTab} type="button" role="tab" aria-selected={tab === itemTab} className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PaymentTab tab={tab} detail={detail} batch={batch} items={items} session={session} onAction={openAction} />
             </section>
@@ -504,7 +505,7 @@ function PaymentShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Payments</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -656,7 +657,7 @@ function FuturePlaceholders() {
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   const [token, setToken] = useState(session.token);
   const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
   return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
@@ -664,20 +665,13 @@ function SessionPanel({ session }: { session: Session }) {
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(paymentDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : paymentDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -941,7 +935,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

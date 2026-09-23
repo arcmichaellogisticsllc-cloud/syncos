@@ -784,6 +784,22 @@ export class ProductionController {
     return this.withClient((client) => this.listQcReviewsEnriched(client, request.auth.tenantId, query));
   }
 
+  @Get("qc-review-correction-owners")
+  @RequirePermission("qc_review.request_correction")
+  async qcCorrectionOwners(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const result = await client.query(`
+        SELECT DISTINCT u.id, u.display_name
+        FROM tenant_users tu JOIN users u ON u.id = tu.user_id
+        JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id
+        WHERE tu.tenant_id = $1 AND tu.status = 'active' AND u.status = 'active'
+          AND ur.scope_type = 'tenant'
+        ORDER BY u.display_name, u.id
+      `, [request.auth.tenantId]);
+      return result.rows;
+    });
+  }
+
   @Get("qc-reviews/:id/detail")
   @RequirePermission("qc_review.read")
   async getQcReviewDetail(@Req() request: AuthenticatedRequest, @Param("id") id: string) {

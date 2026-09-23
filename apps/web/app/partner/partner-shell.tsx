@@ -1,9 +1,32 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import NextLink from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentProps, FormEvent, ReactNode } from "react";
 import { clearAuthContext, readPermissions, readToken, sessionEmailFromToken, syncosFetch, SyncosApiError } from "../intelligence/api";
+
+// Shared by navigation, linked cards and direct-route rendering. Empty permissions deny access.
+function portalPermission(section: string, foreman: boolean): string | undefined {
+  const common: Record<string, string> = { dashboard: foreman ? "partner_context.read" : "partner_profile.read", onboarding: "partner_context.read", company: "partner_compliance.profile.read", compliance: "partner_compliance.summary.read", workers: "partner_workforce.worker.read", "worker-detail": "partner_workforce.worker.read", agreements: "partner_agreement.read", "agreement-detail": "partner_agreement.read", vehicles: "partner_vehicle_assignment.read", settlements: "partner_settlement.read", payments: "partner_payment.read", performance: "partner_performance.read_own" };
+  const scoped: Record<string, string[]> = {
+    crews: ["partner_workforce.crew.read", "partner_workforce.foreman_roster.read"], "crew-detail": ["partner_workforce.crew.read", "partner_workforce.foreman_roster.read"], workforce: ["partner_workforce.worker.read", "partner_workforce.foreman_roster.read"],
+    "work-orders": ["partner_work_order.read", "partner_work_order.foreman_summary.read"], "work-order-detail": ["partner_work_order.read", "partner_work_order.foreman_summary.read"], mobilization: ["partner_mobilization.read", "partner_mobilization.foreman.read"],
+    "field-map": ["partner_map.read", "partner_map.read_assigned"], "daily-jsa": ["partner_jsa.read", "partner_jsa.read_own"], "daily-production": ["partner_daily_production.read_org", "partner_daily_production.read"], "review-day": ["partner_daily_production.read_org", "partner_daily_production.read"], "customer-qc": ["partner_customer_qc.read", "partner_customer_qc.read_own"], corrections: ["partner_customer_qc.read", "partner_customer_qc.read_own"],
+  };
+  return scoped[section]?.[foreman ? 1 : 0] ?? common[section];
+}
+function permittedPortalLink(href: string, permissions: string[]) {
+  if (!href.startsWith("/partner") && !href.startsWith("/syncfield")) return true;
+  const part = href.split("/")[2]?.split("?")[0] || "dashboard";
+  const section = ({ today: "dashboard", crew: "crews", workload: "work-orders", map: "field-map", jsa: "daily-jsa", production: "daily-production" } as Record<string, string>)[part] ?? part;
+  const foreman = href.startsWith("/syncfield") || (permissions.includes("partner_workforce.foreman_roster.read") && !permissions.includes("partner_workforce.crew.read"));
+  const permission = portalPermission(section, foreman);
+  return permission ? permissions.includes(permission) : false;
+}
+function Link(props: ComponentProps<typeof NextLink>) {
+  const href = typeof props.href === "string" ? props.href : props.href.pathname ?? "";
+  return permittedPortalLink(href, readPermissions()) ? <NextLink {...props} /> : null;
+}
 
 type Persona = "partner_admin" | "partner_foreman";
 type Section =
@@ -547,6 +570,12 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
         }
         const actions = product === "syncfield" ? {} : await safeFetch<PartnerActions>("partner-personas/me/actions");
         const effectiveContext = product === "syncfield" && canEnterSyncField ? { ...context, persona: "partner_foreman" as const } : context;
+        const requiredPermission = portalPermission(section, effectiveContext.persona === "partner_foreman");
+        if (requiredPermission && !permissions.includes(requiredPermission)) {
+          if (!cancelled) setState({ loading: false, denied: true, error: "You do not have access to this workspace.", data: { context: effectiveContext } });
+          return;
+        }
+
         const data = effectiveContext.persona === "partner_foreman" ? await loadForeman(effectiveContext, actions, section, selectedAssignmentId) : await loadAdmin(effectiveContext, actions, section, itemId);
         if (!cancelled) setState({ loading: false, data });
       } catch (error) {
@@ -600,15 +629,15 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
         </div>
         <nav className="partner-nav">
           {isSyncField
-            ? syncfieldNav.map(([label, href]) => (
+            ? syncfieldNav.filter(([, href]) => permittedPortalLink(href, permissions)).map(([label, href]) => (
                 <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
                   {label}
                 </Link>
               ))
-            : adminNavGroups.map((group) => (
+            : adminNavGroups.filter((group) => group.items.some(([, href]) => permittedPortalLink(href, permissions))).map((group) => (
                 <div className="partner-nav-group" key={group.label}>
                   <p>{group.label}</p>
-                  {group.items.map(([label, href]) => (
+                  {group.items.filter(([, href]) => permittedPortalLink(href, permissions)).map(([label, href]) => (
                     <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
                       {label}
                     </Link>
@@ -848,9 +877,9 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     if (section === "work-orders" || section === "work-order-detail") return <ForemanWorkload data={data} />;
     if (section === "field-map") return <FieldMapWorkspace data={data} />;
     if (section === "daily-jsa") return <DailyJsaWorkspace data={data} completeJsa={completeJsa} />;
-    if (section === "daily-production") return <DailyProductionWorkspace data={data} />;
-    if (section === "review-day") return <ReviewDayWorkspace data={data} />;
-    if (section === "customer-qc" || section === "corrections") return <ForemanCorrectionsWorkspace data={data} />;
+    if (section === "daily-production") return <DailyProductionWorkspace data={data} permissions={permissions} />;
+    if (section === "review-day") return <ReviewDayWorkspace data={data} permissions={permissions} />;
+    if (section === "customer-qc" || section === "corrections") return <ForemanCorrectionsWorkspace data={data} permissions={permissions} />;
     if (section === "mobilization") return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
   }
 
@@ -991,7 +1020,7 @@ function OnboardingChecklistWorkspace({ data, submitOnboarding }: { data: Portal
         <div className="onboarding-submit-row">
           {data.submission?.status === "submitted" || data.submission?.status === "under_review" || data.submission?.status === "resubmitted"
             ? <span className="partner-button primary disabled-action">Submitted for Sync Review</span>
-            : <button className="partner-button primary" type="button" onClick={() => void submitOnboarding()} disabled={!c2aReady}>Submit for Sync Review</button>}
+            : readPermissions().includes("partner_compliance.submission.submit") ? <button className="partner-button primary" type="button" onClick={() => void submitOnboarding()} disabled={!c2aReady}>Submit for Sync Review</button> : null}
           <span>{data.submission?.status === "action_required" ? `Action Required: ${data.submission.external_return_reason || "Review the requested corrections."}` : c2aReady ? "Sync Admin will review the Partner-controlled package. Approval remains separate." : "Approval remains locked until required gates are complete. Complete the required Partner-controlled tasks before submitting."}</span>
         </div>
         <ActionList blockers={readiness?.actionRequired ?? []} />
@@ -1190,7 +1219,7 @@ function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowl
         {dashboard.panelStatus?.performance === "UNAVAILABLE" ? <p className="partner-safe-text">Performance data unavailable. Refresh to try again.</p> : null}
       </Panel>
 
-      {data.notice?.id ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+      {data.notice?.id && readPermissions().includes(data.context?.persona === "partner_foreman" ? "partner_notice.foreman.acknowledge" : "partner_notice.acknowledge") ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
     </div>
   );
 }
@@ -1555,10 +1584,10 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
             ["Daily JSA", jsa?.status === "completed" ? `Complete — ${shortTime(jsa.meeting_completed_at)}` : "Required"],
           ]} />
           <p className="partner-safe-text">{notice?.external_instructions || "Use the authorized start instructions when issued. Production remains blocked until the day is ready for field submission."}</p>
-          {notice?.id ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+          {notice?.id && readPermissions().includes(data.context?.persona === "partner_foreman" ? "partner_notice.foreman.acknowledge" : "partner_notice.acknowledge") ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
           <div className="partner-actions-row">
             {map?.status === "ready" ? <Link className="partner-button wide-touch" href="/syncfield/map">Open Map</Link> : null}
-            <Link className="partner-button wide-touch" href="/syncfield/jsa">{jsa?.status === "completed" ? "View Daily JSA" : "Complete JSA"}</Link>
+            <Link className="partner-button wide-touch" href="/syncfield/jsa">{jsa?.status === "completed" || !readPermissions().includes("partner_jsa.complete") ? "View Daily JSA" : "Complete JSA"}</Link>
             <Link className="partner-button wide-touch" href="/syncfield/production">Open Production</Link>
           </div>
         </Panel>
@@ -1816,9 +1845,9 @@ function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJs
   const [workLocation, setWorkLocation] = useState(defaultWorkLocation);
   const [weather, setWeather] = useState(jsa?.weather ?? "");
   const [siteConditions, setSiteConditions] = useState(jsa?.site_conditions ?? "");
-  const [scope, setScope] = useState<string[]>(["aerial_fiber"]);
-  const [hazards, setHazards] = useState<string[]>(jsa?.hazards?.length ? jsa.hazards : ["traffic", "overhead_utilities"]);
-  const [controls, setControls] = useState<string[]>(jsa?.controls?.length ? jsa.controls : ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed", "traffic_control_reviewed"]);
+  const [scope, setScope] = useState<string[]>([]);
+  const [hazards, setHazards] = useState<string[]>(jsa?.hazards ?? []);
+  const [controls, setControls] = useState<string[]>(jsa?.controls ?? []);
   const [taskNotes, setTaskNotes] = useState("");
   const [otherScope, setOtherScope] = useState("");
   const [certified, setCertified] = useState(Boolean(jsa?.foreman_certified));
@@ -1859,7 +1888,7 @@ function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJs
         ]} />
         {jsa?.status === "completed" ? <p className="partner-safe-text">Foreman attestation is complete for today. This does not create production, QC, billable, settlement, payable, or payment records.</p> : null}
       </Panel>
-      {jsa?.status !== "completed" ? (
+      {jsa?.status !== "completed" && readPermissions().includes("partner_jsa.complete") ? (
         <form className="field-jsa-form partner-stack" onSubmit={submit}>
           <Panel title="Project / Site" eyebrow="Tailgate setup">
             <div className="partner-form-grid">
@@ -1891,9 +1920,9 @@ function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJs
       ) : (
         <Panel title="Hazards and Controls" eyebrow="Completed tailgate review">
           <StatusRows rows={[
-            ["Hazards", (jsa.hazards ?? []).map(jsaLabel).join(", ") || "Not recorded"],
-            ["Controls", (jsa.controls ?? []).map(jsaLabel).join(", ") || "Not recorded"],
-            ["Certification", jsa.foreman_certified ? "Foreman certified" : "Required before completion"],
+            ["Hazards", (jsa?.hazards ?? []).map(jsaLabel).join(", ") || "Not recorded"],
+            ["Controls", (jsa?.controls ?? []).map(jsaLabel).join(", ") || "Not recorded"],
+            ["Certification", jsa?.foreman_certified ? "Foreman certified" : "Required before completion"],
           ]} />
         </Panel>
       )}
@@ -1929,7 +1958,7 @@ function AdminJsaWorkspace({ data }: { data: PortalData }) {
       <div className="partner-card-grid">
         {jsas.map((jsa) => (
           <RecordCard key={jsa.id} title={`${jsa.work_date || "Work date"} · ${jsa.work_location || "Work area"}`} status={jsa.status}>
-            <StatusRows rows={[["Crew", str(jsa.crew_name)], ["Foreman", str(jsa.foreman_name)], ["Completed", shortTime(jsa.meeting_completed_at)], ["Hazards", (jsa.hazards ?? []).join(", ") || "Not set"]]} />
+            <StatusRows rows={[["Crew", str(jsa.crew_name)], ["Foreman", str(jsa.foreman_name)], ["Completed", shortTime(jsa.meeting_completed_at)], ["Hazards", (jsa?.hazards ?? []).join(", ") || "Not set"]]} />
           </RecordCard>
         ))}
       </div>
@@ -1938,8 +1967,9 @@ function AdminJsaWorkspace({ data }: { data: PortalData }) {
   );
 }
 
-function DailyProductionWorkspace({ data }: { data: PortalData }) {
-  const report = data.productionToday;
+function DailyProductionWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const [report, setReport] = useState(data.productionToday);
+  useEffect(() => setReport(data.productionToday), [data.productionToday]);
   const blockers = report?.gate?.blockers ?? [];
   const codes = data.productionCodes ?? [];
   const queue = useFieldProductionQueue(data);
@@ -1957,79 +1987,50 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
   const assetObservations = data.assetObservations ?? [];
   const selectedAssetObservation = assetObservations[0];
   const [error, setError] = useState<string | null>(null);
+  const [entryKind, setEntryKind] = useState<"asset" | "route" | "daily" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const uncertainMutation = useRef<{ key: string; payload: Record<string, unknown> } | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [entry, setEntry] = useState({ quantity: "", asset: "", assetType: "", page: "", x: "", y: "", notes: "" });
   const [spanForm, setSpanForm] = useState({
-    designSegmentId: selectedDesignSegment?.id ?? "",
-    from: "Pole 12301",
-    to: "Pole 12312",
-    fromInput: "14826",
-    fromOutput: "14780",
-    toInput: "14639",
-    toOutput: "14600",
-    reel: "REEL-A",
-    fiberType: "144ct",
-    start: "14826",
-    end: "12131",
-    reported: "2695",
-    explanation: "",
+    designSegmentId: selectedDesignSegment?.id ?? "", from: "", to: "", fromInput: "", fromOutput: "", toInput: "", toOutput: "",
+    reel: "", fiberType: "", start: "", end: "", reported: "", explanation: "", page: "", startX: "", startY: "", endX: "", endY: "",
   });
   const [coilForm, setCoilForm] = useState({
-    assetObservationId: selectedAssetObservation?.id ?? "",
-    easementType: "front",
-    coilType: "front_easement",
-    required: "150",
-    actual: "150",
-    reel: "R-327",
-    fiberType: "96CT",
-    ruleSource: "work_order_rule",
-    sourceReference: "Default front easement slack requirement",
-    notes: "",
+    assetObservationId: selectedAssetObservation?.id ?? "", easementType: "front", coilType: "front_easement",
+    required: "", actual: "", reel: "", fiberType: "", ruleSource: "work_order_rule", sourceReference: "", notes: "",
   });
+  const canCreate = permissions.includes("partner_production_record.create");
   const sequenceCalc = sequencePreview(spanForm.start, spanForm.end, spanForm.reported);
   const selectedSegment = designSegments.find((segment) => segment.id === spanForm.designSegmentId) ?? selectedDesignSegment;
   const selectedCoilAsset = assetObservations.find((observation) => observation.id === coilForm.assetObservationId) ?? selectedAssetObservation;
   const coilVariance = coilVariancePreview(coilForm.required, coilForm.actual);
 
-  async function quickCreate(kind: "asset" | "route" | "daily") {
-    const code = kind === "asset" ? transfer : kind === "route" ? fiber : labor;
-    if (!code?.id) return;
-    const mutation = {
-      client_mutation_id: crypto.randomUUID(),
-      assignment_id: data.selectedAssignment?.id,
-      work_date: report?.work_date,
-      production_code_id: code.id,
-      location_type: kind,
-      reported_quantity: kind === "route" ? 141 : 1,
-      status: "complete",
-      map_page: 1,
-      asset_type: "pole",
-      asset_identifier: "Pole 12301",
-      from_asset_identifier: "Pole 12301",
-      to_asset_identifier: "Pole 12312",
-      tick_start_label: "Start Tick",
-      tick_end_label: "End Tick",
-      x_ratio: 0.42,
-      y_ratio: 0.48,
-      start_x_ratio: 0.42,
-      start_y_ratio: 0.48,
-      end_x_ratio: 0.66,
-      end_y_ratio: 0.52,
-      reel_cable_id: kind === "route" ? "REEL-A" : undefined,
-      fiber_type: kind === "route" ? "144ct" : undefined,
-      sequence_start: kind === "route" ? 14826 : undefined,
-      sequence_end: kind === "route" ? 14685 : undefined,
-      notes: `${kind} field entry`,
-    };
-    await saveProduction(mutation);
+  async function saveEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const code = entryKind === "asset" ? transfer : labor;
+    if (!code?.id || !entryKind || !canCreate) return;
+    if (!entry.quantity.trim() || !Number.isFinite(Number(entry.quantity)) || Number(entry.quantity) <= 0) { setError("Enter a quantity greater than zero."); return; }
+    if (entryKind === "asset" && [entry.page, entry.x, entry.y].some((value) => !value.trim() || !Number.isFinite(Number(value)))) { setError("Enter the map page and asset position."); return; }
+    const saved = await saveProduction({
+      client_mutation_id: crypto.randomUUID(), assignment_id: data.selectedAssignment?.id, work_date: report?.work_date,
+      production_code_id: code.id, location_type: entryKind, reported_quantity: Number(entry.quantity), status: "complete",
+      ...(entryKind === "asset" ? { map_page: Number(entry.page), asset_type: entry.assetType, asset_identifier: entry.asset,
+        x_ratio: Number(entry.x) / 100, y_ratio: Number(entry.y) / 100 } : {}), notes: entry.notes,
+    });
+    if (saved) setEntry({ quantity: "", asset: "", assetType: "", page: "", x: "", y: "", notes: "" });
   }
 
   async function saveFiberSpan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!fiber?.id) return;
+    if ([spanForm.start, spanForm.end, spanForm.reported, spanForm.page, spanForm.startX, spanForm.startY, spanForm.endX, spanForm.endY].some((value) => !value.trim() || !Number.isFinite(Number(value))) || Number(spanForm.reported) <= 0) { setError("Enter the observed footage, sequence readings, map page and endpoints."); return; }
     if (sequenceCalc.status === "review_required" && !spanForm.explanation.trim()) {
       setError("Sequence variance needs a short field explanation before save.");
       return;
     }
-    await saveProduction({
+    const saved = await saveProduction({
       client_mutation_id: crypto.randomUUID(),
       assignment_id: data.selectedAssignment?.id,
       work_date: report?.work_date,
@@ -2037,15 +2038,15 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       location_type: "route",
       reported_quantity: Number(spanForm.reported),
       status: sequenceCalc.status === "review_required" ? "partial" : "complete",
-      map_page: 1,
+      map_page: Number(spanForm.page),
       from_asset_identifier: spanForm.from,
       to_asset_identifier: spanForm.to,
       tick_start_label: `${spanForm.from} start`,
       tick_end_label: `${spanForm.to} end`,
-      start_x_ratio: 0.42,
-      start_y_ratio: 0.48,
-      end_x_ratio: 0.66,
-      end_y_ratio: 0.52,
+      start_x_ratio: Number(spanForm.startX) / 100,
+      start_y_ratio: Number(spanForm.startY) / 100,
+      end_x_ratio: Number(spanForm.endX) / 100,
+      end_y_ratio: Number(spanForm.endY) / 100,
       reel_cable_id: spanForm.reel,
       fiber_type: spanForm.fiberType,
       sequence_start: Number(spanForm.start),
@@ -2053,12 +2054,19 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       sequence_variance_explanation: spanForm.explanation || undefined,
       notes: "Fiber span entered from field tick and sequence workflow.",
     });
+    if (saved) clearSpanEntry();
+  }
+
+  function clearSpanEntry() {
+    setSpanForm((current) => ({ ...current, from: "", to: "", fromInput: "", fromOutput: "", toInput: "", toOutput: "", reel: "", fiberType: "", start: "", end: "", reported: "", explanation: "", page: "", startX: "", startY: "", endX: "", endY: "" }));
   }
 
   async function completeDesignSpan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!fiber?.id || !selectedSegment?.id) return;
-    const geometryPoints = selectedSegment.geometry?.points?.length ? selectedSegment.geometry.points : [{ x: 0.42, y: 0.48 }, { x: 0.66, y: 0.52 }];
+    if ([spanForm.reported, spanForm.start, spanForm.end, spanForm.fromInput, spanForm.fromOutput, spanForm.toInput, spanForm.toOutput].some((value) => !value.trim() || !Number.isFinite(Number(value))) || Number(spanForm.reported) <= 0) { setError("Enter the observed footage and every sequence and pole reading."); return; }
+    const geometryPoints = selectedSegment.geometry?.points;
+    if (!geometryPoints || geometryPoints.length < 2) { setError("This planned segment has no map geometry. Ask Operations to prepare the segment before recording completion."); return; }
     const mutationId = crypto.randomUUID();
     const spanMutation = {
       client_mutation_id: mutationId,
@@ -2066,7 +2074,6 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       work_date: report?.work_date,
       design_segment_id: selectedSegment.id,
       production_code_id: fiber.id,
-      page_number: 1,
       from_asset_identifier: spanForm.from,
       to_asset_identifier: spanForm.to,
       reported_quantity: Number(spanForm.reported),
@@ -2078,8 +2085,8 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       from_observation: {
         asset_type: "pole",
         asset_identifier: spanForm.from,
-        pdf_x: geometryPoints[0]?.x ?? 0.42,
-        pdf_y: geometryPoints[0]?.y ?? 0.48,
+        pdf_x: geometryPoints[0].x,
+        pdf_y: geometryPoints[0].y,
         input_tick: Number(spanForm.fromInput),
         output_tick: Number(spanForm.fromOutput),
         notes: "From pole observation for completed design span.",
@@ -2087,8 +2094,8 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       to_observation: {
         asset_type: "pole",
         asset_identifier: spanForm.to,
-        pdf_x: geometryPoints[geometryPoints.length - 1]?.x ?? 0.66,
-        pdf_y: geometryPoints[geometryPoints.length - 1]?.y ?? 0.52,
+        pdf_x: geometryPoints[geometryPoints.length - 1].x,
+        pdf_y: geometryPoints[geometryPoints.length - 1].y,
         input_tick: Number(spanForm.toInput),
         output_tick: Number(spanForm.toOutput),
         notes: "To pole observation for completed design span.",
@@ -2097,7 +2104,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       design_deviation: false,
       notes: "Completed against planned design segment.",
     };
-    await saveConstructionMutation("CREATE_SPAN_COMPLETION", spanMutation);
+    if (await saveConstructionMutation("CREATE_SPAN_COMPLETION", spanMutation)) clearSpanEntry();
   }
 
   async function saveCoilObservation(event: FormEvent<HTMLFormElement>) {
@@ -2110,7 +2117,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       setError("Notes are required for OTHER coil/slack type.");
       return;
     }
-    await saveConstructionMutation("CREATE_COIL_OBSERVATION", {
+    const saved = await saveConstructionMutation("CREATE_COIL_OBSERVATION", {
       client_mutation_id: crypto.randomUUID(),
       assignment_id: data.selectedAssignment?.id,
       work_date: report?.work_date,
@@ -2127,6 +2134,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       fiber_type: coilForm.fiberType,
       notes: coilForm.notes || undefined,
     });
+    if (saved) setCoilForm((current) => ({ ...current, required: "", actual: "", reel: "", fiberType: "", sourceReference: "", notes: "" }));
   }
 
   function setCoilType(nextType: string) {
@@ -2135,31 +2143,57 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
       ...coilForm,
       coilType: nextType,
       easementType: defaults.easementType,
-      required: defaults.required,
+      required: "",
       ruleSource: defaults.ruleSource,
-      sourceReference: defaults.sourceReference,
+      sourceReference: "",
     });
   }
 
   async function saveProduction(mutation: Record<string, unknown>) {
-    await saveConstructionMutation("CREATE_PRODUCTION", mutation);
+    return saveConstructionMutation("CREATE_PRODUCTION", mutation);
   }
 
-  async function saveConstructionMutation(operation: OfflineMutation["operation"], mutation: Record<string, unknown>) {
+  async function saveConstructionMutation(operation: OfflineMutation["operation"], mutation: Record<string, unknown>): Promise<boolean> {
+    if (!canCreate || savingRef.current) return false;
+    savingRef.current = true;
     setError(null);
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      await queue.enqueue({ operation, payload: mutation });
-      return;
-    }
+    setSavedMessage(null);
+    setSaving(true);
+    const { client_mutation_id: ignoredId, ...facts } = mutation;
+    const key = JSON.stringify({ operation, facts });
+    const payload = uncertainMutation.current?.key === key ? uncertainMutation.current.payload : mutation;
+    uncertainMutation.current = { key, payload };
     try {
-      await syncosFetch(fieldMutationEndpoint(operation), { method: "POST", body: mutation });
-    } catch (caught) {
-      if (isTransientNetworkError(caught)) {
-        await queue.enqueue({ operation, payload: mutation });
-        return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await queue.enqueue({ operation, payload });
+        uncertainMutation.current = null;
+        setSavedMessage("Saved on this device. Reconnect to synchronize.");
+        return true;
       }
-      setError(caught instanceof Error ? safeSyncError(caught.message) : "Production save failed.");
-    }
+      try {
+        await syncosFetch(fieldMutationEndpoint(operation), { method: "POST", body: payload });
+      } catch (caught) {
+        if (!isTransientNetworkError(caught)) {
+          uncertainMutation.current = null;
+          throw caught;
+        }
+        // The first request may have succeeded: replay the same request ID, never a new write.
+        await queue.enqueue({ operation, payload });
+        uncertainMutation.current = null;
+        setSavedMessage("Saved on this device. Reconnect to synchronize.");
+        return true;
+      }
+      uncertainMutation.current = null;
+      setSavedMessage("Production saved. Review your report before submitting.");
+      try {
+        const query = new URLSearchParams({ ...(data.selectedAssignment?.id ? { assignment_id: data.selectedAssignment.id } : {}), ...(report?.work_date ? { work_date: report.work_date } : {}) });
+        setReport(await syncosFetch<DailyProduction>(`syncfield/foreman/production/today?${query}`));
+      } catch { setSavedMessage("Production saved. Reopen Review & Submit to refresh the report."); }
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? safeSyncError(caught.message) : "Production save failed. Your entries remain here.");
+      return false;
+    } finally { savingRef.current = false; setSaving(false); }
   }
   return (
     <div className="partner-stack">
@@ -2171,31 +2205,53 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
           ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
           ["Daily JSA", statusLabel(data.jsaToday?.status ?? "required")],
         ]} />
-        {error ? <p className="partner-safe-text error-text">{error}</p> : null}
+        {error ? <p role="alert" className="partner-safe-text error-text">{error}</p> : null}
+        {savedMessage ? <p role="status">{savedMessage}</p> : null}
         {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
         <div className="field-action-bar">
-          <button className="partner-button primary wide-touch" type="button" onClick={() => void quickCreate("asset")}>Asset</button>
-          <button className="partner-button primary wide-touch" type="button" onClick={() => void quickCreate("route")}>Route / Span</button>
-          <button className="partner-button wide-touch" type="button" onClick={() => void quickCreate("daily")}>Daily</button>
-          <Link className="partner-button wide-touch" href="/syncfield/production/review">Review & Submit</Link>
+          {canCreate && transfer ? <button className="partner-button primary wide-touch" type="button" onClick={() => setEntryKind("asset")}>Asset</button> : null}
+          {canCreate && fiber ? <button className="partner-button primary wide-touch" type="button" onClick={() => { setEntryKind("route"); document.getElementById("fiber-span-form")?.scrollIntoView({ behavior: "auto", block: "center" }); document.getElementById("fiber-span-form")?.querySelector("input")?.focus(); }}>Route / Span</button> : null}
+          {canCreate && labor ? <button className="partner-button wide-touch" type="button" onClick={() => setEntryKind("daily")}>Daily</button> : null}
+          {permissions.includes("partner_daily_production.submit") ? <Link className="partner-button wide-touch" href="/syncfield/production/review">Review & Submit</Link> : null}
         </div>
       </Panel>
+      {canCreate && entryKind && entryKind !== "route" ? <Panel title={entryKind === "asset" ? "Asset entry" : "Daily entry"} eyebrow="Enter observed work">
+        <form aria-label="Production entry" className="partner-form-grid compact-form" onSubmit={(event) => void saveEntry(event)}>
+          <p>{entryKind === "asset" ? transfer?.description : labor?.description} · Unit: {entryKind === "asset" ? transfer?.unit_of_measure : labor?.unit_of_measure}</p>
+          <label>Quantity<input required type="number" min="0.01" step="any" value={entry.quantity} onChange={(event) => setEntry({ ...entry, quantity: event.target.value })} /></label>
+          {entryKind === "asset" ? <>
+            <label>Asset type<select aria-label="Asset type" required value={entry.assetType} onChange={(event) => setEntry({ ...entry, assetType: event.target.value })}><option value="">Select asset type</option>{["pole", "pedestal", "handhole", "vault", "cabinet", "enclosure", "terminal", "riser", "anchor", "other"].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+            <label>Asset identifier<input required value={entry.asset} onChange={(event) => setEntry({ ...entry, asset: event.target.value })} /></label>
+            <label>Map page<input required type="number" min="1" value={entry.page} onChange={(event) => setEntry({ ...entry, page: event.target.value })} /></label>
+            <p>Locate the asset on the assigned map: left and top edges are 0%; right and bottom edges are 100%.</p>
+            <label>Across page (%)<input required type="number" min="0" max="100" step="any" value={entry.x} onChange={(event) => setEntry({ ...entry, x: event.target.value })} /></label>
+            <label>Down page (%)<input required type="number" min="0" max="100" step="any" value={entry.y} onChange={(event) => setEntry({ ...entry, y: event.target.value })} /></label>
+          </> : null}
+          <label>Work notes<textarea required value={entry.notes} onChange={(event) => setEntry({ ...entry, notes: event.target.value })} /></label>
+          <button className="partner-button primary wide-touch" disabled={saving || blockers.length > 0} type="submit">{saving ? "Saving…" : "Save production"}</button>
+          <button className="partner-button wide-touch" type="button" onClick={() => setEntryKind(null)}>Cancel</button>
+        </form>
+      </Panel> : null}
+      {canCreate ? <>
       <Panel title="Fiber Span" eyebrow="Ticks, poles, sequence">
-        <form className="partner-form-grid compact-form" onSubmit={(event) => void saveFiberSpan(event)}>
-          <label>From pole<input value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
-          <label>To pole<input value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
-          <label>Reel / cable<input value={spanForm.reel} onChange={(event) => setSpanForm({ ...spanForm, reel: event.target.value })} /></label>
-          <label>Fiber type<input value={spanForm.fiberType} onChange={(event) => setSpanForm({ ...spanForm, fiberType: event.target.value })} /></label>
-          <label>Sequence start<input inputMode="decimal" value={spanForm.start} onChange={(event) => setSpanForm({ ...spanForm, start: event.target.value })} /></label>
-          <label>Sequence end<input inputMode="decimal" value={spanForm.end} onChange={(event) => setSpanForm({ ...spanForm, end: event.target.value })} /></label>
-          <label>Reported footage<input inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
+        <form id="fiber-span-form" aria-label="Fiber span entry" className="partner-form-grid compact-form" onSubmit={(event) => void saveFiberSpan(event)}>
+          <label>From pole<input required value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
+          <label>To pole<input required value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
+          <label>Reel / cable<input required value={spanForm.reel} onChange={(event) => setSpanForm({ ...spanForm, reel: event.target.value })} /></label>
+          <label>Fiber type<input required value={spanForm.fiberType} onChange={(event) => setSpanForm({ ...spanForm, fiberType: event.target.value })} /></label>
+          <label>Sequence start<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.start} onChange={(event) => setSpanForm({ ...spanForm, start: event.target.value })} /></label>
+          <label>Sequence end<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.end} onChange={(event) => setSpanForm({ ...spanForm, end: event.target.value })} /></label>
+          <label>Reported footage<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
           <label>Variance explanation<input value={spanForm.explanation} onChange={(event) => setSpanForm({ ...spanForm, explanation: event.target.value })} placeholder={sequenceCalc.status === "review_required" ? "Required" : "Optional"} /></label>
+          <label>Map page<input required type="number" min="1" value={spanForm.page} onChange={(event) => setSpanForm({ ...spanForm, page: event.target.value })} /></label>
+          <p>Enter each endpoint location on the assigned PDF as a percentage from its left and top edges.</p>
+          {([['startX', 'Start across page (%)'], ['startY', 'Start down page (%)'], ['endX', 'End across page (%)'], ['endY', 'End down page (%)']] as const).map(([key, label]) => <label key={key}>{label}<input required type="number" min="0" max="100" step="any" value={spanForm[key]} onChange={(event) => setSpanForm({ ...spanForm, [key]: event.target.value })} /></label>)}
           <StatusRows rows={[
             ["Calculated Footage", quantityText(sequenceCalc.calculated, "FT")],
             ["Variance", quantityText(sequenceCalc.variance, "FT")],
             ["Review", statusLabel(sequenceCalc.status)],
           ]} />
-          <button className="partner-button primary wide-touch" type="submit">Save Fiber Span</button>
+          <button className="partner-button primary wide-touch" disabled={saving || blockers.length > 0} type="submit">Save Fiber Span</button>
         </form>
       </Panel>
       <Panel title="Complete Planned Span" eyebrow="Yellow design to redline">
@@ -2207,25 +2263,25 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
               designSegmentId: event.target.value,
               from: next?.from_asset_identifier ?? spanForm.from,
               to: next?.to_asset_identifier ?? spanForm.to,
-              reported: next?.design_length_ft ? String(next.design_length_ft) : spanForm.reported,
+              reported: "",
             });
           }}>
             {designSegments.map((segment) => <option key={segment.id} value={segment.id}>{segment.design_label || `${segment.from_asset_identifier ?? "From"} to ${segment.to_asset_identifier ?? "To"}`} {segment.completion_status ? `(${segment.completion_status})` : ""}</option>)}
           </select></label>
-          <label>From pole<input value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
-          <label>From input tick<input inputMode="decimal" value={spanForm.fromInput} onChange={(event) => setSpanForm({ ...spanForm, fromInput: event.target.value })} /></label>
-          <label>From output tick<input inputMode="decimal" value={spanForm.fromOutput} onChange={(event) => setSpanForm({ ...spanForm, fromOutput: event.target.value })} /></label>
-          <label>To pole<input value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
-          <label>To input tick<input inputMode="decimal" value={spanForm.toInput} onChange={(event) => setSpanForm({ ...spanForm, toInput: event.target.value })} /></label>
-          <label>To output tick<input inputMode="decimal" value={spanForm.toOutput} onChange={(event) => setSpanForm({ ...spanForm, toOutput: event.target.value })} /></label>
-          <label>Reported footage<input inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
+          <label>From pole<input required value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
+          <label>From input tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.fromInput} onChange={(event) => setSpanForm({ ...spanForm, fromInput: event.target.value })} /></label>
+          <label>From output tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.fromOutput} onChange={(event) => setSpanForm({ ...spanForm, fromOutput: event.target.value })} /></label>
+          <label>To pole<input required value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
+          <label>To input tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.toInput} onChange={(event) => setSpanForm({ ...spanForm, toInput: event.target.value })} /></label>
+          <label>To output tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.toOutput} onChange={(event) => setSpanForm({ ...spanForm, toOutput: event.target.value })} /></label>
+          <label>Reported footage<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
           <StatusRows rows={[
             ["Design Footage", selectedSegment?.design_length_ft ? `${selectedSegment.design_length_ft} FT` : "Not provided"],
             ["From Tick Difference", quantityText(sequenceFootage(spanForm.fromInput, spanForm.fromOutput), "FT")],
             ["To Tick Difference", quantityText(sequenceFootage(spanForm.toInput, spanForm.toOutput), "FT")],
             ["Financial Authority", "ProductionRecord after Customer QC"],
           ]} />
-          <button className="partner-button primary wide-touch" type="submit" disabled={!selectedSegment?.id}>Mark Complete / Redline</button>
+          <button className="partner-button primary wide-touch" type="submit" disabled={saving || blockers.length > 0 || !selectedSegment?.id}>Mark Complete / Redline</button>
         </form>
         {!designSegments.length ? <p className="partner-safe-text">No planned design segments are prepared for this map revision yet. Use Fiber Span for manual field production until Sync Operations prepares the print.</p> : null}
       </Panel>
@@ -2273,10 +2329,11 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
             ["Variance Status", statusLabel(coilVariance.status)],
             ["Commercial Treatment", "not configured"],
           ]} />
-          <button className="partner-button primary wide-touch" type="submit" disabled={!selectedCoilAsset?.id}>Save Coil / Slack</button>
+          <button className="partner-button primary wide-touch" type="submit" disabled={saving || blockers.length > 0 || !selectedCoilAsset?.id}>Save Coil / Slack</button>
         </form>
         {!assetObservations.length ? <p className="partner-safe-text">Record a pole observation through completed span workflow before adding coil/slack.</p> : null}
       </Panel>
+      </> : null}
       <Panel title="Today's Production" eyebrow={`${visibleRecords.length} records`}>
         <ProductionList records={visibleRecords} />
       </Panel>
@@ -2304,7 +2361,7 @@ function DailyProductionWorkspace({ data }: { data: PortalData }) {
   );
 }
 
-function ReviewDayWorkspace({ data }: { data: PortalData }) {
+function ReviewDayWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
   const report = data.productionToday;
   const queue = useFieldProductionQueue(data);
   const unsynced = queue.unsyncedCount;
@@ -2326,9 +2383,9 @@ function ReviewDayWorkspace({ data }: { data: PortalData }) {
           ["Submitted", report?.submitted_at ?? "Not submitted"],
         ]} />
         {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
-        <button className="partner-button primary wide-touch" type="button" disabled={Boolean(unsynced) || report?.status === "submitted"} onClick={() => void submitDay()}>
+        {permissions.includes("partner_daily_production.submit") ? <button className="partner-button primary wide-touch" type="button" disabled={Boolean(unsynced) || report?.status === "submitted"} onClick={() => void submitDay()}>
           Submit Daily Production
-        </button>
+        </button> : null}
         {unsynced ? <p className="partner-safe-text">Submission disabled: sync unsynced field mutations first.</p> : null}
       </Panel>
       <Panel title="Daily Totals" eyebrow="No billing calculation">
@@ -2581,7 +2638,7 @@ function partnerPerformanceLabel(value: unknown) {
   return partnerPerformanceLabels[code] ?? (/[_-]/.test(text) ? "Performance Unavailable" : text);
 }
 
-function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
+function ForemanCorrectionsWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
   const reports = data.customerQcReports ?? [];
   return (
     <div className="partner-stack">
@@ -2594,7 +2651,7 @@ function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
         <StatusPill label="Open" value={String(openCorrections(reports).length)} kind="text" />
       </section>
       <Panel title="Corrections Required" eyebrow="Customer QC relay">
-        <CorrectionList reports={reports} field />
+        <CorrectionList reports={reports} field canResubmit={permissions.includes("partner_correction.resubmit")} />
       </Panel>
       <Panel title="Customer QC Status" eyebrow="Own Crew">
         <div className="partner-card-grid">
@@ -2616,7 +2673,7 @@ function ForemanCorrectionsWorkspace({ data }: { data: PortalData }) {
   );
 }
 
-function CorrectionList({ reports, field = false }: { reports: CustomerQcItem[]; field?: boolean }) {
+function CorrectionList({ reports, field = false, canResubmit = false }: { reports: CustomerQcItem[]; field?: boolean; canResubmit?: boolean }) {
   const corrections = openCorrections(reports);
   if (!corrections.length) return <EmptyPortal title="No open corrections" body="Correction-required Customer decisions appear here with Partner-safe instructions." />;
   return (
@@ -2633,11 +2690,50 @@ function CorrectionList({ reports, field = false }: { reports: CustomerQcItem[];
             ["Allowed Fields", (correction.allowed_fields ?? []).map(partnerFieldLabel).join(", ") || "Correction scope required"],
             ["Due", correction.due_date || "Not set"],
           ]} />
-          {field ? <p className="partner-safe-text">Save Correction and Resubmit Correction are server-controlled P10 actions. Customer acceptance fields are not editable by Partner users.</p> : null}
+          {field && canResubmit && correction.id && ["open", "acknowledged", "in_progress"].includes(correction.status ?? "") ? <CorrectionEditor correction={correction} /> : null}
         </RecordCard>
       ))}
     </div>
   );
+}
+
+function CorrectionEditor({ correction }: { correction: CustomerCorrection }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [reviewing, setReviewing] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [mutationId] = useState(() => crypto.randomUUID());
+  const labels: Record<string, string> = { reported_quantity: "Corrected quantity", asset_identifier: "Corrected asset identifier", route_endpoint: "Corrected route endpoint", notes: "Correction notes" };
+  const fields = (correction.allowed_fields ?? []).filter((field) => labels[field]);
+  async function resubmit() {
+    if (pending || submitted) return;
+    setPending(true); setMessage("");
+    try {
+      const body: Record<string, unknown> = { client_mutation_id: mutationId };
+      for (const field of fields) if (values[field]?.trim()) body[field] = field === "reported_quantity" ? Number(values[field]) : values[field].trim();
+      await syncosFetch(`syncfield/foreman/corrections/${correction.id}/resubmit`, { method: "POST", body });
+      setSubmitted(true); setMessage("Correction submitted for customer reinspection. The original report is preserved; customer acceptance is still pending.");
+    } catch (caught) { setMessage(caught instanceof Error ? safeSyncError(caught.message) : "Correction could not be submitted. Your entries remain here; retry when connected."); }
+    finally { setPending(false); }
+  }
+  if (submitted) return <p role="status">{message}</p>;
+  if (!fields.length) return <p>This correction requires evidence or a map change. Contact your supervisor to complete that correction; no editable field is available here.</p>;
+  return <form aria-label="Correction editor" className="partner-form-grid compact-form" onSubmit={(event) => {
+    event.preventDefault();
+    if (!fields.some((field) => values[field]?.trim())) { setMessage("Enter at least one requested correction."); return; }
+    setMessage(""); setReviewing(true);
+  }}>
+    {(correction.allowed_fields ?? []).some((field) => !labels[field]) ? <p role="status">Some requested changes need evidence, map editing, or a production code change. Ask your supervisor to complete those parts; this form only sends the fields shown below.</p> : null}
+    <p>Only the requested fields can change. Review your entries before sending a new revision for customer reinspection.</p>
+    {fields.map((field) => <label key={field}>{labels[field]}<input disabled={pending || reviewing} type={field === "reported_quantity" ? "number" : "text"} min={field === "reported_quantity" ? "0" : undefined} step={field === "reported_quantity" ? "any" : undefined} value={values[field] ?? ""} onChange={(event) => setValues({ ...values, [field]: event.target.value })} /></label>)}
+    {message ? <p role="alert">{message}</p> : null}
+    {reviewing ? <>
+      <p role="status">Review ready. These changes are not sent until you select Resubmit Correction.</p>
+      <button className="partner-button wide-touch" type="button" disabled={pending} onClick={() => setReviewing(false)}>Edit correction</button>
+      <button className="partner-button primary wide-touch" type="button" disabled={pending} onClick={() => void resubmit()}>{pending ? "Submitting…" : "Resubmit Correction"}</button>
+    </> : <button className="partner-button wide-touch" type="submit">Review correction</button>}
+  </form>;
 }
 
 function ProductionList({ records }: { records: ProductionRecord[] }) {
@@ -2868,7 +2964,7 @@ function ForemanCrew({ data }: { data: PortalData }) {
       </Panel>
       <Panel title="Daily Crew Participation" eyebrow={data.jsaToday?.work_date || "Today"}>
         <div className="partner-form-grid compact-form">
-          <label>Issue note<input value={issueNote} onChange={(event) => setIssueNote(event.target.value)} placeholder="Missing crew member, late arrival, safety concern" /></label>
+          {readPermissions().includes("partner_jsa.complete") ? <label>Issue note<input value={issueNote} onChange={(event) => setIssueNote(event.target.value)} placeholder="Missing crew member, late arrival, safety concern" /></label> : null}
         </div>
         <div className="syncfield-roster-list">
           {(data.foremanRoster ?? []).map((worker) => {
@@ -2881,11 +2977,11 @@ function ForemanCrew({ data }: { data: PortalData }) {
                   <strong>{str(worker.display_name) || `${str(worker.first_name)} ${str(worker.last_name)}`.trim() || "Worker"}</strong>
                   <span>{str(worker.membership_role) || str(participant?.role) || "crew"} · {participant?.participation_status ?? "not_marked"}</span>
                 </div>
-                <div className="partner-actions-row compact-actions">
+                {readPermissions().includes("partner_jsa.complete") ? <div className="partner-actions-row compact-actions">
                   <button className="partner-button" type="button" aria-label={`${workerName}: Present`} aria-pressed={participant?.participation_status === "present"} onClick={() => void updateParticipant(workerId, "present")}>Present</button>
                   <button className="partner-button" type="button" aria-label={`${workerName}: Absent`} aria-pressed={participant?.participation_status === "absent"} onClick={() => void updateParticipant(workerId, "absent")}>Absent</button>
                   <button className="partner-button" type="button" aria-label={`${workerName}: N/A`} aria-pressed={participant?.participation_status === "not_applicable"} onClick={() => void updateParticipant(workerId, "not_applicable")}>N/A</button>
-                </div>
+                </div> : null}
               </div>
             );
           })}
@@ -3045,7 +3141,7 @@ function MobilizationWorkspace({ data, acknowledgeNotice }: { data: PortalData; 
           ["Instructions", notice?.external_instructions ?? "None issued"],
           ["Conditions", notice?.external_conditions?.join("; ") || "None"],
         ]} />
-        {notice?.id ? <button className="partner-button primary" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+        {notice?.id && readPermissions().includes(data.context?.persona === "partner_foreman" ? "partner_notice.foreman.acknowledge" : "partner_notice.acknowledge") ? <button className="partner-button primary" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
       </Panel>
     </div>
   );

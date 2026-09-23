@@ -1,4 +1,5 @@
 "use client";
+import { Capability } from "../access-control";
 
 import { useEffect, useState, type FormEvent } from "react";
 import { readToken, syncosFetch } from "../intelligence/api";
@@ -107,7 +108,7 @@ export default function PaymentRetainageAdjustmentsPage() {
           </table>
         </div>
       </section>
-      <section className="workspace-panel"><h2>Record a completed payment</h2>
+      <Capability permission="partner_payment.confirm"><section className="workspace-panel"><h2>Record a completed payment</h2>
         {recordError&&<p role="alert">{recordError}</p>}
         <form onSubmit={record}><fieldset disabled={busy}>
           <label>Payable<select name="contractor_payable_id" required><option value="">Select payable</option>{ready.map(r=><option key={r.id} value={r.id}>{r.partner_name} — {r.payable_number}</option>)}</select></label>
@@ -119,7 +120,7 @@ export default function PaymentRetainageAdjustmentsPage() {
           <label><input name="confirmed_completed" type="checkbox" required/> I verified that this external payment completed.</label>
           <button type="submit">{busy?'Recording…':'Record payment'}</button>
         </fieldset></form>
-      </section>
+      </section></Capability>
       <section className="workspace-panel"><h2>Recorded external payments</h2><p>Most recent 100 completed payments. Receipt references remain available for reconciliation.</p><div className="table-wrap"><table><thead><tr><th>Date</th><th>Partner / payable</th><th>Amount</th><th>Method / reference</th><th>Proof</th><th>Recorded by</th></tr></thead><tbody>{(state.history??[]).map(r=><tr key={r.id}><td>{String(r.payment_date).slice(0,10)}</td><td>{r.partner_name} · {r.payable_number}</td><td>{money(r.amount)}</td><td>{r.method} · {r.reference}</td><td>{r.evidence_reference}</td><td>{r.recorded_by}</td></tr>)}</tbody></table></div>{!state.history?.length&&<p>No external payments recorded.</p>}</section>
     </main>
   );

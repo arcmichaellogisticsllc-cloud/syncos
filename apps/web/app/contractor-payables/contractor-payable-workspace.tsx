@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -19,7 +20,7 @@ const disputeStatuses = ["none", "open", "under_review", "resolved", "rejected"]
 const holdStatuses = ["none", "hold", "released"];
 const itemTypes = ["labor", "subcontractor_production", "equipment", "material_reimbursement", "retainage_hold", "retainage_release", "deduction", "chargeback", "adjustment", "correction", "bonus", "penalty"];
 const itemStatuses = ["draft", "ready", "approved", "held", "disputed", "payment_ready", "payment_created_later", "voided", "archived"];
-const tabs = ["overview", "payable_items", "payable_party", "provider_crew_context", "settlement_context", "project_context", "financial_summary", "compliance_tax_readiness", "retainage", "deductions_chargebacks", "holds_disputes", "approval", "payment_readiness", "timeline", "audit", "future_payment", "future_payroll", "future_bank_accounting"];
+const tabs = ["overview", "payable_items", "payable_party", "provider_crew_context", "settlement_context", "project_context", "financial_summary", "compliance_tax_readiness", "retainage", "deductions_chargebacks", "holds_disputes", "approval", "payment_readiness", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -112,7 +113,7 @@ export function ContractorPayableQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading contractor payables...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -120,7 +121,7 @@ export function ContractorPayableQueue() {
                 <h2>Today&apos;s payable work</h2>
                 <p className="muted">Start with submitted, blocked, disputed, and approved payables before marking anything payment-ready.</p>
               </div>
-              <Link className="primary-button" href="/contractor-payables/new" aria-disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</Link>
+              <Link className="primary-button" href="/contractor-payables/new" allowed={hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</Link>
             </div>
             <div className="summary-grid">
               {payableQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPayableQueue(rows, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
@@ -225,7 +226,7 @@ export function ContractorPayableCreate() {
           <PayableFormFields form={form} setForm={setForm} related={related} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</button>
+          {hasPermission(session.permissions, "contractor_payable.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</button> : null}
           <Link className="link-button" href="/contractor-payables">Cancel</Link>
         </div>
       </form>
@@ -284,7 +285,7 @@ export function ContractorPayableEdit({ payableId }: { payableId: string }) {
           <div className="warning-box">Cannot create payment, payroll, or mark paid from this form. Lifecycle states use backend action routes.</div>
           <PayableFormFields form={form} setForm={setForm} related={emptyRelated} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "contractor_payable.update")}>Save Payable</button>
+            {hasPermission(session.permissions, "contractor_payable.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "contractor_payable.update")}>Save Payable</button> : null}
             <Link className="link-button" href={`/contractor-payables/${payableId}`}>Cancel</Link>
           </div>
         </form>
@@ -344,7 +345,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
       {payable && detail ? (
         <>
           {!hasPermission(session.permissions, "contractor_payable.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "contractor_payable.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(payable.status)}
             nextActionLabel={nextPayableAction(payable)}
@@ -352,7 +353,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
             disabled={!hasPermission(session.permissions, "contractor_payable.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Payment Ready does not pay the contractor or move money."
-          />
+          /> : null}
           <DetailBoundaryNotice>Contractor Payable tracks internal approval and payment-readiness state. It does not pay contractors, initiate ACH, issue card payouts, print checks, move money, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -367,7 +368,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/contractor-payables/${payableId}/edit`} aria-disabled={!hasPermission(session.permissions, "contractor_payable.update")}>Edit Payable</Link>
+                <Link className="link-button" href={`/contractor-payables/${payableId}/edit`} allowed={hasPermission(session.permissions, "contractor_payable.update")}>Edit Payable</Link>
                 <ActionButton permission="contractor_payable.add_item" session={session} disabled={payableInactive(payable)} onClick={() => openAction("add_item")}>Add Payable Item</ActionButton>
                 <ActionButton permission="contractor_payable.recalculate_totals" session={session} disabled={payableInactive(payable)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="contractor_payable.submit_review" session={session} disabled={payableInactive(payable)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
@@ -424,7 +425,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "contractor_payable").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PayableTab tab={tab} detail={detail} payable={payable} items={items} session={session} onAction={openAction} />
             </section>
@@ -464,7 +465,7 @@ function PayableShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Contractor Payables</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -591,29 +592,17 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
   return <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  const [token, setToken] = useState(session.token);
-  const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
-  return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(payableDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : payableDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -846,7 +835,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

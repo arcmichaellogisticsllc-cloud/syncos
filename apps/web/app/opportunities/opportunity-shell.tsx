@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import type { ReactNode } from "react";
 import { CommandShell } from "../dashboard-components";
 
@@ -21,12 +21,7 @@ export function OpportunityShell({ title, purpose, children }: { title: string; 
               <Link href={href} key={href}>
                 {label}
               </Link>
-            ) : (
-              <div className="nav-placeholder" key={href}>
-                <span>{label}</span>
-                <small>Coming next</small>
-              </div>
-            ),
+            ) : null,
           )}
         </aside>
         <div className="workspace-main">{children}</div>

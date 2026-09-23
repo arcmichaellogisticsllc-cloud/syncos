@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandShell, CountList, MetricList, Panel } from "../dashboard-components";
-import { getDashboardData, valueAt } from "../dashboard-data";
+import { valueAt } from "../dashboard-data";
 
-export default async function GrowthPage() {
-  const data = await getDashboardData("growth");
+export default function GrowthPage() {
+  const dashboard = useDashboardData("growth");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Growth Command Center" state={dashboard} />;
   return (
     <CommandShell title="Growth Command Center" purpose="Where is future work coming from?">
       <div className="grid">

@@ -33,7 +33,7 @@ test.describe("Action-state boundaries — open/cancel must not mutate forbidden
     test(`[${state.domain}] ${state.stateKey}: cancel does not mutate forbidden tables`, async ({ page }) => {
       const before = await countTables(manifest.tenant.id, state.forbiddenTables);
 
-      await installStoredSession(page, personas.systemAdmin.storageState);
+      await installStoredSession(page, Object.values(personas).find(persona => persona.slug === state.persona)!.storageState);
       await page.goto(state.route);
 
       await expectRouteHealthy(page, state.route, state.objectType);

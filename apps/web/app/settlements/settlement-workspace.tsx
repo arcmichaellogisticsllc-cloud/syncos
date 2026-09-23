@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -10,7 +11,7 @@ import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, r
 const settlementTypes = ["customer_billable", "contractor_payable", "mixed", "internal_adjustment", "retainage_release", "correction_adjustment", "chargeback"];
 const itemTypes = ["customer_billable", "contractor_payable", "retainage_hold", "retainage_release", "deduction", "chargeback", "adjustment", "correction"];
 const readinessStatuses = ["not_ready", "needs_review", "ready_with_warning", "ready_for_approval", "blocked"];
-const tabs = ["overview", "items", "customer_billable", "contractor_payable", "retainage", "deductions_chargebacks", "margin", "readiness", "invoice_readiness", "payable_readiness", "holds_disputes", "timeline", "audit", "future_invoice", "future_payment_payroll"];
+const tabs = ["overview", "items", "customer_billable", "contractor_payable", "retainage", "deductions_chargebacks", "margin", "readiness", "invoice_readiness", "payable_readiness", "holds_disputes", "timeline", "audit"];
 
 type SettlementDetailShape = {
   settlement?: SyncRecord;
@@ -90,7 +91,7 @@ export function SettlementQueue() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review settlement totals and invoice-readiness blockers.</div> : null}
       {loading ? <div className="empty-state">Loading settlements...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -103,7 +104,7 @@ export function SettlementQueue() {
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0), "/settlements")} aria-disabled={!rows.some((row) => row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0)}>Recalculate Readiness</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed" || row.has_dispute), "/settlements")} aria-disabled={!rows.some((row) => row.status === "disputed" || row.has_dispute)}>Open Disputes</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.invoice_ready), "/settlements")} aria-disabled={!rows.some((row) => row.invoice_ready)}>Open Invoice Ready</Link>
-                <Link className="link-button" href="/settlements/new" aria-disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</Link>
+                <Link className="link-button" href="/settlements/new" allowed={hasPermission(session.permissions, "settlement.create")}>Create Settlement</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -115,7 +116,7 @@ export function SettlementQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptySettlementQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptySettlementQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("draft"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -184,7 +185,7 @@ export function SettlementCreate() {
         <div className="warning-box">Backend validation enforces tenant scope, approved settlement types, settlement number uniqueness, and event/audit/system_action behavior.</div>
         <SettlementFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</button>
+          {hasPermission(session.permissions, "settlement.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</button> : null}
           <Link className="link-button" href="/settlements">Cancel</Link>
         </div>
       </form>
@@ -252,7 +253,7 @@ export function SettlementEdit({ settlementId }: { settlementId: string }) {
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, invoice-created, and payable-created future states are read-only.</div>
           <SettlementFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "settlement.update")}>Save Settlement</button>
+            {hasPermission(session.permissions, "settlement.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "settlement.update")}>Save Settlement</button> : null}
             <Link className="link-button" href={`/settlements/${settlementId}`}>Cancel</Link>
           </div>
         </form>
@@ -324,7 +325,7 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/settlements/${settlementId}/edit`} aria-disabled={!hasPermission(session.permissions, "settlement.update")}>Edit Settlement</Link>
+                <Link className="link-button" href={`/settlements/${settlementId}/edit`} allowed={hasPermission(session.permissions, "settlement.update")}>Edit Settlement</Link>
                 <ActionButton permission="settlement.recalculate_readiness" session={session} disabled={viewOnly(record)} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="settlement.add_item" session={session} disabled={viewOnly(record)} onClick={() => setModal("add_item")}>Add Settlement Item</ActionButton>
                 <ActionButton permission="settlement.submit_review" session={session} disabled={viewOnly(record) || !items.length || blockers.length > 0} onClick={() => setModal("submit_review")}>Submit Review</ActionButton>
@@ -385,7 +386,7 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "settlement").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <SettlementTab tab={tab} detail={detail} settlement={record} items={items} onItemAction={openItemModal} session={session} />
             </section>
@@ -423,7 +424,7 @@ function SettlementShell({ title, purpose, children }: { title: string; purpose:
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Settlements</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -599,7 +600,7 @@ function SettlementFormFields({ form, setForm, related, includeCreate = false, d
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test settlement actions.</p></div><button type="button" onClick={session.applyDefaults}>Use settlement defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -608,7 +609,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : settlementDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -709,7 +710,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {

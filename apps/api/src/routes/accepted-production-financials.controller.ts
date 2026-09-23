@@ -297,6 +297,18 @@ export class AcceptedProductionFinancialsController {
     });
   }
 
+  @Get("production-code-choices")
+  @RequirePermission("billing.read")
+  async productionCodeChoices(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const result = await client.query(
+        "SELECT id, code, description AS name, unit_of_measure AS unit FROM syncfield_production_codes WHERE tenant_id = $1 AND active = true AND deleted_at IS NULL ORDER BY code, description",
+        [request.auth.tenantId],
+      );
+      return result.rows;
+    });
+  }
+
   @Get("coil-policies")
   @RequirePermission("billing.read")
   async coilPolicies(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {

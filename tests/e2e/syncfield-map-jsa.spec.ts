@@ -192,6 +192,11 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     });
     expect(participant.worker_id).toBe(seeded.foremanWorkerId);
     expect(participant.participation_status).toBe("absent");
+    await expect(page.getByRole("button", { name: "Complete JSA" })).toBeDisabled();
+    for (const label of ["Vehicle traffic", "PPE reviewed", "Emergency action plan", "Stop-work authority reviewed"]) {
+      await expect(page.getByLabel(label, { exact: true })).not.toBeChecked();
+      await page.getByLabel(label, { exact: true }).check();
+    }
     await page.getByLabel(/I reviewed this JSA with the Crew/).check();
     await page.getByRole("button", { name: "Complete JSA" }).click();
     await expect(page.getByText("Daily JSA completed.")).toBeVisible();
@@ -226,7 +231,8 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     await page.goto("/syncfield/today");
     await expect(page.getByText("Daily JSA", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("link", { name: "Open Map" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
+    // This map-only fixture has no production permission; do not advertise that workspace.
+    await expect(page.getByRole("link", { name: "Production", exact: true })).toHaveCount(0);
     await expect(page.getByText("Customer QC")).toHaveCount(0);
   });
 });

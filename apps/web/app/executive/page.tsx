@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandHero, CommandShell, InsightStrip, OperatorLink, PriorityDecisionCard, WorkQueue } from "../dashboard-components";
-import { formatValue, getDashboardData, valueAt } from "../dashboard-data";
+import { formatValue, valueAt } from "../dashboard-data";
 
-export default async function ExecutivePage() {
-  const data = await getDashboardData("executive");
+export default function ExecutivePage() {
+  const dashboard = useDashboardData("executive");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Executive Command Center" state={dashboard} />;
   const throughput = valueAt(data, "telecomWorkThroughput.currentValue");
   const qualifiedValue = valueAt(data, "opportunityPipeline.qualifiedValue");
   const awardedValue = valueAt(data, "opportunityPipeline.awardedValue");

@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
@@ -16,7 +17,7 @@ const collectionStatuses = ["not_due", "due", "overdue", "in_collection", "dispu
 const paymentTerms = ["due_on_receipt", "net_7", "net_15", "net_30", "net_45", "net_60", "custom"];
 const packageStatuses = ["not_started", "incomplete", "ready", "attached", "submitted", "accepted", "rejected"];
 const acceptanceStatuses = ["not_required", "pending", "accepted", "rejected", "correction_required", "disputed"];
-const tabs = ["overview", "items", "customer", "settlement", "project", "financial_summary", "receivable_state", "approval", "delivery", "package_documentation", "disputes", "timeline", "audit", "future_cash_application", "future_collections"];
+const tabs = ["overview", "items", "customer", "settlement", "project", "financial_summary", "receivable_state", "approval", "delivery", "package_documentation", "disputes", "timeline", "audit"];
 
 type InvoiceDetailShape = {
   invoice?: SyncRecord;
@@ -94,7 +95,7 @@ export function InvoiceQueue() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review invoice state, disputes, and aging.</div> : null}
       {loading ? <div className="empty-state">Loading invoices...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -107,7 +108,7 @@ export function InvoiceQueue() {
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "approved" || row.approval_status === "approved"), "/invoices")} aria-disabled={!rows.some((row) => row.status === "approved" || row.approval_status === "approved")}>Open Approved Invoices</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed" || row.collection_status === "disputed"), "/invoices")} aria-disabled={!rows.some((row) => row.status === "disputed" || row.collection_status === "disputed")}>Open Disputes</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0), "/invoices")} aria-disabled={!rows.some((row) => String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0)}>Open Aging Invoices</Link>
-                <Link className="link-button" href="/invoices/new" aria-disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</Link>
+                <Link className="link-button" href="/invoices/new" allowed={hasPermission(session.permissions, "invoice.create")}>Create Invoice</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -119,7 +120,7 @@ export function InvoiceQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyInvoiceQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} invoice${visible.length === 1 ? "" : "s"} in this view.` : emptyInvoiceQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("draft"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -195,7 +196,7 @@ export function InvoiceCreate() {
           <InvoiceFormFields form={form} setForm={setForm} related={related} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</button>
+          {hasPermission(session.permissions, "invoice.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</button> : null}
           <Link className="link-button" href="/invoices">Cancel</Link>
         </div>
       </form>
@@ -265,7 +266,7 @@ export function InvoiceEdit({ invoiceId }: { invoiceId: string }) {
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, sent, paid-later, and fully-applied-later invoices are read-only unless backend policy explicitly allows updates.</div>
           <InvoiceFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "invoice.update")}>Save Invoice</button>
+            {hasPermission(session.permissions, "invoice.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "invoice.update")}>Save Invoice</button> : null}
             <Link className="link-button" href={`/invoices/${invoiceId}`}>Cancel</Link>
           </div>
         </form>
@@ -326,7 +327,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       {record && detail ? (
         <>
           {!hasPermission(session.permissions, "invoice.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "invoice.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(record.status)}
             nextActionLabel={nextInvoiceAction(record)}
@@ -334,7 +335,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             disabled={!hasPermission(session.permissions, "invoice.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Invoice status tracks internal workflow. Mark Sent records external/manual send status only. SyncOS does not email the customer, collect payment, apply cash, or post accounting entries."
-          />
+          /> : null}
           <DetailBoundaryNotice>Invoice status tracks internal workflow. Mark Sent records external/manual send status only. SyncOS does not email the customer, collect payment, apply cash, move money, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -350,7 +351,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/invoices/${invoiceId}/edit`} aria-disabled={!hasPermission(session.permissions, "invoice.update")}>Edit Invoice</Link>
+                <Link className="link-button" href={`/invoices/${invoiceId}/edit`} allowed={hasPermission(session.permissions, "invoice.update")}>Edit Invoice</Link>
                 <ActionButton permission="invoice.add_item" session={session} disabled={viewOnly(record)} onClick={() => setModal("add_item")}>Add Invoice Item</ActionButton>
                 <ActionButton permission="invoice.recalculate_totals" session={session} disabled={viewOnly(record)} onClick={() => setModal("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="invoice.submit_review" session={session} disabled={viewOnly(record) || !items.length} onClick={() => setModal("submit_review")}>Submit Review</ActionButton>
@@ -409,7 +410,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "invoice").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <InvoiceTab tab={tab} detail={detail} invoice={record} items={items} session={session} onItemAction={openItemModal} />
             </section>
@@ -446,7 +447,7 @@ function InvoiceShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Invoices</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -608,17 +609,14 @@ function InvoiceFormFields({ form, setForm, related, includeCreate = false, disa
   return <div className="form-grid">{includeCreate ? <><Select label="Customer Organization" value={form.customer_organization_id ?? ""} options={["", ...related.customers.map((row) => String(row.id))]} labels={labelsFor(related.customers)} onChange={(customer_organization_id) => setForm({ ...form, customer_organization_id })} disabled={disabled} /><Select label="Invoice Type" value={form.invoice_type ?? "standard"} options={invoiceTypes} onChange={(invoice_type) => setForm({ ...form, invoice_type })} disabled={disabled} /><Select label="Settlement" value={form.settlement_id ?? ""} options={["", ...related.settlements.map((row) => String(row.id))]} labels={labelsFor(related.settlements, "settlement_number")} onChange={(settlement_id) => setForm({ ...form, settlement_id })} disabled={disabled} /><Select label="Project" value={form.project_id ?? ""} options={["", ...related.projects.map((row) => String(row.id))]} labels={labelsFor(related.projects)} onChange={(project_id) => setForm({ ...form, project_id })} disabled={disabled} /></> : null}<label>Invoice Date<input disabled={disabled} type="date" value={form.invoice_date ?? ""} onChange={(event) => setForm({ ...form, invoice_date: event.target.value })} /></label><label>Due Date<input disabled={disabled} type="date" value={form.due_date ?? ""} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label><Select label="Payment Terms" value={form.payment_terms ?? ""} options={["", ...paymentTerms]} onChange={(payment_terms) => setForm({ ...form, payment_terms })} disabled={disabled} /><label>Billing Period Start<input disabled={disabled} type="date" value={form.billing_period_start ?? ""} onChange={(event) => setForm({ ...form, billing_period_start: event.target.value })} /></label><label>Billing Period End<input disabled={disabled} type="date" value={form.billing_period_end ?? ""} onChange={(event) => setForm({ ...form, billing_period_end: event.target.value })} /></label>{includeCreate ? <label>Currency<input disabled={disabled} value={form.currency ?? "USD"} onChange={(event) => setForm({ ...form, currency: event.target.value })} /></label> : null}{!includeCreate ? <><Select label="Invoice Package Status" value={form.invoice_package_status ?? ""} options={["", ...packageStatuses]} onChange={(invoice_package_status) => setForm({ ...form, invoice_package_status })} disabled={disabled} /><Select label="Documentation Status" value={form.documentation_status ?? ""} options={["", ...packageStatuses]} onChange={(documentation_status) => setForm({ ...form, documentation_status })} disabled={disabled} /><Select label="Customer Acceptance Status" value={form.customer_acceptance_status ?? ""} options={["", ...acceptanceStatuses]} onChange={(customer_acceptance_status) => setForm({ ...form, customer_acceptance_status })} disabled={disabled} /><Select label="Prime Acceptance Status" value={form.prime_acceptance_status ?? ""} options={["", ...acceptanceStatuses]} onChange={(prime_acceptance_status) => setForm({ ...form, prime_acceptance_status })} disabled={disabled} /></> : null}<label>Override Reasons JSON<textarea disabled={disabled} value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label>{!includeCreate ? <label>Dispute Note<textarea disabled={disabled} value={form.dispute_note ?? ""} onChange={(event) => setForm({ ...form, dispute_note: event.target.value })} /></label> : null}</div>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test invoice actions.</p></div><button type="button" onClick={session.applyDefaults}>Use invoice defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setTokenState] = useState("");
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : invoiceDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -712,7 +710,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {

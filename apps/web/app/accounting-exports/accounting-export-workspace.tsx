@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -17,7 +18,7 @@ const sourceObjectTypes = ["invoice", "invoice_item", "cash_receipt", "payment_a
 const exportItemTypes = ["revenue", "receivable", "cash_receipt", "unapplied_cash", "payable", "payroll_expense", "payment", "bank_transaction", "reconciliation", "fee", "adjustment", "correction", "reversal"];
 const itemExportStatuses = ["pending", "generated", "submitted_later", "accepted_later", "rejected_later", "failed", "cancelled", "archived"];
 const mappingStatuses = ["unmapped", "mapped", "mapping_warning", "mapping_error", "override_mapped"];
-const tabs = ["overview", "export_items", "source_summary", "mapping_status", "target_system", "export_format", "totals", "review_approval", "generate", "submission_acceptance", "failure_retry", "timeline", "audit", "future_quickbooks", "future_erp", "future_gl", "future_tax", "future_accounting_close", "future_file_download"];
+const tabs = ["overview", "export_items", "source_summary", "mapping_status", "target_system", "export_format", "totals", "review_approval", "generate", "submission_acceptance", "failure_retry", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -110,7 +111,7 @@ export function AccountingExportQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading accounting exports...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -118,7 +119,7 @@ export function AccountingExportQueue() {
                 <h2>Today&apos;s accounting handoff work</h2>
                 <p className="muted">Review export batches, mark manual/external submission and acceptance, and inspect item attention without posting to accounting systems.</p>
               </div>
-              <Link className="primary-button" href="/accounting-exports/new" aria-disabled={!hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</Link>
+              <Link className="primary-button" href="/accounting-exports/new" allowed={hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</Link>
             </div>
             <div className="summary-grid">
               {exportQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countExportQueue(rows, exportItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
@@ -220,7 +221,7 @@ export function AccountingExportCreate() {
           <BatchFormFields form={form} setForm={setForm} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</button>
+          {hasPermission(session.permissions, "accounting_export_batch.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</button> : null}
           <Link className="link-button" href="/accounting-exports">Cancel</Link>
         </div>
       </form>
@@ -270,7 +271,7 @@ export function AccountingExportEdit({ accountingExportBatchId }: { accountingEx
           <div className="warning-box">Status transitions use lifecycle actions. This form cannot call external APIs, post GL, generate taxes, create payments, create bank transactions, or mutate source records.</div>
           <BatchFormFields form={form} setForm={setForm} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "accounting_export_batch.update")}>Save Accounting Export Batch</button>
+            {hasPermission(session.permissions, "accounting_export_batch.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "accounting_export_batch.update")}>Save Accounting Export Batch</button> : null}
             <Link className="link-button" href={`/accounting-exports/${accountingExportBatchId}`}>Cancel</Link>
           </div>
         </form>
@@ -330,7 +331,7 @@ export function AccountingExportDetail({ accountingExportBatchId }: { accounting
       {batch && detail ? (
         <>
           {!hasPermission(session.permissions, "accounting_export_batch.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "accounting_export_batch.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(batch.status)}
             nextActionLabel={exportBatchNextAction(batch)}
@@ -338,7 +339,7 @@ export function AccountingExportDetail({ accountingExportBatchId }: { accounting
             disabled={!hasPermission(session.permissions, "accounting_export_batch.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Accounting Export prepares internal handoff status only. SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close."
-          />
+          /> : null}
           <DetailBoundaryNotice>Accounting Export prepares internal handoff status only. SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -355,7 +356,7 @@ export function AccountingExportDetail({ accountingExportBatchId }: { accounting
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/accounting-exports/${accountingExportBatchId}/edit`} aria-disabled={!hasPermission(session.permissions, "accounting_export_batch.update")}>Edit Batch</Link>
+                <Link className="link-button" href={`/accounting-exports/${accountingExportBatchId}/edit`} allowed={hasPermission(session.permissions, "accounting_export_batch.update")}>Edit Batch</Link>
                 <ActionButton permission="accounting_export_batch.add_item" session={session} disabled={batchInactive(batch)} onClick={() => openAction("add_item")}>Add Export Item</ActionButton>
                 <ActionButton permission="accounting_export_batch.update" session={session} disabled={batchInactive(batch)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="accounting_export_batch.generate" session={session} disabled={batchArchived(batch)} onClick={() => openAction("generate")}>Generate</ActionButton>
@@ -409,7 +410,7 @@ export function AccountingExportDetail({ accountingExportBatchId }: { accounting
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "accounting_export_batch").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <AccountingExportTab tab={tab} detail={detail} batch={batch} items={items} session={session} onAction={openAction} />
             </section>
@@ -508,7 +509,7 @@ function AccountingExportShell({ title, purpose, children }: { title: string; pu
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Accounting Exports</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -647,29 +648,17 @@ function FuturePlaceholders() {
   return <section className="workspace-panel"><h2>Future Workflow Placeholders</h2><div className="summary-grid"><Metric label="Future QuickBooks" value="QuickBooks integration is not available in this sprint." /><Metric label="Future ERP" value="Sage, NetSuite, and ERP integrations are not available." /><Metric label="Future GL" value="GL posting and journal creation are not available." /><Metric label="Future Tax" value="Tax filing, W2, 1099, payroll tax, and sales/use tax workflows are not available." /><Metric label="Future Accounting Close" value="Accounting close, trial balance, and financial statements are not available." /><Metric label="Future File Download" value="File download generation is not available unless the backend explicitly provides a generated file reference." /></div></section>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  const [token, setToken] = useState(session.token);
-  const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
-  return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(accountingExportDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : accountingExportDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -922,7 +911,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

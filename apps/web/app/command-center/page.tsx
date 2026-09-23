@@ -1,4 +1,5 @@
 "use client";
+import { Capability, PermissionLink } from "../access-control";
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -53,7 +54,7 @@ export default function CommandCenterPage() {
           <h1>Telecom throughput and daily action board</h1>
           <p className="muted">As of {formatDate(snapshot?.as_of)} · Refreshed {formatDate(snapshot?.calculated_at)}</p>
         </div>
-        <button className="primary-button" onClick={recalculate}>Refresh</button>
+        <Capability permission="executive_command.snapshot_recalculate"><button className="primary-button" onClick={recalculate}>Refresh</button></Capability>
       </section>
 
       {!snapshot ? <section className="workspace-panel"><p>{summary?.message ?? "No current snapshot."}</p></section> : <CommandContent snapshot={snapshot} actions={summary?.actions ?? []} blockers={summary?.blockers ?? []} />}
@@ -87,7 +88,7 @@ function CommandContent({ snapshot, actions, blockers }: { snapshot: Record<stri
       <section className="workspace-panel top-actions">
         <div className="panel-title-row">
           <h2>Top Actions Today</h2>
-          <a className="secondary-button" href="/recommendations-center">Review Recommendations</a>
+          <PermissionLink className="secondary-button" href="/recommendations-center">Review Recommendations</PermissionLink>
         </div>
         <div className="action-list">
           {topActions.map((action) => <ActionRow key={String(action.id)} action={action} />)}
@@ -162,16 +163,16 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function Metric({ label, value, route }: { label: string; value: unknown; route: string }) {
-  return <a className="metric-line" href={route}><span>{label}</span><strong>{String(value ?? "Not evaluated")}</strong></a>;
+  return <PermissionLink className="metric-line" href={route}><span>{label}</span><strong>{String(value ?? "Not evaluated")}</strong></PermissionLink>;
 }
 
 function ActionRow({ action }: { action: Record<string, unknown> }) {
   return (
-    <a className={`action-row priority-${String(action.priority ?? "p3")}`} href={String(action.route ?? "/command-center")}>
+    <PermissionLink className={`action-row priority-${String(action.priority ?? "p3")}`} href={String(action.route ?? "/command-center")}>
       <span className="priority-pill">{String(action.priority ?? "p3").toUpperCase()}</span>
       <span><strong>{String(action.title)}</strong><small>{String(action.reason_summary)}</small></span>
       <span>{String(action.owner_attribution ?? "unknown").replace(/_/g, " ")}</span>
-    </a>
+    </PermissionLink>
   );
 }
 

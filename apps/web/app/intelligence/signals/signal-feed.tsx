@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ActionButton as OperatorActionButton, BoundaryNotice, ErrorBanner, ModalActions } from "../../operator-actions";
 import { EmptyState, FilterDrawer, LoadingState, PriorityCard, QueueTabs, RecordsPanel } from "../../operator-page-templates";
@@ -62,7 +62,7 @@ export function SignalFeed() {
   const [signals, setSignals] = useState<SyncRecord[]>([]);
   const [organizations, setOrganizations] = useState<SyncRecord[]>([]);
   const [territories, setTerritories] = useState<SyncRecord[]>([]);
-  const [permissions, setPermissions] = useState<string[]>(defaultSignalPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [token, setToken] = useState("");
   const [activeQueue, setActiveQueue] = useState<string>("Needs Review");
   const [filters, setFilters] = useState<Filters>(filtersForQueue("Needs Review"));
@@ -170,7 +170,7 @@ export function SignalFeed() {
               <p className="muted">Start with reviewable signals, then clear missing owner, evidence, and organization blockers before a signal can become candidate-ready.</p>
             </div>
             <div className="form-actions">
-              <OperatorActionButton label="Create Signal" variant="primary" disabledReason={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)} />
+              <OperatorActionButton label="Create Signal" variant="primary" permissionHint={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)} />
               <OperatorActionButton label="Review Next Signal" disabledReason={!nextReviewSignal ? "No signals are available for review." : undefined} consequence="Open the highest-priority signal in the current queue." onClick={() => nextReviewSignal && (window.location.href = `/intelligence/signals/${nextReviewSignal.id}`)} />
             </div>
           </section>
@@ -220,7 +220,7 @@ export function SignalFeed() {
         {!loading && signals.length === 0 ? (
           <EmptyState>
             <p>No signals yet. Start by adding market intelligence from a funding source, utility, prime contractor, engineering firm, permit activity, or relationship note.</p>
-            <OperatorActionButton label="Create Signal" variant="primary" disabledReason={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)} />
+            <OperatorActionButton label="Create Signal" variant="primary" permissionHint={!hasPermission(permissions, "signal.create") ? "Your role can review signals but cannot create them." : undefined} onClick={() => setShowCreate(true)} />
           </EmptyState>
         ) : null}
         {signals.length > 0 ? <SignalTable signals={signals} permissions={permissions} openAction={(action, signal) => setActionModal({ action, signal })} /> : null}
@@ -289,10 +289,10 @@ function SignalTable({ signals, permissions, openAction }: { signals: SyncRecord
                 <td>
                   <div className="row-actions">
                     <Link href={`/intelligence/signals/${id}`}>Open Detail</Link>
-                    <OperatorActionButton label="Categorize" disabledReason={disabledReasons.categorize} onClick={() => openAction("categorize", signal)} />
-                    <OperatorActionButton label="Score" disabledReason={disabledReasons.score} onClick={() => openAction("score", signal)} />
-                    <OperatorActionButton label="Verify" disabledReason={disabledReasons.verify} onClick={() => openAction("verify", signal)} />
-                    <OperatorActionButton label="Archive" variant="danger" disabledReason={disabledReasons.archive} onClick={() => openAction("archive", signal)} />
+                    <OperatorActionButton label="Categorize" permissionHint={!hasPermission(permissions, "signal.categorize") ? "Access unavailable" : undefined} disabledReason={disabledReasons.categorize} onClick={() => openAction("categorize", signal)} />
+                    <OperatorActionButton label="Score" permissionHint={!hasPermission(permissions, "signal.score") ? "Access unavailable" : undefined} disabledReason={disabledReasons.score} onClick={() => openAction("score", signal)} />
+                    <OperatorActionButton label="Verify" permissionHint={!hasPermission(permissions, "signal.verify") ? "Access unavailable" : undefined} disabledReason={disabledReasons.verify} onClick={() => openAction("verify", signal)} />
+                    <OperatorActionButton label="Archive" permissionHint={!hasPermission(permissions, "signal.archive") ? "Access unavailable" : undefined} variant="danger" disabledReason={disabledReasons.archive} onClick={() => openAction("archive", signal)} />
                   </div>
                 </td>
               </tr>
@@ -460,24 +460,7 @@ function SignalActionModal({ modal, onClose, onSubmit }: { modal: NonNullable<Ac
   );
 }
 
-function SessionPanel({ token, setToken, permissions, setPermissions, save }: { token: string; setToken: (value: string) => void; permissions: string[]; setPermissions: (value: string[]) => void; save: () => void }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return (
-    <section className="panel workspace-panel">
-      <div className="section-toolbar">
-        <div>
-          <h2>Operator Session</h2>
-          <p className="muted">Effective permissions are loaded from the API when available. Backend authorization remains source of truth.</p>
-        </div>
-        <button type="button" onClick={save}>Apply</button>
-      </div>
-      <div className="session-grid">
-        <input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" />
-        <textarea value={permissions.join(", ")} onChange={(event) => setPermissions(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} />
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ token, setToken, permissions, setPermissions, save }: { token: string; setToken: (value: string) => void; permissions: string[]; setPermissions: (value: string[]) => void; save: () => void }) { return null; }
 
 function LoginRequiredCard() {
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../../access-control";
 import { FormEvent, useEffect, useState } from "react";
 import { dateValue, defaultSignalPermissions, hasPermission, numberValue, readPermissions, savePermissions, syncosFetch, textValue, type SyncRecord } from "../../api";
 import { IntelligenceShell } from "../../intelligence-shell";
@@ -37,7 +37,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
   const [territories, setTerritories] = useState<SyncRecord[]>([]);
   const [contacts, setContacts] = useState<SyncRecord[]>([]);
   const [audit, setAudit] = useState<SyncRecord[]>([]);
-  const [permissions, setPermissions] = useState<string[]>(defaultSignalPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [showEvidence, setShowEvidence] = useState(false);
   const [showCandidate, setShowCandidate] = useState(false);
@@ -95,14 +95,14 @@ export function SignalDetail({ signalId }: { signalId: string }) {
       {detail && signal ? (
         <>
           {!hasPermission(permissions, "signal.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(permissions, "signal.update") ? <DetailNextActionCard
             status={textValue(signal.status)}
             nextActionLabel={textValue(signal.recommended_next_action ?? detail.readiness.recommended_action)}
             helperText="Review evidence, organization/territory readiness, owner context, and candidate readiness before changing this signal."
             disabled={!hasPermission(permissions, "signal.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Signal actions do not create opportunity, project, invoice, cash, payment, or accounting records unless a separate explicit conversion action exists."
-          />
+          /> : null}
           <DetailBoundaryNotice>Signal actions do not create opportunity, project, invoice, cash, payment, payroll, bank, or accounting records unless a separate explicit conversion action exists.</DetailBoundaryNotice>
           <section className="panel workspace-panel">
             <div className="signal-header">
@@ -152,7 +152,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
             <section className="panel">
               <div className="section-toolbar">
                 <h2>Evidence</h2>
-                <button type="button" disabled={archived || !hasPermission(permissions, "signal_evidence.create")} onClick={() => setShowEvidence(true)}>Add Evidence</button>
+                {hasPermission(permissions, "signal_evidence.create") ? <button type="button" disabled={archived || !hasPermission(permissions, "signal_evidence.create")} onClick={() => setShowEvidence(true)}>Add Evidence</button> : null}
               </div>
               <p className="muted">A signal cannot be verified until at least one active evidence record exists.</p>
               <Metric label="Evidence count" value={String(signal.active_evidence_count ?? detail.evidence.length)} />
@@ -169,7 +169,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
                     </div>
                     <div className="row-actions">
                       {item.source_url ? <a href={String(item.source_url)} target="_blank">Open Source</a> : null}
-                      <button type="button" disabled={archived || !hasPermission(permissions, "signal_evidence.archive") || item.status === "archived"} onClick={() => void archiveEvidence(String(item.id), load, setError)}>Archive Evidence</button>
+                      {hasPermission(permissions, "signal_evidence.archive") ? <button type="button" disabled={archived || !hasPermission(permissions, "signal_evidence.archive") || item.status === "archived"} onClick={() => void archiveEvidence(String(item.id), load, setError)}>Archive Evidence</button> : null}
                     </div>
                   </article>
                 ))}
@@ -179,7 +179,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
             <section className="panel">
               <div className="section-toolbar">
                 <h2>Related Organization</h2>
-                <button type="button" disabled={archived || !hasPermission(permissions, "signal_entity.create")} onClick={() => setShowAttach("organization")}>Attach</button>
+                {hasPermission(permissions, "signal_entity.create") ? <button type="button" disabled={archived || !hasPermission(permissions, "signal_entity.create")} onClick={() => setShowAttach("organization")}>Attach</button> : null}
               </div>
               {detail.entities.organizations.length ? detail.entities.organizations.map((entity) => <p key={String(entity.signal_entity_id)}>{textValue(entity.display_name)} {entity.is_primary ? <span className="badge">Primary</span> : null}</p>) : <div className="empty-state">No organization is attached. Attach or create an organization before creating a candidate.</div>}
             </section>
@@ -187,7 +187,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
             <section className="panel">
               <div className="section-toolbar">
                 <h2>Related Contacts</h2>
-                <button type="button" disabled={archived || !hasPermission(permissions, "signal_entity.create")} onClick={() => setShowAttach("contact")}>Attach</button>
+                {hasPermission(permissions, "signal_entity.create") ? <button type="button" disabled={archived || !hasPermission(permissions, "signal_entity.create")} onClick={() => setShowAttach("contact")}>Attach</button> : null}
               </div>
               {detail.contacts.length ? detail.contacts.map((entity) => <p key={String(entity.signal_entity_id)}>{textValue(entity.display_name)}</p>) : <div className="empty-state">No contacts are attached.</div>}
             </section>
@@ -195,7 +195,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
             <section className="panel">
               <div className="section-toolbar">
                 <h2>Territory</h2>
-                <button type="button" disabled={archived || !hasPermission(permissions, "signal_entity.create")} onClick={() => setShowAttach("territory")}>Attach</button>
+                {hasPermission(permissions, "signal_entity.create") ? <button type="button" disabled={archived || !hasPermission(permissions, "signal_entity.create")} onClick={() => setShowAttach("territory")}>Attach</button> : null}
               </div>
               {detail.entities.territories.length ? detail.entities.territories.map((entity) => <p key={String(entity.signal_entity_id)}>{textValue(entity.display_name)} {entity.is_primary ? <span className="badge">Primary</span> : null}</p>) : <div className="empty-state">No territory is attached.</div>}
             </section>
@@ -211,7 +211,7 @@ export function SignalDetail({ signalId }: { signalId: string }) {
                 ))}
               </div>
               {detail.readiness.candidate_ready ? (
-                <button className="primary-button" type="button" disabled={archived || !hasPermission(permissions, "opportunity_candidate.create")} onClick={() => setShowCandidate(true)}>Create Opportunity Candidate</button>
+                (hasPermission(permissions, "opportunity_candidate.create") ? <button className="primary-button" type="button" disabled={archived || !hasPermission(permissions, "opportunity_candidate.create")} onClick={() => setShowCandidate(true)}>Create Opportunity Candidate</button> : null)
               ) : <p className="muted">Missing: {detail.readiness.missing_items.join(", ")}</p>}
             </section>
 
@@ -229,17 +229,17 @@ export function SignalDetail({ signalId }: { signalId: string }) {
               {detail.recommendations.map((item) => <p key={String(item.id)}>{textValue(item.title)} <span className="badge">{textValue(item.status)}</span></p>)}
             </section>
 
-            <section className="panel">
+            {hasPermission(permissions, "signal.timeline.read") ? <section className="panel">
               <h2>Event Timeline</h2>
               {detail.timeline_summary.length === 0 ? <div className="empty-state">No signal events found.</div> : detail.timeline_summary.map((item) => <p key={String(item.event_id)}>{dateValue(item.timestamp)} - {textValue(item.event_type)}</p>)}
-            </section>
+            </section> : null}
 
-            <section className="panel">
+            {hasPermission(permissions, "signal.audit.read") ? <section className="panel">
               <h2>Audit Summary</h2>
               {!hasPermission(permissions, "signal.audit.read") ? <div className="empty-state">Audit summary requires signal audit permission.</div> : null}
               {hasPermission(permissions, "signal.audit.read") && audit.length === 0 ? <div className="empty-state">No audit records found.</div> : null}
               {audit.map((item) => <p key={String(item.audit_id)}>{dateValue(item.created_at)} - {textValue(item.action)}</p>)}
-            </section>
+            </section> : null}
           </div>
 
           {showEvidence ? <EvidenceModal signalId={signalId} onClose={() => setShowEvidence(false)} onSaved={load} /> : null}
@@ -272,7 +272,7 @@ function LifecycleActions({ signal, permissions, ready, activeEvidenceCount, onA
   if (archived) return <div className="action-bar"><span className="muted">This signal is archived. Actions are limited.</span></div>;
   return (
     <>
-      <div className="action-bar">{actions.map((action) => <button key={action.label} type="button" disabled={action.disabled || !hasPermission(permissions, action.permission)} onClick={action.run}>{action.label}</button>)}</div>
+      <div className="action-bar">{actions.map((action) => (hasPermission(permissions, action.permission) ? <button key={action.label} type="button" disabled={action.disabled || !hasPermission(permissions, action.permission)} onClick={action.run}>{action.label}</button> : null))}</div>
       {modal ? <SignalActionModal action={modal} signalId={String(signal.id)} onClose={() => setModal(null)} onSaved={onReload} /> : null}
     </>
   );

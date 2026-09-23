@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandShell, MetricList, ObjectTable, Panel } from "../dashboard-components";
-import { getDashboardData, valueAt } from "../dashboard-data";
+import { valueAt } from "../dashboard-data";
 
-export default async function WorkflowsCenterPage() {
-  const data = await getDashboardData("workflows");
+export default function WorkflowsCenterPage() {
+  const dashboard = useDashboardData("workflows");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Workflow Operations View" state={dashboard} />;
   return (
     <CommandShell title="Workflow Operations View" purpose="Workflow instances, open work, overdue work, and escalations.">
       <div className="grid">

@@ -1,4 +1,5 @@
 "use client";
+import { Capability } from "../../access-control";
 
 import { useEffect, useState } from "react";
 import { readToken, syncosFetch } from "../../intelligence/api";
@@ -74,7 +75,7 @@ export default function OpportunityCapacityMatchingPage() {
         <div className="filter-row">
           <input value={opportunityId} onChange={(event) => setOpportunityId(event.target.value)} placeholder="Opportunity ID" />
           <button className="secondary-button" onClick={() => openDetail()}>Open</button>
-          <button className="primary-button" onClick={recalculate}>Recalculate</button>
+          <Capability permission="opportunity_capacity_match.recalculate"><button className="primary-button" onClick={recalculate}>Recalculate</button></Capability>
         </div>
         <div className="filter-row">
           <input value={filter.capability} onChange={(event) => setFilter({ ...filter, capability: event.target.value })} placeholder="Capability" />

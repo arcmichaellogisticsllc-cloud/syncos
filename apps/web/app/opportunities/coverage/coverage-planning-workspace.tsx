@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { defaultOpportunityPermissions, dateValue, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../../intelligence/api";
@@ -78,7 +78,7 @@ export function CoveragePlanningWorkspace() {
   useEffect(() => {
     setToken(readToken());
     const stored = readPermissions();
-    const next = stored.length ? stored : defaultOpportunityPermissions;
+    const next = stored;
     setPermissions(next);
   }, []);
 
@@ -249,7 +249,7 @@ export function CoveragePlanFormPage({ mode, id, initialOpportunityId = "" }: { 
 
   useEffect(() => {
     setToken(readToken());
-    setPermissions(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissions(readPermissions());
   }, []);
 
   useEffect(() => {
@@ -365,7 +365,7 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
 
   useEffect(() => {
     setToken(readToken());
-    setPermissions(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissions(readPermissions());
   }, []);
 
   useEffect(() => {
@@ -792,9 +792,9 @@ function ApprovalPanel({ detail, permissions, setModal }: { detail: CoverageDeta
         ["Required override fields", detail.required_override_fields.length ? detail.required_override_fields.map(humanize).join(", ") : "None"],
         ["Boundary", detail.project_creation_boundary ?? "Coverage approval creates no project."],
       ]} />
-      <button className="primary-button" disabled={!hasPermission(permissions, "coverage_plan.approve_handoff") || blockers.length > 0} onClick={() => setModal({ type: "approve" })}>
+      {hasPermission(permissions, "coverage_plan.approve_handoff") ? <button className="primary-button" disabled={!hasPermission(permissions, "coverage_plan.approve_handoff") || blockers.length > 0} onClick={() => setModal({ type: "approve" })}>
         Approve For Handoff
-      </button>
+      </button> : null}
       {blockers.length ? <div className="error-banner">Hard stop gaps must be resolved before handoff approval.</div> : null}
     </>
   );
@@ -1074,7 +1074,7 @@ function RecordModal({ title, children, onClose, onSubmit, error: externalError 
 }
 
 function SessionPanel({ token, permissions, setToken, setPermissions }: { token: string; permissions: string[]; setToken: (token: string) => void; setPermissions: (permissions: string[]) => void }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   const [nextToken, setNextToken] = useState(token);
   const [nextPermissions, setNextPermissions] = useState(permissions.join(", "));
   useEffect(() => {

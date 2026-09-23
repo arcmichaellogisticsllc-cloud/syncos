@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState, useEffect } from "react";
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { syncosFetch } from "../../intelligence/api";
 
 type DesignSegment = {

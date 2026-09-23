@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -161,7 +162,7 @@ export function OpportunityPipeline() {
           </div>
           <div className="form-actions">
             <button type="button" onClick={() => setView(view === "board" ? "table" : "board")}>{view === "board" ? "Table View" : "Board View"}</button>
-            <Link className="primary-button link-button" href="/opportunities/new" aria-disabled={!hasPermission(session.permissions, "opportunity.create")}>Create Opportunity</Link>
+            <Link className="primary-button link-button" href="/opportunities/new" allowed={hasPermission(session.permissions, "opportunity.create")}>Create Opportunity</Link>
           </div>
         </div>
         <div className="filter-grid">
@@ -357,7 +358,7 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
         </div>
         <div className="warning-box">Candidate-backed creation uses the explicit conversion endpoint. No project, capacity deployment, or finance record is created.</div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update")}>{mode === "create" ? "Create Opportunity" : "Save Opportunity"}</button>
+          {hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update")}>{mode === "create" ? "Create Opportunity" : "Save Opportunity"}</button> : null}
           <Link href={opportunityId ? `/opportunities/${opportunityId}` : "/opportunities/pipeline"}>Cancel</Link>
         </div>
       </form>
@@ -438,17 +439,17 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
               </div>
               <div className="form-actions">
                 <Link href={`/opportunities/${opportunity.id}/edit`}>Edit Opportunity</Link>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.submit_review") || opportunity.productStatus !== "draft"} onClick={() => setModal("review")}>Submit for Pursuit Review</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursuit_approve") || !["draft", "pursuit_review"].includes(opportunity.productStatus)} onClick={() => setModal("approve")}>Approve Pursuit</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursue") || opportunity.backendStatus !== "pursuit_approved"} onClick={() => setModal("pursue")}>Begin Pursuit</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.proposal") || opportunity.backendStatus !== "pursuing"} onClick={() => setModal("proposal")}>Move to Proposal</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.productStatus !== "proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.award") || opportunity.backendStatus !== "negotiation"} onClick={() => setModal("award")}>Mark Awarded</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.defer") || opportunity.backendStatus === "archived"} onClick={() => setModal("defer")}>Defer</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.archive") || opportunity.backendStatus === "archived"} onClick={() => setModal("archive")}>Archive</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.score") || opportunity.backendStatus === "archived"} onClick={() => void scoreOpportunity(opportunity, load, setError)}>Score Opportunity</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "capacity_requirement.create") || opportunity.backendStatus === "archived"} onClick={() => setModal("capacity")}>Add Capacity Requirement</button>
+                {hasPermission(session.permissions, "opportunity.submit_review") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.submit_review") || opportunity.productStatus !== "draft"} onClick={() => setModal("review")}>Submit for Pursuit Review</button> : null}
+                {hasPermission(session.permissions, "opportunity.pursuit_approve") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursuit_approve") || !["draft", "pursuit_review"].includes(opportunity.productStatus)} onClick={() => setModal("approve")}>Approve Pursuit</button> : null}
+                {hasPermission(session.permissions, "opportunity.pursue") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursue") || opportunity.backendStatus !== "pursuit_approved"} onClick={() => setModal("pursue")}>Begin Pursuit</button> : null}
+                {hasPermission(session.permissions, "opportunity.proposal") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.proposal") || opportunity.backendStatus !== "pursuing"} onClick={() => setModal("proposal")}>Move to Proposal</button> : null}
+                {hasPermission(session.permissions, "opportunity.negotiation") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.productStatus !== "proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button> : null}
+                {hasPermission(session.permissions, "opportunity.award") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.award") || opportunity.backendStatus !== "negotiation"} onClick={() => setModal("award")}>Mark Awarded</button> : null}
+                {hasPermission(session.permissions, "opportunity.lost") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button> : null}
+                {hasPermission(session.permissions, "opportunity.defer") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.defer") || opportunity.backendStatus === "archived"} onClick={() => setModal("defer")}>Defer</button> : null}
+                {hasPermission(session.permissions, "opportunity.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.archive") || opportunity.backendStatus === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+                {hasPermission(session.permissions, "opportunity.score") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.score") || opportunity.backendStatus === "archived"} onClick={() => void scoreOpportunity(opportunity, load, setError)}>Score Opportunity</button> : null}
+                {hasPermission(session.permissions, "capacity_requirement.create") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_requirement.create") || opportunity.backendStatus === "archived"} onClick={() => setModal("capacity")}>Add Capacity Requirement</button> : null}
                 <button type="button" onClick={() => setModal("research")}>Analyze Pursuit</button>
               </div>
             </div>
@@ -490,7 +491,7 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "opportunity").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <OpportunityTab tab={tab} opportunity={opportunity} scoreSummary={scoreSummary} permissions={session.permissions} onCapacity={() => setModal("capacity")} />
             </section>
@@ -1077,7 +1078,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
 }
 
 function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return (
     <section className="workspace-panel">
       <div className="section-toolbar">
@@ -1145,7 +1146,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function useSession() {
   const [token, setTokenState] = useState(readToken());
-  const [permissions, setPermissionsState] = useState<string[]>(unique([...defaultOpportunityPermissions, ...readPermissions()]));
+  const [permissions, setPermissionsState] = useState<string[]>(readPermissions());
   function setToken(next: string) {
     setTokenState(next);
     saveToken(next);

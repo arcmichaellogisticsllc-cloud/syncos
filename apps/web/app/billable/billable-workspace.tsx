@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +13,7 @@ const rateSources = ["contract_rate", "project_rate", "customer_rate", "manual_r
 const rateConfidences = ["unknown", "low", "medium", "high", "confirmed"];
 const acceptanceStatuses = ["not_required", "pending", "accepted", "rejected", "correction_required", "disputed"];
 const packageStatuses = ["not_started", "incomplete", "ready", "submitted_later", "accepted_later", "rejected_later"];
-const tabs = ["overview", "qc", "production", "work_order", "project", "quantity_amount", "rate", "documentation", "acceptance", "retainage", "holds_disputes", "timeline", "audit", "future_settlement", "future_invoice"];
+const tabs = ["overview", "qc", "production", "work_order", "project", "quantity_amount", "rate", "documentation", "acceptance", "retainage", "holds_disputes", "timeline", "audit"];
 
 type BillableDetailShape = {
   billable_item?: SyncRecord;
@@ -89,7 +90,7 @@ export function BillableQueue() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review billable readiness and settlement blockers.</div> : null}
       {loading ? <div className="empty-state">Loading billable items...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -101,7 +102,7 @@ export function BillableQueue() {
                 <Link className="primary-button" href={firstHref(visible, "/billable")} aria-disabled={!visible.length}>Review Next Billable Item</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "held"), "/billable")} aria-disabled={!rows.some((row) => row.status === "held")}>Open Holds</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed"), "/billable")} aria-disabled={!rows.some((row) => row.status === "disputed")}>Open Disputes</Link>
-                <Link className="link-button" href="/billable/new" aria-disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</Link>
+                <Link className="link-button" href="/billable/new" allowed={hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -113,7 +114,7 @@ export function BillableQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyBillableQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptyBillableQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("ready_for_review"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -184,7 +185,7 @@ export function BillableCreate() {
         <div className="warning-box">Backend validation requires approved QC and approved production, blocks duplicates unless overridden, and writes event/audit/system_action records.</div>
         <BillableFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</button>
+          {hasPermission(session.permissions, "billable_item.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</button> : null}
           <Link className="link-button" href="/billable">Cancel</Link>
         </div>
       </form>
@@ -254,7 +255,7 @@ export function BillableEdit({ billableId }: { billableId: string }) {
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, and settlement-created items are backend read-only.</div>
           <BillableFormFields form={form} setForm={setForm} related={emptyRelated} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "billable_item.update")}>Save Billable Item</button>
+            {hasPermission(session.permissions, "billable_item.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "billable_item.update")}>Save Billable Item</button> : null}
             <Link className="link-button" href={`/billable/${billableId}`}>Cancel</Link>
           </div>
         </form>
@@ -315,7 +316,7 @@ export function BillableDetail({ billableId }: { billableId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/billable/${billableId}/edit`} aria-disabled={!hasPermission(session.permissions, "billable_item.update")}>Edit Billable Item</Link>
+                <Link className="link-button" href={`/billable/${billableId}/edit`} allowed={hasPermission(session.permissions, "billable_item.update")}>Edit Billable Item</Link>
                 <ActionButton permission="billable_item.recalculate_readiness" session={session} disabled={viewOnly(item)} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="billable_item.mark_ready" session={session} disabled={viewOnly(item) || ["held", "disputed"].includes(String(item.status)) || blockers.length > 0} onClick={() => setModal("ready")}>Mark Ready For Settlement</ActionButton>
                 <ActionButton permission="billable_item.place_hold" session={session} disabled={viewOnly(item) || String(item.status) === "held"} onClick={() => setModal("hold")}>Place Hold</ActionButton>
@@ -371,7 +372,7 @@ export function BillableDetail({ billableId }: { billableId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "billable_item").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <BillableTab tab={tab} detail={detail} item={item} />
             </section>
@@ -408,7 +409,7 @@ function BillableShell({ title, purpose, children }: { title: string; purpose: s
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Billable</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -544,17 +545,14 @@ function BillableFormFields({ form, setForm, related, includeCreate = false, dis
   );
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test billable actions.</p></div><button type="button" onClick={session.applyDefaults}>Use billable defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setTokenState] = useState("");
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : billableDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -644,7 +642,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {

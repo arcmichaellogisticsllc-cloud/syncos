@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { BoardColumn, CommandHero, CommandShell, InsightStrip, OperatorLink, PriorityDecisionCard, WorkQueue } from "../dashboard-components";
-import { formatValue, getDashboardData, valueAt } from "../dashboard-data";
+import { formatValue, valueAt } from "../dashboard-data";
 
-export default async function OperationsPage() {
-  const data = await getDashboardData("operations");
+export default function OperationsPage() {
+  const dashboard = useDashboardData("operations");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Operations Board" state={dashboard} />;
   const coverage = valueAt(data, "capacityCoverageRatio.currentValue");
   const activatedProviders = valueAt(data, "activatedProviders");
   const productionVolume = valueAt(data, "productionVolume");

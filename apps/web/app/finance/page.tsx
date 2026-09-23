@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandHero, CommandShell, CountList, InsightStrip, MetricList, ObjectTable, OperatorLink, Panel, WorkQueue } from "../dashboard-components";
-import { formatValue, getDashboardData, valueAt } from "../dashboard-data";
+import { formatValue, valueAt } from "../dashboard-data";
 
-export default async function FinancePage() {
-  const data = await getDashboardData("finance");
+export default function FinancePage() {
+  const dashboard = useDashboardData("finance");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Finance Command Center" state={dashboard} />;
   const settlementConversion = valueAt(data, "settlementConversionRate.currentValue");
   const cashConversion = valueAt(data, "cashConversionRate.currentValue");
   const arAging = valueAt(data, "arAging", []);

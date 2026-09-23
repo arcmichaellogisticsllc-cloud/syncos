@@ -1,6 +1,7 @@
 "use client";
+import { permittedRecordTabs } from "../intelligence/api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -70,7 +71,7 @@ export function ProjectDirectory() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Projects.</div> : null}
       {loading ? <div className="empty-state">Loading projects...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -189,7 +190,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/projects/${projectId}/edit`} aria-disabled={!hasPermission(session.permissions, "project.update")}>Edit Project</Link>
+                <Link className="link-button" href={`/projects/${projectId}/edit`} allowed={hasPermission(session.permissions, "project.update")}>Edit Project</Link>
                 <ActionButton permission="project.recalculate_readiness" session={session} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="project.mark_ready" session={session} disabled={String(project.status) !== "planning"} onClick={() => setModal("mark_ready")}>Mark Ready For Work</ActionButton>
                 <ActionButton permission="project.start" session={session} disabled={String(project.status) !== "ready_for_work"} onClick={() => setModal("start")}>Start Project</ActionButton>
@@ -233,7 +234,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "project").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <ProjectTab tab={tab} detail={detail} project={project} session={session} />
             </section>
@@ -332,7 +333,7 @@ export function ProjectEdit({ projectId }: { projectId: string }) {
             <label>Customer validation requirements JSON<textarea value={form.customer_validation_requirements ?? ""} onChange={(event) => setForm({ ...form, customer_validation_requirements: event.target.value })} /></label>
           </div>
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "project.update")}>Save Project</button>
+            {hasPermission(session.permissions, "project.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "project.update")}>Save Project</button> : null}
             <Link className="link-button" href={`/projects/${projectId}`}>Cancel</Link>
           </div>
         </form>
@@ -364,7 +365,7 @@ function ProjectShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Projects</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -498,7 +499,7 @@ function LifecycleModal({ type, projectId, project, detail, session, onClose, on
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test project actions.</p></div><button type="button" onClick={session.applyDefaults}>Use project defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -507,7 +508,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -533,7 +534,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {
