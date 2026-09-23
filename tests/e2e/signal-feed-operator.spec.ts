@@ -26,9 +26,11 @@ test.describe("Signal Feed operator hardening", () => {
     const page = await context.newPage();
     await page.goto(route);
 
-    await expect(page.getByRole("heading", { name: "Login required" })).toBeVisible();
-    await expect(page.getByText("Sign in to review market intelligence and manage signal queues.")).toBeVisible();
-    await expect(page.getByText("Authentication is required before this workspace can load.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Access unavailable" })).toBeVisible();
+    await expect(page.getByText("Sign in to continue.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in with another account" })).toHaveAttribute("href", "/login");
+    await expect(page.getByRole("button", { name: "Create Signal" })).toHaveCount(0);
+    await expect(page.locator("table,form")).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText(/developer|token|jwt|e2e|permissions textarea/i);
 
     await context.close();

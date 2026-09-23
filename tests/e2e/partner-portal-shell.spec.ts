@@ -61,7 +61,8 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("No Customer rate or margin")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Company" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compliance", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
+    // This P1–P6 fixture has no production-read authority; keep the shortcut hidden.
+    await expect(page.getByRole("link", { name: "Production", exact: true })).toHaveCount(0);
     await expect(page.getByText("Finance")).toHaveCount(0);
     await expect(page.getByText("Collections")).toHaveCount(0);
     await expect(page.getByText("Sync margin")).toHaveCount(0);
@@ -133,8 +134,9 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await page.setViewportSize({ width: 390, height: 860 });
     await page.goto("/syncfield/today");
     await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Map" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Production", exact: true })).toBeVisible();
+    // This earlier portal fixture has no map or daily-production permissions.
+    await expect(page.getByRole("link", { name: "Map" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Production", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Command Center" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Finance" })).toHaveCount(0);
     await page.goto("/partner/field/today");

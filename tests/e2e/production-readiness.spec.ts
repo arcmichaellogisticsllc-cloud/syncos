@@ -167,19 +167,23 @@ test.describe.serial("P17 production readiness release-candidate acceptance", ()
     expect(command.status()).toBeGreaterThanOrEqual(403);
   });
 
-  test("critical drill-through routes load for internal release users", async ({ page }) => {
+  test("critical drill-through routes enforce each internal release user's permissions", async ({ page }) => {
     test.setTimeout(120_000);
     await page.addInitScript((token) => window.localStorage.setItem("syncos.apiToken", token), fixture.internalToken);
     for (const [route, text] of [
       ["/command-center", "Command Center"],
       ["/partner-performance", "Partner Performance"],
       ["/opportunities/capacity-matching", "Opportunity Capacity Matching"],
-      ["/production-dashboard", "Production Dashboard"],
       ["/accepted-production-financials", "Accepted Production Financials"],
-      ["/payment-retainage-adjustments", "Payment, Retainage, Adjustments"],
     ]) {
       await page.goto(route);
       await expect(page.getByRole("heading", { level: 1, name: text })).toBeVisible({ timeout: 30_000 });
+    }
+    // This fixture has neither production_dashboard.read nor partner_payment.read.
+    for (const route of ["/production-dashboard", "/payment-retainage-adjustments"]) {
+      await page.goto(route);
+      await expect(page.getByRole("heading", { name: "Access unavailable", exact: true })).toBeVisible();
+      await expect(page.locator("form")).toHaveCount(0);
     }
   });
 
