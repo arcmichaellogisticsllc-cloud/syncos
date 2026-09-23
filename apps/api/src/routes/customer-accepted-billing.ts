@@ -38,7 +38,28 @@ export async function requireLinkedBillableAcceptance(client: PoolClient, tenant
   if (billable.accepted_production_source_id) {
     const source = (await client.query("SELECT source_kind,accepted_quantity,unit_of_measure FROM accepted_production_financial_sources WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, billable.accepted_production_source_id])).rows[0];
     if (!source) throw new BadRequestException("Active accepted-production source is required");
-    if (source.source_kind === "customer_coil_supplement") quantitySource = { customer_accepted_quantity: source.accepted_quantity, unit_of_measure: source.unit_of_measure };
+    if (["customer_coil_supplement", "partner_coil_supplement"].includes(source.source_kind)) quantitySource = { customer_accepted_quantity: source.accepted_quantity, unit_of_measure: source.unit_of_measure };
   }
   validateAcceptedBillingQuantity(quantitySource, Number(billable.billable_quantity), billable.unit);
+}
+
+export async function requireFinancialItemAcceptance(client: PoolClient, tenantId: string, item: Record<string, any>) {
+  if (item.billable_item_id) {
+    const billable = (await client.query("SELECT * FROM billable_items WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [tenantId, item.billable_item_id])).rows[0];
+    if (!billable) throw new BadRequestException("Billable source is unavailable");
+    await requireLinkedBillableAcceptance(client, tenantId, { ...billable, billable_quantity: item.quantity });
+  } else if (item.production_record_id) {
+    const production = (await client.query("SELECT * FROM production_records WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [tenantId, item.production_record_id])).rows[0];
+    if (!production) throw new BadRequestException("Production source is unavailable");
+    const source = item.accepted_production_source_id
+      ? (await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, item.accepted_production_source_id])).rows[0] : null;
+    if (item.accepted_production_source_id && !source) throw new BadRequestException("Accepted-production source is unavailable");
+    await requireLinkedBillableAcceptance(client, tenantId, {
+      production_record_id: production.id,
+      customer_qc_decision_id: source?.customer_qc_decision_id,
+      accepted_production_source_id: source?.id,
+      billable_quantity: item.quantity,
+      unit: item.unit ?? production.unit ?? production.unit_type,
+    });
+  }
 }

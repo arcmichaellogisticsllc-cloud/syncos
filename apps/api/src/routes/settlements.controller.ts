@@ -1,4 +1,4 @@
-import { requireLinkedBillableAcceptance } from "./customer-accepted-billing";
+import { requireLinkedBillableAcceptance, requireFinancialItemAcceptance } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
@@ -464,6 +464,7 @@ export class SettlementsController {
   async approveSettlement(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     return this.write(request, "settlement.approve", "settlement.approved", "settlement", async (client) => {
       const before = await this.requireRecord(client, "settlements", request.auth.tenantId, id, "settlement not found");
+      await this.requireSettlementItemsAcceptance(client, request.auth.tenantId, id);
       if (before.status === "customer_review") {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, customerReviewRoles, "Customer Validator or internal review authority is required");
         return this.updateSettlementStatus(client, request, before, id, "approved");
@@ -691,6 +692,7 @@ export class SettlementsController {
       return await this.write(request, "settlement_item.create", "settlement_item.created", "settlement_item", async (client) => {
         await this.requireRecord(client, "settlements", request.auth.tenantId, id, "settlement not found");
         const productionRecord = await this.requireBillableProduction(client, request.auth.tenantId, body.production_record_id);
+        await requireLinkedBillableAcceptance(client, request.auth.tenantId, { production_record_id: productionRecord.id, billable_quantity: quantity, unit: productionRecord.unit ?? productionRecord.unit_type });
         const rateCode = await this.requireRateCodeForProduction(client, request.auth.tenantId, body.rate_code_id, String(productionRecord.unit_type));
         const item = await insertTenantRecord(client, "settlement_items", request.auth.tenantId, {
           settlement_id: id,
@@ -726,6 +728,7 @@ export class SettlementsController {
       if (body.chargeback_amount !== undefined) values.chargeback_amount = this.requireNonNegative(body.chargeback_amount, "chargeback_amount");
       return await this.write(request, "settlement_item.update", "settlement_item.updated", "settlement_item", async (client) => {
         const before = await this.requireRecord(client, "settlement_items", request.auth.tenantId, id, "settlement item not found");
+        if (before.billable_item_id && body.production_record_id && body.production_record_id !== before.production_record_id) throw new BadRequestException("Billable-linked settlement production cannot be reassigned");
         if (body.production_record_id) {
           const productionRecord = await this.requireBillableProduction(client, request.auth.tenantId, body.production_record_id);
           values.production_record_id = productionRecord.id;
@@ -735,6 +738,13 @@ export class SettlementsController {
           if (!productionRecord) throw new BadRequestException("rate_code_id updates are only supported for legacy settlement items");
           const rateCode = await this.requireRateCodeForProduction(client, request.auth.tenantId, body.rate_code_id, String(productionRecord.unit_type));
           values.rate_code_id = rateCode.id;
+        }
+        const requestedQuantity = Number(values.quantity ?? before.quantity);
+        if (before.billable_item_id) {
+          const billable = await this.requireRecord(client, "billable_items", request.auth.tenantId, String(before.billable_item_id), "billable item not found");
+          await requireLinkedBillableAcceptance(client, request.auth.tenantId, { ...billable, billable_quantity: requestedQuantity });
+        } else if (productionRecord) {
+          await requireLinkedBillableAcceptance(client, request.auth.tenantId, { production_record_id: productionRecord.id, billable_quantity: requestedQuantity, unit: before.unit ?? productionRecord.unit ?? productionRecord.unit_type });
         }
         Object.assign(values, this.calculateSettlementItemAmounts({ ...before, ...values, gross_amount: body.gross_amount }));
         const after = await updateTenantRecord(client, "settlement_items", request.auth.tenantId, id, values);
@@ -949,6 +959,7 @@ export class SettlementsController {
       return await this.write(request, `settlement.mark_${mode}_ready`, `settlement.${mode}_ready`, "settlement", async (client) => {
         const before = await this.requireRecord(client, "settlements", request.auth.tenantId, id, "settlement not found");
         if (before.status !== "approved") throw new BadRequestException("settlement must be approved");
+        await this.requireSettlementItemsAcceptance(client, request.auth.tenantId, id);
         const itemType = mode === "invoice" ? "customer_billable" : "contractor_payable";
         if (!(await this.settlementHasItemType(client, request.auth.tenantId, id, itemType))) throw new BadRequestException(`settlement has no ${itemType} items`);
         const futureLink = mode === "invoice" ? "invoice_item_id" : "payable_item_id";
@@ -969,6 +980,11 @@ export class SettlementsController {
       if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
       throw new BadRequestException((error as Error).message);
     }
+  }
+
+  private async requireSettlementItemsAcceptance(client: PoolClient, tenantId: string, settlementId: string) {
+    const items = await client.query("SELECT * FROM settlement_items WHERE tenant_id=$1 AND settlement_id=$2 AND deleted_at IS NULL AND status NOT IN ('voided','archived') ORDER BY production_record_id, id", [tenantId, settlementId]);
+    for (const item of items.rows) await requireFinancialItemAcceptance(client, tenantId, item);
   }
 
   private async listSettlementRows(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {

@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const { Client } = require("pg");
+const { createCustomerAcceptanceFixture } = require("./customer-acceptance-fixture");
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:3100";
 const sprint7Permissions = [
@@ -40,6 +41,10 @@ async function main() {
 
   const client = new Client({ connectionString });
   await client.connect();
+  const downstreamBefore = (await client.query(`SELECT
+    (SELECT count(*)::int FROM invoices) AS invoices,
+    (SELECT count(*)::int FROM payments) AS payments,
+    (SELECT count(*)::int FROM ar_records) AS ar_records`)).rows[0];
 
   const seeded = await client.query(`
     SELECT u.id AS user_id, t.id AS tenant_id, tu.id AS tenant_user_id
@@ -200,9 +205,9 @@ async function main() {
       (SELECT count(*)::int FROM payments) AS payments,
       (SELECT count(*)::int FROM ar_records) AS ar_records
   `);
-  if (forbiddenCounts.rows[0].invoices !== 0) throw new Error("Sprint 7 created invoices");
-  if (forbiddenCounts.rows[0].payments !== 0) throw new Error("Sprint 7 created payments");
-  if (forbiddenCounts.rows[0].ar_records !== 0) throw new Error("Sprint 7 created AR records");
+  if (forbiddenCounts.rows[0].invoices !== downstreamBefore.invoices) throw new Error("Sprint 7 created invoices");
+  if (forbiddenCounts.rows[0].payments !== downstreamBefore.payments) throw new Error("Sprint 7 created payments");
+  if (forbiddenCounts.rows[0].ar_records !== downstreamBefore.ar_records) throw new Error("Sprint 7 created AR records");
 
   await client.end();
   console.log("sprint7 smoke passed");
@@ -262,6 +267,12 @@ async function createBaseData(client, tenantId, userId, marker) {
     `,
     [tenantId, project.rows[0].id, workOrder.rows[0].id, provider.rows[0].id],
   );
+  const crew = (await client.query("INSERT INTO crews (tenant_id,capacity_provider_id,name,crew_type,status) VALUES ($1,$2,$3,'splicing','active') RETURNING id", [tenantId,provider.rows[0].id,`Acceptance crew ${marker}`])).rows[0];
+  await createCustomerAcceptanceFixture(client, {
+    tenantId, userId, organizationId: organization.rows[0].id, providerId: provider.rows[0].id,
+    crewId: crew.id, projectId: project.rows[0].id, workOrderId: workOrder.rows[0].id,
+    productionId: billable.rows[0].id, quantity: 10, unit: "feet",
+  });
   return {
     organizationId: organization.rows[0].id,
     billableProductionId: billable.rows[0].id,

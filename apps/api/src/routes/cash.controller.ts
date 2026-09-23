@@ -1,4 +1,4 @@
-import { requireLinkedBillableAcceptance } from "./customer-accepted-billing";
+import { requireLinkedBillableAcceptance, requireFinancialItemAcceptance } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
@@ -289,6 +289,7 @@ export class CashController {
       const before = await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
       requireString(body.approval_note, "approval_note is required");
       await this.requireActiveInvoiceItems(client, request.auth.tenantId, id);
+      await this.requireInvoiceItemsAcceptance(client, request.auth.tenantId, id);
       if (!["pending", "not_submitted"].includes(String(before.approval_status)) && before.status !== "ready_for_review" && before.status !== "under_review") {
         throw new BadRequestException("invoice is not ready for approval");
       }
@@ -340,6 +341,7 @@ export class CashController {
       requireString(body.sent_note, "sent_note is required");
       const before = await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
       if (before.status !== "approved" || before.approval_status !== "approved") throw new BadRequestException("invoice must be approved");
+      await this.requireInvoiceItemsAcceptance(client, request.auth.tenantId, id);
       const originalAmount = Number(before.original_amount || before.total_amount || 0);
       const receivable = this.calculateReceivableState(before.due_date, originalAmount, Number(before.paid_amount ?? 0), "sent");
       const after = await updateTenantRecord(client, "invoices", request.auth.tenantId, id, {
@@ -505,6 +507,9 @@ export class CashController {
       if (source.billable_item_id) {
         const billable = await this.requireRecord(client, "billable_items", request.auth.tenantId, String(source.billable_item_id), "billable item not found");
         await requireLinkedBillableAcceptance(client, request.auth.tenantId, { ...billable, billable_quantity: quantity });
+      } else if (source.production_record_id) {
+        const production = await this.requireRecord(client, "production_records", request.auth.tenantId, String(source.production_record_id), "production record not found");
+        await requireLinkedBillableAcceptance(client, request.auth.tenantId, { production_record_id: production.id, billable_quantity: quantity, unit: source.unit ?? production.unit ?? production.unit_type });
       }
 
       if (quantity > Number(source.quantity ?? 0) && !override) throw new BadRequestException("quantity cannot exceed settlement item quantity without override");
@@ -2540,6 +2545,11 @@ export class CashController {
       [tenantId, invoiceId],
     );
     return result.rows[0] ?? { last_payment_at: null, last_payment_amount: null };
+  }
+
+  private async requireInvoiceItemsAcceptance(client: PoolClient, tenantId: string, invoiceId: string) {
+    const items = await client.query("SELECT * FROM invoice_items WHERE tenant_id=$1 AND invoice_id=$2 AND deleted_at IS NULL AND status NOT IN ('voided','archived') ORDER BY production_record_id, id", [tenantId, invoiceId]);
+    for (const item of items.rows) await requireFinancialItemAcceptance(client, tenantId, item);
   }
 
   private async requireSettlementItemForInvoice(client: PoolClient, tenantId: string, id: unknown) {

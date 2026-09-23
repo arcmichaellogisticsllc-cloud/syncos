@@ -126,3 +126,71 @@ test('invoice locking acquires deterministic production locks before billable ro
   assert.match(calls[2].sql, /FOR UPDATE/);
   assert.equal(rows[0].status, 'held');
 });
+
+const { SettlementsController } = require('../apps/api/dist/routes/settlements.controller');
+const { CashController } = require('../apps/api/dist/routes/cash.controller');
+const financeReq = { auth: { tenantId: 'tenant', userId: 'user' } };
+function acceptanceClient(decision) {
+  return { query: async sql => {
+    if (/INSERT|UPDATE|DELETE/.test(sql) && !sql.includes('FOR UPDATE')) throw new Error('Unexpected financial write before acceptance validation');
+    return { rows: sql.includes('FROM customer_qc_decisions') && decision ? [decision] : [] };
+  } };
+}
+
+test('direct-production settlement creation requires customer acceptance despite billable status flags', async () => {
+  const controller = new SettlementsController({});
+  controller.write = async (_r, _a, _e, _t, work) => work(acceptanceClient(null));
+  controller.requireRecord = async () => ({ id: 'settlement' });
+  controller.requireBillableProduction = async () => ({ id: 'production', status: 'billable', billable_status: 'billable', unit_type: 'feet' });
+  await assert.rejects(controller.createSettlementItem(financeReq, 'settlement', { production_record_id: 'production', quantity: 10, unit_rate: 5 }), /customer acceptance is required/);
+});
+
+test('linked settlement quantity edits cannot exceed current customer acceptance or reassign source', async () => {
+  const controller = new SettlementsController({});
+  controller.write = async (_r, _a, _e, _t, work) => work(acceptanceClient({ id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }));
+  controller.requireRecord = async (_c, table) => table === 'settlement_items'
+    ? { id: 'item', billable_item_id: 'billable', production_record_id: 'production', quantity: 50 }
+    : { id: 'billable', production_record_id: 'production', customer_qc_decision_id: 'decision', billable_quantity: 50, unit: 'feet' };
+  await assert.rejects(controller.updateSettlementItem(financeReq, 'item', { quantity: 51 }), /customer-accepted quantity/);
+  await assert.rejects(controller.updateSettlementItem(financeReq, 'item', { production_record_id: 'other-production' }), /cannot be reassigned/);
+});
+
+test('invoice items from direct-production settlements cannot bypass customer acceptance', async () => {
+  const controller = new CashController({});
+  controller.write = async (_r, _a, _e, _t, work) => work(acceptanceClient(null));
+  controller.requireRecord = async (_c, table) => table === 'invoices' ? { id: 'invoice', status: 'draft' } : { id: 'production', unit_type: 'feet' };
+  controller.requireSettlementItemForInvoice = async () => ({ id: 'item', production_record_id: 'production', status: 'invoice_ready', quantity: 10 });
+  controller.ensureNoDuplicateInvoiceItem = async () => {};
+  await assert.rejects(controller.addInvoiceItem(financeReq, 'invoice', { settlement_item_id: 'item' }), /customer acceptance is required/);
+});
+
+function staleProductionItemsClient() {
+  return { query: async sql => {
+    if (/INSERT|UPDATE|DELETE/.test(sql) && !sql.includes('FOR UPDATE')) throw new Error('Unexpected financial transition write');
+    if (sql.includes('FROM settlement_items') || sql.includes('FROM invoice_items')) return { rows: [{ id: 'item', production_record_id: 'production', quantity: 10 }] };
+    if (sql.includes('FROM production_records')) return { rows: [{ id: 'production', unit_type: 'feet' }] };
+    return { rows: [] };
+  } };
+}
+
+test('settlement approval and both readiness transitions recheck current customer acceptance', async () => {
+  const controller = new SettlementsController({});
+  controller.write = async (_r, _a, _e, _t, work) => work(staleProductionItemsClient());
+  controller.requireRecord = async () => ({ id: 'settlement', status: 'customer_review' });
+  await assert.rejects(controller.approveSettlement(financeReq, 'settlement', {}), /customer acceptance is required/);
+  controller.requireRecord = async () => ({ id: 'settlement', status: 'approved' });
+  for (const mode of ['invoice', 'payable']) {
+    await assert.rejects(controller.markSettlementReadyFlag(financeReq, 'settlement', { ready_note: 'Reviewed' }, mode), /customer acceptance is required/);
+  }
+});
+
+test('draft invoice approval and first sending cannot use stale production acceptance', async () => {
+  const controller = new CashController({});
+  controller.write = async (_r, _a, _e, _t, work) => work(staleProductionItemsClient());
+  controller.requireRoleAuthority = async () => {};
+  controller.requireActiveInvoiceItems = async () => {};
+  controller.requireRecord = async () => ({ id: 'invoice', status: 'ready_for_review', approval_status: 'pending' });
+  await assert.rejects(controller.approveInvoice(financeReq, 'invoice', { approval_note: 'Reviewed' }), /customer acceptance is required/);
+  controller.requireRecord = async () => ({ id: 'invoice', status: 'approved', approval_status: 'approved' });
+  await assert.rejects(controller.markSent(financeReq, 'invoice', { sent_note: 'Send' }), /customer acceptance is required/);
+});

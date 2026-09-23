@@ -4,6 +4,7 @@ import { installStoredSession } from "../helpers/auth";
 import { openAction, expectModal, submitModal } from "../helpers/modal";
 import { expectRouteHealthy } from "../helpers/page-assertions";
 import { withDb } from "../helpers/db";
+import { prepareActionCustomerAcceptance } from "../helpers/action-state-customer-acceptance";
 import { captureBoundaryCounts, expectBoundaryUnchanged } from "../helpers/boundary-assertions";
 import { readE2EManifest } from "../helpers/manifest";
 
@@ -55,6 +56,11 @@ async function fillArchiveReason(page: Page): Promise<void> {
 
 test.describe("Action-state full submit certification", () => {
   test.use({ storageState: personas.systemAdmin.storageState });
+
+  test.beforeAll(async () => {
+    await withDb(client => prepareActionCustomerAcceptance(client, TENANT_ID, p["system-admin"].userId,
+      [s.settlementDraft, s.settlementUnderReview, s.settlementApproved], [s.invoiceDraft, s.invoiceUnderReview]));
+  });
 
   // ── Recalculate / item-level tests (must run before parent submit mutates state) ──
 
