@@ -90,6 +90,36 @@ test.describe('QC create supported advanced capabilities', () => {
     }
   });
 
+  test('QC Manager findings request corrections without accepting or billing production', async ({ request }) => {
+    const base = process.env.API_BASE_URL;
+    const headers = authHeaders(personas.qcManager.storageState);
+    const records = await (await request.get(`${base}/production-records?archived=false`, { headers })).json();
+    const db = new Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      const id = randomUUID();
+      await db.query(`INSERT INTO production_records (id,tenant_id,project_id,work_order_id,capacity_provider_id,production_date,quantity_submitted,quantity,claimed_quantity,unit_type,unit,status)
+        SELECT $1,tenant_id,project_id,work_order_id,capacity_provider_id,current_date,5,5,5,unit_type,unit,'submitted' FROM production_records WHERE id=$2`, [id, records[0].id]);
+      const created = await request.post(`${base}/qc-reviews`, { headers, data: {production_record_id:id,review_type:'internal_qc',review_notes:'Failed QC: required evidence is missing.'} });
+      expect(created.ok(), await created.text()).toBeTruthy();
+      const review = (await created.json()).qc_review;
+      const path = `${base}/qc-reviews/${review.id}/request-correction`;
+      const data = {correction_reason:'Required evidence is missing.',correction_required_quantity:5};
+      expect((await request.post(path,{headers,data:{}})).status()).toBe(400);
+      expect((await request.post(path,{headers:authHeaders(personas.readOnlyAuditor.storageState),data})).status()).toBe(403);
+      const response = await request.post(path,{headers,data});
+      expect(response.status(),await response.text()).toBe(201);
+      const saved = (await db.query('SELECT review_status,correction_reason,reviewer_user_id FROM qc_reviews WHERE id=$1',[review.id])).rows[0];
+      expect(saved.review_status).toBe('correction_required');
+      expect(saved.correction_reason).toBe(data.correction_reason);
+      expect(saved.reviewer_user_id).toBe(review.created_by);
+      const production = (await db.query('SELECT status,approved_quantity,billable_quantity FROM production_records WHERE id=$1',[id])).rows[0];
+      expect(production.status).toBe('correction_required');
+      expect(Number(production.approved_quantity ?? 0)).toBe(0);
+      expect(Number(production.billable_quantity ?? 0)).toBe(0);
+    } finally { await db.end(); }
+  });
+
   test('read-only actor cannot enumerate create choices or create a review', async ({ request }) => {
     const headers = authHeaders(personas.readOnlyAuditor.storageState);
     expect((await request.get(`${process.env.API_BASE_URL}/qc-review-create-options`, { headers })).status()).toBe(403);

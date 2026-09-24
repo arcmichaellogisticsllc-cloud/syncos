@@ -30,6 +30,7 @@ const evidenceTypes = new Set(["photo", "video", "gps", "daily_report", "safety_
 const evidenceStatuses = new Set(["active", "archived"]);
 const productionArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "voided", "other"]);
 const correctionAuthorityRoles = new Set(["Project Manager", "Operations Manager"]);
+const qcCorrectionAuthorityRoles = new Set([...correctionAuthorityRoles, "QC Manager"]);
 const qcReviewAuthorityRoles = new Set(["QC Manager", "Project Manager"]);
 const qcManagerRoles = new Set(["QC Manager"]);
 const approveAuthorityRoles = new Set(["QC Manager", "Operations Manager"]);
@@ -1029,7 +1030,7 @@ export class ProductionController {
     try {
       const reason = requireString(body.correction_reason ?? body.reason, "correction_reason is required");
       return await this.write(request, "qc_review.request_correction", "qc_review.correction_requested", "qc_review", async (client) => {
-        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, correctionAuthorityRoles, "Project Manager or Operations Manager authority is required");
+        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcCorrectionAuthorityRoles, "QC Manager, Project Manager or Operations Manager authority is required");
         const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
         if (body.correction_owner_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.correction_owner_user_id);
         const rejectedQuantity = Number(before.rejected_quantity ?? before.claimed_quantity ?? 0);

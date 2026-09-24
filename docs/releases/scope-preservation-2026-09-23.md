@@ -51,3 +51,7 @@ Positive acceptance must use intended business actors; administrator authority m
 4. Before any later staging activation, verify fresh database/private-file backup and recovery evidence and a code/schema-aware rollback plan for migration 065. This candidate has not been activated.
 
 No shared staging/demo records, live accounts, private files or payment-provider settings were changed during this reconciliation. No payments or real communications were sent. Tests used isolated local PostgreSQL databases and synthetic fixtures. No requirements are removed because their implementation or test evidence remains incomplete.
+
+## September 24 policy update
+
+The user has approved QC Manager findings triggering correction requests and automatic external-payment recording via Priority Passport. See `docs/product/qc-passport-decisions-2026-09-24.md`. The historical approval-conflict section above is superseded by that decision; Passport connectivity is still unimplemented and must be verified before activation.
