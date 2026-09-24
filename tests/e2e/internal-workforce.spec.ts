@@ -10,7 +10,25 @@ test('Sync management provisions a real internal crew through field production w
     try {
         const admin = (await db.query(`SELECT tu.tenant_id,tu.user_id FROM tenant_users tu JOIN user_roles ur ON ur.tenant_user_id=tu.id JOIN roles r ON r.id=ur.role_id WHERE r.system_key='system_admin' AND ur.scope_type='tenant' ORDER BY tu.created_at LIMIT 1`)).rows[0];
         const t = admin.tenant_id;
-        const management = token(admin.user_id, t);
+        // Fixture provisioning only: transactions below use distinct business actors,
+        // never the system administrator discovered above.
+        async function actor(key: string, grants: string[]) {
+            const user = crypto.randomUUID(), membership = crypto.randomUUID();
+            const role = (await db.query("SELECT id FROM roles WHERE tenant_id=$1 AND system_key=$2 AND deleted_at IS NULL", [t, key])).rows[0];
+            expect(role, `canonical role ${key}`).toBeTruthy();
+            await db.query("INSERT INTO users(id,email,display_name) VALUES($1,$2,$3)", [user, `${user}@syncos.test`, `Scope ${key}`]);
+            await db.query("INSERT INTO tenant_users(id,tenant_id,user_id) VALUES($1,$2,$3)", [membership,t,user]);
+            // Explicit fixture permission contract; no wildcard/admin grants.
+            for (const grant of grants) await db.query("INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT $1,$2,id FROM permissions WHERE key=$3 ON CONFLICT DO NOTHING",[t,role.id,grant]);
+            await db.query("INSERT INTO user_roles(tenant_id,tenant_user_id,role_id,scope_type,scope_id) VALUES($1,$2,$3,'tenant',$1)",[t,membership,role.id]);
+            const bearer=token(user,t);
+            const identity=await api(request,bearer,'auth/me');
+            expect(identity.roles).not.toContain('system_admin');
+            return bearer;
+        }
+        const management = await actor('operations_manager', ['crew.read','crew.create','worker.create','work_order.assign','work_order.start','syncfield_map.create','syncfield_map.version.upload','syncfield_map.assignment.manage']);
+        const customerQc = await actor('qc_manager', ['customer_qc.completeness_review','customer_qc.decision_record']);
+        const finance = await actor('billing_manager', ['billing.create_billable']);
         const org = crypto.randomUUID();
         const customer = crypto.randomUUID();
         const schedule = crypto.randomUUID();
@@ -91,15 +109,43 @@ test('Sync management provisions a real internal crew through field production w
         await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'authorized', checklist, evidence_reference: 'SYNTHETIC-REVIEWED', valid_until: date });
         const submitted = await api(request, employee, 'syncfield/foreman/production/review-day/submit', { work_date: date, client_mutation_id: crypto.randomUUID() });
         expect(submitted.status).toBe('submitted');
-        await api(request, management, `syncfield/customer-qc/reports/${submitted.id}/complete`, { qc_authority_organization_id: customer, client_mutation_id: crypto.randomUUID() });
-        const cycle = await api(request, management, `syncfield/customer-qc/reports/${submitted.id}/cycles`, { source_type: 'manual_recorded_from_customer', source_reference: 'SYNTHETIC-CUSTOMER-ACCEPTANCE', client_mutation_id: crypto.randomUUID() });
-        const decision = await api(request, management, `syncfield/customer-qc/cycles/${cycle.id}/decisions`, { production_record_id: record.id, decision: 'accepted', customer_accepted_quantity: 8, client_mutation_id: crypto.randomUUID() });
-        const billable = await api(request, management, 'accepted-production-financials/billables/convert', { customer_qc_decision_id: decision.id });
-        expect(Number(billable.net_billable_amount)).toBe(800);
+        expect((await request.post(`${process.env.API_BASE_URL}/syncfield/customer-qc/reports/${submitted.id}/complete`, {headers:{authorization:`Bearer ${employee}`},data:{qc_authority_organization_id:customer,client_mutation_id:crypto.randomUUID()}})).status()).toBe(403);
+        await api(request, customerQc, `syncfield/customer-qc/reports/${submitted.id}/complete`, { qc_authority_organization_id: customer, client_mutation_id: crypto.randomUUID() });
+        let cycle = await api(request, customerQc, `syncfield/customer-qc/reports/${submitted.id}/cycles`, { source_type: 'manual_recorded_from_customer', source_reference: 'SYNTHETIC-CUSTOMER-ACCEPTANCE', client_mutation_id: crypto.randomUUID() });
+        const correction = await api(request, customerQc, `syncfield/customer-qc/cycles/${cycle.id}/decisions`, {
+            production_record_id: record.id, decision: 'correction_required', customer_reason_code: 'quantity',
+            customer_comments: 'Customer requests verified labor quantity.', correction_type: 'quantity',
+            allowed_fields: ['reported_quantity', 'notes'], partner_safe_instructions: 'Correct the labor quantity for customer reinspection.', client_mutation_id: crypto.randomUUID(),
+        });
+        await page.goto('/syncfield/corrections');
+        const editor = page.getByRole('form', { name: 'Correction editor' });
+        await editor.getByLabel('Corrected quantity').fill('7');
+        await editor.getByLabel('Correction notes').fill('Verified seven hours for customer reinspection.');
+        await editor.getByRole('button', { name: 'Review correction', exact: true }).click();
+        const submission = page.waitForResponse(response => response.url().includes(`/corrections/${correction.correction.id}/resubmit`) && response.request().method() === 'POST');
+        await editor.getByRole('button', { name: 'Resubmit Correction', exact: true }).click();
+        const response = await submission;
+        expect(response.ok(), await response.text()).toBeTruthy();
+        const resubmitted = await response.json();
+        expect(resubmitted.status).toBe('awaiting_customer_reinspection');
+        const replay = await api(request, employee, `syncfield/foreman/corrections/${correction.correction.id}/resubmit`, response.request().postDataJSON());
+        expect(replay.id).toBe(resubmitted.id);
+        const revisions = await db.query('SELECT revision_number,snapshot_json FROM daily_production_report_revisions WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY revision_number', [t, submitted.id]);
+        expect(revisions.rows.map(row => row.revision_number)).toEqual([1, 2]);
+        expect(Number(revisions.rows[1].snapshot_json.proposed_correction.reported_quantity)).toBe(7);
+        const original = await db.query('SELECT quantity_submitted FROM production_records WHERE tenant_id=$1 AND id=$2', [t, record.id]);
+        expect(Number(original.rows[0].quantity_submitted)).toBe(8);
+        const cycles = await db.query('SELECT id,status FROM customer_qc_cycles WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY cycle_number', [t, submitted.id]);
+        expect(cycles.rows).toHaveLength(2);
+        cycle = cycles.rows[1];
+        expect(cycle.status).toBe('awaiting_reinspection');
+        const decision = await api(request, customerQc, `syncfield/customer-qc/cycles/${cycle.id}/decisions`, { production_record_id: record.id, decision: 'accepted', customer_accepted_quantity: 7, client_mutation_id: crypto.randomUUID() });
+        const billable = await api(request, finance, 'accepted-production-financials/billables/convert', { customer_qc_decision_id: decision.id });
+        expect(Number(billable.net_billable_amount)).toBe(700);
         expect(billable.unit).toBe('HR');
         for(const item of [{record:fiber,quantity:10,amount:20,unit:'LF'},{record:pole,quantity:1,amount:50,unit:'EA'}]){
-          const accepted=await api(request,management,`syncfield/customer-qc/cycles/${cycle.id}/decisions`,{production_record_id:item.record.id,decision:'accepted',customer_accepted_quantity:item.quantity,client_mutation_id:crypto.randomUUID()});
-          const billed=await api(request,management,'accepted-production-financials/billables/convert',{customer_qc_decision_id:accepted.id});expect(Number(billed.net_billable_amount)).toBe(item.amount);expect(billed.unit).toBe(item.unit);
+          const accepted=await api(request,customerQc,`syncfield/customer-qc/cycles/${cycle.id}/decisions`,{production_record_id:item.record.id,decision:'accepted',customer_accepted_quantity:item.quantity,client_mutation_id:crypto.randomUUID()});
+          const billed=await api(request,finance,'accepted-production-financials/billables/convert',{customer_qc_decision_id:accepted.id});expect(Number(billed.net_billable_amount)).toBe(item.amount);expect(billed.unit).toBe(item.unit);
         }
         const effects = await db.query("SELECT (SELECT count(*) FROM contractor_payables WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS payables,(SELECT count(*) FROM partner_agreement_versions WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS agreements", [t, crew.capacity_provider_id]);
         expect(effects.rows[0]).toEqual({ payables: 0, agreements: 0 });

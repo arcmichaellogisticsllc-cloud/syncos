@@ -784,6 +784,29 @@ export class ProductionController {
     return this.withClient((client) => this.listQcReviewsEnriched(client, request.auth.tenantId, query));
   }
 
+  @Get("qc-review-create-options")
+  @RequirePermission("qc_review.create")
+  async qcCreateOptions(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const reviewers = await client.query(`
+        SELECT u.id, u.display_name FROM tenant_users tu JOIN users u ON u.id = tu.user_id
+        WHERE tu.tenant_id = $1 AND tu.status = 'active' AND u.status = 'active'
+          AND tu.deleted_at IS NULL AND u.deleted_at IS NULL
+        ORDER BY u.display_name, u.id
+      `, [request.auth.tenantId]);
+      const sources = await client.query(`
+        SELECT q.id, q.review_type, q.review_status, q.created_at,
+          p.production_type, w.title AS work_order_title
+        FROM qc_reviews q
+        LEFT JOIN production_records p ON p.id = q.production_record_id AND p.tenant_id = q.tenant_id
+        LEFT JOIN work_orders w ON w.id = q.work_order_id AND w.tenant_id = q.tenant_id
+        WHERE q.tenant_id = $1 AND q.deleted_at IS NULL
+        ORDER BY q.created_at DESC, q.id
+      `, [request.auth.tenantId]);
+      return { reviewers: reviewers.rows, sourceReviews: sources.rows };
+    });
+  }
+
   @Get("qc-review-correction-owners")
   @RequirePermission("qc_review.request_correction")
   async qcCorrectionOwners(@Req() request: AuthenticatedRequest) {

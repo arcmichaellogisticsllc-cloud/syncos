@@ -41,6 +41,8 @@ type QcDetailShape = {
 type RelatedData = {
   productionRecords: SyncRecord[];
   billableItems: SyncRecord[];
+  reviewers?: SyncRecord[];
+  sourceReviews?: SyncRecord[];
 };
 
 type Session = ReturnType<typeof useSession>;
@@ -181,8 +183,14 @@ export function QcReviewCreate() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (session.token) void loadRelated(session.token).then(setRelated);
-  }, [session.token]);
+    if (session.token && hasPermission(session.permissions, "qc_review.create")) {
+      void Promise.all([
+        loadRelated(session.token),
+        syncosFetch<{ reviewers: SyncRecord[]; sourceReviews: SyncRecord[] }>("/qc-review-create-options", { token: session.token }),
+      ]).then(([records, options]) => setRelated({ ...records, ...options }))
+        .catch((nextError) => setError(plainError((nextError as Error).message)));
+    }
+  }, [session.token, session.permissions]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -190,7 +198,7 @@ export function QcReviewCreate() {
     try {
       const created = await syncosFetch<SyncRecord>("/qc-reviews", { method: "POST", body: buildCreatePayload(form), token: session.token });
       const after = created.afterState as SyncRecord | undefined;
-      const review = after?.qc_review as SyncRecord | undefined;
+      const review = (created.qc_review ?? after?.qc_review) as SyncRecord | undefined;
       const id = String(created.id ?? created.entityId ?? review?.id ?? after?.id ?? "");
       router.push(id ? `/qc/${id}` : "/qc");
     } catch (nextError) {
@@ -536,7 +544,7 @@ function QcCreateFields({ form, setForm, related }: { form: Record<string, strin
     <div className="form-grid">
       <label>Production Record<SelectInline value={form.production_record_id ?? ""} options={["", ...related.productionRecords.map((row) => String(row.id))]} labels={labelsFor(related.productionRecords, "production_type")} onChange={(production_record_id) => setForm({ ...form, production_record_id })} /></label>
       <label>Review Type<SelectInline value={form.review_type ?? "internal_qc"} options={reviewTypes} onChange={(review_type) => setForm({ ...form, review_type })} /></label>
-      <p>You will be recorded as the reviewer.</p>
+      <label>Reviewer<SelectInline value={form.reviewer_user_id ?? ""} options={["", ...(related.reviewers ?? []).map((row) => String(row.id))]} labels={{ "": "Me (current signed-in user)", ...labelsFor(related.reviewers ?? [], "display_name") }} onChange={(reviewer_user_id) => setForm({ ...form, reviewer_user_id })} /></label>
       <label>Review Notes<textarea value={form.review_notes ?? ""} onChange={(event) => setForm({ ...form, review_notes: event.target.value })} /></label>
       <Select label="Evidence Status" value={form.evidence_status ?? ""} options={findingStatuses} onChange={(evidence_status) => setForm({ ...form, evidence_status })} />
       <Select label="Location Status" value={form.location_status ?? ""} options={locationStatuses} onChange={(location_status) => setForm({ ...form, location_status })} />
@@ -547,6 +555,14 @@ function QcCreateFields({ form, setForm, related }: { form: Record<string, strin
       <label>Correction Due Date<input type="date" value={form.correction_due_date ?? ""} onChange={(event) => setForm({ ...form, correction_due_date: event.target.value })} /></label>
       <p>Request and assign corrections after creating the review.</p>
 
+      <details className="filter-drawer">
+        <summary>Advanced review details</summary>
+        <label>Source QC review<SelectInline value={form.source_qc_review_id ?? ""} options={["", ...(related.sourceReviews ?? []).map((row) => String(row.id))]} labels={{ "": "No source review", ...Object.fromEntries((related.sourceReviews ?? []).map((row) => [String(row.id), `${formatAction(String(row.review_type))} · ${textValue(row.work_order_title, "Work order")} · ${textValue(row.production_type, "Production")} · ${formatAction(String(row.review_status))} · ${dateValue(row.created_at)}`])) }} onChange={(source_qc_review_id) => setForm({ ...form, source_qc_review_id })} /></label>
+        <p>Record any applicable exception reasons. Creating this review does not approve production or bypass approval checks.</p>
+        <label>Quantity override reason<textarea value={form.admin_override_reason ?? ""} onChange={(event) => setForm({ ...form, admin_override_reason: event.target.value })} /></label>
+        <label>Billable candidate override reason<textarea value={form.override_reason ?? ""} onChange={(event) => setForm({ ...form, override_reason: event.target.value })} /></label>
+        <label>Self-approval override reason<textarea value={form.self_approval_override_reason ?? ""} onChange={(event) => setForm({ ...form, self_approval_override_reason: event.target.value })} /></label>
+      </details>
       <label>Hard Stop<SelectInline value={form.hard_stop ?? "false"} options={["false", "true"]} onChange={(hard_stop) => setForm({ ...form, hard_stop })} /></label>
 
     </div>
@@ -591,7 +607,7 @@ function buildCreatePayload(form: Record<string, string>) {
     prime_acceptance_status: form.prime_acceptance_status,
     review_notes: form.review_notes,
     hard_stop: form.hard_stop === "true",
-    override_reasons: parseJsonField(form.override_reasons, "override_reasons"),
+    override_reasons: prune({ admin_override_reason: form.admin_override_reason, override_reason: form.override_reason, self_approval_override_reason: form.self_approval_override_reason }),
   });
 }
 

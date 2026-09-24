@@ -140,6 +140,7 @@ async function main() {
     "062_internal_account_invitations.sql",
     "063_field_billing_units.sql",
     "064_restore_production_export_file_types.sql",
+    "065_demo_execution_permission_reconciliation.sql",
   ]);
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));

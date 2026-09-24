@@ -57,22 +57,24 @@ test.describe("Operator UI Phase 3 command surfaces", () => {
     await context.close();
   });
 
-  test("operations users without dashboard or QC permission see only their approved queues", async ({ browser }) => {
+  test("operations users retain execution oversight without QC mutation authority", async ({ browser }) => {
     const context = await browser.newContext({ storageState: personas.opsManager.storageState });
     const page = await context.newPage();
     await installStoredSession(page, personas.opsManager.storageState);
     await page.goto("/operations");
-
-    await expect(page.getByRole("heading", { name: "Access unavailable" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open QC Queue" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Operations Board" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open QC Queue" })).toBeVisible();
     await page.goto("/work-orders");
     await expect(page.getByRole("heading", { name: "Work Orders", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Create Work Order", exact: true }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "QC Queue", exact: true })).toHaveCount(0);
     await page.goto("/qc");
-    await expect(page.getByRole("heading", { name: "Access unavailable" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "QC Review Queue" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Create QC Review", exact: true })).toHaveCount(0);
-
+    await page.goto("/qc/new");
+    await expect(page.getByRole("heading", { name: "Access unavailable" })).toBeVisible();
+    await page.goto("/production");
+    await expect(page.getByRole("heading", { name: "Production Board" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create Production Record", exact: true })).toBeVisible();
     await context.close();
   });
 });

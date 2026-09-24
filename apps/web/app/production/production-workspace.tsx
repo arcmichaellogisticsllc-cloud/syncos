@@ -104,10 +104,10 @@ export function ProductionDirectory() {
                 <p className="muted">Start with corrections, submitted work, and approved records that can move toward billable readiness.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/production/new" allowed={hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production Record</Link>
-                <button type="button" onClick={() => setQueue("submitted", { status: "submitted" })}>Review Submitted Production</button>
+                <Link className="primary-button" href="/production/new" allowed={hasAnyPermission(session.permissions, ["production_record.create"])}>Create Production Record</Link>
+                {hasAnyPermission(session.permissions, ["production.review"]) ? <button type="button" onClick={() => setQueue("submitted", { status: "submitted" })}>Review Submitted Production</button> : null}
                 <button type="button" onClick={() => setQueue("correction_required", { status: "correction_required" })}>Open Corrections</button>
-                <button type="button" onClick={() => setQueue("billable_ready", { status: "approved" })}>Mark Approved Billable</button>
+                {hasPermission(session.permissions, "production.mark_billable") ? <button type="button" onClick={() => setQueue("billable_ready", { status: "approved" })}>Mark Approved Billable</button> : null}
               </div>
             </div>
             <div className="summary-grid priority-grid">
@@ -199,7 +199,7 @@ export function ProductionCreate() {
     try {
       const created = await syncosFetch<SyncRecord>("/production-records", { method: "POST", body: buildProductionPayload(form, true), token: session.token });
       const after = created.afterState as SyncRecord | undefined;
-      const record = after?.production_record as SyncRecord | undefined;
+      const record = (created.production_record ?? after?.production_record) as SyncRecord | undefined;
       const id = String(created.id ?? created.entityId ?? record?.id ?? after?.id ?? "");
       router.push(id ? `/production/${id}` : "/production");
     } catch (nextError) {
@@ -220,7 +220,7 @@ export function ProductionCreate() {
           <ProductionFormFields form={form} setForm={setForm} related={related} includeRequired />
         </FormSection>
         <div className="form-actions">
-          {hasAnyPermission(session.permissions, ["production_record.create", "production.create"]) ? <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production</button> : null}
+          {hasAnyPermission(session.permissions, ["production_record.create"]) ? <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.create"])}>Create Production</button> : null}
           <Link className="link-button" href="/production">Cancel</Link>
         </div>
       </form>
@@ -312,7 +312,7 @@ export function ProductionEdit({ productionId }: { productionId: string }) {
           <div className="warning-box">Approved, rejected, voided, billable, and archived records are backend read-only. Status changes use lifecycle routes.</div>
           <ProductionFormFields form={form} setForm={setForm} related={related} />
           <div className="form-actions">
-            {hasAnyPermission(session.permissions, ["production_record.update", "production.update"]) ? <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}>Save Production</button> : null}
+            {hasAnyPermission(session.permissions, ["production_record.update"]) ? <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.update"])}>Save Production</button> : null}
             <Link className="link-button" href={`/production/${productionId}`}>Cancel</Link>
           </div>
         </form>
@@ -365,12 +365,12 @@ export function ProductionDetail({ productionId }: { productionId: string }) {
       {!record && session.token && !error ? <div className="empty-state">Production record not found or you do not have access.</div> : null}
       {record && detail ? (
         <>
-          {!hasAnyPermission(session.permissions, ["production_record.update", "production.update"]) ? <ReadOnlyBanner /> : null}
-          {hasAnyPermission(session.permissions, ["production_record.update", "production.update"]) ? <DetailNextActionCard
+          {!hasAnyPermission(session.permissions, ["production_record.update"]) ? <ReadOnlyBanner /> : null}
+          {hasAnyPermission(session.permissions, ["production_record.update"]) ? <DetailNextActionCard
             status={formatAction(record.status)}
             nextActionLabel={nextProductionAction(record)}
             helperText="Review field truth, evidence, correction status, QC state, and billable readiness before moving this record forward."
-            disabled={!hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}
+            disabled={!hasAnyPermission(session.permissions, ["production_record.update"])}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Mark Billable makes approved production eligible for billing workflow. It does not create settlement, invoice, cash, or accounting export records."
           /> : null}
@@ -387,16 +387,16 @@ export function ProductionDetail({ productionId }: { productionId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/production/${productionId}/edit`} allowed={hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}>Edit Production</Link>
-                <ActionButton permissions={["production_record.submit", "production.submit"]} session={session} disabled={String(record.status) !== "draft" && String(record.status) !== "corrected"} onClick={() => setModal("submit")}>Submit</ActionButton>
-                <ActionButton permissions={["production.review", "qc.review"]} session={session} disabled={!["submitted", "corrected"].includes(String(record.status))} onClick={() => setModal("start_review")}>Start Review</ActionButton>
-                <ActionButton permissions={["qc.approve", "production.approve"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permissions={["qc.reject", "production.reject"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("reject")}>Reject</ActionButton>
-                <ActionButton permissions={["production.request_correction", "production_record.correction_required"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("correction")}>Request Correction</ActionButton>
+                <Link className="link-button" href={`/production/${productionId}/edit`} allowed={hasAnyPermission(session.permissions, ["production_record.update"])}>Edit Production</Link>
+                <ActionButton permissions={["production_record.submit"]} session={session} disabled={String(record.status) !== "draft" && String(record.status) !== "corrected"} onClick={() => setModal("submit")}>Submit</ActionButton>
+                <ActionButton permissions={["production.review"]} session={session} disabled={!["submitted", "corrected"].includes(String(record.status))} onClick={() => setModal("start_review")}>Start Review</ActionButton>
+                <ActionButton permissions={["qc.approve"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("approve")}>Approve</ActionButton>
+                <ActionButton permissions={["qc.reject"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("reject")}>Reject</ActionButton>
+                <ActionButton permissions={["production.request_correction"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("correction")}>Request Correction</ActionButton>
                 <ActionButton permissions={["production.mark_corrected"]} session={session} disabled={String(record.status) !== "correction_required"} onClick={() => setModal("corrected")}>Mark Corrected</ActionButton>
                 <ActionButton permissions={["production.mark_billable"]} session={session} disabled={String(record.status) !== "approved"} onClick={() => setModal("billable")}>Mark Billable</ActionButton>
                 <ActionButton permissions={["production.void"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permissions={["production_record.archive", "production.archive"]} session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+                <ActionButton permissions={["production_record.archive"]} session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
                 <ActionButton permissions={["production_evidence.create"]} session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("evidence")}>Add Evidence Metadata</ActionButton>
               </div>
             </div>

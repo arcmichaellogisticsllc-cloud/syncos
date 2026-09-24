@@ -52,10 +52,13 @@ test("revoked create access is removed on focus without revoking the read queue"
   await expect(page.getByRole("heading", { name: "QC Review Queue", exact: true })).toBeVisible();
 });
 
-test('Operations Manager cannot open QC queue or creation through direct URLs', async ({ browser }) => {
+test('Operations Manager can inspect QC but cannot create reviews through direct URLs', async ({ browser }) => {
   const context = await browser.newContext({ storageState: personas.opsManager.storageState });
   const page = await context.newPage();
-  for (const path of ['/qc', '/qc/new']) {
+  await page.goto('/qc');
+  await expect(page.getByRole('heading', { name: 'QC Review Queue', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Create QC Review', exact: true })).toHaveCount(0);
+  for (const path of ['/qc/new']) {
     await page.goto(path);
     await expect(page.getByRole('heading', { name: 'Access unavailable', exact: true })).toBeVisible();
     await expect(page.locator('form')).toHaveCount(0);

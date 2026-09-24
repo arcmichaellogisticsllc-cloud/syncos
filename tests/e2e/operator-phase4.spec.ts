@@ -38,14 +38,16 @@ test.describe("Operator UI Phase 4 execution queues", () => {
     await context.close();
   });
 
-  test("legacy field permission does not imply production-record access", async ({ browser }) => {
+  test("field supervisor retains production creation without approval or financial authority", async ({ browser }) => {
     const context = await browser.newContext({ storageState: personas.fieldSupervisor.storageState });
     const page = await context.newPage();
     await installStoredSession(page, personas.fieldSupervisor.storageState);
     await page.goto("/production");
-    await expect(page.getByRole("heading", { name: "Access unavailable" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Create Production Record", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Production Board" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create Production Record", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Mark Approved Billable/i })).toHaveCount(0);
+    await page.goto("/production/new");
+    await expect(page.getByRole("button", { name: "Create Production", exact: true })).toBeVisible();
     await context.close();
   });
 
