@@ -85,7 +85,9 @@
     "account-onboarding:smoke": "npm run smoke:account-onboarding -w @syncos/api",
     "release:validate": "bash scripts/release-validation.sh",
     "release:production:migrate": "node scripts/production-migrate.js",
-    "security:dependencies": "npm audit --omit=dev --audit-level=high"
+    "security:dependencies": "npm audit --omit=dev --audit-level=high",
+    "passport:test": "node --test tests/passport-preparation.test.js",
+    "passport:simulate": "node scripts/passport/simulate.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
