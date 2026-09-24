@@ -84,3 +84,7 @@ The existing manual payment flow, demo data and tested business requirements are
 - Offline simulation generated eight scenarios successfully, without credentials, network or database access.
 - New workspace metadata and scripts are registered; no third-party dependency added.
 - Existing application code and migration manifest are unchanged in this preparation commit. The prior 822-browser-test result is historical; it is not claimed as a new full application run.
+
+## UI follow-up
+
+An authenticated, simulation-only `/passport` workspace and permission-protected preview endpoint are now implemented. See `passport-ui.md` for behavior, test evidence and the remaining live-integration boundary. This supersedes the earlier statement that no application screen exists; durable live finance operations remain pending.

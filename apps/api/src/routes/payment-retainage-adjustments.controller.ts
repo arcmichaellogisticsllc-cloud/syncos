@@ -69,6 +69,14 @@ export class PaymentRetainageAdjustmentsController {
     });
   }
 
+  @Get("passport-preview")
+  @RequirePermission("partner_payment.confirm")
+  async passportPreview() {
+    // Pure invented fixtures. No tenant data, provider calls or financial writes.
+    const { buildPreview } = require("../../../../packages/passport/src/preview");
+    return buildPreview();
+  }
+
   @Get("external-payments")
   @RequirePermission("partner_payment.execute")
   async externalPayments(@Req() request: AuthenticatedRequest) {

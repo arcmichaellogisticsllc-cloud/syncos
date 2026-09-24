@@ -87,7 +87,9 @@
     "release:production:migrate": "node scripts/production-migrate.js",
     "security:dependencies": "npm audit --omit=dev --audit-level=high",
     "passport:test": "node --test tests/passport-preparation.test.js",
-    "passport:simulate": "node scripts/passport/simulate.js"
+    "passport:simulate": "node scripts/passport/simulate.js",
+    "passport:ui:test": "playwright test --config tests/passport-ui/playwright.config.ts",
+    "passport:route:test": "node scripts/passport/verify-preview-route.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

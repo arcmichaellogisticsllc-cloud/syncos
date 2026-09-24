@@ -19,6 +19,7 @@ const resources: Record<string, string> = {
   "/opportunities/candidates": "opportunity_candidate", "/opportunities/coverage": "coverage_plan", "/opportunities": "opportunity",
 };
 const pages: Record<string, string[]> = {
+  "/passport": ["partner_payment.confirm"],
   "/": ["dashboard.executive.read"], "/command-center": ["executive_command.read"], "/executive": ["dashboard.executive.read"],
   "/growth": ["dashboard.growth.read"], "/operations": ["dashboard.operations.read"],
   "/finance": ["dashboard.finance.read"],
