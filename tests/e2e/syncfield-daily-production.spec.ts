@@ -465,7 +465,24 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
 
   test("submission creates immutable revision snapshot and blocks ordinary edits without QC or finance", async ({ page, request }) => {
     const beforeReadiness = await apiJson(request, seeded.foremanToken, "GET", "/partner-mobilization/foreman/readiness");
-    const submitted = await apiJson(request, seeded.foremanToken, "POST", "/syncfield/foreman/production/review-day/submit", { work_date: today(), client_mutation_id: crypto.randomUUID(), general_notes: "Submitted by Foreman." });
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.goto("/syncfield/production/review");
+    let firstMutationId = "";
+    await page.route("**/syncfield/foreman/production/review-day/submit", async route => {
+      firstMutationId = route.request().postDataJSON().client_mutation_id;
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Temporary submission outage" }) });
+    }, { times: 1 });
+    await page.getByRole("button", { name: "Submit Daily Production" }).click();
+    await expect(page.getByRole("alert").filter({hasText: "Temporary submission outage"})).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit Daily Production" })).toBeEnabled();
+    const responsePromise = page.waitForResponse(response => response.url().endsWith("/syncfield/foreman/production/review-day/submit") && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Submit Daily Production" }).click();
+    const submissionResponse = await responsePromise;
+    expect(submissionResponse.ok()).toBe(true);
+    expect(submissionResponse.request().postDataJSON().client_mutation_id).toBe(firstMutationId);
+    const submitted = await submissionResponse.json();
+    await expect(page.getByText("Daily production submitted. Records are read-only and awaiting customer QC.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit Daily Production" })).toBeDisabled();
     expect(submitted.status).toBe("submitted");
     expect(submitted.records.every((record: Record<string, unknown>) => record.locked === true)).toBe(true);
     const revision = await client.query("SELECT snapshot_json FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2", [seeded.tenantA, submitted.id]);

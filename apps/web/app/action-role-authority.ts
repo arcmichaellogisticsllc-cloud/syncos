@@ -14,6 +14,7 @@ export const actionRoleAuthority: Record<string, string[]> = {
     "Project Manager"
   ],
   "qc_review.request_correction": [
+    "QC Manager",
     "Project Manager",
     "Operations Manager"
   ],

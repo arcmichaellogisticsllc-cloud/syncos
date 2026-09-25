@@ -90,7 +90,7 @@ test.describe('QC create supported advanced capabilities', () => {
     }
   });
 
-  test('QC Manager findings request corrections without accepting or billing production', async ({ request }) => {
+  test('QC Manager findings request corrections without accepting or billing production', async ({ request, page }) => {
     const base = process.env.API_BASE_URL;
     const headers = authHeaders(personas.qcManager.storageState);
     const records = await (await request.get(`${base}/production-records?archived=false`, { headers })).json();
@@ -107,7 +107,14 @@ test.describe('QC create supported advanced capabilities', () => {
       const data = {correction_reason:'Required evidence is missing.',correction_required_quantity:5};
       expect((await request.post(path,{headers,data:{}})).status()).toBe(400);
       expect((await request.post(path,{headers:authHeaders(personas.readOnlyAuditor.storageState),data})).status()).toBe(403);
-      const response = await request.post(path,{headers,data});
+      await page.goto(`/qc/${review.id}`);
+      await page.getByRole('button',{name:'Request Correction',exact:true}).click();
+      const modal=page.locator('form.modal-card');
+      await modal.getByLabel('Correction reason',{exact:true}).fill(data.correction_reason);
+      await modal.getByLabel('Correction required quantity',{exact:true}).fill('5');
+      const submitted=page.waitForResponse(r=>r.url().endsWith(`/qc-reviews/${review.id}/request-correction`)&&r.request().method()==='POST');
+      await modal.getByRole('button',{name:'Request Correction',exact:true}).click();
+      const response=await submitted;
       expect(response.status(),await response.text()).toBe(201);
       const saved = (await db.query('SELECT review_status,correction_reason,reviewer_user_id FROM qc_reviews WHERE id=$1',[review.id])).rows[0];
       expect(saved.review_status).toBe('correction_required');

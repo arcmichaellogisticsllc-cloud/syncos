@@ -44,8 +44,10 @@ if (tool === 'node' && args[0] === 'scripts/check-deployed-startup.js' && scenar
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, SYNCOS_DEPLOY_TARGET: 'hostinger-staging',
       SYNCOS_RELEASE_SHA: sha, SYNCOS_RELEASE_BRANCH: 'codex/test', STAGING_DB_BACKUP_CONFIRMED: 'true',
       SYNCOS_APP_ROOT: path.join(root, 'app'), SYNCOS_STAGING_API_ENV_FILE: envFile,
-      TEST_SCENARIO: scenario, TEST_CALLS: log }, encoding: 'utf8', timeout: 20000,
+      TEST_SCENARIO: scenario, TEST_CALLS: log }, encoding: 'utf8', timeout: 60000,
   });
+  // A killed harness must never count as a successful fail-closed deployment.
+  assert.equal(result.error, undefined, result.error?.message);
   return { result, calls: fs.readFileSync(log, 'utf8'),
     published: fs.existsSync(path.join(root, 'app/shared/deployments/current.json')) };
 }

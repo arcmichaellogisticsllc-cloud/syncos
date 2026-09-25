@@ -17,6 +17,7 @@ export function CommandShell({ title, purpose, children }: { title: string; purp
           </div>
         </div>
         <OperatorNavigation />
+        <PermissionLink className="link-button" href="/training">Training</PermissionLink>
         <OperatorAccountControl />
       </header>
       <section className="content">

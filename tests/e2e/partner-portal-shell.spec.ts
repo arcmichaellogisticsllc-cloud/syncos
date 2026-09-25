@@ -67,6 +67,8 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("Collections")).toHaveCount(0);
     await expect(page.getByText("Sync margin")).toHaveCount(0);
     await expect(page.getByText("internal_notes")).toHaveCount(0);
+    await page.getByRole("link", {name: "Training", exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Training", exact: true})).toBeVisible();
 
     await page.goto("/syncfield/today");
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
@@ -127,6 +129,8 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("P7-0 Worker")).toBeVisible();
     await expect(page.getByText("Partner Rate")).toHaveCount(0);
     await expect(page.getByText("W-9")).toHaveCount(0);
+    await page.getByRole("link", {name: "Training", exact: true}).click();
+    await expect(page.getByRole("heading", {name: "Training", exact: true})).toBeVisible();
 
     await page.goto("/partner/compliance");
     await expect(page.getByText("not available to Foreman users")).toBeVisible();

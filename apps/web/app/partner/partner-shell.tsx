@@ -645,6 +645,7 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
                 </div>
               ))}
           {persona === "partner_admin" && foremanFieldPermissions.some((permission) => permissions.includes(permission)) ? <Link className="partner-nav-link" href="/syncfield/today">SyncField</Link> : null}
+          {permissions.length > 0 ? <Link className="partner-nav-link" href="/training">Training</Link> : null}
         </nav>
         <div className="partner-account-control">
           <div>
@@ -2362,12 +2363,42 @@ function DailyProductionWorkspace({ data, permissions }: { data: PortalData; per
 }
 
 function ReviewDayWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
-  const report = data.productionToday;
+  const [report, setReport] = useState(data.productionToday);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const submittingRef = useRef(false);
+  const submission = useRef<{ key: string; mutationId: string } | null>(null);
+  const contextKey = `${data.selectedAssignment?.id ?? ""}:${data.productionToday?.id ?? ""}:${data.productionToday?.work_date ?? ""}`;
+  const currentContext = useRef(contextKey);
+  currentContext.current = contextKey;
+  useEffect(() => {
+    setReport(data.productionToday);
+    setSubmitMessage("");
+    setSubmitError("");
+  }, [data.productionToday, data.selectedAssignment?.id]);
   const queue = useFieldProductionQueue(data);
   const unsynced = queue.unsyncedCount;
   async function submitDay() {
-    if (unsynced) return;
-    await syncosFetch("syncfield/foreman/production/review-day/submit", { method: "POST", body: { assignment_id: data.selectedAssignment?.id, work_date: report?.work_date, client_mutation_id: crypto.randomUUID(), general_notes: "Foreman reviewed daily production." } });
+    if (unsynced || submittingRef.current || report?.status === "submitted") return;
+    const key = contextKey;
+    if (submission.current?.key !== key) submission.current = { key, mutationId: crypto.randomUUID() };
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitMessage("");
+    setSubmitError("");
+    try {
+      const submitted = await syncosFetch<DailyProduction>("syncfield/foreman/production/review-day/submit", { method: "POST", body: { assignment_id: data.selectedAssignment?.id, work_date: report?.work_date, client_mutation_id: submission.current.mutationId, general_notes: "Foreman reviewed daily production." } });
+      if (currentContext.current !== key) return;
+      setReport(submitted);
+      setSubmitMessage("Daily production submitted. Records are read-only and awaiting customer QC.");
+    } catch (error) {
+      if (currentContext.current !== key) return;
+      setSubmitError(error instanceof Error ? safeSyncError(error.message) : "Submission could not be confirmed. Reconnect and retry; your report is preserved.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
   return (
     <div className="partner-stack">
@@ -2383,9 +2414,11 @@ function ReviewDayWorkspace({ data, permissions }: { data: PortalData; permissio
           ["Submitted", report?.submitted_at ?? "Not submitted"],
         ]} />
         {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
-        {permissions.includes("partner_daily_production.submit") ? <button className="partner-button primary wide-touch" type="button" disabled={Boolean(unsynced) || report?.status === "submitted"} onClick={() => void submitDay()}>
-          Submit Daily Production
+        {permissions.includes("partner_daily_production.submit") ? <button className="partner-button primary wide-touch" type="button" disabled={submitting || Boolean(unsynced) || report?.status === "submitted"} onClick={() => void submitDay()}>
+          {submitting ? "Submitting…" : "Submit Daily Production"}
         </button> : null}
+        {submitMessage ? <p role="status">{submitMessage}</p> : null}
+        {submitError ? <p role="alert">{submitError}</p> : null}
         {unsynced ? <p className="partner-safe-text">Submission disabled: sync unsynced field mutations first.</p> : null}
       </Panel>
       <Panel title="Daily Totals" eyebrow="No billing calculation">

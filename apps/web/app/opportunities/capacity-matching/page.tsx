@@ -26,6 +26,8 @@ export default function OpportunityCapacityMatchingPage() {
   const [state, setState] = useState<{ loading: boolean; error?: string; coverage?: CoverageRow[]; detail?: Record<string, unknown> }>({ loading: true });
   const [filter, setFilter] = useState({ capability: "", coverage_status: "" });
   const [opportunityId, setOpportunityId] = useState("");
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     void loadCoverage();
@@ -48,23 +50,50 @@ export default function OpportunityCapacityMatchingPage() {
   }
 
   async function openDetail(id?: string) {
-    const target = id || opportunityId.trim();
-    if (!target) return;
-    const detail = await syncosFetch<Record<string, unknown>>(`opportunity-capacity-matching/opportunities/${target}`);
+    if (actionPending) return;
+    const target = (id || opportunityId).trim();
+    if (!target) {
+      setActionError("Enter an Opportunity ID or open a row from Opportunity Coverage.");
+      return;
+    }
     setOpportunityId(target);
-    setState((current) => ({ ...current, detail }));
+    setActionPending(true);
+    setActionError("");
+    setState((current) => ({ ...current, detail: undefined }));
+    try {
+      const detail = await syncosFetch<Record<string, unknown>>(`opportunity-capacity-matching/opportunities/${encodeURIComponent(target)}`);
+      setState((current) => ({ ...current, detail }));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to open opportunity coverage. Try again.");
+    } finally {
+      setActionPending(false);
+    }
   }
 
   async function recalculate() {
+    if (actionPending) return;
     const target = opportunityId.trim();
-    if (!target) return;
-    await syncosFetch(`opportunity-capacity-matching/opportunities/${target}/recalculate`, { method: "POST", body: {} });
-    await openDetail(target);
-    await loadCoverage();
+    if (!target) {
+      setActionError("Enter an Opportunity ID or open a row before recalculating.");
+      return;
+    }
+    setActionPending(true);
+    setActionError("");
+    setState((current) => ({ ...current, detail: undefined }));
+    try {
+      await syncosFetch(`opportunity-capacity-matching/opportunities/${encodeURIComponent(target)}/recalculate`, { method: "POST", body: {} });
+      const detail = await syncosFetch<Record<string, unknown>>(`opportunity-capacity-matching/opportunities/${encodeURIComponent(target)}`);
+      setState((current) => ({ ...current, detail }));
+      await loadCoverage();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to recalculate opportunity coverage. Refresh before retrying.");
+    } finally {
+      setActionPending(false);
+    }
   }
 
   if (state.loading) return <OpportunityShell title="Opportunity Capacity Matching" purpose="Internal capacity-fit intelligence"><section className="workspace-panel loading-state">Loading Opportunity Coverage...</section></OpportunityShell>;
-  if (state.error) return <OpportunityShell title="Opportunity Capacity Matching" purpose="Internal capacity-fit intelligence"><section className="workspace-panel error-state"><h1>Access denied</h1><p>{state.error}</p></section></OpportunityShell>;
+  if (state.error) return <OpportunityShell title="Opportunity Capacity Matching" purpose="Internal capacity-fit intelligence"><section className="workspace-panel error-state"><h1>Unable to load opportunity coverage</h1><p>{state.error}</p><button type="button" onClick={() => void loadCoverage()}>Try again</button></section></OpportunityShell>;
 
   const rows = state.coverage ?? [];
 
@@ -72,10 +101,12 @@ export default function OpportunityCapacityMatchingPage() {
     <OpportunityShell title="Opportunity Capacity Matching" purpose="Ranked partner and crew fit for explicit opportunity requirements.">
       <section className="workspace-panel">
         <h2>Coverage View</h2>
+        {actionError ? <p role="alert" className="error-banner">{actionError}</p> : null}
+        {actionPending ? <p role="status" aria-live="polite">Loading opportunity coverage...</p> : null}
         <div className="filter-row">
-          <input value={opportunityId} onChange={(event) => setOpportunityId(event.target.value)} placeholder="Opportunity ID" />
-          <button className="secondary-button" onClick={() => openDetail()}>Open</button>
-          <Capability permission="opportunity_capacity_match.recalculate"><button className="primary-button" onClick={recalculate}>Recalculate</button></Capability>
+          <input aria-label="Opportunity ID" disabled={actionPending} value={opportunityId} onChange={(event) => { setOpportunityId(event.target.value); setActionError(""); setState((current) => ({ ...current, detail: undefined })); }} placeholder="Opportunity ID" />
+          <button className="secondary-button" disabled={actionPending} onClick={() => void openDetail()}>Open</button>
+          <Capability permission="opportunity_capacity_match.recalculate"><button className="primary-button" disabled={actionPending} onClick={() => void recalculate()}>Recalculate</button></Capability>
         </div>
         <div className="filter-row">
           <input value={filter.capability} onChange={(event) => setFilter({ ...filter, capability: event.target.value })} placeholder="Capability" />
@@ -86,7 +117,7 @@ export default function OpportunityCapacityMatchingPage() {
             <option value="low_confidence_coverage">Low Confidence</option>
             <option value="no_eligible_capacity">No Eligible Capacity</option>
           </select>
-          <button className="secondary-button" onClick={() => loadCoverage()}>Apply</button>
+          <button className="secondary-button" disabled={actionPending} onClick={() => void loadCoverage()}>Apply</button>
         </div>
       </section>
       <section className="workspace-panel">
@@ -106,7 +137,7 @@ export default function OpportunityCapacityMatchingPage() {
                   <td>{label(row.minimum_confidence)}</td>
                   <td>{row.average_fit_score ?? 0}</td>
                   <td>{label((row.reason_summary ?? {}).pursue_recommendation ?? row.coverage_status)}</td>
-                  <td><button className="secondary-button" onClick={() => openDetail(row.opportunity_id)}>Open</button></td>
+                  <td><button className="secondary-button" disabled={actionPending} onClick={() => void openDetail(row.opportunity_id)}>Open</button></td>
                 </tr>
               ))}
               {!rows.length ? <tr><td colSpan={10}>No current requirement profiles. Define requirements on an Opportunity before matching.</td></tr> : null}
