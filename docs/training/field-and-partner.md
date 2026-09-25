@@ -176,13 +176,26 @@ Role: Partner Administrator with the relevant read permissions; Foremen must not
 4. Open **Performance** to review available scores/evidence. Missing snapshots should display empty-state information.
 5. Any financial discrepancy is an authorized Finance follow-up. Passport automatic recording remains separately disabled pending its integration and sandbox acceptance.
 
+## Customer-QC decisions, exports and closeout — incomplete UI paths
+
+The app can display customer-QC outcomes to partners and accept a foreman's supported correction. However, source review found no internal UI that calls the daily-report completeness, customer-QC cycle or customer decision-recording endpoints. The `/qc` workbench operates a separate review model; choosing its `customer_qc` review type does not establish a daily-report customer decision in the newer workflow.
+
+For a supervised customer-acceptance exercise:
+
+1. Open the designated submitted report and verify its immutable revision and the configured customer authority.
+2. Record the customer completeness/decision-entry step as **blocked in UI**. Do not invent an acceptance button or substitute internal QC approval.
+3. A foreman can practice correction only on an approved, already-provisioned correction example. Use section 9 for its supported submission path.
+4. Record customer reinspection/acceptance as **blocked in UI** until the corresponding authorized screen exists. API test success is not a click-by-click acceptance result.
+
+Likewise, `/production-dashboard` shows accepted-production and closeout information but has no Generate/Download controls for annotated-map PDF, daily-production PDF, production CSV or closeout packages. Those generation/download APIs exist, but this current UI does not provide a complete export/closeout click path. Viewing a closeout status does not generate a package. Preserve these requirements and track them as pilot blockers when the exercise depends on them.
+
 ## 11. Incident reporting boundary
 
 No dedicated incident-report entry route/form was found in the current app source. **Incident reporting reviewed** is a JSA control, and **Issue note** is a daily crew-participation note; neither is a complete incident filing workflow. Follow the company's established incident/escalation procedure and record this missing application capability in pilot feedback. Do not tell trainees to use JSA completion as incident submission.
 
 ## Source and verification notes
 
-Reviewed implementation: `apps/web/app/partner/partner-shell.tsx`, all Partner/SyncField route wrappers, `internal-workforce/page.tsx`, `activate-employee/page.tsx`, `partner/invite/[token]/page.tsx`, `field-setup/page.tsx`, and `syncfield/design-prep/page.tsx`.
+Reviewed implementation: `apps/web/app/partner/partner-shell.tsx`, all Partner/SyncField route wrappers, `internal-workforce/page.tsx`, `activate-employee/page.tsx`, `partner/invite/[token]/page.tsx`, `field-setup/page.tsx`, and `syncfield/design-prep/page.tsx`; customer-QC/export route comparison also inspected `apps/api/src/routes/syncfield.controller.ts`.
 
 Existing automated scenario sources inspected: `tests/e2e/syncfield-daily-production.spec.ts`, and references to `internal-workforce.spec.ts`/`syncfield-customer-qc.spec.ts`. This chapter's author did not execute these tests or operate shared data. The updated daily-production browser scenario checks a temporary failed submission, visible retry, reuse of the request identity, successful disabled state, and existing immutable-revision assertions. Its execution result belongs in the parent verification report.
 

@@ -6,7 +6,7 @@ These manuals describe the current implementation. They retain incomplete requir
 
 | Guide | Audience and coverage |
 | --- | --- |
-| [Demand, operations and quality](demand-operations-and-quality.md) | Account intake, relationships, opportunities, coverage, projects, work orders, production, QC and oversight |
+| [Demand, operations and quality](demand-operations-and-quality.md) | Account intake, partner qualification/invitations, relationships, opportunities, coverage, projects, work orders, production, QC and oversight |
 | [Sync crews and partner crews](field-and-partner.md) | Workforce setup, readiness, assignments, maps, JSA, daily production, review/submission, corrections and company oversight |
 | [Finance and payment controls](finance-and-controls.md) | Customer billing, collections, partner settlements, employee payroll, external payment recording, bank matching, accounting and Passport simulation |
 | [Route inventory](route-inventory.md) | 151 application page routes mapped to their source and training chapter |
@@ -31,7 +31,7 @@ These manuals describe the current implementation. They retain incomplete requir
 | Already-loaded connection loss | Load the assignment online, then enable airplane mode. Enter a designated test draft and attempt only the documented operation. Record the visible offline/error state and whether the draft survives. Do not assume a queued save unless it is explicitly shown. |
 | Reconnect and duplicate protection | Restore connectivity and retry the same failed submission. Reopen the record and verify one submission/revision, unchanged totals and clear confirmation. |
 | Offline cold start | Close the browser tab, enable airplane mode, and open the application afresh. Record the actual result separately from the loaded-session test. Offline startup is not certified. |
-| Corrections | On a designated rejected test item, open the correction, edit a supported field, submit, and have the authorized QC actor reinspect. Confirm original history remains and acceptance is separate. |
+| Corrections | On a designated rejected test item, open the correction, edit a supported field, submit, and confirm original history remains. The separate daily-report customer-reinspection entry screen is currently missing; record that step as blocked rather than substituting internal QC approval. |
 | Evidence | Follow only an implemented evidence path. General photo upload and incident filing are currently gaps; a note or JSA checkbox does not replace them. |
 
 Record device model, OS/browser version, workforce, role, test record IDs, connection condition, expected/actual outcome, time, evidence and retest result. Do not include passwords, tokens or private document contents.

@@ -133,7 +133,7 @@ Both workforce types can generate customer billing. Sync employee production mus
 
 ## F09. Record a completed external partner payment
 
-**Entry:** `/payment-retainage-adjustments`. At the reviewed candidate, page access checks `partner_payment.read`; its initial data calls additionally require `partner_payment.execute`; the recording form needs `partner_payment.confirm`. Provisioning must satisfy the complete read path, not merely the form permission.
+**Entry:** `/payment-retainage-adjustments`. At the reviewed candidate, page access checks `partner_payment.read`; its initial data calls additionally require `partner_payment.execute`; the recording form needs `partner_payment.confirm`. Only a deliberately authorized operator with that complete permission set can use this current screen. If a read-only user is blocked, report the mismatch; do not broaden their permissions as a workaround.
 
 1. Open **Payment, Retainage, Adjustments**. Review **Eligible**, **In Flight**, **Paid**, **Retained** and **Ready To Pay**.
 2. Under **Record a completed payment**, choose **Payable**. If none appears, stop and resolve eligibility; do not create fictitious cash.

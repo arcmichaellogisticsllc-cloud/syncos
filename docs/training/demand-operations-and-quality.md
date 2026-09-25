@@ -8,7 +8,7 @@ Use a designated training account and training records. Record the user's role, 
 
 For every save or lifecycle action: click once, wait for the response, reopen the record and verify the new state and timeline when available. If a request fails or times out, inspect the saved record before retrying. Closing a dialog cancels unsaved input; it does not reverse an earlier successful operation. Use a separate designated record for archive/void/cancel practice.
 
-Role names below describe the business assignment. Actual access requires the corresponding server permission and tenant scope. The role label alone does not prove that a pilot account is provisioned correctly.
+Role names below describe the business assignment. Actual access requires the corresponding server permission and tenant scope; sensitive approval actions also require the authorized business role. The role label alone does not prove that a pilot account is provisioned correctly.
 
 ## Sign in and workspace routing
 
@@ -33,6 +33,32 @@ Actor: internal user with the relevant dashboard permission.
 5. **Review gap summary** remains on the Operations page; it is not a gap editor.
 
 `/growth` is **Growth Command Center**, a dashboard for demand indicators. `/partner-network`, `/partner-performance` and `/production-dashboard` provide operational summaries and permitted drill-throughs. Treat counters as reports, not approvals. Empty/error states are not proof there are no records: check filters, permissions and the displayed request error.
+
+## Partner inquiries, invitations and onboarding approval
+
+Actor: internal Partner Network operator with separate inquiry, invitation and onboarding permissions. Entry: `/partner-network`. Use approved training recipients; invitation actions can deliver email when the environment has a delivery provider.
+
+1. In **Human qualification queue**, select **Status**, then click the intended company row. Confirm the company/contact in **Inquiry detail**; filtering alone does not select a new company.
+2. Use **Assign to Me** to claim ownership. Enter the **Conversation note** field and click **Record Contact** only after the contact actually occurred. Check the completion message and saved context.
+3. Before qualification, independently verify territory, capability, crew count, availability and equipment. Enter the correct **Explicit Partner Organization ID for qualification/invite**, checking it again whenever the selected inquiry changes.
+4. Choose **Qualify**, **Future Capacity**, or **Not a Fit** for the supported decision. Important limitation: the current handler submits all five verification flags as true for these decisions, without individual verification controls. Do not click a decision when that would create an inaccurate verification record; report the gap.
+5. For a qualified inquiry with the verified organization link, click **Invite Qualified Inquiry**. Confirm the result and the new entry in **Recent invitations**. Qualification/invitation does not approve the company or authorize work.
+6. For an approved manual invitation, use **Invite without public inquiry**: fill **Partner company**, **Primary contact name**, **Email** and **Source**, then click **Send Partner Admin Invite** once. Wait for **Manual invitation request complete** and inspect delivery status. Company autofill suggestions must be checked against the intended recipient.
+7. In **Recent invitations**, a permitted **Resend** is available for a sent invitation; **Revoke** invalidates the designated invitation. Check the company, email and current status before either action. This list shows only the most recent eight entries.
+8. In **Partner readiness and approval**, review checklist status and each missing item. **Approve When Ready** is enabled only for **READY_FOR_REVIEW** and an authorized approver. Click once, then verify the refreshed company state. This approval does not replace crew, work-order, mobilization or daily-safety gates.
+9. The recipient continues with the activation/onboarding procedures in the field guide.
+
+Known recovery gaps: the organization-ID field can retain the previous inquiry's value; contact text is cleared even when the save fails; several inquiry actions lack an in-flight click guard. Preserve a failed note before leaving, inspect existing results before retrying invitations, and record these gaps in pilot feedback. These are unresolved UI defects, not certified reliable paths.
+
+## Internal partner performance review
+
+Actor: internal user with `partner_performance.read`; recalculation additionally requires `partner_performance.recalculate`. Entry: `/partner-performance`.
+
+1. Read **Executive Ranking** and the partner list.
+2. In **Filters**, choose the displayed **Confidence**, **Score Band** and **Recommendation** values, then click **Apply**.
+3. Click the intended partner's **Open**. Confirm the partner identity, component scores, capacity horizons, crew performance and critical risks.
+4. An authorized operator can click **Recalculate** to refresh derived snapshots. Check the refreshed ranking. This does not award work, change contract/rate terms, or approve payment.
+5. If Apply fails, record the displayed error. Current Open/Recalculate handlers lack reliable visible error/busy feedback; do not interpret an unchanged screen as a confirmed successful action. The filter selects also need explicit accessible labels. These issues remain open.
 
 ## Organization directory and account onboarding
 
@@ -185,7 +211,7 @@ Actor: field supervisor/Operations for capture and review; QC for authorized dec
 3. Open the draft, **Edit Production** → correct field-truth values → **Save Production**.
 4. **Submit** → complete the submission dialog → confirm. A submitted record may enter **Start Review**.
 5. Reviewer inspects evidence/context and quantity; use **Approve**, **Reject**, or **Request Correction**, enter requested quantities/reasons, then confirm.
-6. QC Managers may request corrections for failed work; the request needs a recorded reason. A request is not evidence that a crew already corrected the work.
+6. For a QC Manager finding, open the linked review in `/qc` and use **Request Correction** there with a recorded reason. This does not grant the general production-record correction action to QC Managers. A request is not evidence that a crew already corrected the work.
 7. After actual correction and review, an authorized user uses **Mark Corrected**; follow subsequent review/approval requirements.
 8. **Add Evidence Metadata** records supported evidence metadata. It is not proof that a file was uploaded or a corrected photo/map/code was persisted.
 9. **Mark Approved Billable** on the board selects a queue. On an approved record, authorized **Mark Billable** performs the lifecycle action.
@@ -206,13 +232,13 @@ Actor: QC reviewer/manager with each required `qc_review.*` grant. Prerequisite:
 7. When corrections are verified, **Mark Corrected** → complete dialog → confirm and repeat required review.
 8. **Void** and **Archive** require their separate rationale and appropriate record state.
 
-The `/qc/[id]/edit` page is informational: it explicitly states there is no direct PATCH editing route. Use the lifecycle actions; no Save QC Review workflow is available there. Internal QC is not automatically customer acceptance. Customer-QC daily reports/reinspection are covered in the field guide.
+The `/qc/[id]/edit` page is informational: it explicitly states there is no direct PATCH editing route. Use the lifecycle actions; no Save QC Review workflow is available there. Internal QC is not automatically customer acceptance. Customer-QC daily reports/reinspection are covered in the field guide, including the missing internal decision-entry UI; the general QC review type is not a substitute for that separate daily-report workflow.
 
 ## Executive and administrative oversight
 
 Actor: Executive or designated read-authorized operator.
 
-1. Open `/command-center` or `/executive`; review prioritization and permitted drill-throughs. Follow the target record's workflow to change operational state.
+1. Open `/command-center` or `/executive`; review prioritization and permitted drill-throughs. On Command Center, an authorized **Refresh** recalculates the derived snapshot; inspect **As of** and **Refreshed** afterward. This does not change operational approvals. Its current recalculation handler lacks a visible failure/busy state, so an unchanged screen is not confirmation. Follow the target record's workflow to change operational state.
 2. Open `/constraints-center` (**Constraint Command Center**); inspect **By Type**, **By Severity**, **By Owner**, **By Due Date**, **By Value Impact**, and **Active Constraints**.
 3. Open `/recommendations-center` (**Recommendation Inbox**); inspect **Pending Review**, **Approved**, **Deferred**, **Completed**, and **Measured**.
 4. Open `/workflows-center` (**Workflow Operations View**); review open/completed instances, open tasks, overdue tasks and escalations.
@@ -222,7 +248,7 @@ These center pages render report tables; they do not expose general-purpose crea
 
 ## Coverage and known limitations
 
-This chapter covers login, growth/operations dashboards, account-onboarding workbench, organizations, contacts, signals, relationship maps, candidate/pursuit/coverage/matching, projects, work orders, internal production/QC and oversight centers. Field/partner setup, customer QC, finance and Passport have companion chapters.
+This chapter covers login, growth/operations dashboards, account-onboarding workbench, partner inquiries/invitations/approval, partner performance, organizations, contacts, signals, relationship maps, candidate/pursuit/coverage/matching, projects, work orders, internal production/QC and oversight centers. Field/partner setup, customer QC, finance and Passport have companion chapters.
 
 Code-review gaps to demonstrate honestly during training:
 
@@ -233,4 +259,4 @@ Code-review gaps to demonstrate honestly during training:
 - QC edit is read-only guidance, not a working edit form.
 - Real phone/connectivity behavior, every permission/state combination and all external public links require separate observed checks. This document does not establish flawless behavior.
 
-Source review: `apps/web/app/login/page.tsx`; `intelligence/{account-onboarding,organizations,contacts,signals,relationship-maps}`; `opportunities/{candidates,pipeline,coverage,capacity-matching}`; `projects/project-workspace.tsx`; `work-orders/work-order-workspace.tsx`; `production/production-workspace.tsx`; `qc/qc-workspace.tsx`; dashboard center pages; and `docs/product/syncos-operating-model.md`. Paths are relative to the SyncOS checkout.
+Source review: `apps/web/app/login/page.tsx`; `partner-network/page.tsx`; `partner-performance/page.tsx`; `command-center/page.tsx`; `intelligence/{account-onboarding,organizations,contacts,signals,relationship-maps}`; `opportunities/{candidates,pipeline,coverage,capacity-matching}`; `projects/project-workspace.tsx`; `work-orders/work-order-workspace.tsx`; `production/production-workspace.tsx`; `qc/qc-workspace.tsx`; dashboard center pages; and `docs/product/syncos-operating-model.md`. Paths are relative to the SyncOS checkout.
