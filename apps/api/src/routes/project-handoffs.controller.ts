@@ -154,6 +154,24 @@ export class ProjectHandoffsController {
     });
   }
 
+  @Get("project-handoffs/options")
+  @RequirePermission("project_handoff.read")
+  async options(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => {
+      const sources = await client.query(`SELECT cp.id, cp.opportunity_id, o.title AS opportunity_name, cp.status,
+          org.name AS customer_name, t.name AS territory_name
+        FROM coverage_plans cp JOIN opportunities o ON o.tenant_id=cp.tenant_id AND o.id=cp.opportunity_id
+        LEFT JOIN organizations org ON org.tenant_id=o.tenant_id AND org.id=COALESCE(o.customer_organization_id,o.organization_id)
+        LEFT JOIN territories t ON t.tenant_id=o.tenant_id AND t.id=o.territory_id
+        WHERE cp.tenant_id=$1 AND cp.status='approved_for_handoff' AND cp.deleted_at IS NULL AND cp.archived_at IS NULL
+          AND o.status='awarded' AND o.deleted_at IS NULL AND o.archived_at IS NULL ORDER BY o.title`, [request.auth.tenantId]);
+      const staff = await client.query(`SELECT DISTINCT u.id,u.display_name FROM users u JOIN tenant_users tu ON tu.user_id=u.id
+        WHERE tu.tenant_id=$1 AND tu.status='active' AND tu.deleted_at IS NULL AND u.status='active' AND u.deleted_at IS NULL
+        ORDER BY u.display_name`, [request.auth.tenantId]);
+      return { sources: sources.rows, staff: staff.rows };
+    });
+  }
+
   @Get("project-handoffs/:id")
   @RequirePermission("project_handoff.read")
   async get(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
@@ -206,7 +224,7 @@ export class ProjectHandoffsController {
   @RequirePermission("project_handoff.update")
   async update(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const values = pick(body, ["scope_summary", "location_summary", "expected_start_date", "expected_end_date", "handoff_notes", "override_reasons"]);
-    if (body.status !== undefined) values.status = allowedValue(body.status, handoffStatuses, "status");
+    if (body.status !== undefined) throw new BadRequestException("Use the explicit handoff review, approval, rejection, or archive action to change status.");
     for (const userField of ["operations_owner_user_id", "project_manager_user_id", "field_supervisor_user_id"]) {
       if (body[userField] !== undefined) values[userField] = optionalText(body[userField]);
     }
@@ -446,10 +464,8 @@ export class ProjectHandoffsController {
   @RequirePermission("project_handoff_checklist.update")
   async updateChecklist(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const values = pick(body, ["label", "owner_user_id", "due_date", "notes"]);
-    if (body.status !== undefined) values.status = allowedValue(body.status, checklistStatuses, "status");
-    if (body.required !== undefined) values.required = boolValue(body.required, true);
-    if (body.hard_stop !== undefined) values.hard_stop = boolValue(body.hard_stop, false);
-    if (body.override_allowed !== undefined) values.override_allowed = boolValue(body.override_allowed, true);
+    if (["required", "hard_stop", "override_allowed"].some(key => body[key] !== undefined)) throw new BadRequestException("Checklist requirement and override policy cannot be changed through a general edit.");
+    if (body.status !== undefined) values.status = allowedValue(body.status, new Set(["not_started", "in_progress", "blocked"]), "status");
     return this.childUpdate(request, "project_handoff_checklist_items", id, "project_handoff_checklist.update", "project_handoff_checklist.updated", "project_handoff_checklist", values);
   }
 
@@ -528,9 +544,8 @@ export class ProjectHandoffsController {
     const values = pick(body, ["message", "recommended_action", "source_object_type", "source_object_id", "owner_user_id", "due_date"]);
     if (body.risk_type !== undefined) values.risk_type = allowedValue(body.risk_type, riskTypes, "risk_type");
     if (body.severity !== undefined) values.severity = allowedValue(body.severity, riskSeverities, "severity");
-    if (body.status !== undefined) values.status = allowedValue(body.status, riskStatuses, "status");
-    if (body.hard_stop !== undefined) values.hard_stop = boolValue(body.hard_stop, false);
-    if (body.override_allowed !== undefined) values.override_allowed = boolValue(body.override_allowed, true);
+    if (["hard_stop", "override_allowed"].some(key => body[key] !== undefined)) throw new BadRequestException("Risk blocking and override policy cannot be changed through a general edit.");
+    if (body.status !== undefined) values.status = allowedValue(body.status, new Set(["open", "assigned", "in_progress", "hard_blocked"]), "status");
     return this.childUpdate(request, "project_handoff_risks", id, "project_handoff_risk.update", "project_handoff_risk.updated", "project_handoff_risk", values);
   }
 
@@ -791,6 +806,7 @@ export class ProjectHandoffsController {
     return this.write(request, action, eventType, entityType, async (client) => {
       const before = await this.requireRecord(client, table, request.auth.tenantId, id, `${entityType} not found`);
       await this.requireActiveHandoff(client, request.auth.tenantId, before.project_handoff_id);
+      if (action.endsWith(".override") && (before.hard_stop || !before.override_allowed)) throw new BadRequestException("This required gate cannot be overridden; complete or resolve it with supporting evidence.");
       const after = await updateTenantRecord(client, table, request.auth.tenantId, id, { ...values, updated_by: request.auth.userId });
       if (!after) throw new NotFoundException(`${entityType} not found`);
       return { entityType, entityId: id, beforeState: before, afterState: after };

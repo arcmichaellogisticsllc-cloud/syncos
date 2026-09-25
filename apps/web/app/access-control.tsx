@@ -19,6 +19,8 @@ const resources: Record<string, string> = {
   "/opportunities/candidates": "opportunity_candidate", "/opportunities/coverage": "coverage_plan", "/opportunities": "opportunity",
 };
 const pages: Record<string, string[]> = {
+  "/project-handoffs": ["project_handoff.read"],
+  "/customer-qc": ["daily_production.completeness_read"],
   "/passport": ["partner_payment.confirm"],
   "/": ["dashboard.executive.read"], "/command-center": ["executive_command.read"], "/executive": ["dashboard.executive.read"],
   "/growth": ["dashboard.growth.read"], "/operations": ["dashboard.operations.read"],
@@ -28,7 +30,7 @@ const pages: Record<string, string[]> = {
   "/opportunities/capacity-matching": ["opportunity_coverage.read"], "/opportunities/pipeline": ["opportunity.read"],
   "/field-setup": ["syncfield_map.create"], "/internal-workforce": ["crew.read"],
   "/accepted-production-financials": ["billing.read"], "/production-dashboard": ["production_dashboard.read"],
-  "/payment-retainage-adjustments": ["partner_payment.read"], "/constraints-center": ["dashboard.constraints.read"],
+  "/payment-retainage-adjustments": ["partner_payment.execute", "retainage.release", "financial_adjustment.create"], "/constraints-center": ["dashboard.constraints.read"],
   "/recommendations-center": ["dashboard.recommendations.read"], "/kpis-center": ["dashboard.kpis.read"], "/workflows-center": ["dashboard.workflows.read"],
   "/intelligence": ["signal.read", "organization.read"],
 };

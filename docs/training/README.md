@@ -2,14 +2,14 @@
 
 Open **Training** in the internal app header or the Partner/SyncField navigation, or open `/training` directly after signing in. Select a guide, search for a workflow, and use **Download this guide** for an offline Markdown copy.
 
-These manuals describe the current implementation. They retain incomplete requirements as explicit gaps rather than inventing buttons or treating API-only features as finished UI workflows. Review the [verification report](../releases/ui-workflow-audit-2026-09-24.md) before scheduling crew acceptance.
+These manuals describe the current implementation. They retain incomplete requirements as explicit gaps rather than inventing buttons or treating API-only features as finished UI workflows. Review the [completion verification report](../releases/workflow-completion-2026-09-25.md) before scheduling crew acceptance.
 
 | Guide | Audience and coverage |
 | --- | --- |
 | [Demand, operations and quality](demand-operations-and-quality.md) | Account intake, partner qualification/invitations, relationships, opportunities, coverage, projects, work orders, production, QC and oversight |
 | [Sync crews and partner crews](field-and-partner.md) | Workforce setup, readiness, assignments, maps, JSA, daily production, review/submission, corrections and company oversight |
 | [Finance and payment controls](finance-and-controls.md) | Customer billing, collections, partner settlements, employee payroll, external payment recording, bank matching, accounting and Passport simulation |
-| [Route inventory](route-inventory.md) | 151 application page routes mapped to their source and training chapter |
+| [Route inventory](route-inventory.md) | 153 application page routes mapped to their source and training chapter |
 
 ## Run a supervised training session
 
@@ -31,8 +31,8 @@ These manuals describe the current implementation. They retain incomplete requir
 | Already-loaded connection loss | Load the assignment online, then enable airplane mode. Enter a designated test draft and attempt only the documented operation. Record the visible offline/error state and whether the draft survives. Do not assume a queued save unless it is explicitly shown. |
 | Reconnect and duplicate protection | Restore connectivity and retry the same failed submission. Reopen the record and verify one submission/revision, unchanged totals and clear confirmation. |
 | Offline cold start | Close the browser tab, enable airplane mode, and open the application afresh. Record the actual result separately from the loaded-session test. Offline startup is not certified. |
-| Corrections | On a designated rejected test item, open the correction, edit a supported field, submit, and confirm original history remains. The separate daily-report customer-reinspection entry screen is currently missing; record that step as blocked rather than substituting internal QC approval. |
-| Evidence | Follow only an implemented evidence path. General photo upload and incident filing are currently gaps; a note or JSA checkbox does not replace them. |
+| Corrections | On a designated rejected test item, open the correction, edit a supported field, submit, and confirm original history remains. An authorized reviewer then opens **Customer QC**, records the documented reinspection decision, and verifies that the inspected correction resolves. Do not substitute general internal QC approval. |
+| Evidence | Upload a camera JPEG/PNG or PDF under **Photos and evidence** (up to 2 MB), verify download integrity, then record a designated test incident from Today. Confirm the internal incident queue receives it even before daily submission. Record any phone format or size incompatibility. |
 
 Record device model, OS/browser version, workforce, role, test record IDs, connection condition, expected/actual outcome, time, evidence and retest result. Do not include passwords, tokens or private document contents.
 

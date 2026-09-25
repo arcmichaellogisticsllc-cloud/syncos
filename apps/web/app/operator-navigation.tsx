@@ -85,8 +85,9 @@ export const workspaces: WorkspaceDefinition[] = [
     href: "/qc",
     scope: "Acceptance",
     description: "Administrative completeness, Customer QC, corrections, and reinspection",
-    permissions: ["qc_review.read", "qc.review", "production_record.read"],
+    permissions: ["qc_review.read", "qc.review", "production_record.read", "daily_production.completeness_read"],
     items: [
+      { label: "Customer QC", href: "/customer-qc", workspace: "QC", description: "Daily report completeness, customer decisions, reinspection, and field incidents.", permission: "daily_production.completeness_read" },
       { label: "QC Queue", href: "/qc", workspace: "QC", description: "Administrative review, Customer QC, corrections, and reinspection.", permission: "qc_review.read" },
       { label: "Production Review", href: "/production", workspace: "QC", description: "Production records awaiting review.", permission: "production_record.read" },
     ],

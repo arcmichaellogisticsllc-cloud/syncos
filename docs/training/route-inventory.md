@@ -4,6 +4,7 @@ All page files in the reviewed candidate are listed below. A listed route is not
 
 | Route | Training chapter | Page source |
 | --- | --- | --- |
+| `/` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/page.tsx` |
 | `/accepted-production-financials` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/accepted-production-financials/page.tsx` |
 | `/accounting-export-items/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/accounting-export-items/[id]/page.tsx` |
 | `/accounting-exports/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/accounting-exports/[id]/edit/page.tsx` |
@@ -14,18 +15,18 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/bank-reconciliation/accounts/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/accounts/[id]/edit/page.tsx` |
 | `/bank-reconciliation/accounts/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/accounts/[id]/page.tsx` |
 | `/bank-reconciliation/accounts/new` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/accounts/new/page.tsx` |
-| `/bank-reconciliation` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/page.tsx` |
 | `/bank-reconciliation/transactions/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/transactions/[id]/edit/page.tsx` |
 | `/bank-reconciliation/transactions/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/transactions/[id]/page.tsx` |
 | `/bank-reconciliation/transactions/new` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/transactions/new/page.tsx` |
+| `/bank-reconciliation` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/bank-reconciliation/page.tsx` |
 | `/billable/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/billable/[id]/edit/page.tsx` |
 | `/billable/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/billable/[id]/page.tsx` |
 | `/billable/new` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/billable/new/page.tsx` |
 | `/billable` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/billable/page.tsx` |
-| `/cash` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/cash/page.tsx` |
 | `/cash/receipts/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/cash/receipts/[id]/edit/page.tsx` |
 | `/cash/receipts/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/cash/receipts/[id]/page.tsx` |
 | `/cash/receipts/new` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/cash/receipts/new/page.tsx` |
+| `/cash` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/cash/page.tsx` |
 | `/collection-actions/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/collection-actions/[id]/page.tsx` |
 | `/collection-actions` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/collection-actions/page.tsx` |
 | `/collections/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/collections/[id]/edit/page.tsx` |
@@ -38,6 +39,7 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/contractor-payables/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/contractor-payables/[id]/page.tsx` |
 | `/contractor-payables/new` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/contractor-payables/new/page.tsx` |
 | `/contractor-payables` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/contractor-payables/page.tsx` |
+| `/customer-qc` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/customer-qc/page.tsx` |
 | `/executive` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/executive/page.tsx` |
 | `/field-setup` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/field-setup/page.tsx` |
 | `/finance` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/finance/page.tsx` |
@@ -51,13 +53,13 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/intelligence/organizations/[id]` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/organizations/[id]/page.tsx` |
 | `/intelligence/organizations/new` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/organizations/new/page.tsx` |
 | `/intelligence/organizations` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/organizations/page.tsx` |
-| `/intelligence` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/page.tsx` |
 | `/intelligence/relationship-maps/[id]/edit` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/relationship-maps/[id]/edit/page.tsx` |
 | `/intelligence/relationship-maps/[id]` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/relationship-maps/[id]/page.tsx` |
 | `/intelligence/relationship-maps/new` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/relationship-maps/new/page.tsx` |
 | `/intelligence/relationship-maps` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/relationship-maps/page.tsx` |
 | `/intelligence/signals/[id]` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/signals/[id]/page.tsx` |
 | `/intelligence/signals` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/signals/page.tsx` |
+| `/intelligence` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/intelligence/page.tsx` |
 | `/internal-workforce` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/internal-workforce/page.tsx` |
 | `/invoices/[id]/edit` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/invoices/[id]/edit/page.tsx` |
 | `/invoices/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/invoices/[id]/page.tsx` |
@@ -78,9 +80,10 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/opportunities/coverage/new` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/opportunities/coverage/new/page.tsx` |
 | `/opportunities/coverage` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/opportunities/coverage/page.tsx` |
 | `/opportunities/new` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/opportunities/new/page.tsx` |
-| `/opportunities` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/opportunities/page.tsx` |
 | `/opportunities/pipeline` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/opportunities/pipeline/page.tsx` |
-| `/` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/page.tsx` |
+| `/opportunities` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/opportunities/page.tsx` |
+| `/partner-network` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/partner-network/page.tsx` |
+| `/partner-performance` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/partner-performance/page.tsx` |
 | `/partner/agreements/[id]` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/agreements/[id]/page.tsx` |
 | `/partner/agreements` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/agreements/page.tsx` |
 | `/partner/company` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/company/page.tsx` |
@@ -95,11 +98,10 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/partner/jsa` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/jsa/page.tsx` |
 | `/partner/mobilization` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/mobilization/page.tsx` |
 | `/partner/onboarding` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/onboarding/page.tsx` |
-| `/partner` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/page.tsx` |
 | `/partner/payments` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/payments/page.tsx` |
 | `/partner/performance` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/performance/page.tsx` |
-| `/partner/production` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/production/page.tsx` |
 | `/partner/production/review` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/production/review/page.tsx` |
+| `/partner/production` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/production/page.tsx` |
 | `/partner/settlements` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/settlements/page.tsx` |
 | `/partner/vehicles` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/vehicles/page.tsx` |
 | `/partner/work-orders/[id]` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/work-orders/[id]/page.tsx` |
@@ -107,8 +109,7 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/partner/workers/[id]` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/workers/[id]/page.tsx` |
 | `/partner/workers` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/workers/page.tsx` |
 | `/partner/workforce` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/workforce/page.tsx` |
-| `/partner-network` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/partner-network/page.tsx` |
-| `/partner-performance` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/partner-performance/page.tsx` |
+| `/partner` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/partner/page.tsx` |
 | `/passport` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/passport/page.tsx` |
 | `/payment-applications/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/payment-applications/[id]/page.tsx` |
 | `/payment-applications` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/payment-applications/page.tsx` |
@@ -122,11 +123,12 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/payroll/[id]` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/payroll/[id]/page.tsx` |
 | `/payroll/new` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/payroll/new/page.tsx` |
 | `/payroll` | [finance-and-controls.md](finance-and-controls.md) | `apps/web/app/payroll/page.tsx` |
+| `/production-dashboard` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/production-dashboard/page.tsx` |
 | `/production/[id]/edit` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/production/[id]/edit/page.tsx` |
 | `/production/[id]` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/production/[id]/page.tsx` |
 | `/production/new` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/production/new/page.tsx` |
 | `/production` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/production/page.tsx` |
-| `/production-dashboard` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/production-dashboard/page.tsx` |
+| `/project-handoffs` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/project-handoffs/page.tsx` |
 | `/projects/[id]/edit` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/projects/[id]/edit/page.tsx` |
 | `/projects/[id]` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/projects/[id]/page.tsx` |
 | `/projects` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/projects/page.tsx` |
@@ -145,8 +147,8 @@ All page files in the reviewed candidate are listed below. A listed route is not
 | `/syncfield/design-prep` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/design-prep/page.tsx` |
 | `/syncfield/jsa` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/jsa/page.tsx` |
 | `/syncfield/map` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/map/page.tsx` |
-| `/syncfield/production` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/production/page.tsx` |
 | `/syncfield/production/review` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/production/review/page.tsx` |
+| `/syncfield/production` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/production/page.tsx` |
 | `/syncfield/today` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/today/page.tsx` |
 | `/syncfield/workload` | [field-and-partner.md](field-and-partner.md) | `apps/web/app/syncfield/workload/page.tsx` |
 | `/training` | [demand-operations-and-quality.md](demand-operations-and-quality.md) | `apps/web/app/training/page.tsx` |

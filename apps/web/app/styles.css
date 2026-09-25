@@ -3897,3 +3897,23 @@ th {
 .workspace-page input[type="checkbox"] { width: 20px; min-height: 20px; }
 .workspace-page button { align-self: end; background: var(--accent); color: white; min-height: 44px; }
 @media (max-width: 600px) { .workspace-page { padding: 16px; } }
+
+/* Completion forms retain readable labels and usable controls on crew phones. */
+.partner-form-grid, .operator-form-grid { min-width: 0; }
+.partner-form-grid fieldset, .operator-form-grid fieldset, .stacked-form fieldset,
+.qualification-panel fieldset { min-width: 0; max-width: 100%; }
+.partner-form-grid input, .partner-form-grid select, .partner-form-grid textarea,
+.operator-form-grid input, .operator-form-grid select, .operator-form-grid textarea,
+.stacked-form input, .stacked-form select, .stacked-form textarea {
+  box-sizing: border-box; max-width: 100%; min-width: 0; min-height: 44px;
+}
+.partner-form-grid select, .partner-form-grid textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 9px 10px; font: inherit; }
+.partner-form-grid textarea, .stacked-form textarea { min-height: 88px; resize: vertical; }
+.qualification-panel label { display: block; padding: 8px 0; }
+.qualification-panel input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; vertical-align: middle; margin-right: 8px; }
+@media (max-width: 600px) {
+  .partner-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .partner-form-grid input, .partner-form-grid select, .partner-form-grid textarea,
+  .operator-form-grid input, .operator-form-grid select, .operator-form-grid textarea,
+  .stacked-form input, .stacked-form select, .stacked-form textarea { font-size: 16px; }
+}

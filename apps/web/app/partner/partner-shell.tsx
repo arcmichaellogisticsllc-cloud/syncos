@@ -1,6 +1,9 @@
 "use client";
 
 import NextLink from "next/link";
+import { FieldEvidence, FieldIncident } from "./field-evidence";
+import { ProductionExports } from "../production-dashboard/production-exports";
+import { PartnerOnboardingEditor } from "./onboarding-editor";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, FormEvent, ReactNode } from "react";
 import { clearAuthContext, readPermissions, readToken, sessionEmailFromToken, syncosFetch, SyncosApiError } from "../intelligence/api";
@@ -549,6 +552,8 @@ const foremanFieldPermissions = ["partner_map.read_assigned", "partner_jsa.read_
 export function PartnerShell({ section, itemId, product = "partner" }: { section: Section; itemId?: string; product?: "partner" | "syncfield" }) {
   const [state, setState] = useState<{ loading: boolean; error?: string; denied?: boolean; data: PortalData }>({ loading: true, data: {} });
   const [message, setMessage] = useState<string | null>(null);
+  const onboardingSubmitLock = useRef(false);
+  const onboardingMutationId = useRef<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
 
@@ -685,6 +690,11 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
                 }}
               />
             ) : null}
+            {!isSyncField && <PartnerOnboardingEditor section={section} permissions={permissions} company={data.company as Record<string, unknown> | undefined} workers={data.workers as unknown as Record<string, unknown>[]} crews={data.crews as unknown as Record<string, unknown>[]} itemId={itemId} onSaved={async () => {
+              if (!data.context) return;
+              const refreshed = await loadAdmin(data.context, data.actions ?? {}, section, itemId);
+              setState(current => ({ ...current, data: refreshed }));
+            }} />}
             {isSyncField && (data.foremanAssignments?.length ?? 0) > 1 && !data.selectedAssignment
               ? <EmptyPortal title="Select a SyncField assignment" body="Choose the Crew and Work Order you are working before opening JSA, map, production, or corrections. SyncOS will not silently decide where production is recorded." />
               : renderSection(section, data, permissions, itemId, acknowledgeNotice, completeJsa, submitOnboarding)}
@@ -712,14 +722,17 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
   }
 
   async function submitOnboarding() {
+    if (onboardingSubmitLock.current) return;
+    onboardingSubmitLock.current = true;
+    onboardingMutationId.current ??= crypto.randomUUID();
     try {
       setMessage(null);
-      const submission = await syncosFetch<CompanySubmission>("partner-compliance/me/submit", { method: "POST", body: {} });
+      const submission = await syncosFetch<CompanySubmission>("partner-compliance/me/submit", { method: "POST", body: { client_mutation_id: onboardingMutationId.current } });
       setState((current) => ({ ...current, data: { ...current.data, submission } }));
       setMessage("Company onboarding submitted for Sync review.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Company onboarding submission failed.");
-    }
+    } finally { onboardingSubmitLock.current = false; }
   }
 }
 
@@ -782,7 +795,7 @@ async function loadAdmin(context: PartnerContext, actions: PartnerActions | unde
     needsCompliance ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
     needsCompliance ? safeFetch<PaymentProfile>("partner-compliance/me/payment-profile") : undefined,
     needsCompliance ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
-    section === "onboarding" || section === "workers" || section === "worker-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
+    section === "onboarding" || section === "workers" || section === "worker-detail" || section === "crews" || section === "crew-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
     needsCrews ? safeFetch<Crew[]>("partner-workforce/me/crews", []) : [],
     needsAgreements ? safeFetch<Agreement[]>("partner-agreements/me/agreements", []) : [],
     needsWorkOrders ? safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []) : [],
@@ -873,13 +886,13 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
     return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
   }
   if (data.context?.persona === "partner_foreman") {
-    if (section === "dashboard") return <ForemanToday data={data} acknowledgeNotice={acknowledgeNotice} />;
+    if (section === "dashboard") return <><ForemanToday data={data} acknowledgeNotice={acknowledgeNotice} />{permissions.includes("partner_daily_production.create") && <FieldIncident key={data.selectedAssignment?.id} assignmentId={data.selectedAssignment?.id} />}</>;
     if (section === "crews" || section === "crew-detail" || section === "workforce") return <ForemanCrew data={data} />;
     if (section === "work-orders" || section === "work-order-detail") return <ForemanWorkload data={data} />;
     if (section === "field-map") return <FieldMapWorkspace data={data} />;
     if (section === "daily-jsa") return <DailyJsaWorkspace data={data} completeJsa={completeJsa} />;
     if (section === "daily-production") return <DailyProductionWorkspace data={data} permissions={permissions} />;
-    if (section === "review-day") return <ReviewDayWorkspace data={data} permissions={permissions} />;
+    if (section === "review-day") return <><ReviewDayWorkspace data={data} permissions={permissions} />{data.productionToday?.id && <FieldEvidence key={data.productionToday.id} reportId={data.productionToday.id} canUpload={permissions.includes("partner_production_record.create")} />}</>;
     if (section === "customer-qc" || section === "corrections") return <ForemanCorrectionsWorkspace data={data} permissions={permissions} />;
     if (section === "mobilization") return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
   }
@@ -937,6 +950,7 @@ function renderSection(section: Section, data: PortalData, permissions: string[]
 }
 
 function OnboardingChecklistWorkspace({ data, submitOnboarding }: { data: PortalData; submitOnboarding: () => Promise<void> }) {
+  const [submitting, setSubmitting] = useState(false);
   const readiness = data.readiness;
   const checklist = data.onboarding;
   const items = readiness?.onboarding?.items ?? checklist?.items ?? [];
@@ -1021,7 +1035,7 @@ function OnboardingChecklistWorkspace({ data, submitOnboarding }: { data: Portal
         <div className="onboarding-submit-row">
           {data.submission?.status === "submitted" || data.submission?.status === "under_review" || data.submission?.status === "resubmitted"
             ? <span className="partner-button primary disabled-action">Submitted for Sync Review</span>
-            : readPermissions().includes("partner_compliance.submission.submit") ? <button className="partner-button primary" type="button" onClick={() => void submitOnboarding()} disabled={!c2aReady}>Submit for Sync Review</button> : null}
+            : readPermissions().includes("partner_compliance.submission.submit") ? <button className="partner-button primary" type="button" onClick={async () => { setSubmitting(true); try { await submitOnboarding(); } finally { setSubmitting(false); } }} disabled={!c2aReady || submitting}>{submitting ? "Submitting for review…" : "Submit for Sync Review"}</button> : null}
           <span>{data.submission?.status === "action_required" ? `Action Required: ${data.submission.external_return_reason || "Review the requested corrections."}` : c2aReady ? "Sync Admin will review the Partner-controlled package. Approval remains separate." : "Approval remains locked until required gates are complete. Complete the required Partner-controlled tasks before submitting."}</span>
         </div>
         <ActionList blockers={readiness?.actionRequired ?? []} />
@@ -2440,6 +2454,7 @@ function ReviewDayWorkspace({ data, permissions }: { data: PortalData; permissio
           ))}
         </div>
         {!(data.productionHistory?.reports ?? []).length ? <EmptyPortal title="No submitted production history" body="Submitted days for your assigned Crew appear here." /> : null}
+        <ProductionExports reports={data.productionHistory?.reports ?? []} artifacts={data.productionHistory?.artifacts ?? []} mode="foreman" />
       </Panel>
     </div>
   );
@@ -2477,6 +2492,7 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
         </div>
         {!(dashboard?.recent_reports ?? data.productionReports ?? []).length ? <EmptyPortal title="No Daily Production" body="Draft and submitted field reports appear here after Foreman entry." /> : null}
       </Panel>
+      <ProductionExports reports={dashboard?.recent_reports ?? data.productionReports ?? []} artifacts={dashboard?.artifacts ?? []} mode="partner" />
       <Panel title="Aging" eyebrow="Customer QC and corrections">
         <StatusRows rows={[["Awaiting Customer QC", String(dashboard?.customer_qc_aging?.length ?? 0)], ["Open Corrections", String(dashboard?.correction_aging?.length ?? 0)]]} />
       </Panel>
@@ -2737,14 +2753,23 @@ function CorrectionEditor({ correction }: { correction: CustomerCorrection }) {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [mutationId] = useState(() => crypto.randomUUID());
-  const labels: Record<string, string> = { reported_quantity: "Corrected quantity", asset_identifier: "Corrected asset identifier", route_endpoint: "Corrected route endpoint", notes: "Correction notes" };
+  const [options, setOptions] = useState<{daily_report_id:string; production_record_id:string; codes:{id:string;code:string;description:string}[]; evidence:{id:string;file_name:string}[]} | null>(null);
+  const [evidence, setEvidence] = useState<string[]>([]);
+  async function loadOptions() { setOptions(await syncosFetch(`syncfield/foreman/corrections/${correction.id}/options`)); }
+  useEffect(() => { void loadOptions().catch(error => setMessage(error.message)); }, [correction.id]);
+  const labels: Record<string, string> = { reported_quantity: "Corrected quantity", asset_identifier: "Corrected asset identifier", route_endpoint: "Corrected route endpoint", notes: "Correction notes", production_code_id: "Corrected production code", map_location: "Corrected map location", evidence: "Correction evidence" };
   const fields = (correction.allowed_fields ?? []).filter((field) => labels[field]);
   async function resubmit() {
     if (pending || submitted) return;
     setPending(true); setMessage("");
     try {
       const body: Record<string, unknown> = { client_mutation_id: mutationId };
-      for (const field of fields) if (values[field]?.trim()) body[field] = field === "reported_quantity" ? Number(values[field]) : values[field].trim();
+      for (const field of fields) if (!["map_location","evidence"].includes(field) && values[field]?.trim()) body[field] = field === "reported_quantity" ? Number(values[field]) : values[field].trim();
+      if (fields.includes("evidence") && evidence.length) body.evidence = evidence;
+      if (fields.includes("map_location") && [values.map_page,values.map_x,values.map_y].some(value=>value?.trim())) {
+        if (![values.map_page,values.map_x,values.map_y].every(value=>value?.trim())) throw new Error("Enter the page and both map positions.");
+        body.map_location = { page: Number(values.map_page), x_ratio: Number(values.map_x)/100, y_ratio: Number(values.map_y)/100 };
+      }
       await syncosFetch(`syncfield/foreman/corrections/${correction.id}/resubmit`, { method: "POST", body });
       setSubmitted(true); setMessage("Correction submitted for customer reinspection. The original report is preserved; customer acceptance is still pending.");
     } catch (caught) { setMessage(caught instanceof Error ? safeSyncError(caught.message) : "Correction could not be submitted. Your entries remain here; retry when connected."); }
@@ -2752,21 +2777,24 @@ function CorrectionEditor({ correction }: { correction: CustomerCorrection }) {
   }
   if (submitted) return <p role="status">{message}</p>;
   if (!fields.length) return <p>This correction requires evidence or a map change. Contact your supervisor to complete that correction; no editable field is available here.</p>;
-  return <form aria-label="Correction editor" className="partner-form-grid compact-form" onSubmit={(event) => {
+  return <>{fields.includes("evidence") && options && <FieldEvidence reportId={options.daily_report_id} recordId={options.production_record_id} canUpload={readPermissions().includes("partner_production_record.create")} onSaved={() => void loadOptions()} />}<form aria-label="Correction editor" className="partner-form-grid compact-form" onSubmit={(event) => {
     event.preventDefault();
-    if (!fields.some((field) => values[field]?.trim())) { setMessage("Enter at least one requested correction."); return; }
+    if (!fields.some((field) => values[field]?.trim()) && !evidence.length && !values.map_page) { setMessage("Enter at least one requested correction."); return; }
     setMessage(""); setReviewing(true);
   }}>
     {(correction.allowed_fields ?? []).some((field) => !labels[field]) ? <p role="status">Some requested changes need evidence, map editing, or a production code change. Ask your supervisor to complete those parts; this form only sends the fields shown below.</p> : null}
     <p>Only the requested fields can change. Review your entries before sending a new revision for customer reinspection.</p>
-    {fields.map((field) => <label key={field}>{labels[field]}<input disabled={pending || reviewing} type={field === "reported_quantity" ? "number" : "text"} min={field === "reported_quantity" ? "0" : undefined} step={field === "reported_quantity" ? "any" : undefined} value={values[field] ?? ""} onChange={(event) => setValues({ ...values, [field]: event.target.value })} /></label>)}
+    {fields.includes("evidence") && options && <><fieldset><legend>Select evidence for this correction</legend>{options.evidence.map(item => <label key={item.id}><input type="checkbox" disabled={pending || reviewing} checked={evidence.includes(item.id)} onChange={e => setEvidence(e.target.checked ? [...evidence,item.id] : evidence.filter(id => id!==item.id))} />{item.file_name}</label>)}</fieldset></>}
+    {fields.includes("production_code_id") && <label>Corrected production code<select disabled={pending || reviewing} value={values.production_code_id ?? ""} onChange={e => setValues({...values,production_code_id:e.target.value})}><option value="">Keep current code</option>{options?.codes.map(item => <option key={item.id} value={item.id}>{item.code} — {item.description}</option>)}</select></label>}
+    {fields.includes("map_location") && <fieldset><legend>Corrected position on assigned map</legend><p>Enter page and position measured from the top-left of the assigned map. Original map evidence remains preserved.</p>{[["map_page","Page"],["map_x","Horizontal position (%)"],["map_y","Vertical position (%)"]].map(([key,label]) => <label key={key}>{label}<input type="number" min={key==="map_page"?1:0} max={key==="map_page"?undefined:100} step={key==="map_page"?1:"any"} disabled={pending||reviewing} value={values[key]??""} onChange={e=>setValues({...values,[key]:e.target.value})} /></label>)}</fieldset>}
+    {fields.filter(field=>!["evidence","production_code_id","map_location"].includes(field)).map((field) => <label key={field}>{labels[field]}<input disabled={pending || reviewing} type={field === "reported_quantity" ? "number" : "text"} min={field === "reported_quantity" ? "0" : undefined} step={field === "reported_quantity" ? "any" : undefined} value={values[field] ?? ""} onChange={(event) => setValues({ ...values, [field]: event.target.value })} /></label>)}
     {message ? <p role="alert">{message}</p> : null}
     {reviewing ? <>
       <p role="status">Review ready. These changes are not sent until you select Resubmit Correction.</p>
       <button className="partner-button wide-touch" type="button" disabled={pending} onClick={() => setReviewing(false)}>Edit correction</button>
       <button className="partner-button primary wide-touch" type="button" disabled={pending} onClick={() => void resubmit()}>{pending ? "Submitting…" : "Resubmit Correction"}</button>
     </> : <button className="partner-button wide-touch" type="submit">Review correction</button>}
-  </form>;
+  </form></>;
 }
 
 function ProductionList({ records }: { records: ProductionRecord[] }) {

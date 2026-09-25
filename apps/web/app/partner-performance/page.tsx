@@ -1,7 +1,7 @@
 "use client";
 import { Capability } from "../access-control";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readToken, syncosFetch } from "../intelligence/api";
 
 type PartnerRow = {
@@ -28,6 +28,16 @@ export default function PartnerPerformancePage() {
   const [state, setState] = useState<{ loading: boolean; error?: string; dashboard?: Dashboard; selected?: Record<string, unknown> }>({ loading: true });
   const [filter, setFilter] = useState({ confidence: "", score_band: "", recommendation: "" });
 
+  const actionLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  async function perform(run: () => Promise<void>) {
+    if (actionLock.current) return;
+    actionLock.current = true; setBusy(true); setActionError("");
+    try { await run(); } catch (e) { setActionError(e instanceof Error ? e.message : "Action failed. Please retry."); }
+    finally { actionLock.current = false; setBusy(false); }
+  }
+
   useEffect(() => {
     void load();
   }, []);
@@ -49,30 +59,37 @@ export default function PartnerPerformancePage() {
   }
 
   async function recalculate() {
+    await perform(async () => {
     await syncosFetch("partner-performance/recalculate", { method: "POST", body: {} });
     await load();
+
+    });
   }
 
   async function openDetail(partnerId?: string) {
     if (!partnerId) return;
+    await perform(async () => {
+    setState(current => ({...current, selected: undefined}));
     const detail = await syncosFetch<Record<string, unknown>>(`partner-performance/partners/${partnerId}`);
     setState((current) => ({ ...current, selected: detail }));
+    });
   }
 
   if (state.loading) return <main className="workspace-page"><section className="workspace-panel loading-state">Loading Partner Performance...</section></main>;
-  if (state.error) return <main className="workspace-page"><section className="workspace-panel error-state"><h1>Access denied</h1><p>{state.error}</p></section></main>;
+  if (state.error) return <main className="workspace-page"><section className="workspace-panel error-state"><h1>Unable to load</h1><p role="alert">{state.error}</p><button onClick={() => void load()}>Retry</button></section></main>;
   const metrics = state.dashboard?.metrics ?? {};
   const partners = state.dashboard?.partners ?? [];
 
   return (
     <main className="workspace-page">
+      {actionError ? <p role="alert" className="error-banner">{actionError}</p> : null}
       <header className="workspace-header">
         <div>
           <p className="eyebrow">Operational Intelligence</p>
           <h1>Partner Performance</h1>
           <p>Derived scorecards, capacity intelligence, critical risk flags, and lifecycle recommendations for internal decision support.</p>
         </div>
-        <Capability permission="partner_performance.recalculate"><button className="primary-button" onClick={recalculate}>Recalculate</button></Capability>
+        <Capability permission="partner_performance.recalculate"><button className="primary-button" disabled={busy} onClick={recalculate}>Recalculate</button></Capability>
       </header>
       <section className="workspace-panel">
         <h2>Executive Ranking</h2>
@@ -88,9 +105,9 @@ export default function PartnerPerformancePage() {
       <section className="workspace-panel">
         <h2>Filters</h2>
         <div className="filter-row">
-          <select value={filter.confidence} onChange={(event) => setFilter({ ...filter, confidence: event.target.value })}><option value="">Confidence</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
-          <select value={filter.score_band} onChange={(event) => setFilter({ ...filter, score_band: event.target.value })}><option value="">Score Band</option><option value="excellent">Excellent</option><option value="strong">Strong</option><option value="acceptable">Acceptable</option><option value="watch">Watch</option><option value="high_risk">High Risk</option></select>
-          <select value={filter.recommendation} onChange={(event) => setFilter({ ...filter, recommendation: event.target.value })}><option value="">Recommendation</option><option value="promote">Promote</option><option value="maintain">Maintain</option><option value="review">Review</option><option value="demote">Demote</option><option value="suspend_review">Suspend Review</option><option value="insufficient_data">Insufficient Data</option></select>
+          <select aria-label="Confidence" value={filter.confidence} onChange={(event) => setFilter({ ...filter, confidence: event.target.value })}><option value="">Confidence</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+          <select aria-label="Score band" value={filter.score_band} onChange={(event) => setFilter({ ...filter, score_band: event.target.value })}><option value="">Score Band</option><option value="excellent">Excellent</option><option value="strong">Strong</option><option value="acceptable">Acceptable</option><option value="watch">Watch</option><option value="high_risk">High Risk</option></select>
+          <select aria-label="Recommendation" value={filter.recommendation} onChange={(event) => setFilter({ ...filter, recommendation: event.target.value })}><option value="">Recommendation</option><option value="promote">Promote</option><option value="maintain">Maintain</option><option value="review">Review</option><option value="demote">Demote</option><option value="suspend_review">Suspend Review</option><option value="insufficient_data">Insufficient Data</option></select>
           <button className="secondary-button" onClick={() => load()}>Apply</button>
         </div>
       </section>
@@ -112,7 +129,7 @@ export default function PartnerPerformancePage() {
                   <td>{row.thirty_day_capacity ?? 0}</td>
                   <td>{(row.territories ?? []).join(", ") || "Explicit territory missing"}</td>
                   <td>{(row.capabilities ?? []).join(", ") || "No approved capability"}</td>
-                  <td><button className="secondary-button" onClick={() => openDetail(row.partner_organization_id)}>Open</button></td>
+                  <td><button className="secondary-button" disabled={busy} onClick={() => openDetail(row.partner_organization_id)}>Open</button></td>
                 </tr>
               ))}
               {!partners.length ? <tr><td colSpan={11}>No score snapshots. Recalculate to create derived performance intelligence.</td></tr> : null}

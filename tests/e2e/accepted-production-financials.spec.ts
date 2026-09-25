@@ -356,3 +356,61 @@ test('a newer pending customer QC cycle blocks readiness using an older accepted
     expect(stored.rows[0].customer_qc_decision_id).toBe(fixture.fiberDecision);
   } finally { await client.end(); }
 });
+
+test.describe('Financial handoff completion safeguards', () => {
+ let client: Client;
+ test.beforeAll(async()=>{client=new Client({connectionString:process.env.DATABASE_URL});await client.connect();});
+ test.afterAll(async()=>{await client?.end();});
+ test('workflow choices are tenant-scoped; cash retry and duplicate settlement cannot double financial facts',async({request})=>{
+  const f=await seedP12Fixture(client,process.env.AUTH_JWT_SECRET!);
+  const billable=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:f.fiberDecision});
+  const choices=await apiJson(request,f.internalToken,'GET','/accepted-production-financials/workflow-choices');
+  expect(choices.billables.some((r:any)=>r.id===billable.id&&r.label.includes('P12 Customer'))).toBe(true);
+  for(const bearer of [f.partnerToken,f.foremanToken,f.tenantBToken])expect((await request.get(apiUrl('/accepted-production-financials/workflow-choices'),{headers:auth(bearer)})).status()).toBe(403);
+  const invoice=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/invoices/create',{billable_item_ids:[billable.id]});
+  const receipt=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/cash-receipts',{customer_organization_id:f.customerOrg,amount:100,idempotency_key:crypto.randomUUID()});
+  await apiJson(request,f.internalToken,'POST',`/accepted-production-financials/cash-receipts/${receipt.id}/clear`,{});
+  const body={cash_receipt_id:receipt.id,invoice_id:invoice.id,amount:40,idempotency_key:crypto.randomUUID()};
+  const attempts=await Promise.all([1,2].map(()=>request.post(apiUrl('/accepted-production-financials/payment-applications'),{headers:auth(f.internalToken),data:body})));
+  expect(attempts.map(r=>r.status())).toEqual([201,201]);const first=await attempts[0].json();expect((await attempts[1].json()).id).toBe(first.id);
+  const balance=await client.query('SELECT paid_amount FROM invoices WHERE tenant_id=$1 AND id=$2',[f.tenantA,invoice.id]);expect(Number(balance.rows[0].paid_amount)).toBe(40);
+  expect((await request.post(apiUrl('/accepted-production-financials/payment-applications'),{headers:auth(f.internalToken),data:{...body,amount:41}})).status()).toBe(400);
+  const source=choices.sources.find((r:any)=>r.id===billable.accepted_production_source_id);
+  const settlementBody={accepted_production_source_ids:[source.id]};
+  const settlements=await Promise.all([1,2].map(()=>request.post(apiUrl('/accepted-production-financials/partner-settlements/create'),{headers:auth(f.internalToken),data:settlementBody})));
+  expect(settlements.map(r=>r.status()).sort()).toEqual([201,400]);
+  const count=await client.query('SELECT count(*)::int AS n FROM settlement_items WHERE tenant_id=$1 AND accepted_production_source_id=$2',[f.tenantA,source.id]);expect(count.rows[0].n).toBe(1);
+ });
+ test('accepted correction production code controls locked customer rate, preserving original record',async({request})=>{
+  const f=await seedP12Fixture(client,process.env.AUTH_JWT_SECRET!);
+  const context=(await client.query('SELECT cqd.production_record_id,cqd.qc_cycle_id,cqc.daily_report_id,wo.customer_rate_schedule_id FROM customer_qc_decisions cqd JOIN customer_qc_cycles cqc ON cqc.id=cqd.qc_cycle_id JOIN work_orders wo ON wo.id=cqc.work_order_id WHERE cqd.tenant_id=$1 AND cqd.id=$2',[f.tenantA,f.fiberDecision])).rows[0];
+  const code=crypto.randomUUID(), revision=crypto.randomUUID();
+  await client.query("INSERT INTO syncfield_production_codes(id,tenant_id,code,description,unit_of_measure,location_type) VALUES($1,$2,'FIBER-CORRECTED','Corrected placement','feet','route')",[code,f.tenantA]);
+  await client.query("INSERT INTO rate_codes(tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,status) VALUES($1,$2,'FIBER-CORRECTED','Corrected placement','feet','feet',2,2,'active')",[f.tenantA,context.customer_rate_schedule_id]);
+  await client.query("INSERT INTO daily_production_report_revisions(id,tenant_id,daily_report_id,revision_number,snapshot_json,reason) VALUES($1,$2,$3,2,$4,'correction_submitted')",[revision,f.tenantA,context.daily_report_id,JSON.stringify({original_production_record_id:context.production_record_id,proposed_correction:{production_code_id:code}})]);
+  // A subsequent correction to another record must retain this record's accepted code lineage.
+  const third=crypto.randomUUID();await client.query("INSERT INTO daily_production_report_revisions(id,tenant_id,daily_report_id,revision_number,snapshot_json,reason) VALUES($1,$2,$3,3,$4,'correction_submitted')",[third,f.tenantA,context.daily_report_id,JSON.stringify({original_production_record_id:crypto.randomUUID(),proposed_correction:{production_code_id:code}})]);
+  await client.query('UPDATE customer_qc_cycles SET daily_report_revision_id=$1 WHERE tenant_id=$2 AND id=$3',[third,f.tenantA,context.qc_cycle_id]);
+  const billable=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:f.fiberDecision});expect(Number(billable.customer_rate_locked)).toBe(2);expect(Number(billable.net_billable_amount)).toBe(282);
+  const original=(await client.query('SELECT syncfield_production_code_id FROM production_records WHERE id=$1',[context.production_record_id])).rows[0];expect(original.syncfield_production_code_id).not.toBe(code);
+ });
+});
+
+test('targeted reinspection retains unrelated accepted production while unresolved corrected work stays blocked',async({request})=>{
+ const client=new Client({connectionString:process.env.DATABASE_URL});await client.connect();
+ try {
+  const f=await seedP12Fixture(client,process.env.AUTH_JWT_SECRET!);
+  const context=(await client.query(`SELECT c.*,d.production_record_id FROM customer_qc_cycles c JOIN customer_qc_decisions d ON d.tenant_id=c.tenant_id AND d.qc_cycle_id=c.id WHERE d.tenant_id=$1 AND d.id=$2`,[f.tenantA,f.extraDecision])).rows[0];
+  const correction=crypto.randomUUID(),revision=crypto.randomUUID(),cycle=crypto.randomUUID();
+  await client.query(`INSERT INTO production_corrections(id,tenant_id,qc_cycle_id,customer_qc_decision_id,daily_report_id,production_record_id,partner_organization_id,crew_id,correction_type,customer_reason,partner_safe_instructions,status,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'quantity','Recheck selected line','Recheck selected line','awaiting_customer_reinspection',$9)`,[correction,f.tenantA,context.id,f.extraDecision,context.daily_report_id,context.production_record_id,context.partner_organization_id,context.crew_id,context.created_by_user_id]);
+  await client.query(`INSERT INTO daily_production_report_revisions(id,tenant_id,daily_report_id,revision_number,snapshot_json,reason) VALUES($1,$2,$3,2,$4,'customer_correction_resubmitted')`,[revision,f.tenantA,context.daily_report_id,JSON.stringify({original_production_record_id:context.production_record_id,correction:{id:correction},proposed_correction:{reported_quantity:8}})]);
+  await client.query(`INSERT INTO customer_qc_cycles(id,tenant_id,project_id,work_order_id,work_order_version_id,daily_report_id,daily_report_revision_id,partner_organization_id,crew_id,qc_authority_organization_id,cycle_number,status,source_reference,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,3,'awaiting_reinspection','Targeted correction',$11)`,[cycle,f.tenantA,context.project_id,context.work_order_id,context.work_order_version_id,context.daily_report_id,revision,context.partner_organization_id,context.crew_id,context.qc_authority_organization_id,context.created_by_user_id]);
+  const queue=await apiJson(request,f.internalToken,'GET','/accepted-production-financials/billable-queue');expect(queue.some((r:any)=>r.customer_qc_decision_id===f.fiberDecision)).toBe(true);expect(queue.some((r:any)=>r.customer_qc_decision_id===f.extraDecision)).toBe(false);
+  const unchanged=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:f.fiberDecision});
+  const invoice=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/invoices/create',{billable_item_ids:[unchanged.id]});expect(Number(invoice.original_amount)).toBe(132.54);
+  // An accepted decision alone cannot bypass an outstanding correction that has not been resolved.
+  const unsafeDecision=crypto.randomUUID();await client.query(`INSERT INTO customer_qc_decisions(id,tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,recorded_by_user_id,source_reference) VALUES($1,$2,$3,$4,'accepted',8,8,'feet',$5,'unresolved correction test')`,[unsafeDecision,f.tenantA,cycle,context.production_record_id,context.created_by_user_id]);
+  const blocked=await request.post(apiUrl('/accepted-production-financials/billables/convert'),{headers:auth(f.internalToken),data:{customer_qc_decision_id:unsafeDecision}});expect(blocked.status()).toBe(404);
+  const old=(await client.query('SELECT current FROM customer_qc_decisions WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.fiberDecision])).rows[0];expect(old.current).toBe(true);
+ } finally {await client.end();}
+});

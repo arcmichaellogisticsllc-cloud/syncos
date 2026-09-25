@@ -21,15 +21,17 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const response = await fetch(target, {
     method: request.method,
     headers,
-    body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.text(),
+    body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer(),
     cache: "no-store",
   });
 
-  const text = await response.text();
-  return new NextResponse(text, {
+  const bytes = [204, 205, 304].includes(response.status) ? null : await response.arrayBuffer();
+  const disposition = response.headers.get("content-disposition");
+  return new NextResponse(bytes, {
     status: response.status,
     headers: {
       "content-type": response.headers.get("content-type") ?? "application/json",
+      ...(disposition ? { "content-disposition": disposition } : {}),
     },
   });
 }

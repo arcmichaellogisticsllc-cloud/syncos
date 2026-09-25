@@ -1,6 +1,6 @@
 # Partner and Sync crew training
 
-Source baseline: `04b61bc`, with the daily submission feedback repair in this working candidate. Reviewed 2026-09-24. This chapter is **code-reviewed training, not a claim that every step has been observed on a phone or staging**. Browser test results must be read in the release verification report. Screens and available actions depend on server-approved permissions and the selected organization/assignment. An absent action is not a reason to switch to an administrator account.
+Updated for the workflow-completion candidate based on `161eeee`, reviewed 2026-09-25. This chapter is **code-reviewed training, not a claim that every step has been observed on a phone or staging**. Browser test results must be read in the release verification report. Screens and available actions depend on server-approved permissions and the selected organization/assignment. An absent action is not a reason to switch to an administrator account.
 
 ## Before a supervised session
 
@@ -21,18 +21,18 @@ Source baseline: `04b61bc`, with the daily submission feedback repair in this wo
 | `/syncfield/design-prep` | Authorized internal design preparer | Load Segments; Add Design Segment; Operations |
 | `/partner` | Partner Administrator | Dashboard links, Refresh, permitted Acknowledge Notice |
 | `/partner/onboarding` | Partner Administrator | Checklist links, Continue, Submit for Sync Review when eligible |
-| `/partner/company`, `/partner/compliance` | Partner Administrator | Read company/compliance state; no editing/upload forms here |
-| `/partner/workforce`, `/partner/workers`, `/partner/workers/[id]` | Partner Administrator | Read roster and worker detail |
-| `/partner/crews`, `/partner/crews/[id]` | Partner Administrator | Read crew readiness and roster |
+| `/partner/company`, `/partner/compliance` | Partner Administrator | Company profile, capability declaration, private compliance submissions, and review state |
+| `/partner/workforce`, `/partner/workers`, `/partner/workers/[id]` | Partner Administrator | Add/update workers; submit photos, credentials and review requests; read worker detail |
+| `/partner/crews`, `/partner/crews/[id]` | Partner Administrator | Create crews, add members, assign foremen, and inspect readiness |
 | `/partner/agreements`, `/partner/agreements/[id]` | Partner Administrator | Read agreement status/detail; no signing/download action in these views |
-| `/partner/vehicles` | Partner Administrator | Read assigned equipment/inspection information |
+| `/partner/vehicles` | Partner Administrator | Submit equipment declarations; read assigned equipment/inspection information |
 | `/partner/work-orders`, `/partner/work-orders/[id]` | Partner Administrator | Read assigned work-order summary |
 | `/partner/mobilization` | Partner Administrator or permitted Foreman | Read readiness/authorization and Acknowledge Notice |
 | `/partner/jsa` | Partner Administrator | Read crew JSA status; Foreman persona receives JSA workflow |
 | `/partner/production`, `/partner/production/review` | Partner Administrator | Read production; Foreman persona receives production/review workflow |
 | `/partner/customer-qc`, `/partner/corrections` | Partner Administrator | Read customer QC/correction instructions |
 | `/partner/settlements`, `/partner/payments`, `/partner/performance` | Permitted Partner Administrator | Read organization-safe commercial/performance views; no payment execution |
-| `/syncfield/today` | Assigned Sync or partner Foreman | Choose assignment, Open Map, Complete JSA/View Daily JSA, Open Production, permitted notice acknowledgment |
+| `/syncfield/today` | Assigned Sync or partner Foreman | Choose assignment, Open Map, Complete JSA/View Daily JSA, Open Production, report incidents, permitted notice acknowledgment |
 | `/syncfield/crew` | Assigned Foreman | Issue note; Present, Absent, N/A for each worker |
 | `/syncfield/workload` | Assigned Foreman | Read scope/map package/vehicle |
 | `/syncfield/map` | Assigned Foreman | Page −/+, zoom −/+, Open assigned PDF, zone navigation, Open Production |
@@ -56,13 +56,13 @@ Prerequisite: a valid invitation supplied through the approved invitation proces
 
 ## 2. Review partner onboarding and readiness
 
-Role: Partner Administrator. This is currently a review-and-submit experience over an existing company package; it is not complete self-service onboarding.
+Role: Partner Administrator. Company, document, worker and crew maintenance is available through the permission-controlled forms described in the Partner self-service setup section below. Equipment and capacity declarations require internal review.
 
 1. Open **Onboarding** (`/partner/onboarding`). Read **Company Approved**, **Crew Ready**, and **Project Mobilization** separately.
 2. In **Required order**, click **Company Setup**, **W-9 / Tax Information**, **Payment Setup**, **Insurance**, **Agreements**, **Workers**, **Crews**, **Vehicles / Equipment**, **Safety / Compliance**, or **Capabilities / Territories** to inspect its current state. **Continue** opens the next checklist destination.
 3. On **Company**, check business/contact details and **Correction Reason**. On **Compliance**, check **Overall**, **W-9**, **Payment Setup**, insurance expiration/review/correction status and blockers.
 4. On **Workers**, select a worker row for role/review information. On **Crews**, select a crew card for staffing/readiness and roster. Check equipment in **Vehicles & Equipment** and agreement execution status in **Agreements**.
-5. If the information is missing or incorrect, stop and escalate to the onboarding coordinator. The current destination pages do **not** contain the upload/edit/add controls described by some checklist wording. “Certified P3 submission workflow” text is informational, not a clickable workflow.
+5. If information is missing or incorrect, use the authorized company, compliance, worker, and crew forms below. Submit equipment/capability declarations for Sync review; these do not create verified capacity or equipment custody. If a required action is absent, ask the onboarding coordinator to check your access.
 6. When the existing required package is ready, return to `/partner/onboarding` and click **Submit for Sync Review**. Expect **Company onboarding submitted for Sync review.** and **Submitted for Sync Review**.
 7. A disabled submission button means the package is not eligible. Submission is not company approval, crew readiness, mobilization approval or authorization to start production.
 
@@ -90,9 +90,10 @@ Role: authorized internal map administrator; crew/work assignment and linked for
 4. Click **Upload and assign map**. Expect **Map assigned. The foreman can open it in SyncField; production still requires readiness approval and a completed daily safety meeting.** Confirm **Current maps** says **Map assigned**.
 5. Replacement upload creates a new revision. If no foreman is linked, repair crew setup first. If an upload partially fails, check **Current maps** before retrying rather than assuming nothing was saved.
 6. Optional: click **Prepare planned spans** for the correct map. This prepopulates **Organization ID** and **Map Version ID** in design prep. Click **Load Segments** to inspect current segments.
-7. Enter **Page**, **From Pole / Asset**, **To Pole / Asset**, **Design Footage**, and **Label**, then **Add Design Segment**. Expect **Design segment saved to the selected immutable map version.**
+7. Enter **Page**, **From Pole / Asset**, **To Pole / Asset**, **Design Footage**, and **Label**. Supply the source drawing reference and measured page coordinates for each point: X is the percentage from the left edge; Y is the percentage from the top. Use **Add bend point** when needed.
+8. Select **Add Design Segment**. Expect **Design segment saved to the selected immutable map version.** A failure displays an error and retains the inputs; wait for the current request before retrying.
 
-Known design-prep limitation: this screen uses fixed line geometry; it is not an interactive map tracing tool. It also lacks visible request-error handling and an in-flight button guard at this baseline. Do not train users to represent the generated line as a surveyed/customer-traced location. Treat real design preparation as a supervised gap pending repair.
+Design preparation now requires explicit measured coordinates instead of fixed sample geometry. It is not an interactive PDF tracing tool or GPS survey tool. Use the assigned source drawing and verified measurements.
 
 ## 5. Start a foreman's day — both workforce types
 
@@ -142,7 +143,7 @@ Role: assigned Foreman with production-create permission; JSA and start gates sa
 4. For coil/slack choose **Pole / asset**, **Easement**, **Coil / slack type**. Enter **Required FT**, **Actual FT**, **Reel / cable**, **Fiber type**, **Rule source**, **Source / notes**, and **Field notes** as applicable.
 5. Click **Save Coil / Slack**. An eligible pole observation is needed first; **OTHER** needs field notes. Check **Construction Evidence** and **Daily Totals**.
 
-Evidence limitations: this screen has construction record evidence, but no general photo/file upload button was found. Do not describe a nonexistent camera/upload workflow. Evidence/map/production-code correction requirements remain open where the correction editor cannot express them.
+General photo/file evidence is now available from Review & Submit; use the updated paths below. Construction record evidence remains a separate source.
 
 ## 8. Synchronize and submit the day
 
@@ -164,7 +165,7 @@ Prerequisite: an authorized QC process has issued a correction for this assigned
 4. Use **Edit correction** to revise, or **Resubmit Correction** to send.
 5. Expect **Correction submitted for customer reinspection. The original report is preserved; customer acceptance is still pending.**
 6. On error, entries stay in the form for retry. A closed or awaiting-reinspection correction has no editable resubmission form.
-7. If the screen says evidence/map changes need a supervisor, escalate. Do not claim the missing evidence requirement has been satisfied by entering a note. Reinspection and acceptance are separate authorized QC actions.
+7. For evidence, production-code, and map-location corrections, use the updated correction path below. Reinspection and acceptance remain separate authorized QC actions.
 
 ## 10. Partner oversight and financial visibility
 
@@ -178,20 +179,11 @@ Role: Partner Administrator with the relevant read permissions; Foremen must not
 
 ## Customer-QC decisions, exports and closeout — incomplete UI paths
 
-The app can display customer-QC outcomes to partners and accept a foreman's supported correction. However, source review found no internal UI that calls the daily-report completeness, customer-QC cycle or customer decision-recording endpoints. The `/qc` workbench operates a separate review model; choosing its `customer_qc` review type does not establish a daily-report customer decision in the newer workflow.
-
-For a supervised customer-acceptance exercise:
-
-1. Open the designated submitted report and verify its immutable revision and the configured customer authority.
-2. Record the customer completeness/decision-entry step as **blocked in UI**. Do not invent an acceptance button or substitute internal QC approval.
-3. A foreman can practice correction only on an approved, already-provisioned correction example. Use section 9 for its supported submission path.
-4. Record customer reinspection/acceptance as **blocked in UI** until the corresponding authorized screen exists. API test success is not a click-by-click acceptance result.
-
-Likewise, `/production-dashboard` shows accepted-production and closeout information but has no Generate/Download controls for annotated-map PDF, daily-production PDF, production CSV or closeout packages. Those generation/download APIs exist, but this current UI does not provide a complete export/closeout click path. Viewing a closeout status does not generate a package. Preserve these requirements and track them as pilot blockers when the exercise depends on them.
+The daily-report customer-QC screen and production export controls now exist. Follow the updated click paths below. The general `/qc` workbench still represents a separate review model; use its **Daily report customer QC and reinspection** link for report-specific decisions.
 
 ## 11. Incident reporting boundary
 
-No dedicated incident-report entry route/form was found in the current app source. **Incident reporting reviewed** is a JSA control, and **Issue note** is a daily crew-participation note; neither is a complete incident filing workflow. Follow the company's established incident/escalation procedure and record this missing application capability in pilot feedback. Do not tell trainees to use JSA completion as incident submission.
+Use Today → Report an incident or near miss, as described below. **Incident reporting reviewed** remains a JSA control; it is not an incident submission.
 
 ## Source and verification notes
 
@@ -199,4 +191,83 @@ Reviewed implementation: `apps/web/app/partner/partner-shell.tsx`, all Partner/S
 
 Existing automated scenario sources inspected: `tests/e2e/syncfield-daily-production.spec.ts`, and references to `internal-workforce.spec.ts`/`syncfield-customer-qc.spec.ts`. This chapter's author did not execute these tests or operate shared data. The updated daily-production browser scenario checks a temporary failed submission, visible retry, reuse of the request identity, successful disabled state, and existing immutable-revision assertions. Its execution result belongs in the parent verification report.
 
-Known source findings requiring follow-up: incomplete partner self-service onboarding destinations; absent incident and general photo-upload workflows; fixed design geometry and missing design-prep request feedback. These gaps are preserved requirements, not permission to narrow the product scope.
+The current candidate adds these operational paths. Real-phone, interrupted-connectivity, role-boundary and end-to-end acceptance remain required before pilot sign-off.
+
+## Updated field evidence, incident and customer-QC paths
+
+These paths are implemented in the current local candidate. Execute the matching pilot test before treating a step as accepted on an actual phone.
+
+### Attach photos or documents
+1. Sign in as the assigned foreman (Sync crew or partner crew), select the intended assignment, and open **Review & Submit**.
+2. Under **Photos and evidence**, choose **Evidence file**: JPEG, PNG or PDF, up to 2 MB.
+3. Describe what it shows, then select **Upload evidence**. Wait for **Evidence saved**.
+4. The file appears with its description. **Download [filename]** retrieves the authorized file. An upload failure keeps the selected file and description for retry.
+5. Evidence added after submission is an additional record. It does not overwrite the submitted quantity, accept work, create billing, or replace the original submission.
+
+### Report an incident or near miss
+1. From **Today**, confirm the intended assignment and expand **Report an incident or near miss**.
+2. Choose the incident type; enter its time, location, description, and immediate action taken.
+3. Select **Record incident**. Wait for the saved confirmation. Failed submissions keep the entered values for retry.
+4. Follow the company’s incident-response procedure. For emergencies, contact emergency services and the supervisor immediately; this form does not call or message them.
+5. Authorized internal reviewers open **QC → Daily report customer QC and reinspection**. The **Incident queue** includes recent incidents even before a daily report is submitted.
+
+### Record daily-report customer QC
+1. Open **QC → Daily report customer QC and reinspection** (`/customer-qc`). This is separate from the general QC workbench.
+2. Select **Submitted daily report** by date, project, Work Order and crew. Inspect attached evidence, incident records and correction history.
+3. If authorized for completeness review, choose **Confirm completeness**, or enter **Return reason** and choose **Return for completion**. Neither action accepts production.
+4. After completeness, enter **Customer source reference** and choose **Open customer inspection cycle**. A correction resubmission automatically creates a reinspection cycle; select that cycle instead of opening a duplicate.
+5. Select **Inspection cycle**, then **Production record**. Read reported quantities and any proposed correction revision.
+6. Choose **Customer decision**. Accepted/partially accepted decisions require **Customer-accepted quantity**. Other outcomes require the documented **Customer reason**. Enter crew-safe comments/instructions.
+7. For correction-required or rejected work, select exactly the **Fields the crew may correct**, then **Record customer decision**.
+8. Verify the confirmation and inspection history. The reported submission remains preserved. Customer acceptance is separate from internal completeness and from financial conversion.
+
+### Correct evidence, code, or map position
+1. Open **Corrections** and read the customer instruction and allowed fields.
+2. When permitted, choose the corrected production code from the authorized Work Order list. For map-location correction, enter the assigned map page and horizontal/vertical position as percentages measured from its top-left corner.
+3. If evidence is requested, upload the file under **Photos and evidence**, then select it under **Select evidence for this correction**. A file uploaded elsewhere cannot be substituted.
+4. Complete any requested quantity, identifier, endpoint or notes changes. Click **Review correction**, check the entered values, then **Resubmit Correction**.
+5. Expect **awaiting customer reinspection**. Changes are recorded in a new immutable proposed revision; the original report remains intact and nothing is automatically customer accepted.
+
+### Generate and download production exports
+Partner administrators open **Daily Production** and use **Production exports and closeout**. Choose a submitted report and authorized format, then **Generate export** and **Download**. Foremen see authorized existing downloads in **Review & Submit** history; they do not receive internal generation or financial authority. Internal users use the Production Dashboard’s permission-filtered export controls. Generating a closeout status package does not itself declare all work accepted.
+
+## Partner self-service setup update
+
+Use a Partner Admin account for the company you maintain. The server derives the company; these forms never ask you to select or type an organization ID. Controls appear only for the corresponding granted action. A Foreman account does not receive these controls.
+
+## Company profile
+1. Open **Partner Portal → Company**.
+2. Expand **Save company profile**.
+3. Confirm the legal name, business address, and business, primary, compliance, and settlement contact details.
+4. Select **Save company profile**. Wait for **Saved**. On an error, keep the form open, correct the information or retry; entries remain.
+5. To make another change, select **Enter another update**.
+
+## Capabilities, territories, and equipment declarations
+1. In **Company**, expand **Send capability declaration**. Describe the work capabilities, crew capacity, territories, and availability.
+2. For equipment, open **Vehicles & Equipment**, then **Send equipment declaration**. Describe the equipment, ownership, inspection dates, and proposed crew.
+3. Submit. The declaration appears in the list with its status. Return here for Sync's response.
+4. If Sync requests information, submit a new declaration identifying the earlier request and supplying the requested detail.
+
+A declaration enters internal review. It does not create verified capacity, an equipment custody agreement, a crew assignment, mobilization approval, or authorization to start. Sync reviews declarations through Partner Network and records the canonical capacity/custody records separately.
+
+## Compliance
+1. Open **Compliance → Submit W-9**. Enter the legal name, tax classification, identifier type and **last four digits only**, signed date, and choose the signed document. Select **Submit W-9**.
+2. Expand **Submit payment enrollment**. Enter the enrollment contact, optional bank display name and account last four digits, and upload supporting documents when available. Submit for review. This does not activate Passport or send payment.
+3. Expand **Submit insurance policy**. Choose the policy type; enter carrier, dates, dollar limits, coverage declarations, and endorsement information. Upload the certificate and applicable endorsement. Submit.
+4. Select **Enter another update** for each additional required policy type. These submissions return to Sync review; partners cannot verify themselves.
+
+If a document upload loses its confirmation, refresh and inspect the document list before submitting again. These legacy document endpoints do not guarantee server-side duplicate suppression after a lost response. Documents accept PDF, JPEG, PNG, or WebP up to 5 MB. Worker photos accept supported image formats up to 2 MB. Full tax identifiers and bank details belong only in the appropriate private documents, never ordinary form fields.
+
+## Workers and crews
+1. Open **Workers → Add worker**. Enter first/last name, work role, and your reference; save.
+2. Select the worker under **Worker to maintain**. Use **Save worker details**, **Submit worker photo**, and **Submit worker credential** as applicable. Confirm the photo attestation yourself.
+3. Select **Submit worker for review**. Submission does not approve the worker.
+4. Open **Crews → Add crew**. Enter the name, type, and target staffing; save.
+5. Select the crew under **Crew to maintain**. Use **Add crew member** with the named worker selector. Use **Assign crew foreman** or **Assign alternate foreman** when authorized. Backend readiness and membership restrictions still apply.
+6. Return to **Onboarding** to inspect remaining blockers. Complete the required records and select **Submit for Sync review** when available.
+
+Company approval, crew readiness, project mobilization, and authorization to start remain separate gates. The final submit now sends a stable request identifier, allowing safe retry without creating a second company submission.
+
+## Verification boundaries
+
+These steps describe the local candidate. Automated UI tests cover save/failure/retry, visibility for read-only users, and scoped worker creation. API tests cover declaration tenant scope, duplicate retry, internal response, and unchanged compliance readiness. Real-phone acceptance and staging activation remain separate release checks.

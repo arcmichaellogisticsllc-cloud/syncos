@@ -1,7 +1,8 @@
 "use client";
-import { Capability } from "../access-control";
+import { AdjustmentForms } from "./adjustment-forms";
+import { Capability, useCapability } from "../access-control";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { readToken, syncosFetch } from "../intelligence/api";
 
 type Dashboard = {
@@ -26,6 +27,9 @@ type Payable = {
 };
 
 export default function PaymentRetainageAdjustmentsPage() {
+  const canExecute = useCapability("partner_payment.execute");
+  const recordGate = useRef(false);
+  const [recordMessage, setRecordMessage] = useState("");
   const [state, setState] = useState<{ loading: boolean; error?: string; dashboard?: Dashboard; ready?: Payable[]; history?: Array<Record<string,any>> }>({ loading: true });
 
   const [recordError,setRecordError]=useState("");
@@ -34,8 +38,8 @@ export default function PaymentRetainageAdjustmentsPage() {
   const [requestKey,setRequestKey]=useState("");
   useEffect(() => { setRequestKey(crypto.randomUUID()); }, []);
   async function record(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();const form=event.currentTarget;const f=Object.fromEntries(new FormData(form).entries());setBusy(true);setRecordError("");
-    try{await syncosFetch("payment-retainage-adjustments/external-payments",{method:"POST",body:{...f,amount:Number(f.amount),confirmed_completed:f.confirmed_completed==="on",idempotency_key:requestKey}});form.reset();setRequestKey(crypto.randomUUID());setRefresh(x=>x+1);}catch(e){setRecordError((e as Error).message);}finally{setBusy(false);}
+    event.preventDefault();if(recordGate.current)return;recordGate.current=true;setRecordMessage("");const form=event.currentTarget;const f=Object.fromEntries(new FormData(form).entries());setBusy(true);setRecordError("");
+    try{await syncosFetch("payment-retainage-adjustments/external-payments",{method:"POST",body:{...f,amount:Number(f.amount),confirmed_completed:f.confirmed_completed==="on",idempotency_key:requestKey}});form.reset();setRecordMessage("Completed external payment recorded with its proof reference. No transfer was sent.");setRequestKey(crypto.randomUUID());setRefresh(x=>x+1);}catch(e){setRecordError((e as Error).message);}finally{recordGate.current=false;setBusy(false);}
   }
 
   useEffect(() => {
@@ -45,6 +49,7 @@ export default function PaymentRetainageAdjustmentsPage() {
         setState({ loading: false, error: "Sign in with an internal finance account." });
         return;
       }
+      if (!canExecute) { setState({ loading: false }); return; }
       try {
         const [dashboard, ready, history] = await Promise.all([
           syncosFetch<Dashboard>("payment-retainage-adjustments/dashboard"),
@@ -60,10 +65,10 @@ export default function PaymentRetainageAdjustmentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refresh, canExecute]);
 
   if (state.loading) return <main className="workspace-page"><section className="workspace-panel loading-state">Loading payment execution controls...</section></main>;
-  if (state.error) return <main className="workspace-page"><section className="workspace-panel error-state"><h1>Access denied</h1><p>{state.error}</p></section></main>;
+  if (state.error) return <main className="workspace-page"><section className="workspace-panel error-state"><h1>Payment records unavailable</h1><p role="alert">{state.error}</p><button type="button" onClick={() => setRefresh(v => v + 1)}>Retry payment records</button></section></main>;
   const dashboard = state.dashboard ?? {};
   const ready = state.ready ?? [];
 
@@ -76,7 +81,7 @@ export default function PaymentRetainageAdjustmentsPage() {
           <p>Record completed external payments with their receipt references. Passport transfer automation is not enabled.</p>
         </div>
       </header>
-      <section className="workspace-panel">
+      <Capability permission="partner_payment.execute"><section className="workspace-panel">
         <h2>Payment Control</h2>
         <div className="summary-grid">
           <Metric label="Eligible" value={money(dashboard.eligible_amount)} />
@@ -108,9 +113,10 @@ export default function PaymentRetainageAdjustmentsPage() {
           </table>
         </div>
       </section>
-      <Capability permission="partner_payment.confirm"><section className="workspace-panel"><h2>Record a completed payment</h2>
-        {recordError&&<p role="alert">{recordError}</p>}
-        <form onSubmit={record}><fieldset disabled={busy}>
+      </Capability>
+      <Capability permission="partner_payment.execute"><Capability permission="partner_payment.confirm"><section className="workspace-panel"><h2>Record a completed payment</h2>
+        {recordError&&<p role="alert">{recordError}</p>}{recordMessage&&<p role="status">{recordMessage}</p>}
+        <form onSubmit={record} onChange={() => { if (!recordGate.current) setRequestKey(crypto.randomUUID()); }}><fieldset disabled={busy}>
           <label>Payable<select name="contractor_payable_id" required><option value="">Select payable</option>{ready.map(r=><option key={r.id} value={r.id}>{r.partner_name} — {r.payable_number}</option>)}</select></label>
           <label>Amount<input name="amount" type="number" min="0.01" step="0.01" required/></label>
           <label>Completed date<input name="payment_date" type="date" required/></label>
@@ -120,8 +126,9 @@ export default function PaymentRetainageAdjustmentsPage() {
           <label><input name="confirmed_completed" type="checkbox" required/> I verified that this external payment completed.</label>
           <button type="submit">{busy?'Recording…':'Record payment'}</button>
         </fieldset></form>
-      </section></Capability>
-      <section className="workspace-panel"><h2>Recorded external payments</h2><p>Most recent 100 completed payments. Receipt references remain available for reconciliation.</p><div className="table-wrap"><table><thead><tr><th>Date</th><th>Partner / payable</th><th>Amount</th><th>Method / reference</th><th>Proof</th><th>Recorded by</th></tr></thead><tbody>{(state.history??[]).map(r=><tr key={r.id}><td>{String(r.payment_date).slice(0,10)}</td><td>{r.partner_name} · {r.payable_number}</td><td>{money(r.amount)}</td><td>{r.method} · {r.reference}</td><td>{r.evidence_reference}</td><td>{r.recorded_by}</td></tr>)}</tbody></table></div>{!state.history?.length&&<p>No external payments recorded.</p>}</section>
+      </section></Capability></Capability>
+      <Capability permission="partner_payment.execute"><section className="workspace-panel"><h2>Recorded external payments</h2><p>Most recent 100 completed payments. Receipt references remain available for reconciliation.</p><div className="table-wrap"><table><thead><tr><th>Date</th><th>Partner / payable</th><th>Amount</th><th>Method / reference</th><th>Proof</th><th>Recorded by</th></tr></thead><tbody>{(state.history??[]).map(r=><tr key={r.id}><td>{String(r.payment_date).slice(0,10)}</td><td>{r.partner_name} · {r.payable_number}</td><td>{money(r.amount)}</td><td>{r.method} · {r.reference}</td><td>{r.evidence_reference}</td><td>{r.recorded_by}</td></tr>)}</tbody></table></div>{!state.history?.length&&<p>No external payments recorded.</p>}</section></Capability>
+      <AdjustmentForms />
     </main>
   );
 }

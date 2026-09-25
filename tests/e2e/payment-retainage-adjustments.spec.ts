@@ -277,3 +277,22 @@ test('external payment records are idempotent, evidence-backed, and serialized a
     const rows=await client.query('SELECT count(*)::int AS count FROM external_partner_payments WHERE tenant_id=$1 AND contractor_payable_id=$2',[f.tenantA,f.payableId]);expect(rows.rows[0].count).toBe(1);
   } finally {await client.end();}
 });
+
+test('competing pending retainage authorizations cannot exceed the remaining balance',async({request})=>{
+ const client=new Client({connectionString:process.env.DATABASE_URL});await client.connect();
+ try {
+  const f=await seedP13Fixture(client,process.env.AUTH_JWT_SECRET!);
+  await client.query("UPDATE contractor_payables SET eligible_amount=49.35,pay_when_paid_status='partially_eligible',payment_readiness_status='ready_with_warning' WHERE tenant_id=$1 AND id=$2",[f.tenantA,f.payableId]);
+  const partial=await apiJson(request,f.internalToken,'GET','/payment-retainage-adjustments/ready-to-pay');expect(partial.some((r:any)=>r.id===f.payableId)).toBe(true);
+  const choices=await apiJson(request,f.internalToken,'GET','/payment-retainage-adjustments/retainage-choices');expect(choices.payables.some((r:any)=>r.id===f.retainagePayableId)).toBe(true);
+  for(const bearer of [f.partnerToken,f.foremanToken,f.tenantBToken])expect((await request.get(apiUrl('/payment-retainage-adjustments/retainage-choices'),{headers:auth(bearer)})).status()).toBe(403);
+  const releases=[];
+  for(let i=0;i<2;i++)releases.push(await apiJson(request,f.internalToken,'POST','/payment-retainage-adjustments/retainage-releases',{contractor_payable_id:f.retainagePayableId,release_amount:500,release_reason:'Synthetic competing release',source_reference:'Synthetic closeout',idempotency_key:crypto.randomUUID()}));
+  const results=await Promise.all(releases.map(r=>request.post(apiUrl(`/payment-retainage-adjustments/retainage-releases/${r.id}/authorize`),{headers:auth(f.internalToken),data:{}})));
+  expect(results.map(r=>r.status()).sort()).toEqual([201,400]);
+  const balance=await client.query('SELECT retained_balance_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.retainagePayableId]);expect(Number(balance.rows[0].retained_balance_amount)).toBe(200);
+  const remainder=await apiJson(request,f.internalToken,'POST','/payment-retainage-adjustments/retainage-releases',{contractor_payable_id:f.retainagePayableId,release_amount:200,release_reason:'Remaining balance',source_reference:'Synthetic final closeout',idempotency_key:crypto.randomUUID()});
+  await apiJson(request,f.internalToken,'POST',`/payment-retainage-adjustments/retainage-releases/${remainder.id}/authorize`,{});
+  const after=await client.query('SELECT retained_balance_amount,retainage_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.retainagePayableId]);expect(Number(after.rows[0].retained_balance_amount)).toBe(0);expect(Number(after.rows[0].retainage_amount)).toBe(700);
+ } finally {await client.end();}
+});

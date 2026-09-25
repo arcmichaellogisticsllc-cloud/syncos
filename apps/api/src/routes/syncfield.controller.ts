@@ -1177,6 +1177,85 @@ export class SyncfieldController {
     });
   }
 
+  @Post("foreman/evidence")
+  @RequirePermission("partner_production_record.create")
+  async uploadFieldEvidence(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async client => {
+      const context = await this.requirePartnerForeman(client, request);
+      const crew = await this.requireForemanCrew(client, context);
+      const report = await this.requireDailyReportById(client, context.tenant_id, requireString(body.daily_report_id, "daily_report_id is required"));
+      if (report.crew_id !== crew.id || report.organization_id !== context.organization.id) throw new NotFoundException("report not found");
+      const recordId = this.optionalString(body.production_record_id);
+      if (recordId) {
+        const record = await this.requireProductionRecord(client, context.tenant_id, recordId);
+        if (record.daily_production_report_id !== report.id) throw new BadRequestException("evidence record must belong to report");
+      }
+      const mime = requireString(body.mime_type, "mime_type is required");
+      const encoded = requireString(body.content_base64, "file is required");
+      if (encoded.length > 2796204 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new BadRequestException("file must be valid base64 and at most 2 MB");
+      const bytes = Buffer.from(encoded, "base64");
+      const valid = mime === "image/png" ? bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : mime === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 : mime === "application/pdf" ? bytes.subarray(0,5).toString() === "%PDF-" : false;
+      if (!valid || bytes.length > 2097152) throw new BadRequestException("Choose a PNG, JPEG, or PDF file up to 2 MB");
+      return this.writeWithClient(client, request, "field_evidence.create", "field_evidence.created", "field_evidence", async writeClient => {
+        const inserted = await writeClient.query(`INSERT INTO syncfield_field_evidence (tenant_id,daily_report_id,production_record_id,crew_id,organization_id,file_name,mime_type,content_bytes,description,checksum,uploaded_by_user_id,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(tenant_id,uploaded_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id = EXCLUDED.client_mutation_id RETURNING id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at`, [context.tenant_id,report.id,recordId,crew.id,context.organization.id,this.sanitizeFileName(requireString(body.file_name,"file_name is required")),mime,bytes,requireString(body.description,"description is required"),createHash("sha256").update(bytes).digest("hex"),request.auth.userId,requireString(body.client_mutation_id,"client_mutation_id is required")]);
+        if (inserted.rows[0].daily_report_id !== report.id || inserted.rows[0].production_record_id !== recordId) throw new BadRequestException("mutation belongs to another evidence upload");
+        return { entityType: "field_evidence", entityId: inserted.rows[0].id, afterState: inserted.rows[0] };
+      });
+    });
+  }
+
+  @Get("foreman/evidence")
+  @RequirePermission("partner_daily_production.read")
+  async fieldEvidenceList(@Req() request: AuthenticatedRequest, @Query("daily_report_id") reportId: string) {
+    return this.withClient(async client => {
+      const context = await this.requirePartnerForeman(client, request); const crew = await this.requireForemanCrew(client, context);
+      const result = await client.query("SELECT id, daily_report_id, production_record_id, file_name, mime_type, description, created_at FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND crew_id=$3 AND organization_id=$4 ORDER BY created_at DESC", [context.tenant_id,reportId,crew.id,context.organization.id]); return result.rows;
+    });
+  }
+
+  @Get("foreman/evidence/:evidenceId")
+  @RequirePermission("partner_daily_production.read")
+  async foremanEvidenceBytes(@Req() request: AuthenticatedRequest, @Param("evidenceId") evidenceId: string) {
+    return this.withClient(async client => {
+      const context=await this.requirePartnerForeman(client,request);const crew=await this.requireForemanCrew(client,context);
+      const result=await client.query("SELECT id,file_name,mime_type,content_bytes FROM syncfield_field_evidence WHERE tenant_id=$1 AND id=$2 AND crew_id=$3 AND organization_id=$4",[context.tenant_id,evidenceId,crew.id,context.organization.id]);
+      if(!result.rows[0])throw new NotFoundException("evidence not found");const row=result.rows[0];return {id:row.id,file_name:row.file_name,mime_type:row.mime_type,content_base64:row.content_bytes.toString("base64")};
+    });
+  }
+
+  @Get("customer-qc/evidence/:evidenceId")
+  @RequirePermission("customer_qc.evidence_read")
+  async customerQcEvidence(@Req() request: AuthenticatedRequest, @Param("evidenceId") evidenceId: string) {
+    return this.withClient(async client => {
+      const result = await client.query("SELECT id,file_name,mime_type,content_bytes FROM syncfield_field_evidence WHERE tenant_id=$1 AND id=$2",[request.auth.tenantId,evidenceId]);
+      if (!result.rows[0]) throw new NotFoundException("evidence not found"); const row=result.rows[0]; return { id:row.id,file_name:row.file_name,mime_type:row.mime_type,content_base64:row.content_bytes.toString("base64") };
+    });
+  }
+
+  @Post("foreman/incidents")
+  @RequirePermission("partner_daily_production.create")
+  async reportFieldIncident(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async client => {
+      const context=await this.requirePartnerForeman(client,request); const assignment=await this.requireForemanOperationalAssignment(client,context,this.optionalString(body.assignment_id));
+      const kind=requireString(body.incident_type,"incident_type is required"); if (!["injury","near_miss","property_damage","environmental","other"].includes(kind)) throw new BadRequestException("incident type is invalid");
+      const occurred=requireString(body.occurred_at,"occurred_at is required"); if (!Number.isFinite(Date.parse(occurred))) throw new BadRequestException("incident time is invalid");
+      return this.writeWithClient(client,request,"field_incident.create","field_incident.created","field_incident",async writeClient=>{
+        const result=await writeClient.query(`INSERT INTO syncfield_field_incidents(tenant_id,crew_id,organization_id,work_order_id,occurred_at,incident_type,location,description,immediate_action,reported_by_user_id,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,reported_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id=EXCLUDED.client_mutation_id RETURNING *`,[context.tenant_id,assignment.crew_id,context.organization.id,assignment.work_order_id,occurred,kind,requireString(body.location,"location is required"),requireString(body.description,"description is required"),requireString(body.immediate_action,"immediate_action is required"),request.auth.userId,requireString(body.client_mutation_id,"client_mutation_id is required")]);
+        if(result.rows[0].crew_id!==assignment.crew_id || result.rows[0].work_order_id!==assignment.work_order_id) throw new BadRequestException("mutation belongs to another incident");
+        return {entityType:"field_incident",entityId:result.rows[0].id,afterState:result.rows[0]};
+      });
+    });
+  }
+
+  @Get("customer-qc/incidents")
+  @RequirePermission("daily_production.completeness_read")
+  async internalFieldIncidents(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => {
+      const result=await client.query(`SELECT i.id,i.occurred_at,i.incident_type,i.location,i.description,i.immediate_action,c.name AS crew_name,w.work_order_number FROM syncfield_field_incidents i JOIN crews c ON c.tenant_id=i.tenant_id AND c.id=i.crew_id LEFT JOIN work_orders w ON w.tenant_id=i.tenant_id AND w.id=i.work_order_id WHERE i.tenant_id=$1 ORDER BY i.occurred_at DESC LIMIT 100`,[request.auth.tenantId]);
+      return result.rows;
+    });
+  }
+
   @Get("customer-qc/completeness-queue")
   @RequirePermission("daily_production.completeness_read")
   async customerQcCompletenessQueue(@Req() request: AuthenticatedRequest) {
@@ -1200,6 +1279,19 @@ export class SyncfieldController {
         [request.auth.tenantId],
       );
       return result.rows.map((row) => this.safeCustomerQcReportSummary(row));
+    });
+  }
+
+  @Get("customer-qc/reports/:reportId")
+  @RequirePermission("daily_production.completeness_read")
+  async customerQcReportDetail(@Req() request: AuthenticatedRequest, @Param("reportId") reportId: string) {
+    return this.withClient(async (client) => {
+      const report = await this.requireSubmittedDailyReport(client, request.auth.tenantId, reportId);
+      const cycles = await client.query("SELECT * FROM customer_qc_cycles WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY cycle_number DESC", [request.auth.tenantId, reportId]);
+      const revisions = await client.query("SELECT revision_number, snapshot_json, created_at FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2 ORDER BY revision_number DESC", [request.auth.tenantId, reportId]);
+      const evidence = await client.query("SELECT id,file_name,mime_type,description,production_record_id,created_at FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY created_at", [request.auth.tenantId,reportId]);
+      const incidents=await client.query("SELECT id,occurred_at,incident_type,location,description,immediate_action FROM syncfield_field_incidents WHERE tenant_id=$1 AND crew_id=$2 AND work_order_id=$3 ORDER BY occurred_at DESC",[request.auth.tenantId,report.crew_id,report.work_order_id]);
+      return { ...(await this.safeDailyProductionDetail(client, report)), ...this.safeCustomerQcReportSummary(report), incidents: incidents.rows, evidence: evidence.rows, cycles: await Promise.all(cycles.rows.map(row => this.safeCustomerQcCycleDetail(client, row))), revisions: revisions.rows };
     });
   }
 
@@ -1300,6 +1392,8 @@ export class SyncfieldController {
           const existing = await writeClient.query("SELECT * FROM customer_qc_decisions WHERE tenant_id = $1 AND recorded_by_user_id = $2 AND client_mutation_id = $3", [request.auth.tenantId, request.auth.userId, mutationId]);
           if (existing.rows[0]) return { entityType: "customer_qc_decision", entityId: existing.rows[0].id, afterState: await this.safeCustomerQcDecisionDetail(writeClient, existing.rows[0]), skipEventAudit: true };
         }
+        const latestCycle = await writeClient.query("SELECT max(cycle_number) AS number FROM customer_qc_cycles WHERE tenant_id=$1 AND daily_report_id=$2 AND deleted_at IS NULL",[request.auth.tenantId,cycle.daily_report_id]);
+        if (Number(cycle.cycle_number) !== Number(latestCycle.rows[0].number)) throw new BadRequestException("Record the decision against the current inspection cycle");
         const record = await this.requireCycleProductionRecord(writeClient, cycle, requireString(body.production_record_id, "production_record_id is required"));
         const decision = requireString(body.decision, "decision is required").toLowerCase();
         if (!customerQcDecisions.has(decision)) throw new BadRequestException("customer decision is invalid");
@@ -1326,6 +1420,17 @@ export class SyncfieldController {
         );
         if (["correction_required", "rejected"].includes(decision)) {
           await this.createCorrectionForDecision(writeClient, request, cycle, inserted.rows[0], record, body);
+        }
+        if (decision === "accepted") {
+          // Only an explicit customer acceptance resolves corrections actually included in this inspected revision.
+          await writeClient.query(`UPDATE production_corrections correction SET status='resolved',resolved_at=now(),updated_at=now()
+            WHERE correction.tenant_id=$1 AND correction.production_record_id=$2 AND correction.daily_report_id=$3
+              AND correction.status='awaiting_customer_reinspection'
+              AND EXISTS(SELECT 1 FROM daily_production_report_revisions revision
+                JOIN daily_production_report_revisions inspected ON inspected.tenant_id=revision.tenant_id AND inspected.id=$4
+                WHERE revision.tenant_id=correction.tenant_id AND revision.daily_report_id=correction.daily_report_id
+                  AND revision.revision_number<=inspected.revision_number
+                  AND revision.snapshot_json->'correction'->>'id'=correction.id::text)`,[request.auth.tenantId,record.id,cycle.daily_report_id,cycle.daily_report_revision_id]);
         }
         await this.updateCycleAndReportOutcome(writeClient, cycle);
         const eventType = this.customerDecisionEventType(decision);
@@ -1374,6 +1479,19 @@ export class SyncfieldController {
     });
   }
 
+  @Get("foreman/corrections/:correctionId/options")
+  @RequirePermission("partner_correction.resubmit")
+  async correctionOptions(@Req() request: AuthenticatedRequest, @Param("correctionId") correctionId: string) {
+    return this.withClient(async client => {
+      const context=await this.requirePartnerForeman(client,request); const crew=await this.requireForemanCrew(client,context);
+      const correction=await this.requireForemanCorrection(client,context.tenant_id,context.organization.id,crew.id,correctionId);
+      const record=await this.requireProductionRecord(client,context.tenant_id,correction.production_record_id);
+      const codes=await client.query(`SELECT pc.id,pc.code,pc.description FROM syncfield_work_order_production_codes wopc JOIN syncfield_production_codes pc ON pc.tenant_id=wopc.tenant_id AND pc.id=wopc.production_code_id WHERE wopc.tenant_id=$1 AND wopc.work_order_version_id=$2 AND wopc.status='active' AND wopc.deleted_at IS NULL AND pc.active=true AND pc.deleted_at IS NULL AND pc.location_type=$3 AND pc.unit_of_measure=$4`,[context.tenant_id,record.work_order_version_id,record.syncfield_location_type,record.unit_of_measure ?? record.unit]);
+      const evidence=await client.query("SELECT id,file_name,description FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND (production_record_id IS NULL OR production_record_id=$3)",[context.tenant_id,correction.daily_report_id,correction.production_record_id]);
+      return {daily_report_id:correction.daily_report_id,production_record_id:record.id,codes:codes.rows,evidence:evidence.rows};
+    });
+  }
+
   @Post("foreman/corrections/:correctionId/resubmit")
   @RequirePermission("partner_correction.resubmit")
   async resubmitCorrection(@Req() request: AuthenticatedRequest, @Param("correctionId") correctionId: string, @Body() body: Record<string, unknown>) {
@@ -1392,6 +1510,22 @@ export class SyncfieldController {
         }
         if (!["open", "acknowledged", "in_progress"].includes(correction.status)) throw new BadRequestException("correction is not open for resubmission");
         this.validateCorrectionAllowedFields(correction, body);
+        const correctionRecord = await this.requireProductionRecord(writeClient, context.tenant_id, correction.production_record_id);
+        if (body.production_code_id !== undefined) {
+          const code = await writeClient.query(`SELECT pc.id FROM syncfield_work_order_production_codes wopc JOIN syncfield_production_codes pc ON pc.tenant_id=wopc.tenant_id AND pc.id=wopc.production_code_id WHERE wopc.tenant_id=$1 AND wopc.work_order_version_id=$2 AND pc.id=$3 AND pc.location_type=$4 AND pc.active=true AND pc.deleted_at IS NULL AND wopc.status='active' AND wopc.deleted_at IS NULL AND pc.unit_of_measure=$5`,[context.tenant_id,correctionRecord.work_order_version_id,body.production_code_id,correctionRecord.syncfield_location_type,correctionRecord.unit_of_measure ?? correctionRecord.unit]);
+          if (!code.rows[0]) throw new BadRequestException("production code must match the authorized Work Order, location type and submitted unit");
+        }
+        if (body.evidence !== undefined) {
+          if (!Array.isArray(body.evidence) || !body.evidence.length || body.evidence.some(id => typeof id !== "string")) throw new BadRequestException("select uploaded evidence");
+          const evidence = await writeClient.query("SELECT id FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND (production_record_id IS NULL OR production_record_id=$3) AND id=ANY($4::uuid[])",[context.tenant_id,correction.daily_report_id,correction.production_record_id,body.evidence]);
+          if (evidence.rows.length !== new Set(body.evidence).size) throw new BadRequestException("evidence must belong to this report and production record");
+        }
+        if (body.map_location !== undefined) {
+          if (!correctionRecord.map_version_id) throw new BadRequestException("this production has no assigned map");
+          const location=body.map_location as Record<string,unknown>;
+          const map=await writeClient.query("SELECT page_count FROM syncfield_map_versions WHERE tenant_id=$1 AND id=$2",[context.tenant_id,correctionRecord.map_version_id]);
+          if (!location || typeof location!=="object" || !Number.isInteger(location.page) || Number(location.page)<1 || Number(location.page)>Number(map.rows[0]?.page_count) || [location.x_ratio,location.y_ratio].some(value=>typeof value!=="number" || !Number.isFinite(value) || value<0 || value>1)) throw new BadRequestException("map location must use a valid assigned map page and coordinates between 0 and 1");
+        }
         const report = await this.requireDailyReportById(writeClient, context.tenant_id, correction.daily_report_id);
         const nextRevision = Number(report.revision_number ?? 1) + 1;
         const snapshot = await this.buildCorrectionSnapshot(writeClient, correction, body, nextRevision);
@@ -1631,7 +1765,7 @@ export class SyncfieldController {
     add("r.id = ?", query.daily_report_id);
     add("r.organization_id = ?", scope.partnerOrganizationId ?? query.partner_organization_id);
     add("r.crew_id = ?", scope.crewId ?? query.crew_id);
-    add("pr.syncfield_production_code_id = ?", query.production_code_id);
+    add("pc.id = ?", query.production_code_id);
     add("r.customer_qc_outcome = ?", query.customer_qc_outcome);
     add("r.work_date >= ?", query.date_from);
     add("r.work_date <= ?", query.date_to);
@@ -1639,11 +1773,20 @@ export class SyncfieldController {
       `
       WITH latest_decision AS (
         SELECT DISTINCT ON (d.production_record_id)
-          d.*, cyc.cycle_number, cyc.status AS cycle_status, cyc.qc_authority_organization_id,
+          d.*, cyc.cycle_number, cyc.daily_report_revision_id AS inspected_revision_id, cyc.status AS cycle_status, cyc.qc_authority_organization_id,
           cyc.submitted_to_customer_at, cyc.decision_received_at, cyc.decision_recorded_at
         FROM customer_qc_decisions d
         JOIN customer_qc_cycles cyc ON cyc.tenant_id = d.tenant_id AND cyc.id = d.qc_cycle_id AND cyc.deleted_at IS NULL
         WHERE d.tenant_id = $1 AND d.current = true AND d.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM customer_qc_cycles newer
+            LEFT JOIN daily_production_report_revisions inspected ON inspected.tenant_id=newer.tenant_id AND inspected.id=newer.daily_report_revision_id
+            WHERE newer.tenant_id=cyc.tenant_id AND newer.daily_report_id=cyc.daily_report_id AND newer.deleted_at IS NULL
+              AND newer.cycle_number>cyc.cycle_number
+              AND (inspected.snapshot_json->>'original_production_record_id' IS NULL OR inspected.snapshot_json->>'original_production_record_id'=d.production_record_id::text))
+          AND (d.decision NOT IN ('accepted','partially_accepted') OR NOT EXISTS (
+            SELECT 1 FROM production_corrections unresolved WHERE unresolved.tenant_id=d.tenant_id
+              AND unresolved.production_record_id=d.production_record_id AND unresolved.deleted_at IS NULL
+              AND unresolved.status NOT IN ('resolved','cancelled')))
         ORDER BY d.production_record_id, cyc.cycle_number DESC, d.recorded_at DESC, d.created_at DESC
       )
       SELECT r.id AS daily_report_id, r.work_date, r.revision_number, r.submitted_at, r.completeness_status, r.customer_qc_outcome,
@@ -1672,7 +1815,6 @@ export class SyncfieldController {
         corr.resubmitted_at
       FROM daily_production_reports r
       JOIN production_records pr ON pr.tenant_id = r.tenant_id AND pr.daily_production_report_id = r.id
-      JOIN syncfield_production_codes pc ON pc.tenant_id = pr.tenant_id AND pc.id = pr.syncfield_production_code_id
       JOIN projects p ON p.tenant_id = r.tenant_id AND p.id = r.project_id
       JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
       JOIN organizations org ON org.tenant_id = r.tenant_id AND org.id = r.organization_id
@@ -1688,8 +1830,24 @@ export class SyncfieldController {
       LEFT JOIN syncfield_map_documents md ON md.tenant_id = r.tenant_id AND md.id = r.map_document_id
       LEFT JOIN map_annotations ma ON ma.tenant_id = pr.tenant_id AND ma.production_record_id = pr.id AND ma.deleted_at IS NULL
       LEFT JOIN latest_decision ld ON ld.tenant_id = pr.tenant_id AND ld.production_record_id = pr.id
+      LEFT JOIN daily_production_report_revisions accepted_revision ON accepted_revision.tenant_id=ld.tenant_id AND accepted_revision.id=ld.inspected_revision_id
+      LEFT JOIN LATERAL (
+        SELECT revision.snapshot_json->'proposed_correction'->>'production_code_id' AS production_code_id
+        FROM daily_production_report_revisions revision
+        WHERE revision.tenant_id=pr.tenant_id AND revision.daily_report_id=r.id
+          AND revision.revision_number<=accepted_revision.revision_number
+          AND revision.snapshot_json->>'original_production_record_id'=pr.id::text
+          AND NULLIF(revision.snapshot_json->'proposed_correction'->>'production_code_id','') IS NOT NULL
+          AND ld.decision IN ('accepted','partially_accepted')
+        ORDER BY revision.revision_number DESC LIMIT 1
+      ) corrected_code ON true
+      JOIN syncfield_production_codes pc ON pc.tenant_id=pr.tenant_id AND pc.id=COALESCE(corrected_code.production_code_id::uuid,pr.syncfield_production_code_id)
       LEFT JOIN organizations qa ON qa.tenant_id = r.tenant_id AND qa.id = ld.qc_authority_organization_id
-      LEFT JOIN production_corrections corr ON corr.tenant_id = r.tenant_id AND corr.production_record_id = pr.id AND corr.deleted_at IS NULL AND corr.status <> 'cancelled'
+      LEFT JOIN LATERAL (
+        SELECT correction.* FROM production_corrections correction
+        WHERE correction.tenant_id=r.tenant_id AND correction.production_record_id=pr.id AND correction.deleted_at IS NULL AND correction.status<>'cancelled'
+        ORDER BY (correction.status<>'resolved') DESC,correction.created_at DESC,correction.id DESC LIMIT 1
+      ) corr ON true
       LEFT JOIN syncfield_span_completions sc ON sc.tenant_id = pr.tenant_id AND sc.production_record_id = pr.id AND sc.deleted_at IS NULL
       LEFT JOIN syncfield_design_segments ds ON ds.tenant_id = sc.tenant_id AND ds.id = sc.design_segment_id
       LEFT JOIN syncfield_asset_observations fo ON fo.tenant_id = sc.tenant_id AND fo.id = sc.from_asset_observation_id
@@ -2201,21 +2359,41 @@ export class SyncfieldController {
   }
 
   private async updateCycleAndReportOutcome(client: PoolClient, cycle: QueryResultRow) {
-    const decisions = await client.query("SELECT decision FROM customer_qc_decisions WHERE tenant_id = $1 AND qc_cycle_id = $2 AND current = true AND deleted_at IS NULL", [cycle.tenant_id, cycle.id]);
+    const decisions = await client.query("SELECT production_record_id,decision FROM customer_qc_decisions WHERE tenant_id = $1 AND qc_cycle_id = $2 AND current = true AND deleted_at IS NULL", [cycle.tenant_id, cycle.id]);
     const values = decisions.rows.map((row) => row.decision);
     if (!values.length) return;
-    let cycleStatus = "accepted";
-    let reportOutcome = "customer_accepted";
-    if (values.includes("correction_required")) {
-      cycleStatus = "awaiting_partner_correction";
-      reportOutcome = "customer_correction_required";
-    } else if (values.includes("rejected")) {
-      cycleStatus = "rejected";
-      reportOutcome = "customer_rejected";
-    } else if (values.includes("partially_accepted")) {
-      cycleStatus = "partially_accepted";
-      reportOutcome = "customer_partially_accepted";
-    }
+    const revision = await client.query("SELECT snapshot_json->>'original_production_record_id' AS corrected_record FROM daily_production_report_revisions WHERE tenant_id=$1 AND id=$2",[cycle.tenant_id,cycle.daily_report_revision_id]);
+    const effective = await client.query(`SELECT pr.id,latest.decision FROM production_records pr
+      LEFT JOIN LATERAL (
+        SELECT decision.decision FROM customer_qc_decisions decision
+        JOIN customer_qc_cycles inspection ON inspection.tenant_id=decision.tenant_id AND inspection.id=decision.qc_cycle_id
+        WHERE decision.tenant_id=pr.tenant_id AND decision.production_record_id=pr.id
+          AND decision.current=true AND decision.deleted_at IS NULL AND inspection.deleted_at IS NULL
+          AND inspection.daily_report_id=$2 AND inspection.cycle_number<=$3
+          AND (decision.decision NOT IN ('accepted','partially_accepted') OR NOT EXISTS (
+            SELECT 1 FROM production_corrections unresolved WHERE unresolved.tenant_id=decision.tenant_id
+              AND unresolved.production_record_id=decision.production_record_id AND unresolved.deleted_at IS NULL
+              AND unresolved.status NOT IN ('resolved','cancelled')))
+          AND NOT EXISTS (SELECT 1 FROM customer_qc_cycles newer
+            LEFT JOIN daily_production_report_revisions next_revision ON next_revision.tenant_id=newer.tenant_id AND next_revision.id=newer.daily_report_revision_id
+            WHERE newer.tenant_id=inspection.tenant_id AND newer.daily_report_id=inspection.daily_report_id
+              AND newer.deleted_at IS NULL AND newer.cycle_number>inspection.cycle_number AND newer.cycle_number<=$3
+              AND (next_revision.snapshot_json->>'original_production_record_id' IS NULL OR next_revision.snapshot_json->>'original_production_record_id'=pr.id::text))
+        ORDER BY inspection.cycle_number DESC,decision.recorded_at DESC,decision.id DESC LIMIT 1
+      ) latest ON true
+      WHERE pr.tenant_id=$1 AND pr.daily_production_report_id=$2 AND pr.status='submitted' AND pr.deleted_at IS NULL`,[cycle.tenant_id,cycle.daily_report_id,cycle.cycle_number]);
+    const reportValues=effective.rows.map(row=>row.decision);
+    // A reinspection can concern one corrected record; unrelated earlier decisions stay authoritative.
+    const targetRecord = revision.rows[0]?.corrected_record;
+    const cycleDecided = targetRecord ? decisions.rows.some(row=>row.production_record_id===targetRecord) : values.length >= effective.rows.length;
+    let cycleStatus = cycleDecided ? "accepted" : "awaiting_customer";
+    if(values.includes("correction_required")) cycleStatus="awaiting_partner_correction";
+    else if(values.includes("rejected")) cycleStatus="rejected";
+    else if(values.includes("partially_accepted")) cycleStatus="partially_accepted";
+    let reportOutcome = reportValues.length && reportValues.every(Boolean) ? "customer_accepted" : "pending_customer_qc";
+    if(reportValues.includes("correction_required")) reportOutcome="customer_correction_required";
+    else if(reportValues.includes("rejected")) reportOutcome="customer_rejected";
+    else if(reportValues.includes("partially_accepted")) reportOutcome="customer_partially_accepted";
     await client.query(
       "UPDATE customer_qc_cycles SET status = $3, decision_recorded_at = COALESCE(decision_recorded_at, now()), updated_at = now() WHERE tenant_id = $1 AND id = $2",
       [cycle.tenant_id, cycle.id, cycleStatus],
@@ -2313,10 +2491,9 @@ export class SyncfieldController {
 
   private validateCorrectionAllowedFields(correction: QueryResultRow, body: Record<string, unknown>) {
     const allowed = new Set(correction.allowed_fields ?? []);
-    // Never accept a field that the immutable revision snapshot would discard.
-    for (const field of ["production_code_id", "map_location", "evidence"]) {
-      if (body[field] !== undefined) throw new BadRequestException(`correction field is not supported by this revision workflow: ${field}`);
-    }
+    const recognized = new Set([...correctionFieldValues,"client_mutation_id","partner_notes"]);
+    for (const field of Object.keys(body)) if (!recognized.has(field)) throw new BadRequestException(`unknown correction field: ${field}`);
+    if (body.partner_notes !== undefined && !allowed.has("notes")) throw new BadRequestException("correction field not allowed: notes");
     if (body.reported_quantity !== undefined && (body.reported_quantity === null || body.reported_quantity === "" || !Number.isFinite(Number(body.reported_quantity)) || Number(body.reported_quantity) < 0)) {
       throw new BadRequestException("corrected quantity must be a non-negative number");
     }
@@ -2338,6 +2515,9 @@ export class SyncfieldController {
       correction: this.safeCorrection(correction),
       original_production_record_id: production.id,
       proposed_correction: {
+        production_code_id: body.production_code_id ?? null,
+        map_location: body.map_location ?? null,
+        evidence: body.evidence ?? null,
         reported_quantity: body.reported_quantity === undefined ? null : Number(body.reported_quantity),
         asset_identifier: this.optionalString(body.asset_identifier),
         route_endpoint: this.optionalString(body.route_endpoint),

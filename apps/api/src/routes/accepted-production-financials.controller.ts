@@ -26,6 +26,35 @@ export class AcceptedProductionFinancialsController {
     return this.withClient((client) => this.acceptedProductionRows(client, request.auth.tenantId, query));
   }
 
+  @Get("workflow-choices")
+  @RequirePermission("billing.read")
+  async workflowChoices(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const tenant = [request.auth.tenantId];
+      const accepted = await this.acceptedProductionRows(client, request.auth.tenantId, {});
+      const [billables, invoices, receipts, sources, settlements, payables] = await Promise.all([
+        client.query(`SELECT b.id, b.customer_organization_id, b.billable_quantity, b.unit, b.net_billable_amount,
+          concat(o.name, ' · ', b.rate_description, ' · ', b.billable_quantity, ' ', b.unit) AS label
+          FROM billable_items b LEFT JOIN organizations o ON o.tenant_id=b.tenant_id AND o.id=b.customer_organization_id
+          WHERE b.tenant_id=$1 AND b.deleted_at IS NULL AND b.status='ready_for_settlement' AND b.invoice_item_id IS NULL AND COALESCE(b.hold_reason,'')='' AND COALESCE(b.dispute_reason,'')='' ORDER BY b.created_at DESC`, tenant),
+        client.query(`SELECT i.id, i.customer_organization_id, i.balance_amount, concat(i.invoice_number,' · ',o.name,' · $',i.balance_amount) AS label
+          FROM invoices i LEFT JOIN organizations o ON o.tenant_id=i.tenant_id AND o.id=i.customer_organization_id
+          WHERE i.tenant_id=$1 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived') ORDER BY i.created_at DESC`, tenant),
+        client.query(`SELECT id, customer_organization_id, clearance_status, unapplied_amount, concat(receipt_number,' · ',payment_reference,' · $',unapplied_amount) AS label FROM cash_receipts WHERE tenant_id=$1 AND deleted_at IS NULL AND receipt_status NOT IN ('voided','archived') ORDER BY created_at DESC`, tenant),
+        client.query(`SELECT src.id, src.partner_organization_id, src.invoice_item_id, src.settlement_item_id, src.source_kind,
+          cp.provider_type, concat(wo.work_order_number,' · ',o.name,' · ',src.accepted_quantity,' ',src.unit_of_measure,' · ',src.source_kind) AS label
+          FROM accepted_production_financial_sources src
+          LEFT JOIN capacity_providers cp ON cp.tenant_id=src.tenant_id AND cp.id=src.capacity_provider_id
+          LEFT JOIN organizations o ON o.tenant_id=src.tenant_id AND o.id=src.partner_organization_id
+          LEFT JOIN work_orders wo ON wo.tenant_id=src.tenant_id AND wo.id=src.work_order_id
+          WHERE src.tenant_id=$1 AND src.deleted_at IS NULL AND src.financial_status<>'void' ORDER BY src.created_at DESC`, tenant),
+        client.query(`SELECT s.id, s.settlement_number AS label FROM settlements s WHERE s.tenant_id=$1 AND s.deleted_at IS NULL AND s.settlement_type='contractor_payable' AND s.status NOT IN ('voided','archived') AND NOT EXISTS (SELECT 1 FROM contractor_payables cp WHERE cp.tenant_id=s.tenant_id AND cp.settlement_id=s.id AND cp.deleted_at IS NULL AND cp.status NOT IN ('voided','archived')) ORDER BY s.created_at DESC`, tenant),
+        client.query(`SELECT cp.id, cp.retained_balance_amount, cp.retainage_amount, cp.pay_when_paid_status, cp.eligible_amount, concat(cp.payable_number,' · ',o.name) AS label FROM contractor_payables cp LEFT JOIN organizations o ON o.tenant_id=cp.tenant_id AND o.id=cp.partner_organization_id WHERE cp.tenant_id=$1 AND cp.deleted_at IS NULL AND cp.status NOT IN ('voided','archived') ORDER BY cp.created_at DESC`, tenant),
+      ]);
+      return { accepted, billables: billables.rows, invoices: invoices.rows, receipts: receipts.rows, sources: sources.rows, settlements: settlements.rows, payables: payables.rows };
+    });
+  }
+
   @Get("dashboard")
   @RequirePermission("billing.read")
   async dashboard(@Req() request: AuthenticatedRequest) {
@@ -144,6 +173,7 @@ export class AcceptedProductionFinancialsController {
       const invoiceNumber = this.optionalString(body.invoice_number) ?? await this.nextNumber(client, request.auth.tenantId, "invoices", "invoice_number", "INV-P12");
       const subtotal = this.roundMoney(billables.reduce((sum, row) => sum + Number(row.net_billable_amount ?? row.estimated_billable_amount ?? 0), 0));
       const retainagePercent = body.retainage_percent === undefined ? 0 : this.nonNegative(body.retainage_percent, "retainage_percent");
+      if (retainagePercent > 100) throw new BadRequestException("retainage_percent must not exceed 100");
       const retainage = this.roundMoney(subtotal * retainagePercent / 100);
       const total = this.roundMoney(subtotal - retainage);
       const invoice = await client.query(
@@ -219,6 +249,14 @@ export class AcceptedProductionFinancialsController {
   async applyCash(@Req() request: AuthenticatedRequest, @Body() body: Row) {
     return this.write(request, "payment_application.created", "payment_application.created", "payment_application", async (client) => {
       const receipt = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, requireString(body.cash_receipt_id, "cash_receipt_id is required"), "cash receipt not found");
+      const requestKey = this.optionalString(body.idempotency_key);
+      if (requestKey) {
+        const prior = await client.query("SELECT * FROM payment_applications WHERE tenant_id=$1 AND idempotency_key=$2 AND deleted_at IS NULL", [request.auth.tenantId, requestKey]);
+        if (prior.rows[0]) {
+          if (prior.rows[0].cash_receipt_id !== body.cash_receipt_id || prior.rows[0].invoice_id !== body.invoice_id || Number(prior.rows[0].applied_amount) !== Number(body.amount)) throw new BadRequestException("Payment application request changed; start a new action");
+          return { entityType: "payment_application", entityId: prior.rows[0].id, afterState: prior.rows[0] };
+        }
+      }
       if (receipt.clearance_status !== "cleared") throw new BadRequestException("only cleared cash can be applied");
       const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, requireString(body.invoice_id, "invoice_id is required"), "invoice not found");
       if (invoice.customer_organization_id !== receipt.customer_organization_id) throw new BadRequestException("cash customer must match invoice customer");
@@ -228,8 +266,8 @@ export class AcceptedProductionFinancialsController {
       if (amount > available) throw new BadRequestException("applied amount exceeds available cleared cash");
       if (amount > balance) throw new BadRequestException("applied amount exceeds invoice balance");
       const application = await client.query(
-        "INSERT INTO payment_applications (tenant_id,cash_receipt_id,invoice_id,customer_organization_id,applied_amount,application_date,application_status,application_type,created_by,updated_by) VALUES ($1,$2,$3,$4,$5,$6,'applied','partial_payment',$7,$7) RETURNING *",
-        [request.auth.tenantId, receipt.id, invoice.id, invoice.customer_organization_id, amount, this.today(), request.auth.userId],
+        "INSERT INTO payment_applications (tenant_id,cash_receipt_id,invoice_id,customer_organization_id,applied_amount,application_date,application_status,application_type,created_by,updated_by,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,'applied','partial_payment',$7,$7,$8) RETURNING *",
+        [request.auth.tenantId, receipt.id, invoice.id, invoice.customer_organization_id, amount, this.today(), request.auth.userId, requestKey],
       );
       await this.allocatePaymentApplication(client, request.auth.tenantId, request.auth.userId, application.rows[0], invoice, amount);
       const paid = this.roundMoney(Number(invoice.paid_amount ?? 0) + amount);
@@ -249,6 +287,12 @@ export class AcceptedProductionFinancialsController {
       }
       const sources = await this.sourcesForSettlement(client, request.auth.tenantId, body);
       if (!sources.length) throw new BadRequestException("accepted production sources are required");
+      if (Array.isArray(body.accepted_production_source_ids) && sources.length !== new Set(body.accepted_production_source_ids).size) throw new BadRequestException("Every selected source must exist");
+      for (const source of sources) {
+        if (source.settlement_item_id || !["accepted_production", "partner_coil_supplement"].includes(String(source.source_kind))) throw new BadRequestException("Select unsettled partner production sources");
+        const current = await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(source.production_record_id));
+        if (current.id !== source.customer_qc_decision_id) throw new BadRequestException("Customer acceptance changed; review the current decision before settlement");
+      }
       const internal = await client.query("SELECT id FROM capacity_providers WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND provider_type='internal_workforce'",[request.auth.tenantId,sources.map(row=>row.capacity_provider_id)]);
       if(internal.rows.length) throw new BadRequestException("Sync employee work is not eligible for partner settlement; use the internal payroll workflow");
       if (sources.some((row) => !row.partner_rate_code_id || Number(row.partner_rate ?? 0) <= 0)) {
@@ -548,6 +592,10 @@ export class AcceptedProductionFinancialsController {
         cqc.qc_authority_organization_id,
         auth.name AS qc_authority_name,
         pr.project_id,
+        wo.work_order_number,
+        pr.production_date,
+        pr.from_asset_identifier,
+        pr.to_asset_identifier,
         pr.work_order_id,
         pr.partner_organization_id,
         pr.capacity_provider_id,
@@ -569,15 +617,32 @@ export class AcceptedProductionFinancialsController {
       JOIN work_orders wo ON wo.tenant_id = pr.tenant_id AND wo.id = pr.work_order_id
       JOIN projects p ON p.tenant_id = pr.tenant_id AND p.id = pr.project_id
       LEFT JOIN organizations auth ON auth.tenant_id = cqc.tenant_id AND auth.id = cqc.qc_authority_organization_id
-      LEFT JOIN syncfield_production_codes spc ON spc.tenant_id = pr.tenant_id AND spc.id = pr.syncfield_production_code_id
+      LEFT JOIN daily_production_report_revisions accepted_revision ON accepted_revision.tenant_id=cqc.tenant_id AND accepted_revision.id=cqc.daily_report_revision_id
+      LEFT JOIN LATERAL (
+        SELECT revision.snapshot_json->'proposed_correction'->>'production_code_id' AS production_code_id
+        FROM daily_production_report_revisions revision
+        WHERE revision.tenant_id=pr.tenant_id AND revision.daily_report_id=cqc.daily_report_id
+          AND revision.revision_number<=accepted_revision.revision_number
+          AND revision.snapshot_json->>'original_production_record_id'=pr.id::text
+          AND NULLIF(revision.snapshot_json->'proposed_correction'->>'production_code_id','') IS NOT NULL
+        ORDER BY revision.revision_number DESC LIMIT 1
+      ) corrected_code ON true
+      LEFT JOIN syncfield_production_codes spc ON spc.tenant_id = pr.tenant_id AND spc.id = COALESCE(corrected_code.production_code_id::uuid, pr.syncfield_production_code_id)
       LEFT JOIN rate_codes rc ON rc.tenant_id = pr.tenant_id AND rc.id = pr.rate_code_id
-      LEFT JOIN accepted_production_financial_sources src ON src.tenant_id = cqd.tenant_id AND src.customer_qc_decision_id = cqd.id AND src.deleted_at IS NULL AND src.financial_status <> 'void'
+      LEFT JOIN accepted_production_financial_sources src ON src.tenant_id = cqd.tenant_id AND src.customer_qc_decision_id = cqd.id AND src.source_kind = 'accepted_production' AND src.deleted_at IS NULL AND src.financial_status <> 'void'
       WHERE ${where.join(" AND ")}
-        AND cqc.cycle_number = (
-          SELECT max(cqc2.cycle_number)
-          FROM customer_qc_cycles cqc2
-          WHERE cqc2.tenant_id = cqc.tenant_id AND cqc2.daily_report_id = cqc.daily_report_id AND cqc2.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM customer_qc_cycles newer
+          LEFT JOIN daily_production_report_revisions inspected ON inspected.tenant_id=newer.tenant_id AND inspected.id=newer.daily_report_revision_id
+          WHERE newer.tenant_id=cqc.tenant_id AND newer.daily_report_id=cqc.daily_report_id AND newer.deleted_at IS NULL AND newer.cycle_number>cqc.cycle_number
+            AND (NULLIF(inspected.snapshot_json->>'original_production_record_id','') IS NULL
+              OR inspected.snapshot_json->>'original_production_record_id'=pr.id::text)
         )
+        AND NOT EXISTS (SELECT 1 FROM customer_qc_decisions next_decision
+          JOIN customer_qc_cycles next_cycle ON next_cycle.tenant_id=next_decision.tenant_id AND next_cycle.id=next_decision.qc_cycle_id AND next_cycle.deleted_at IS NULL
+          WHERE next_decision.tenant_id=cqd.tenant_id AND next_decision.production_record_id=cqd.production_record_id AND next_decision.current=true AND next_decision.deleted_at IS NULL AND next_cycle.cycle_number>cqc.cycle_number)
+        AND NOT EXISTS (SELECT 1 FROM production_corrections correction WHERE correction.tenant_id=cqd.tenant_id
+          AND correction.production_record_id=cqd.production_record_id AND correction.deleted_at IS NULL AND correction.status NOT IN ('resolved','cancelled'))
       ORDER BY pr.created_at DESC
       LIMIT 250
       `,
@@ -676,8 +741,8 @@ export class AcceptedProductionFinancialsController {
 
   private async sourcesForSettlement(client: PoolClient, tenantId: string, body: Row) {
     if (Array.isArray(body.accepted_production_source_ids) && body.accepted_production_source_ids.length) {
-      const result = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, body.accepted_production_source_ids]);
-      return result.rows;
+      const result = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND financial_status <> 'void' ORDER BY id", [tenantId, body.accepted_production_source_ids]);
+      return this.lockSettlementSources(client, tenantId, result.rows);
     }
     const result = await client.query(
       `
@@ -696,7 +761,16 @@ export class AcceptedProductionFinancialsController {
       `,
       [tenantId],
     );
-    return result.rows;
+    return this.lockSettlementSources(client, tenantId, result.rows);
+  }
+
+  private async lockSettlementSources(client: PoolClient, tenantId: string, sources: Row[]) {
+    // Use the same production-first lock order as conversion and invoice creation.
+    for (const id of [...new Set(sources.map(row => String(row.production_record_id)))].sort()) await lockProductionBilling(client, tenantId, id);
+    if (!sources.length) return [];
+    const locked = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL AND financial_status<>'void' ORDER BY id FOR UPDATE", [tenantId, sources.map(row => row.id)]);
+    if (locked.rows.length !== sources.length) throw new BadRequestException("A selected settlement source changed; refresh the records");
+    return locked.rows;
   }
 
   private async insertCoilPolicy(client: PoolClient, request: AuthenticatedRequest, body: Row) {

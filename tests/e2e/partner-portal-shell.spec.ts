@@ -90,14 +90,14 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByText("storage_key")).toHaveCount(0);
 
     await page.goto("/partner/workers");
-    await expect(page.getByText("P7-0 Worker")).toBeVisible({ timeout: 45_000 });
+    await expect(page.locator(".partner-list-row strong").filter({ hasText: /^P7-0 Worker$/ })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText("driver-license-number")).toHaveCount(0);
 
     await page.goto(`/partner/workers/${seeded.workerIds[0]}`);
     await expect(page.getByRole("heading", { name: "P7-0 Worker" })).toBeVisible({ timeout: 45_000 });
 
     await page.goto("/partner/crews");
-    await expect(page.getByText("P7 Ready Crew")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("heading", { name: "P7 Ready Crew", exact: true })).toBeVisible({ timeout: 45_000 });
 
     await page.goto(`/partner/agreements/${seeded.agreementVersionId}`);
     await expect(page.getByText("P7-MSA")).toBeVisible({ timeout: 45_000 });

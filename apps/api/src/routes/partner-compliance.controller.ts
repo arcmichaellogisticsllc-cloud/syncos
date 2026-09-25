@@ -87,6 +87,63 @@ export class PartnerComplianceController {
     private readonly restrictedFileService: RestrictedFileService,
   ) {}
 
+  @Get("me/setup-requests")
+  @RequirePermission("partner_compliance.profile.read")
+  async ownSetupRequests(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async client => {
+      const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
+      return (await client.query("SELECT id, request_type, description, status, response, created_at FROM partner_setup_requests WHERE tenant_id=$1 AND organization_id=$2 ORDER BY created_at DESC", [context.tenant_id, context.organization.id])).rows;
+    });
+  }
+
+  @Post("me/setup-requests")
+  @RequirePermission("partner_compliance.profile.submit")
+  async submitSetupRequest(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>, @Body() body: Record<string, unknown>) {
+    return this.withClient(async client => {
+      const context = await this.resolvePartnerContext(client, request, query.organization_id);
+      this.requirePartnerAdmin(context);
+      this.rejectSpoofedOrganization(body, context.organization.id);
+      const type = requireAllowed(body.request_type, new Set(["equipment", "capability_territory"]), "request_type");
+      const description = requireString(body.description, "Description is required");
+      if (description.length > 4000) throw new BadRequestException("Description must be no more than 4000 characters");
+      const mutation = requireString(body.client_mutation_id, "client_mutation_id is required");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(mutation)) throw new BadRequestException("Invalid request identifier");
+      return this.writeWithClient(client, request, "partner_setup_request.submit", "partner_setup_request.submitted", "partner_setup_request", async writeClient => {
+        const result = await writeClient.query(`INSERT INTO partner_setup_requests (tenant_id, organization_id, capacity_provider_id, request_type, description, client_mutation_id, submitted_by_user_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tenant_id, organization_id, client_mutation_id) DO NOTHING RETURNING *`, [context.tenant_id, context.organization.id, context.capacityProvider.id, type, description, mutation, request.auth.userId]);
+        const row = result.rows[0] ?? (await writeClient.query("SELECT * FROM partner_setup_requests WHERE tenant_id=$1 AND organization_id=$2 AND client_mutation_id=$3", [context.tenant_id, context.organization.id, mutation])).rows[0];
+        if (row.request_type !== type || row.description !== description) throw new ConflictException("This request identifier already belongs to different information");
+        return { entityType: "partner_setup_request", entityId: row.id, afterState: row };
+      });
+    });
+  }
+
+  @Get("organizations/:organizationId/setup-requests")
+  @RequirePermission("partner_compliance.review")
+  async reviewSetupRequests(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string) {
+    return this.withClient(async client => {
+      await this.requireInternalPartnerOrganization(client, request, organizationId, "partner_compliance.review");
+      return (await client.query("SELECT id, request_type, description, status, response, created_at FROM partner_setup_requests WHERE tenant_id=$1 AND organization_id=$2 ORDER BY created_at DESC", [request.auth.tenantId, organizationId])).rows;
+    });
+  }
+
+  @Post("organizations/:organizationId/setup-requests/:requestId/review")
+  @RequirePermission("partner_compliance.review")
+  async respondSetupRequest(@Req() request: AuthenticatedRequest, @Param("organizationId") organizationId: string, @Param("requestId") requestId: string, @Body() body: Record<string, unknown>) {
+    return this.withClient(async client => {
+      await this.requireInternalPartnerOrganization(client, request, organizationId, "partner_compliance.review");
+      const status = requireAllowed(body.status, new Set(["under_review", "action_required", "recorded"]), "status");
+      const response = requireString(body.response, "A response explaining the next action is required");
+      if (response.length > 4000) throw new BadRequestException("Response must be no more than 4000 characters");
+      return this.writeWithClient(client, request, "partner_setup_request.review", "partner_setup_request.reviewed", "partner_setup_request", async writeClient => {
+        const result = await writeClient.query("UPDATE partner_setup_requests SET status=$4,response=$5,reviewed_by_user_id=$6,updated_at=now() WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 RETURNING *", [request.auth.tenantId, organizationId, requestId, status, response, request.auth.userId]);
+        if (!result.rows[0]) throw new NotFoundException("Setup request not found");
+        return { entityType: "partner_setup_request", entityId: requestId, afterState: result.rows[0] };
+      });
+    });
+  }
+
   @Get("me/summary")
   @RequirePermission("partner_compliance.summary.read")
   async ownSummary(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {

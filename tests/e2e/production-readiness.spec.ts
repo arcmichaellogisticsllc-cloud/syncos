@@ -179,12 +179,17 @@ test.describe.serial("P17 production readiness release-candidate acceptance", ()
       await page.goto(route);
       await expect(page.getByRole("heading", { level: 1, name: text })).toBeVisible({ timeout: 30_000 });
     }
-    // This fixture has neither production_dashboard.read nor partner_payment.read.
-    for (const route of ["/production-dashboard", "/payment-retainage-adjustments"]) {
-      await page.goto(route);
-      await expect(page.getByRole("heading", { name: "Access unavailable", exact: true })).toBeVisible();
-      await expect(page.locator("form")).toHaveCount(0);
-    }
+    // Dashboard read is absent; payment execution is explicitly granted without
+    // the partner-facing read permission. Only its authorized section may appear.
+    await page.goto("/production-dashboard");
+    await expect(page.getByRole("heading", { name: "Access unavailable", exact: true })).toBeVisible();
+    await expect(page.locator("form")).toHaveCount(0);
+    await page.goto("/payment-retainage-adjustments");
+    await expect(page.getByRole("heading", { level: 1, name: "Payment, Retainage, Adjustments" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Record payment", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Request retainage release", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Authorize retainage release", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Request credit/rebill review", exact: true })).toHaveCount(0);
   });
 
   test("scheduler/idempotency and sensitive-payload release checks hold", async ({ request }) => {

@@ -26,7 +26,10 @@ export class PaymentRetainageAdjustmentsController {
         LEFT JOIN settlements s ON s.tenant_id = cp.tenant_id AND s.id = cp.settlement_id
         WHERE cp.tenant_id = $1
           AND cp.deleted_at IS NULL
-          AND cp.payment_readiness_status = 'ready_for_payment'
+          AND cp.payment_readiness_status IN ('ready_for_payment','ready_with_warning')
+          AND cp.status NOT IN ('voided','archived','rejected','held','disputed')
+          AND COALESCE(cp.hold_status,'') <> 'hold'
+          AND COALESCE(cp.dispute_status,'') NOT IN ('open','under_review')
           AND cp.pay_when_paid_status IN ('eligible','partially_eligible')
           AND COALESCE(cp.eligible_amount,0) - COALESCE(cp.paid_amount,0) - COALESCE(cp.in_flight_payment_amount,0) > 0
         ORDER BY cp.payment_due_at NULLS LAST, cp.created_at
@@ -230,6 +233,35 @@ export class PaymentRetainageAdjustmentsController {
     });
   }
 
+  @Get("retainage-choices")
+  @RequirePermission("retainage.release")
+  async retainageChoices(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => {
+      const payables = await client.query(`SELECT cp.id, cp.retained_balance_amount, concat(cp.payable_number,' · ',o.name,' · retained $',cp.retained_balance_amount) AS label FROM contractor_payables cp LEFT JOIN organizations o ON o.tenant_id=cp.tenant_id AND o.id=cp.partner_organization_id WHERE cp.tenant_id=$1 AND cp.deleted_at IS NULL AND cp.status NOT IN ('voided','archived') AND cp.retained_balance_amount>0`, [request.auth.tenantId]);
+      const releases = await client.query(`SELECT r.id, r.status, r.release_amount, concat(cp.payable_number,' · $',r.release_amount,' · ',r.release_reason) AS label FROM retainage_releases r JOIN contractor_payables cp ON cp.tenant_id=r.tenant_id AND cp.id=r.contractor_payable_id WHERE r.tenant_id=$1 AND r.deleted_at IS NULL ORDER BY r.created_at DESC`, [request.auth.tenantId]);
+      return { payables: payables.rows, releases: releases.rows };
+    });
+  }
+
+  @Get("adjustment-choices")
+  @RequirePermission("financial_adjustment.create")
+  async adjustmentChoices(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => {
+      const sources = await client.query(`SELECT src.id, src.accepted_quantity, cqd.customer_accepted_quantity AS corrected_quantity,
+        cp.id AS contractor_payable_id, concat(i.invoice_number,' · ',wo.work_order_number,' · ',src.accepted_quantity,' → ',cqd.customer_accepted_quantity,' ',src.unit_of_measure) AS label
+        FROM accepted_production_financial_sources src
+        JOIN invoice_items ii ON ii.tenant_id=src.tenant_id AND ii.id=src.invoice_item_id
+        JOIN invoices i ON i.tenant_id=ii.tenant_id AND i.id=ii.invoice_id
+        JOIN customer_qc_decisions cqd ON cqd.tenant_id=src.tenant_id AND cqd.production_record_id=src.production_record_id AND cqd.current=true AND cqd.deleted_at IS NULL
+        LEFT JOIN work_orders wo ON wo.tenant_id=src.tenant_id AND wo.id=src.work_order_id
+        LEFT JOIN contractor_payable_items cpi ON cpi.tenant_id=src.tenant_id AND cpi.id=src.contractor_payable_item_id
+        LEFT JOIN contractor_payables cp ON cp.tenant_id=cpi.tenant_id AND cp.id=cpi.contractor_payable_id
+        WHERE src.tenant_id=$1 AND src.deleted_at IS NULL AND src.billable_item_id IS NOT NULL AND COALESCE(cqd.customer_accepted_quantity,0)<src.accepted_quantity ORDER BY src.created_at DESC`, [request.auth.tenantId]);
+      const adjustments = await client.query(`SELECT id,status,reason,source_reference,adjustment_amount FROM financial_adjustments WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, [request.auth.tenantId]);
+      return { sources: sources.rows, adjustments: adjustments.rows };
+    });
+  }
+
   @Post("retainage-releases")
   @RequirePermission("retainage.release")
   async createRetainageRelease(@Req() request: AuthenticatedRequest, @Body() body: Row) {
@@ -240,8 +272,7 @@ export class PaymentRetainageAdjustmentsController {
       const payable = await this.requirePayable(client, request.auth.tenantId, requireString(body.contractor_payable_id, "contractor_payable_id is required"));
       const amount = this.positive(body.release_amount, "release_amount");
       const retained = Number(payable.retained_balance_amount ?? payable.retainage_amount ?? 0);
-      const released = Number((await client.query("SELECT COALESCE(sum(release_amount),0)::numeric AS amount FROM retainage_releases WHERE tenant_id = $1 AND contractor_payable_id = $2 AND deleted_at IS NULL AND status IN ('authorized','released_to_payable')", [request.auth.tenantId, payable.id])).rows[0].amount);
-      if (amount > this.roundMoney(retained - released)) throw new BadRequestException("retainage release exceeds retained balance");
+      if (amount > this.roundMoney(retained)) throw new BadRequestException("retainage release exceeds retained balance");
       const release = await client.query(
         "INSERT INTO retainage_releases (tenant_id,partner_organization_id,contractor_payable_id,settlement_item_id,retained_amount,release_amount,release_reason,source_reference,status,idempotency_key,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10) RETURNING *",
         [request.auth.tenantId, payable.partner_organization_id, payable.id, this.optionalString(body.settlement_item_id), retained, amount, requireString(body.release_reason, "release_reason is required"), requireString(body.source_reference, "source_reference is required"), idempotencyKey, request.auth.userId],
@@ -258,6 +289,8 @@ export class PaymentRetainageAdjustmentsController {
       if (release.status === "released_to_payable") return { entityType: "retainage_release", entityId: id, afterState: release };
       if (release.status !== "pending") throw new BadRequestException("retainage release must be pending");
       const sourcePayable = await this.requirePayable(client, request.auth.tenantId, String(release.contractor_payable_id));
+      if (["voided", "archived", "rejected", "held", "disputed"].includes(String(sourcePayable.status)) || sourcePayable.hold_status === "hold" || ["open", "under_review"].includes(String(sourcePayable.dispute_status))) throw new BadRequestException("Resolve the payable hold or dispute before releasing retainage");
+      if (Number(release.release_amount) > Number(sourcePayable.retained_balance_amount ?? sourcePayable.retainage_amount ?? 0)) throw new BadRequestException("Retained balance changed; this release exceeds the remaining amount");
       const number = await this.nextNumber(client, request.auth.tenantId, "contractor_payables", "payable_number", "CP-RET-P13");
       const payable = await client.query(
         `
@@ -445,7 +478,7 @@ export class PaymentRetainageAdjustmentsController {
   }
 
   private async requireRecord(client: PoolClient, table: string, tenantId: string, id: unknown, message: string) {
-    const result = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`, [tenantId, id]);
+    const result = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`, [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException(message);
     return result.rows[0] as Row;
   }

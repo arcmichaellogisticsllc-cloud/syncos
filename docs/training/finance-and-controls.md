@@ -1,6 +1,6 @@
 # Finance and controls: click-by-click training
 
-Reviewed against candidate `04b61bc` on 2026-09-24. **Evidence: source-reviewed procedures, not a claim that each click was executed in a browser.** Use the accompanying verification report for observed test results. New repairs made during the audit may supersede a finding below.
+Updated for the financial handoff repair on 2026-09-25. **Evidence: source-reviewed procedures, not a claim that each click was executed in a browser.** Use the accompanying verification report for observed test results. New repairs made during the audit may supersede a finding below.
 
 ## Before the session
 
@@ -39,7 +39,21 @@ Both workforce types can generate customer billing. Sync employee production mus
 7. Click **Save Coil Policy** once. Confirm “Coil policy saved.” and the version/source in the policy list. Review **Coil Commercial Review** below it.
 8. If choices fail, click the relevant **Retry work order choices**, **Retry organization choices**, or **Retry production items**. A failed save preserves entries. If the page says the policy saved but the list needs refreshing, refresh before attempting another save.
 
-**Important UI gap at the reviewed candidate:** this page has no accepted-production conversion, invoice creation, cash-clearing, partner-settlement creation, payable creation, or eligibility-recalculation buttons. Those operations exist through the accepted-production API, but cannot honestly be taught as a complete click-only flow here. The older workbenches below call separate routes. Do not assume an older “Create” button performs the accepted-production conversion operation or grant extra permissions to disguise the gap.
+### Complete the accepted-production financial handoff
+
+Open the numbered sections under **Complete the financial handoff**. A section appears only when your account has its action permission. Named choices come from current tenant records. Start with verified customer acceptance; field submission and internal QC are not sufficient.
+
+1. Expand **1. Convert accepted production**. Select **Accepted production**, verify the code and accepted quantity, then click **Create billable** (`billing.create_billable`). A missing rate creates a finance-review exception, not a completed billable. Correct the authorized rate source before proceeding.
+2. Expand **2. Create customer invoice**. Choose **Customer billable**, enter **Retainage percent**, **Billing period start**, and **Billing period end**, then click **Create customer invoice** (`billing.create_invoice`). This canonical path creates an approved invoice under that permission. Confirm its reference and amount. This does not send it to the customer.
+3. Expand **3. Record customer cash received**. Choose **Invoice identifying the paying customer**, enter **Amount received**, **Receipt date**, **Receipt method**, and **Customer bank/payment reference**, then click **Record customer receipt** (`cash_receipt.record`). This establishes receipt only.
+4. Expand **4. Confirm customer cash cleared**. Select **Uncleared customer receipt**, verify actual bank clearance, check the confirmation, then click **Confirm cash cleared** (`cash_receipt.record`). Do not use this step for a pending deposit.
+5. Expand **5. Apply cleared cash to invoice**. Choose **Invoice receiving cash**, then a **Matching cleared receipt**. Only cleared receipts for that customer are offered. Enter **Amount to apply**, then click **Apply cleared customer cash** (`payment_application.create`). Confirm the invoice balance and receipt remainder. A retry with unchanged fields reuses its request key rather than applying twice.
+6. For partner work only, expand **6. Create partner settlement**. Choose **Unsettled partner production**, then click **Create partner settlement** (`partner_settlement.create`). Sync employee production is excluded. A changed acceptance or an already-settled source is rejected.
+7. Expand **7. Create partner payable**. Choose **Partner settlement awaiting payable**, then click **Create partner payable** (`contractor_payable.create`). The payable remains separate from payment eligibility.
+8. Expand **8. Calculate payment eligibility**. Choose **Partner payable**, then click **Calculate payment eligibility** (`contractor_payable.calculate_eligibility`). Read the resulting eligible amount/status; cleared customer allocations govern the calculation.
+9. Open **external payments, retainage and adjustments** to record a genuinely completed external payment or handle a controlled release/review.
+
+The forms retain inputs on failure, show results, and block repeated clicks while saving. **Refresh financial records** reloads choices. After an uncertain result, verify current records before retrying. Customer billing covers Sync and partner production; employee payroll remains the separate F10 workflow. These controls process one selected source per action; the older workbench Create buttons remain distinct operations.
 
 ## F03. Prepare a billable candidate
 
@@ -133,7 +147,7 @@ Both workforce types can generate customer billing. Sync employee production mus
 
 ## F09. Record a completed external partner payment
 
-**Entry:** `/payment-retainage-adjustments`. At the reviewed candidate, page access checks `partner_payment.read`; its initial data calls additionally require `partner_payment.execute`; the recording form needs `partner_payment.confirm`. Only a deliberately authorized operator with that complete permission set can use this current screen. If a read-only user is blocked, report the mismatch; do not broaden their permissions as a workaround.
+**Entry:** `/payment-retainage-adjustments`. Internal payment data requires `partner_payment.execute`; recording additionally requires `partner_payment.confirm`. Retainage and adjustment reviewers can enter with their respective `retainage.release` or `financial_adjustment.create` permission and see only their authorized sections. Partner-only payment readers use their scoped partner portal. No extra execution authority is granted to read-only users.
 
 1. Open **Payment, Retainage, Adjustments**. Review **Eligible**, **In Flight**, **Paid**, **Retained** and **Ready To Pay**.
 2. Under **Record a completed payment**, choose **Payable**. If none appears, stop and resolve eligibility; do not create fictitious cash.
@@ -143,7 +157,20 @@ Both workforce types can generate customer billing. Sync employee production mus
 6. Check **Recorded external payments** for the amount, partner/payable, method/reference, proof and recorder. Recheck remaining eligibility and paid totals.
 7. If an error occurs, preserve its message and compare history before resubmitting. A timeout may follow a successful server write. Do not refresh and generate another payment attempt without checking the result.
 
-**Result:** a completed external-payment record. No funds are sent. History shows the most recent 100 entries. This screen currently has no clickable retainage-release or credit/rebill form even though backend routes exist.
+**Result:** a completed external-payment record. No funds are sent. History shows the most recent 100 entries.
+
+### Retainage release
+
+1. Expand **Request retainage release**. Select **Payable with retained funds**, enter **Release amount**, **Release reason**, and **Release evidence reference**, then click **Request retainage release** (`retainage.release`). The result is pending; no payment was made.
+2. Review the evidence and expand **Authorize pending retainage release**. Select **Pending retainage release**, check the authorization statement, then click **Authorize retainage release**. The server rechecks the remaining balance and any payable hold/dispute and creates a separate payable.
+3. Check **Release history** and the retained balance. Competing releases cannot authorize more than the remaining amount. Original retainage history remains intact.
+
+### Controlled credit/rebill review
+
+1. Expand **Request credit/rebill review** (`financial_adjustment.create`).
+2. Select **Billed production with reduced acceptance**. The choice shows the original and corrected quantities; the current customer decision governs the adjustment.
+3. Enter **Adjustment reason** and **Customer decision evidence reference**, then click **Request credit/rebill review**.
+4. Check **Adjustment review history** for `review required`. This requests finance review and flags linked partner recovery where applicable. It does not issue a credit note, rebill, overwrite the issued invoice, or send money. Final credit/rebill issuance remains a controlled accounting follow-up; this screen does not claim that follow-up is complete.
 
 ## F10. Prepare payroll readiness
 

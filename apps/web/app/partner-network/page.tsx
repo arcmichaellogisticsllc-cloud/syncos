@@ -1,7 +1,8 @@
 "use client";
+import { SetupReview } from "./setup-review";
 import { Capability, useCapability } from "../access-control";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { loadAuthContext, syncosFetch, textValue } from "../intelligence/api";
 
@@ -22,6 +23,11 @@ type Inquiry = {
   owner_user_id?: string | null;
   qualified_organization_id?: string | null;
   potential_capacity_signal?: Record<string, unknown>;
+  territory_verified?: boolean;
+  capability_verified?: boolean;
+  crew_count_verified?: boolean;
+  availability_verified?: boolean;
+  equipment_verified?: boolean;
   created_at?: string;
 };
 
@@ -52,6 +58,9 @@ type OnboardingPartner = {
   last_invite_at?: string | null;
 };
 
+const verificationLabels = { territory_verified: "Territory verified", capability_verified: "Capability verified", crew_count_verified: "Crew count verified", availability_verified: "Availability verified", equipment_verified: "Equipment verified" };
+const emptyVerification = () => ({ territory_verified: false, capability_verified: false, crew_count_verified: false, availability_verified: false, equipment_verified: false });
+
 const statuses = ["ALL", "NEW", "REVIEWING", "CONTACT_REQUIRED", "CONTACTED", "QUALIFIED", "FUTURE_CAPACITY", "NOT_A_FIT", "INVITED", "CONVERTED", "CLOSED"];
 const inviteSources = ["MANUAL_INTERNAL", "REFERRAL", "EXISTING_RELATIONSHIP", "OPPORTUNITY_CAPACITY_GAP", "PRIME_CUSTOMER_INTRODUCTION", "PARTNER_NETWORK_RECRUITING", "OTHER"];
 
@@ -60,6 +69,7 @@ export default function PartnerNetworkPage() {
   const canReadInvitations = useCapability("partner_invitation.read");
   const canReviewOnboarding = useCapability("partner_onboarding.review");
   const [state, setState] = useState({ loading: true, error: "", message: "" });
+  const [organizations, setOrganizations] = useState<{id:string;name:string}[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [partners, setPartners] = useState<OnboardingPartner[]>([]);
@@ -69,6 +79,10 @@ export default function PartnerNetworkPage() {
   const [organizationId, setOrganizationId] = useState("");
   const [manualInvite, setManualInvite] = useState({ company_name: "", primary_contact_name: "", email: "", source: "MANUAL_INTERNAL" });
   const [manualInviteState, setManualInviteState] = useState({ loading: false, error: "", message: "" });
+  const [verification, setVerification] = useState(emptyVerification);
+  const actionLock = useRef(false);
+  const manualLock = useRef(false);
+  const [busy, setBusy] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
 
   useEffect(() => {
@@ -83,18 +97,22 @@ export default function PartnerNetworkPage() {
   }, [inquiries, selectedId]);
 
   useEffect(() => {
-    if (selected?.qualified_organization_id && !organizationId) setOrganizationId(selected.qualified_organization_id);
-  }, [selected?.qualified_organization_id, organizationId]);
+    setOrganizationId(selected?.qualified_organization_id ?? "");
+    setContactNote("");
+    setVerification(Object.fromEntries(Object.keys(verificationLabels).map(key => [key, selected?.[key as keyof Inquiry] === true])) as ReturnType<typeof emptyVerification>);
+  }, [selected?.id, selected?.qualified_organization_id]);
 
   async function refresh(message = "") {
     setState({ loading: true, error: "", message });
     try {
-      const [context, inquiryData, invitationData, workspaceData] = await Promise.all([
+      const [context, inquiryData, invitationData, workspaceData, organizationData] = await Promise.all([
         loadAuthContext(),
         canReadInquiries ? syncosFetch<{ inquiries: Inquiry[] }>("partner-invitations/inquiries") : Promise.resolve({ inquiries: [] }),
         canReadInvitations ? syncosFetch<{ invitations: Invitation[] }>("partner-invitations") : Promise.resolve({ invitations: [] }),
         canReviewOnboarding ? syncosFetch<{ partners: OnboardingPartner[] }>("partner-invitations/onboarding-workspace") : Promise.resolve({ partners: [] }),
+        canReadInquiries ? syncosFetch<{id:string;name:string}[]>("partner-invitations/qualification-organizations") : Promise.resolve([]),
       ]);
+      setOrganizations(organizationData);
       setCurrentUserId(context.user_id);
       setInquiries(inquiryData.inquiries ?? []);
       setInvitations(invitationData.invitations ?? []);
@@ -106,19 +124,24 @@ export default function PartnerNetworkPage() {
   }
 
   async function action(label: string, run: () => Promise<unknown>) {
+    if (actionLock.current) return false;
+    actionLock.current = true;
+    setBusy(true);
     setState((current) => ({ ...current, error: "", message: `${label}...` }));
     try {
       await run();
       await refresh(`${label} complete.`);
+      return true;
     } catch (error) {
       setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Action failed.", message: "" }));
-    }
+      return false;
+    } finally { actionLock.current = false; setBusy(false); }
   }
 
   function submitContact(event: FormEvent) {
     event.preventDefault();
-    if (!selected) return;
-    action("Contact recorded", () => syncosFetch(`partner-invitations/inquiries/${selected.id}/contact`, { method: "POST", body: { note: contactNote } })).then(() => setContactNote(""));
+    if (!selected || !contactNote.trim()) return;
+    action("Contact recorded", () => syncosFetch(`partner-invitations/inquiries/${selected.id}/contact`, { method: "POST", body: { note: contactNote } })).then(saved => { if (saved) setContactNote(""); });
   }
 
   function qualify(decision: string) {
@@ -127,12 +150,8 @@ export default function PartnerNetworkPage() {
       method: "POST",
       body: {
         decision,
-        organization_id: organizationId || selected.qualified_organization_id || undefined,
-        territory_verified: true,
-        capability_verified: true,
-        crew_count_verified: true,
-        availability_verified: true,
-        equipment_verified: true,
+        organization_id: organizationId.trim() || undefined,
+        ...verification,
         note: `Sync Admin decision: ${decision}`,
       },
     }));
@@ -148,6 +167,8 @@ export default function PartnerNetworkPage() {
 
   async function submitManualInvite(event: FormEvent) {
     event.preventDefault();
+    if (manualLock.current) return;
+    manualLock.current = true;
     setManualInviteState({ loading: true, error: "", message: "Sending Partner Admin invitation..." });
     try {
       const result = await syncosFetch<{ email_delivery?: { delivery_status?: string; provider?: string } }>("partner-invitations", {
@@ -159,7 +180,7 @@ export default function PartnerNetworkPage() {
       setManualInviteState({ loading: false, error: "", message: `Manual invitation request complete.${delivery}` });
     } catch (error) {
       setManualInviteState({ loading: false, error: error instanceof Error ? error.message : "Manual invitation failed.", message: "" });
-    }
+    } finally { manualLock.current = false; }
   }
 
   function updateManualCompany(companyName: string) {
@@ -187,8 +208,8 @@ export default function PartnerNetworkPage() {
 
   return (
     <CommandShell title="Partner Network" purpose="Internal Sync Admin workspace for Partner inquiries, qualification, invitations, onboarding review, and approval gates.">
-      {state.error ? <section className="workspace-panel error-state"><h2>Action unavailable</h2><p>{state.error}</p></section> : null}
-      {state.message ? <section className="workspace-panel success-state"><p>{state.message}</p></section> : null}
+      {state.error ? <section className="workspace-panel error-state" role="alert"><h2>Action unavailable</h2><p>{state.error}</p></section> : null}
+      {state.message ? <section className="workspace-panel success-state" role="status"><p>{state.message}</p></section> : null}
       {state.loading ? <section className="workspace-panel loading-state">Loading Partner Network...</section> : null}
 
       <section className="partner-network-summary" aria-label="Partner Network summary">
@@ -214,7 +235,7 @@ export default function PartnerNetworkPage() {
           </div>
           <div className="record-list">
             {filtered.map((inquiry) => (
-              <button className={selected?.id === inquiry.id ? "record-list-row active" : "record-list-row"} key={inquiry.id} type="button" onClick={() => setSelectedId(inquiry.id)}>
+              <button className={selected?.id === inquiry.id ? "record-list-row active" : "record-list-row"} key={inquiry.id} type="button" disabled={busy} onClick={() => setSelectedId(inquiry.id)}>
                 <span>
                   <strong>{inquiry.company_name}</strong>
                   <small>{inquiry.capability} / {inquiry.territory}</small>
@@ -245,23 +266,25 @@ export default function PartnerNetworkPage() {
               <p className="muted">{textValue(selected.experience_notes, "No notes captured.")}</p>
 
               <div className="partner-network-actions">
-                <Capability permission="partner_inquiry.manage"><button type="button" className="operator-link" onClick={() => currentUserId && action("Owner assigned", () => syncosFetch(`partner-invitations/inquiries/${selected.id}/assign`, { method: "POST", body: { owner_user_id: currentUserId } }))}>Assign to Me</button></Capability>
+                <Capability permission="partner_inquiry.manage"><button type="button" className="operator-link" disabled={busy} onClick={() => currentUserId && action("Owner assigned", () => syncosFetch(`partner-invitations/inquiries/${selected.id}/assign`, { method: "POST", body: { owner_user_id: currentUserId } }))}>Assign to Me</button></Capability>
                 <Capability permission="partner_inquiry.manage"><form onSubmit={submitContact} className="inline-action-form">
-                  <input value={contactNote} onChange={(event) => setContactNote(event.target.value)} placeholder="Conversation note" />
-                  <button type="submit" className="operator-link">Record Contact</button>
+                  <label className="form-field"><span>Conversation note</span><input required disabled={busy} value={contactNote} onChange={(event) => setContactNote(event.target.value)} placeholder="Conversation note" /></label>
+                  <button type="submit" disabled={busy || !contactNote.trim()} className="operator-link">Record Contact</button>
                 </form></Capability>
               </div>
 
               <div className="qualification-panel">
                 <label className="form-field">
-                  <span>Explicit Partner Organization ID for qualification/invite</span>
-                  <input value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} placeholder="Canonical organization id" />
+                  <span>Partner company for qualification/invite</span>
+                  <select disabled={busy} value={organizationId} onChange={event=>setOrganizationId(event.target.value)}><option value="">Choose the matching company</option>{organizations.map(org=><option value={org.id} key={org.id}>{org.name}</option>)}</select>
+                  <small>Confirm this company matches the inquiry. If it is absent, create its organization and capacity-provider record first.</small>
                 </label>
+                <Capability permission="partner_inquiry.qualify"><fieldset disabled={busy}><legend>Checks completed for {selected.company_name}</legend><p>Check only facts you have verified. Unchecked items remain unverified.</p>{Object.entries(verificationLabels).map(([key, label]) => <label key={key} className="form-field"><span><input type="checkbox" checked={verification[key as keyof typeof verification]} onChange={event => setVerification(current => ({ ...current, [key]: event.target.checked }))} /> {label}</span></label>)}</fieldset></Capability>
                 <div className="button-row">
-                  <Capability permission="partner_inquiry.qualify"><button className="operator-link" type="button" onClick={() => qualify("QUALIFIED")}>Qualify</button></Capability>
-                  <Capability permission="partner_inquiry.qualify"><button className="operator-link" type="button" onClick={() => qualify("FUTURE_CAPACITY")}>Future Capacity</button></Capability>
-                  <Capability permission="partner_inquiry.qualify"><button className="operator-link operator-link-danger" type="button" onClick={() => qualify("NOT_A_FIT")}>Not a Fit</button></Capability>
-                  <Capability permission="partner_invitation.create"><button className="operator-link operator-link-primary" type="button" disabled={selected.status !== "QUALIFIED"} onClick={inviteInquiry}>Invite Qualified Inquiry</button></Capability>
+                  <Capability permission="partner_inquiry.qualify"><button className="operator-link" type="button" disabled={busy} onClick={() => qualify("QUALIFIED")}>Qualify</button></Capability>
+                  <Capability permission="partner_inquiry.qualify"><button className="operator-link" type="button" disabled={busy} onClick={() => qualify("FUTURE_CAPACITY")}>Future Capacity</button></Capability>
+                  <Capability permission="partner_inquiry.qualify"><button className="operator-link operator-link-danger" type="button" disabled={busy} onClick={() => qualify("NOT_A_FIT")}>Not a Fit</button></Capability>
+                  <Capability permission="partner_invitation.create"><button className="operator-link operator-link-primary" type="button" disabled={busy || selected.status !== "QUALIFIED" || !organizationId.trim()} onClick={inviteInquiry}>Invite Qualified Inquiry</button></Capability>
                 </div>
                 {selected.status !== "QUALIFIED" ? <p className="muted">Inquiry-driven invitation remains locked until a human qualification decision is recorded.</p> : null}
               </div>
@@ -306,8 +329,8 @@ export default function PartnerNetworkPage() {
                 </span>
                 <span className="button-row">
                   <b>{invite.status}</b>
-                  {invite.status === "SENT" ? <Capability permission="partner_invitation.resend"><button type="button" className="mini-action" onClick={() => action("Invitation resent", () => syncosFetch(`partner-invitations/${invite.id}/resend`, { method: "POST" }))}>Resend</button></Capability> : null}
-                  {invite.status === "SENT" ? <Capability permission="partner_invitation.revoke"><button type="button" className="mini-action danger" onClick={() => action("Invitation revoked", () => syncosFetch(`partner-invitations/${invite.id}/revoke`, { method: "POST", body: { reason: "Sync Admin revoked from Partner Network workspace" } }))}>Revoke</button></Capability> : null}
+                  {invite.status === "SENT" ? <Capability permission="partner_invitation.resend"><button type="button" className="mini-action" disabled={busy} onClick={() => action("Invitation resent", () => syncosFetch(`partner-invitations/${invite.id}/resend`, { method: "POST" }))}>Resend</button></Capability> : null}
+                  {invite.status === "SENT" ? <Capability permission="partner_invitation.revoke"><button type="button" className="mini-action danger" disabled={busy} onClick={() => action("Invitation revoked", () => syncosFetch(`partner-invitations/${invite.id}/revoke`, { method: "POST", body: { reason: "Sync Admin revoked from Partner Network workspace" } }))}>Revoke</button></Capability> : null}
                 </span>
               </div>
             ))}
@@ -327,8 +350,9 @@ export default function PartnerNetworkPage() {
                 <small>{partner.invite_status} / {partner.account_status}</small>
               </div>
               <p>{partner.checklist_status}</p>
+              <Capability permission="partner_compliance.review"><SetupReview organizationId={partner.organization_id}/></Capability>
               <p className="muted">{partner.safe_blockers.length ? `Missing: ${partner.safe_blockers.join(", ")}` : "No checklist blockers reported."}</p>
-              <Capability permission="partner_onboarding.approve"><button className="operator-link" type="button" disabled={partner.checklist_status !== "READY_FOR_REVIEW"} onClick={() => action("Partner approval reviewed", () => syncosFetch(`partner-invitations/organizations/${partner.organization_id}/approve`, { method: "POST" }))}>Approve When Ready</button></Capability>
+              <Capability permission="partner_onboarding.approve"><button className="operator-link" type="button" disabled={busy || partner.checklist_status !== "READY_FOR_REVIEW"} onClick={() => action("Partner approval reviewed", () => syncosFetch(`partner-invitations/organizations/${partner.organization_id}/approve`, { method: "POST" }))}>Approve When Ready</button></Capability>
             </div>
           ))}
           {!partners.length ? <div className="empty-state">No onboarding partners found.</div> : null}

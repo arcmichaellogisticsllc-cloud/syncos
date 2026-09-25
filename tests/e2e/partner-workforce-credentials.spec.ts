@@ -52,6 +52,11 @@ test.describe.serial("P4 Partner crews, workers, credentials, and secure headsho
     const worker = await apiJson(request, seeded.adminToken, "POST", "/partner-workforce/me/workers", workerBody("P4", "Worker One"));
     expect(worker.organization_id).toBe(seeded.orgA);
     expect(worker.review_status).toBe("draft");
+    await apiJson(request, seeded.adminToken, "PATCH", `/partner-workforce/me/workers/${worker.id}`, { emergency_contact_name: "Keep Existing Contact" });
+    await apiJson(request, seeded.adminToken, "PATCH", `/partner-workforce/me/workers/${worker.id}`, { first_name: "P4 Updated" });
+    const preservedProfile = await client.query("SELECT emergency_contact_name FROM partner_worker_profiles WHERE tenant_id=$1 AND worker_id=$2 AND status <> 'superseded' AND deleted_at IS NULL", [seeded.tenantA, worker.id]);
+    expect(preservedProfile.rows[0].emergency_contact_name).toBe("Keep Existing Contact");
+
     expect(JSON.stringify(worker).toLowerCase()).not.toContain("driver_license_number");
     await expectStatus(request, seeded.adminToken, "PATCH", `/partner-workforce/me/workers/${worker.id}`, 400, {
       driver_license_number: "D123456789",

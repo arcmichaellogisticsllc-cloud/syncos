@@ -1,6 +1,6 @@
 # SyncOS training: demand, operations, quality and oversight
 
-Prepared 2026-09-24 from the local candidate based on `04b61bc`. **Evidence level: code-reviewed training, not a claim that every click has been observed in a browser.** Follow the release verification report for executed tests and approved environment. A locally available route does not establish that staging has the same release.
+Updated 2026-09-25 for the workflow-completion candidate based on `161eeee`. **Evidence level: code-reviewed training, not a claim that every click has been observed in a browser.** Follow the release verification report for executed tests and approved environment. A locally available route does not establish that staging has the same release.
 
 ## Before a session
 
@@ -40,15 +40,15 @@ Actor: internal Partner Network operator with separate inquiry, invitation and o
 
 1. In **Human qualification queue**, select **Status**, then click the intended company row. Confirm the company/contact in **Inquiry detail**; filtering alone does not select a new company.
 2. Use **Assign to Me** to claim ownership. Enter the **Conversation note** field and click **Record Contact** only after the contact actually occurred. Check the completion message and saved context.
-3. Before qualification, independently verify territory, capability, crew count, availability and equipment. Enter the correct **Explicit Partner Organization ID for qualification/invite**, checking it again whenever the selected inquiry changes.
-4. Choose **Qualify**, **Future Capacity**, or **Not a Fit** for the supported decision. Important limitation: the current handler submits all five verification flags as true for these decisions, without individual verification controls. Do not click a decision when that would create an inaccurate verification record; report the gap.
+3. Before qualification, independently verify territory, capability, crew count, availability and equipment. Choose the named **Partner company for qualification/invite**, checking that it matches the inquiry. If absent, maintain its organization/capacity-provider record first.
+4. Under **Checks completed for [company]**, check only the facts you actually verified: territory, capability, crew count, availability, and equipment. Choose **Qualify**, **Future Capacity**, or **Not a Fit**. Unchecked items remain unverified; the decision does not silently check them.
 5. For a qualified inquiry with the verified organization link, click **Invite Qualified Inquiry**. Confirm the result and the new entry in **Recent invitations**. Qualification/invitation does not approve the company or authorize work.
 6. For an approved manual invitation, use **Invite without public inquiry**: fill **Partner company**, **Primary contact name**, **Email** and **Source**, then click **Send Partner Admin Invite** once. Wait for **Manual invitation request complete** and inspect delivery status. Company autofill suggestions must be checked against the intended recipient.
 7. In **Recent invitations**, a permitted **Resend** is available for a sent invitation; **Revoke** invalidates the designated invitation. Check the company, email and current status before either action. This list shows only the most recent eight entries.
 8. In **Partner readiness and approval**, review checklist status and each missing item. **Approve When Ready** is enabled only for **READY_FOR_REVIEW** and an authorized approver. Click once, then verify the refreshed company state. This approval does not replace crew, work-order, mobilization or daily-safety gates.
 9. The recipient continues with the activation/onboarding procedures in the field guide.
 
-Known recovery gaps: the organization-ID field can retain the previous inquiry's value; contact text is cleared even when the save fails; several inquiry actions lack an in-flight click guard. Preserve a failed note before leaving, inspect existing results before retrying invitations, and record these gaps in pilot feedback. These are unresolved UI defects, not certified reliable paths.
+Recovery: switching inquiry resets the organization link and verification controls to that inquiry. Failed conversation saves retain the note; retry after resolving the error. Inquiry actions are locked while a request is in flight. In a partner readiness card, authorized compliance reviewers can open **Review equipment and capability declarations**, read each declaration, choose a review status, enter a response/next action, and **Save review response**. Recording a declaration does not verify capacity, assign equipment, or authorize mobilization.
 
 ## Internal partner performance review
 
@@ -166,7 +166,7 @@ For a coverage plan:
 8. **Approve For Handoff** → review blockers/warnings and provide required rationale → confirm. Verify approval status.
 9. Use **Archive Plan** only on an authorized retired record.
 
-**Handoff gap:** the coverage UI explicitly reports “No project was created.” There is no `/projects/new` page or project-handoff creation screen in this candidate. A trainer must provide an existing project or separately provision an authorized handoff through the supported operational process. Do not invent a Create Project click to bridge this gap.
+Coverage approval alone creates no project. Continue through **Project Handoffs** using the separate review, approval, and planning-project creation steps below.
 
 ## Project readiness and lifecycle
 
@@ -232,13 +232,13 @@ Actor: QC reviewer/manager with each required `qc_review.*` grant. Prerequisite:
 7. When corrections are verified, **Mark Corrected** → complete dialog → confirm and repeat required review.
 8. **Void** and **Archive** require their separate rationale and appropriate record state.
 
-The `/qc/[id]/edit` page is informational: it explicitly states there is no direct PATCH editing route. Use the lifecycle actions; no Save QC Review workflow is available there. Internal QC is not automatically customer acceptance. Customer-QC daily reports/reinspection are covered in the field guide, including the missing internal decision-entry UI; the general QC review type is not a substitute for that separate daily-report workflow.
+The `/qc/[id]/edit` page is informational: it explicitly states there is no direct PATCH editing route. Use the lifecycle actions; no Save QC Review workflow is available there. Internal QC is not automatically customer acceptance. Customer-QC daily reports/reinspection are covered in the field guide, using the dedicated `/customer-qc` daily-report decision and reinspection screen; the general QC review type is not a substitute for that separate workflow.
 
 ## Executive and administrative oversight
 
 Actor: Executive or designated read-authorized operator.
 
-1. Open `/command-center` or `/executive`; review prioritization and permitted drill-throughs. On Command Center, an authorized **Refresh** recalculates the derived snapshot; inspect **As of** and **Refreshed** afterward. This does not change operational approvals. Its current recalculation handler lacks a visible failure/busy state, so an unchanged screen is not confirmation. Follow the target record's workflow to change operational state.
+1. Open `/command-center` or `/executive`; review prioritization and permitted drill-throughs. On Command Center, an authorized **Refresh** recalculates the derived snapshot; inspect **As of** and **Refreshed** afterward. This does not change operational approvals. Refresh is guarded while pending, and failures show a retryable message. An unchanged screen is not confirmation. Follow the target record's workflow to change operational state.
 2. Open `/constraints-center` (**Constraint Command Center**); inspect **By Type**, **By Severity**, **By Owner**, **By Due Date**, **By Value Impact**, and **Active Constraints**.
 3. Open `/recommendations-center` (**Recommendation Inbox**); inspect **Pending Review**, **Approved**, **Deferred**, **Completed**, and **Measured**.
 4. Open `/workflows-center` (**Workflow Operations View**); review open/completed instances, open tasks, overdue tasks and escalations.
@@ -254,9 +254,43 @@ Code-review gaps to demonstrate honestly during training:
 
 - Disabled **Create Constraint** placeholders exist in several relationship/candidate/opportunity tabs. A placeholder cannot be counted as an executed workflow.
 - Some relationship links offer disabled **Create Relationship Map** despite a separate creation workspace.
-- Coverage approval has no project-creation UI handoff.
+- Coverage approval and project creation remain separate explicit actions.
 - Work-order/production forms still require raw IDs for some relationships and structured JSON for some requirements; provide validated training values.
 - QC edit is read-only guidance, not a working edit form.
 - Real phone/connectivity behavior, every permission/state combination and all external public links require separate observed checks. This document does not establish flawless behavior.
 
 Source review: `apps/web/app/login/page.tsx`; `partner-network/page.tsx`; `partner-performance/page.tsx`; `command-center/page.tsx`; `intelligence/{account-onboarding,organizations,contacts,signals,relationship-maps}`; `opportunities/{candidates,pipeline,coverage,capacity-matching}`; `projects/project-workspace.tsx`; `work-orders/work-order-workspace.tsx`; `production/production-workspace.tsx`; `qc/qc-workspace.tsx`; dashboard center pages; and `docs/product/syncos-operating-model.md`. Paths are relative to the SyncOS checkout.
+
+## Production exports and closeout
+
+1. Open `/production-dashboard` with dashboard read permission.
+2. In **Production exports and closeout**, choose the named **Submitted daily report** (work order, date and crew).
+3. Choose **Export format**: Daily production PDF, Annotated map PDF, Production CSV, or the authorized Closeout status package.
+4. Click **Generate export** once. On failure the selection is preserved for retry.
+5. After success, click **Download** beside the generated artifact. Download authorization is checked separately.
+6. Review reported versus customer-accepted quantities and correction status. A closeout status package does not certify all work complete, approve a report, or create financial records. Partner and foreman history screens expose only their permitted company/crew exports.
+
+## Planned segment preparation
+
+1. In **Field map setup**, choose **Prepare planned spans** for the correct assigned map.
+2. Confirm organization, immutable map version and PDF page. Enter from/to assets, footage and label.
+3. Enter each measured point as full-page percentages: X from the left, Y from the top. **Add bend point** supports a polyline; **Remove point** removes a bend. No sample coordinates are prefilled.
+4. Enter **Source drawing and measurement reference**, then **Add Design Segment**.
+5. On failure, correct the issue and retry; inputs are retained. Use **Load Segments** to review the selected map's saved records.
+
+This is measured-coordinate entry, not a drag-to-trace PDF editor or surveyed/GPS geometry.
+
+## Coverage to project handoff
+
+1. Open **Coverage Planning → Project Handoffs**. Only authorized users see this destination.
+2. Expand **Create project handoff**. Choose a named approved coverage plan for an awarded opportunity. Select the named operations owner and project manager; enter scope, location, and expected dates. Create the handoff.
+3. Choose an existing handoff with **Handoff to review**. Read its blockers, warnings, and recommended next action.
+4. Expand **Save handoff details** to correct the operational information. General editing cannot approve a handoff or mark a project created.
+5. Review each checklist item against its supporting records. Expand its **Confirm** action, check the acknowledgement yourself, and submit only when verified.
+6. Add any missing risk. To resolve an existing risk, provide the resolution evidence and explanation. Required gates cannot be removed or overridden through general editing.
+7. **Recalculate readiness**, then **Submit readiness review** with a review note.
+8. An authorized approver can **Approve handoff** when no hard blockers remain. Each remaining warning requires its own explicit acceptance explanation. Alternatively, **Reject handoff** with a reason and explanation.
+9. A user holding both handoff project-creation and project-creation permissions can **Create planning project** from the approved handoff. Enter the creation note and acknowledge the planning-only boundary.
+10. Select **Open created planning project**. The project starts in planning. Work orders, crew mobilization, production authorization, and financial records are separate workflows.
+
+The source coverage and opportunity are linked by the server. The UI does not require raw IDs. Saved states and errors appear in their forms; errors retain entered values. These instructions describe the local candidate, pending release and real-device verification.

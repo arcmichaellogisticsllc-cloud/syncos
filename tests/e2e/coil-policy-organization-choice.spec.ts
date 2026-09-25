@@ -6,6 +6,7 @@ async function setup(page: Page, organizationRead: boolean) {
   await page.route('**/api/syncos/auth/me', route => route.fulfill({ json: { user_id: 'pilot-finance', tenant_id: 'pilot-tenant', roles: ['finance_user'], role_names: ['Finance User'], permissions: ['billing.read', 'billing.create_billable', 'work_order.read', ...(organizationRead ? ['organization.read'] : [])] } }));
   await page.route('**/api/syncos/work-orders?*', route => route.fulfill({ json: [{ id: 'test-work-order', work_order_number: 'PILOT-WO-1', work_order_name: 'Pilot work' }] }));
   await page.route('**/api/syncos/accepted-production-financials/**', route => route.fulfill({ json: route.request().url().endsWith('/dashboard') ? {} : [] }));
+  await page.route('**/api/syncos/accepted-production-financials/workflow-choices', route => route.fulfill({ json: { accepted: [], billables: [], invoices: [], receipts: [], sources: [], settlements: [], payables: [] } }));
 }
 test('policy counterparty uses organization names and preserves the nullable default', async ({ page }) => {
   await setup(page, true);

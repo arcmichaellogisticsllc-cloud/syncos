@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { CommandShell } from "../dashboard-components";
+import { ProductionExports } from "./production-exports";
 import { readToken, syncosFetch } from "../intelligence/api";
 
 type Dashboard = {
+  recent_reports?: Array<Record<string, unknown>>;
+  artifacts?: Array<Record<string, unknown>>;
   headline?: Record<string, number>;
   reported_vs_accepted?: Array<Record<string, unknown>>;
   production_by_crew?: Array<Record<string, unknown>>;
@@ -50,6 +53,7 @@ export default function ProductionDashboardPage() {
               <Metric label="Rejected" value={dashboard.headline?.rejected ?? 0} />
               <Metric label="Blocked / Rework" value={dashboard.headline?.blocked_rework ?? 0} />
             </div>
+            <ProductionExports reports={dashboard.recent_reports} artifacts={dashboard.artifacts} />
             <Section title="Reported vs Customer Accepted" rows={dashboard.reported_vs_accepted ?? []} />
             <Section title="Production by Crew" rows={dashboard.production_by_crew ?? []} />
             <Section title="Production by Work Order" rows={dashboard.production_by_work_order ?? []} />

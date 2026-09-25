@@ -197,6 +197,20 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await expect(page.getByText("accepted quantity")).toHaveCount(0);
   });
 
+  test("field evidence is scoped, idempotent, readable by QC and rejects disguised files; incidents persist", async ({ request, page }) => {
+    const evidenceBody={daily_report_id:reportId,production_record_id:submittedRecordId,file_name:"pilot-evidence.png",mime_type:"image/png",content_base64:"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",description:"Pole identifier before correction",client_mutation_id:crypto.randomUUID()};
+    const evidence=await apiJson(request,seeded.foremanToken,"POST","/syncfield/foreman/evidence",evidenceBody);
+    const retry=await apiJson(request,seeded.foremanToken,"POST","/syncfield/foreman/evidence",evidenceBody); expect(retry.id).toBe(evidence.id);
+    const invalid=await request.post(apiUrl("/syncfield/foreman/evidence"),{headers:auth(seeded.foremanToken),data:{...evidenceBody,content_base64:Buffer.from("<script>alert(1)</script>").toString("base64"),client_mutation_id:crypto.randomUUID()}});expect(invalid.status()).toBe(400);
+    const otherTenant=await request.get(apiUrl(`/syncfield/customer-qc/reports/${reportId}`),{headers:auth(seeded.tenantBToken)});expect([403,404]).toContain(otherTenant.status());
+    const denied=await request.get(apiUrl(`/syncfield/customer-qc/evidence/${evidence.id}`),{headers:auth(seeded.adminToken)});expect(denied.status()).toBe(403);
+    const file=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/evidence/${evidence.id}`);expect(file.content_base64).toBe(evidenceBody.content_base64);expect(file).not.toHaveProperty("storage_key");
+    const incidentBody={assignment_id:seeded.assignmentId,occurred_at:new Date().toISOString(),incident_type:"near_miss",location:"Pole 12301",description:"Training near miss",immediate_action:"Stopped work and notified supervisor",client_mutation_id:crypto.randomUUID()};
+    const incident=await apiJson(request,seeded.foremanToken,"POST","/syncfield/foreman/incidents",incidentBody);
+    expect((await apiJson(request,seeded.foremanToken,"POST","/syncfield/foreman/incidents",incidentBody)).id).toBe(incident.id);
+    await installSession(page,seeded.internalToken,seeded.internalPermissions);await page.goto("/customer-qc");await page.getByLabel("Submitted daily report").selectOption(reportId);await expect(page.getByRole("button",{name:"Download pilot-evidence.png"})).toBeVisible();await expect(page.getByText("Pole 12301: Training near miss")).toBeVisible();
+  });
+
   test("Customer QC intake preserves reported quantities and creates Partner-safe correction history without finance", async ({ request, page }) => {
     const queue = await apiJson(request, seeded.internalToken, "GET", "/syncfield/customer-qc/completeness-queue");
     expect(queue.find((row: Record<string, unknown>) => row.id === reportId)).toBeTruthy();
@@ -207,20 +221,13 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     });
     expect(partnerComplete.status()).toBe(403);
 
-    const complete = await apiJson(request, seeded.internalToken, "POST", `/syncfield/customer-qc/reports/${reportId}/complete`, {
-      qc_authority_organization_id: await customerOrgId(client, seeded.tenantA),
-      client_mutation_id: crypto.randomUUID(),
-    });
-    expect(complete.completeness_status).toBe("complete");
-
-    const cycle = await apiJson(request, seeded.internalToken, "POST", `/syncfield/customer-qc/reports/${reportId}/cycles`, {
-      source_type: "manual_recorded_from_customer",
-      source_reference: "customer-email-arl019",
-      customer_reference_number: "CUST-QC-1",
-      client_mutation_id: crypto.randomUUID(),
-    });
-    expect(cycle.status).toBe("awaiting_customer");
-    expect(cycle.qc_authority_organization_id).toBeTruthy();
+    await installSession(page,seeded.internalToken,seeded.internalPermissions);
+    await page.goto("/customer-qc");await page.getByLabel("Submitted daily report").selectOption(reportId);
+    await page.getByRole("button",{name:"Confirm completeness"}).click();await expect(page.getByRole("status")).toContainText("Completeness confirmed");
+    await page.getByLabel("Customer source reference").fill("customer-email-arl019");await page.getByRole("button",{name:"Open customer inspection cycle"}).click();await expect(page.getByRole("status")).toContainText("inspection cycle opened");
+    const inspection=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
+    expect(inspection.completeness_status).toBe("complete");expect(inspection).toHaveProperty("customer_qc_outcome");
+    const cycle=inspection.cycles[0];expect(cycle.status).toBe("awaiting_customer");expect(cycle.qc_authority_organization_id).toBeTruthy();
 
     const fiber = await client.query(
       `
@@ -398,6 +405,45 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     const traced = await createProduction(request, seeded, { work_date: workDate, client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework", duplicate_reason: "Customer requested additional pass." });
     expect(traced.duplicate_reason).toBe("Customer requested additional pass.");
   });
+  test("extended correction keeps authorized code, map and evidence in immutable revision and rejects unrelated references", async ({request}) => {
+    const detail=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
+    const created=await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${detail.cycles[0].id}/decisions`,{production_record_id:submittedRecordId,decision:"correction_required",customer_reason_code:"evidence_review",customer_comments:"Provide the corrected map marker and supporting image",allowed_fields:["production_code_id","map_location","evidence"],client_mutation_id:crypto.randomUUID()});
+    const id=created.correction.id;
+    const options=await apiJson(request,seeded.foremanToken,"GET",`/syncfield/foreman/corrections/${id}/options`);expect(options.codes.some((code:any)=>code.id===codes.TRANSFER)).toBe(true);expect(options.codes.some((code:any)=>code.id===codes.LABOR)).toBe(false);
+    for(const invalid of [{production_code_id:codes.LABOR},{map_location:{page:1,x_ratio:2,y_ratio:0.5}},{evidence:[crypto.randomUUID()]}]){
+      const denied=await request.post(apiUrl(`/syncfield/foreman/corrections/${id}/resubmit`),{headers:auth(seeded.foremanToken),data:{...invalid,client_mutation_id:crypto.randomUUID()}});expect(denied.status()).toBe(400);
+    }
+    const proposed={production_code_id:codes.TRANSFER,map_location:{page:1,x_ratio:0.25,y_ratio:0.75},evidence:[options.evidence[0].id]};
+    await apiJson(request,seeded.foremanToken,"POST",`/syncfield/foreman/corrections/${id}/resubmit`,{...proposed,client_mutation_id:crypto.randomUUID()});
+    const revision=await client.query("SELECT snapshot_json FROM daily_production_report_revisions WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY revision_number DESC LIMIT 1",[seeded.tenantA,reportId]);expect(revision.rows[0].snapshot_json.proposed_correction).toMatchObject(proposed);
+    const original=await client.query("SELECT syncfield_production_code_id,quantity_submitted FROM production_records WHERE tenant_id=$1 AND id=$2",[seeded.tenantA,submittedRecordId]);expect(original.rows[0].syncfield_production_code_id).toBe(codes.TRANSFER);expect(Number(original.rows[0].quantity_submitted)).toBe(1);
+    const after=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
+    const latest=after.cycles[0];
+    await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${latest.id}/decisions`,{production_record_id:submittedRecordId,decision:"accepted",customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()});
+    const resolved=await client.query("SELECT status FROM production_corrections WHERE tenant_id=$1 AND id=$2",[seeded.tenantA,id]);expect(resolved.rows[0].status).toBe("resolved");
+    const incomplete=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);expect(incomplete.customer_qc_outcome).not.toBe("customer_accepted");
+    const outdated=await request.post(apiUrl(`/syncfield/customer-qc/cycles/${detail.cycles[0].id}/decisions`),{headers:auth(seeded.internalToken),data:{production_record_id:submittedRecordId,decision:"accepted",customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()}});expect(outdated.status()).toBe(400);
+    // Complete outstanding lines once, retaining the earlier partial-acceptance decision.
+    const allDecided=new Set(after.cycles.flatMap((item:any)=>item.decisions.map((decision:any)=>decision.production_record_id)));
+    allDecided.add(submittedRecordId);
+    for(const record of after.records.filter((item:any)=>!allDecided.has(item.id))) {
+      await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${latest.id}/decisions`,{production_record_id:record.id,decision:"accepted",customer_accepted_quantity:record.reported_quantity,client_mutation_id:crypto.randomUUID()});
+    }
+    const beforeRepeat=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);expect(beforeRepeat.customer_qc_outcome).toBe("customer_partially_accepted");
+    const repeatCycle=await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/reports/${reportId}/cycles`,{source_reference:"Repeat targeted customer inspection",client_mutation_id:crypto.randomUUID()});
+    const repeatCorrection=await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${repeatCycle.id}/decisions`,{production_record_id:submittedRecordId,decision:"correction_required",customer_reason_code:"notes",customer_comments:"Clarify final note",allowed_fields:["notes"],client_mutation_id:crypto.randomUUID()});
+    await apiJson(request,seeded.foremanToken,"POST",`/syncfield/foreman/corrections/${repeatCorrection.correction.id}/resubmit`,{notes:"Final customer clarification",client_mutation_id:crypto.randomUUID()});
+    const repeatDetail=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
+    await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${repeatDetail.cycles[0].id}/decisions`,{production_record_id:submittedRecordId,decision:"accepted",customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()});
+    const aggregate=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);expect(aggregate.customer_qc_outcome).toBe("customer_partially_accepted");expect(aggregate.cycles[0].status).toBe("accepted");expect(aggregate.cycles[0].decisions).toHaveLength(1);
+    const dashboard=await apiJson(request,seeded.internalToken,"GET",`/syncfield/production-dashboard?daily_report_id=${reportId}`);
+    expect(dashboard.headline.production_record_count).toBe(6);
+    expect(dashboard.headline.pending_customer_qc).toBe(0);
+    expect(dashboard.closeout.open_correction_count).toBe(0);
+
+
+
+  });
 });
 
 async function seedSyncfieldFixture(client: Client, secret: string): Promise<Seeded> {
@@ -434,7 +480,7 @@ async function seedSyncfieldFixture(client: Client, secret: string): Promise<See
   const workerIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
   const adminPermissions = ["partner_context.read", "partner_actions.read", "partner_profile.read", "partner_compliance.summary.read", "partner_compliance.profile.read", "partner_compliance.w9.read", "partner_compliance.payment.read", "partner_compliance.insurance.read", "partner_workforce.worker.read", "partner_workforce.crew.read", "partner_workforce.readiness.read", "partner_agreement.read", "partner_agreement.artifact.read", "partner_work_order.read", "partner_work_order.rate.read", "partner_vehicle_assignment.read", "partner_vehicle_assignment.allocation.read", "partner_mobilization.read", "partner_notice.read", "partner_notice.acknowledge", "partner_map.read", "partner_jsa.read", "partner_jsa_history.read", "partner_daily_production.read_org", "partner_production.read_org", "partner_customer_qc.read", "partner_customer_qc.corrections_read", "partner_customer_qc.history_read"];
   const foremanPermissions = ["partner_context.read", "partner_actions.read", "partner_compliance.summary.read", "partner_workforce.foreman_roster.read", "partner_work_order.foreman_summary.read", "partner_mobilization.foreman.read", "partner_notice.foreman.read", "partner_notice.foreman.acknowledge", "partner_map.read_assigned", "partner_jsa.create", "partner_jsa.update_draft", "partner_jsa.complete", "partner_jsa.read_own", "partner_daily_production.read", "partner_daily_production.create", "partner_daily_production.update_draft", "partner_daily_production.delete_draft", "partner_daily_production.submit", "partner_production_record.create", "partner_production_record.update_draft", "partner_production_record.delete_draft", "partner_production_photo.create", "partner_field_sync.submit", "partner_customer_qc.read_own", "partner_correction.read_own", "partner_correction.update_allowed", "partner_correction.resubmit"];
-  const internalPermissions = ["capacity_provider.read", "partner_mobilization.review", "partner_mobilization.evaluate", "partner_mobilization.approve", "partner_notice.issue", "syncfield_map.create", "syncfield_map.version.upload", "syncfield_map.read", "syncfield_map.assignment.manage", "syncfield_map.work_zone.manage", "syncfield_jsa.read_all", "daily_production.read_all", "daily_production.completeness_read", "customer_qc.completeness_review", "customer_qc.decision_record", "customer_qc.evidence_read", "customer_qc.evidence_upload", "customer_qc.correction_publish", "customer_qc.history_read"];
+  const internalPermissions = ["production_dashboard.read", "capacity_provider.read", "partner_mobilization.review", "partner_mobilization.evaluate", "partner_mobilization.approve", "partner_notice.issue", "syncfield_map.create", "syncfield_map.version.upload", "syncfield_map.read", "syncfield_map.assignment.manage", "syncfield_map.work_zone.manage", "syncfield_jsa.read_all", "daily_production.read_all", "daily_production.completeness_read", "customer_qc.completeness_review", "customer_qc.decision_record", "customer_qc.evidence_read", "customer_qc.evidence_upload", "customer_qc.correction_publish", "customer_qc.history_read"];
   for (const permission of [...adminPermissions, ...foremanPermissions, ...internalPermissions]) await ensurePermission(client, permission);
   await client.query("BEGIN");
   try {

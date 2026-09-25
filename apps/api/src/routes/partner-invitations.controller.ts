@@ -96,6 +96,16 @@ type InquiryRow = QueryResultRow & {
 export class PartnerInvitationsController {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
 
+  @Get("qualification-organizations")
+  @RequirePermission("partner_inquiry.read")
+  async qualificationOrganizations(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => (await client.query(
+      `SELECT DISTINCT o.id, o.name FROM organizations o JOIN capacity_providers cp ON cp.tenant_id=o.tenant_id AND cp.organization_id=o.id
+       WHERE o.tenant_id=$1 AND o.deleted_at IS NULL AND cp.deleted_at IS NULL AND cp.provider_type=ANY($2::text[]) ORDER BY o.name`,
+      [request.auth.tenantId, Array.from(partnerProviderTypes)],
+    )).rows);
+  }
+
   @Post("public-inquiries")
   @HttpCode(202)
   @Public()

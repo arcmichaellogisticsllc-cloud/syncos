@@ -10,9 +10,16 @@ export async function requireCustomerAcceptedBilling(client: PoolClient, tenantI
   const result = await client.query(`SELECT decision.* FROM customer_qc_decisions decision
     JOIN customer_qc_cycles cycle ON cycle.tenant_id=decision.tenant_id AND cycle.id=decision.qc_cycle_id AND cycle.deleted_at IS NULL
     WHERE decision.tenant_id=$1 AND decision.production_record_id=$2 AND decision.current=true AND decision.deleted_at IS NULL
-      AND cycle.cycle_number=(SELECT max(latest.cycle_number) FROM customer_qc_cycles latest
-        WHERE latest.tenant_id=cycle.tenant_id AND latest.daily_report_id=cycle.daily_report_id AND latest.deleted_at IS NULL)
-    ORDER BY decision.recorded_at DESC LIMIT 1 FOR UPDATE OF decision`, [tenantId, productionId]);
+      AND NOT EXISTS (
+        SELECT 1 FROM customer_qc_cycles newer
+        LEFT JOIN daily_production_report_revisions inspected ON inspected.tenant_id=newer.tenant_id AND inspected.id=newer.daily_report_revision_id
+        WHERE newer.tenant_id=cycle.tenant_id AND newer.daily_report_id=cycle.daily_report_id AND newer.deleted_at IS NULL AND newer.cycle_number>cycle.cycle_number
+          AND (NULLIF(inspected.snapshot_json->>'original_production_record_id','') IS NULL
+            OR inspected.snapshot_json->>'original_production_record_id'=decision.production_record_id::text)
+      )
+      AND NOT EXISTS (SELECT 1 FROM production_corrections correction WHERE correction.tenant_id=decision.tenant_id
+        AND correction.production_record_id=decision.production_record_id AND correction.deleted_at IS NULL AND correction.status NOT IN ('resolved','cancelled'))
+    ORDER BY cycle.cycle_number DESC,decision.recorded_at DESC LIMIT 1 FOR UPDATE OF decision`, [tenantId, productionId]);
   const decision = result.rows[0];
   if (!decision || !['accepted', 'partially_accepted'].includes(decision.decision) || Number(decision.customer_accepted_quantity) <= 0) {
     throw new BadRequestException("Current customer acceptance is required before billing production");

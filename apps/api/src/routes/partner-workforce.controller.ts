@@ -614,6 +614,9 @@ export class PartnerWorkforceController {
 
   private async upsertWorkerProfile(client: PoolClient, context: PartnerContext, worker: QueryResultRow, userId: string, body: Record<string, unknown>) {
     const existing = await client.query("SELECT * FROM partner_worker_profiles WHERE tenant_id = $1 AND organization_id = $2 AND worker_id = $3 AND deleted_at IS NULL AND status <> 'superseded' LIMIT 1", [context.tenant_id, context.organization.id, worker.id]);
+    // Ordinary name/role edits and submit actions must not erase existing private profile details.
+    const previous = existing.rows[0] ?? (await client.query("SELECT * FROM partner_worker_profiles WHERE tenant_id=$1 AND organization_id=$2 AND worker_id=$3 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1", [context.tenant_id, context.organization.id, worker.id])).rows[0];
+    body = { ...Object.fromEntries(Object.entries(previous ?? {}).filter(([, value]) => value !== null && value !== undefined)), ...body };
     const values = {
       display_name: this.optionalString(body.display_name) ?? `${worker.first_name} ${worker.last_name}`,
       home_address: this.optionalObject(body.home_address),

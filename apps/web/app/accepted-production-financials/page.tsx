@@ -1,4 +1,5 @@
 "use client";
+import { FinancialWorkflow } from "./financial-workflow";
 import { Capability, useCapability } from "../access-control";
 
 import { useEffect, useState } from "react";
@@ -199,6 +200,7 @@ export default function AcceptedProductionFinancialsPage() {
       <section className="workspace-panel warning-box">
         Settlement is not payment. Contractor Payable is not payment. Customer cash is applied to Customer invoices and only creates Partner pay-when-paid eligibility.
       </section>
+      <FinancialWorkflow onChange={() => setRetry(value => value + 1)} />
       <section className="workspace-panel">
         <h2>Coil Commercial Policy</h2>
         <p className="muted-copy">Recorded coil is construction truth. These policies determine customer billing and Partner compensation separately after accepted production.</p>

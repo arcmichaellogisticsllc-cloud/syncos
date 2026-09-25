@@ -1,7 +1,7 @@
 "use client";
 import { Capability, PermissionLink } from "../access-control";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { readToken, syncosFetch } from "../intelligence/api";
 import { CommandShell } from "../dashboard-components";
@@ -16,6 +16,16 @@ type Summary = {
 
 export default function CommandCenterPage() {
   const [state, setState] = useState<{ loading: boolean; error?: string; summary?: Summary }>({ loading: true });
+
+  const actionLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  async function perform(run: () => Promise<void>) {
+    if (actionLock.current) return;
+    actionLock.current = true; setBusy(true); setActionError("");
+    try { await run(); } catch (e) { setActionError(e instanceof Error ? e.message : "Action failed. Please retry."); }
+    finally { actionLock.current = false; setBusy(false); }
+  }
 
   useEffect(() => {
     void load();
@@ -36,25 +46,29 @@ export default function CommandCenterPage() {
   }
 
   async function recalculate() {
+    await perform(async () => {
     await syncosFetch("executive-command/recalculate", { method: "POST", body: {} });
     await load();
+
+    });
   }
 
   if (state.loading) return <CommandShell title="Command Center" purpose="Executive throughput and action priorities"><section className="workspace-panel loading-state">Loading Command Center...</section></CommandShell>;
-  if (state.error) return <CommandShell title="Command Center" purpose="Executive throughput and action priorities"><section className="workspace-panel error-state"><h1>Access denied</h1><p>{state.error}</p></section></CommandShell>;
+  if (state.error) return <CommandShell title="Command Center" purpose="Executive throughput and action priorities"><section className="workspace-panel error-state"><h1>Unable to load</h1><p role="alert">{state.error}</p><button onClick={() => void load()}>Retry</button></section></CommandShell>;
 
   const summary = state.summary;
   const snapshot = summary?.snapshot;
 
   return (
     <CommandShell title="Command Center" purpose="Executive throughput and action priorities">
+      {actionError ? <p role="alert" className="error-banner">{actionError}</p> : null}
       <section className="command-header">
         <div>
           <p className="eyebrow">Executive Command</p>
           <h1>Telecom throughput and daily action board</h1>
           <p className="muted">As of {formatDate(snapshot?.as_of)} · Refreshed {formatDate(snapshot?.calculated_at)}</p>
         </div>
-        <Capability permission="executive_command.snapshot_recalculate"><button className="primary-button" onClick={recalculate}>Refresh</button></Capability>
+        <Capability permission="executive_command.snapshot_recalculate"><button className="primary-button" disabled={busy} onClick={recalculate}>Refresh</button></Capability>
       </section>
 
       {!snapshot ? <section className="workspace-panel"><p>{summary?.message ?? "No current snapshot."}</p></section> : <CommandContent snapshot={snapshot} actions={summary?.actions ?? []} blockers={summary?.blockers ?? []} />}

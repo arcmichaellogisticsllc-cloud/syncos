@@ -35,6 +35,26 @@ test.describe.serial("P3 Partner compliance onboarding foundation", () => {
     await client?.end();
   });
 
+  test("setup declarations are scoped, idempotent, reviewable, and do not change readiness", async ({ request }) => {
+    const description = "Partner-owned bucket truck; inspection pending. Request Sync review.";
+    const payload = { request_type: "equipment", description, client_mutation_id: crypto.randomUUID() };
+    const before = await apiJson(request, seeded.adminToken, "GET", "/partner-compliance/me/summary");
+    await expectStatus(request, seeded.foremanToken, "POST", "/partner-compliance/me/setup-requests", 403, payload);
+    await expectStatus(request, seeded.adminToken, "POST", "/partner-compliance/me/setup-requests", 403, { ...payload, organization_id: seeded.orgB });
+    const created = await apiJson(request, seeded.adminToken, "POST", "/partner-compliance/me/setup-requests", payload);
+    const repeated = await apiJson(request, seeded.adminToken, "POST", "/partner-compliance/me/setup-requests", payload);
+    expect(repeated.id).toBe(created.id);
+    await expectStatus(request, seeded.adminToken, "POST", "/partner-compliance/me/setup-requests", 409, { ...payload, description: "different" });
+    const anotherTenant = await apiJson(request, seeded.tenantBToken, "GET", "/partner-compliance/me/setup-requests");
+    expect(anotherTenant.some((row: { id: string }) => row.id === created.id)).toBe(false);
+    await expectStatus(request, seeded.adminToken, "POST", `/partner-compliance/organizations/${seeded.orgA}/setup-requests/${created.id}/review`, 403, { status: "recorded", response: "self approval" });
+    await apiJson(request, seeded.internalToken, "POST", `/partner-compliance/organizations/${seeded.orgA}/setup-requests/${created.id}/review`, { status: "action_required", response: "Provide the current inspection date." });
+    const own = await apiJson(request, seeded.adminToken, "GET", "/partner-compliance/me/setup-requests");
+    expect(own.find((row: { id: string }) => row.id === created.id)).toMatchObject({status:"action_required",response:"Provide the current inspection date."});
+    const after = await apiJson(request, seeded.adminToken, "GET", "/partner-compliance/me/summary");
+    expect(after.overall_status).toBe(before.overall_status);
+  });
+
   test("empty Partner compliance summary is organization scoped and Foreman safe", async ({ request }) => {
     const unauthenticated = await request.get(apiUrl("/partner-compliance/me/summary"));
     expect(unauthenticated.status()).toBe(401);
@@ -83,14 +103,18 @@ test.describe.serial("P3 Partner compliance onboarding foundation", () => {
       tin: "123456789",
       tin_last_four: "6789",
     });
+    const largeW9Bytes = Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(180 * 1024, 0x89), Buffer.from("\n%%EOF")]);
     const w9 = await apiJson(request, seeded.adminToken, "POST", "/partner-compliance/me/w9", {
       legal_name_on_w9: "P3 Partner A LLC",
       federal_tax_classification: "llc",
       tin_type: "ein",
       tin_last_four: "6789",
       signed_date: "2026-08-15",
-      evidence: evidence("partner-a-w9.pdf", "w9-checksum"),
+      evidence: { ...evidence("partner-a-w9.pdf", "w9-checksum"), content_base64: largeW9Bytes.toString("base64") },
     });
+    const storedW9 = await request.get(apiUrl(`/partner-compliance/me/evidence/${w9.evidence_id}/download`), { headers: { authorization: `Bearer ${seeded.adminToken}` } });
+    expect(storedW9.status()).toBe(200);
+    expect(await storedW9.body()).toEqual(largeW9Bytes);
     expect(w9.tin_last_four).toBe("6789");
     expect(JSON.stringify(w9)).not.toContain("123456789");
     await expectStatus(request, seeded.adminToken, "POST", "/partner-compliance/me/w9", 400, {
