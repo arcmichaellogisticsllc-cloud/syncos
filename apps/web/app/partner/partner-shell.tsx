@@ -676,7 +676,7 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
                 <p className="eyebrow">{isSyncField ? "SyncField" : personaLabel(persona)}</p>
                 <h2>{pageTitle(section, persona)}</h2>
               </div>
-              <StatusPill label={isSyncField ? "Assignment Scope" : "Organization"} value={isSyncField ? data.foremanCrew?.name ? "crew_assigned" : "pending_assignment" : data.context?.organization.status} />
+              <StatusPill label={isSyncField ? "Assignment Scope" : "Organization"} value={isSyncField ? data.selectedAssignment?.crew?.id || data.foremanCrew?.id ? "crew_assigned" : "pending_assignment" : data.context?.organization.status} />
             </header>
             {message ? <div className={/failed|forbidden|error/i.test(message) ? "partner-banner error" : "partner-banner success"}>{message}</div> : null}
             {isSyncField ? (

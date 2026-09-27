@@ -919,7 +919,7 @@ export class PartnerAgreementsController {
   }
 
   private safeForemanWorkOrder(row: QueryResultRow) {
-    return { work_order_id: row.work_order_id, project_name: row.project_name, customer_name: row.customer_name, scope_summary: row.scope_summary, map_work_package_ref: row.map_work_package_ref, vehicle: row.vehicle_assignment_id ? { assignment_id: row.vehicle_assignment_id, equipment_name: row.equipment_name, equipment_type: row.equipment_type } : null };
+    return { work_order_id: row.work_order_id, work_order_number: row.work_order_number, project_name: row.project_name, customer_name: row.customer_name, scope_summary: row.scope_summary, map_work_package_ref: row.map_work_package_ref, vehicle: row.vehicle_assignment_id ? { assignment_id: row.vehicle_assignment_id, equipment_name: row.equipment_name, equipment_type: row.equipment_type } : null };
   }
 
   private safeVehicleAssignment(row: QueryResultRow) {

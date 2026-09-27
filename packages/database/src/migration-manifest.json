@@ -66,5 +66,6 @@
   "065_demo_execution_permission_reconciliation.sql",
   "066_finance_workflow_idempotency.sql",
   "067_syncfield_evidence_incidents.sql",
-  "068_partner_setup_requests.sql"
+  "068_partner_setup_requests.sql",
+  "069_demo_crew_organization_link.sql"
 ]
