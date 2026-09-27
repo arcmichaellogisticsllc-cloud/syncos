@@ -1,0 +1,126 @@
+{
+  "checks": [
+    {
+      "path": "/auth/me",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/customer-qc/completeness-queue",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/accepted-production-financials/workflow-choices",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/internal-workforce",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "path": "/auth/me",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/internal-workforce",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "path": "/syncfield/partner/map-assignment",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/partner/production",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/partner/customer-qc",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/partner-workforce/foreman/crew",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/partner-workforce/foreman/crew/roster",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/partner-agreements/foreman/work-order",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/foreman/context",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/foreman/assignments",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/foreman/production-history",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/accepted-production-financials/workflow-choices",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "path": "/internal-workforce",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "path": "/syncfield/foreman/context",
+      "status": 401,
+      "expected": 401
+    },
+    {
+      "path": "/syncfield/foreman/map-versions/00000000-0000-0000-0000-000000000000/bytes",
+      "status": 401,
+      "expected": 401
+    }
+  ],
+  "preservedRecordCounts": {
+    "tenants": 2,
+    "users": 16,
+    "tenant_users": 16,
+    "organizations": 17,
+    "crews": 1,
+    "work_orders": 1,
+    "production_records": 7,
+    "daily_production_reports": 0,
+    "invoices": 6,
+    "cash_receipts": 4,
+    "contractor_payables": 6
+  },
+  "postActivationBackups": [
+    {
+      "type": "postgres",
+      "manifest": "/opt/syncos/staging/shared/backups/postgres/manifests/syncos_staging_20260927T021931Z_ea41c37c876d.dump.manifest.json",
+      "sha256": "e8515338328ccd1329b59a6c123d00bbf07fd28ac370e743b915c17ba4095b7c"
+    },
+    {
+      "type": "files",
+      "manifest": "/opt/syncos/staging/shared/backups/files/manifests/syncos_staging_files_20260927T021931Z_ea41c37c876d.tar.gz.manifest.json",
+      "sha256": "a089c083631c5e24c9e35c43e27d32cbeba4cde9025af3cc7fd087f120a8d6b6"
+    }
+  ],
+  "privateFilesUnchanged": true,
+  "verifiedAt": "2026-09-27T02:19:33.056Z"
+}

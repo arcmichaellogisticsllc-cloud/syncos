@@ -1,0 +1,115 @@
+TAP version 13
+# Subtest: P5 reuses canonical contract, work order, rate, crew, and equipment objects
+ok 1 - P5 reuses canonical contract, work order, rate, crew, and equipment objects
+  ---
+  duration_ms: 1.618145
+  ...
+# Subtest: P5 legal artifacts reuse restricted file bytes without public URL columns
+ok 2 - P5 legal artifacts reuse restricted file bytes without public URL columns
+  ---
+  duration_ms: 0.417152
+  ...
+# Subtest: P5 Partner self-service permissions are scoped while internal review permissions are not
+ok 3 - P5 Partner self-service permissions are scoped while internal review permissions are not
+  ---
+  duration_ms: 0.353212
+  ...
+# Subtest: P5 controller validates legal PDF bytes and rejects client storage references
+ok 4 - P5 controller validates legal PDF bytes and rejects client storage references
+  ---
+  duration_ms: 0.446491
+  ...
+# Subtest: P5 seed grants commercial actions narrowly to Partner personas
+ok 5 - P5 seed grants commercial actions narrowly to Partner personas
+  ---
+  duration_ms: 1.185704
+  ...
+# Subtest: P5 E2E is registered in global certification
+ok 6 - P5 E2E is registered in global certification
+  ---
+  duration_ms: 0.304251
+  ...
+# Subtest: Partner Portal resolves one server-derived organization and never exposes a selector
+ok 7 - Partner Portal resolves one server-derived organization and never exposes a selector
+  ---
+  duration_ms: 2.82234
+  ...
+# Subtest: Partner Portal uses grouped admin navigation and keeps field execution in SyncField
+ok 8 - Partner Portal uses grouped admin navigation and keeps field execution in SyncField
+  ---
+  duration_ms: 1.328026
+  ...
+# Subtest: Invitation and role assignment block cross-organization Partner accounts
+ok 9 - Invitation and role assignment block cross-organization Partner accounts
+  ---
+  duration_ms: 0.484881
+  ...
+# Subtest: Partner Portal product boundaries keep financial truth server-authoritative and private
+ok 10 - Partner Portal product boundaries keep financial truth server-authoritative and private
+  ---
+  duration_ms: 2.274519
+  ...
+# Subtest: Partner Dashboard exposes daily operations and action ownership without organization selection
+ok 11 - Partner Dashboard exposes daily operations and action ownership without organization selection
+  ---
+  duration_ms: 2.061588
+  ...
+# Subtest: Partner Dashboard financial summary keeps payment states separate and avoids rate math
+ok 12 - Partner Dashboard financial summary keeps payment states separate and avoids rate math
+  ---
+  duration_ms: 2.904201
+  ...
+# Subtest: Partner company readiness uses one server-derived read model without self-approval
+ok 13 - Partner company readiness uses one server-derived read model without self-approval
+  ---
+  duration_ms: 3.018552
+  ...
+# Subtest: Partner company readiness keeps raw identifiers and private file data out of presentation
+ok 14 - Partner company readiness keeps raw identifiers and private file data out of presentation
+  ---
+  duration_ms: 2.239138
+  ...
+# Subtest: SyncField queue renders controlled operational copy without machine-status remapping
+ok 15 - SyncField queue renders controlled operational copy without machine-status remapping
+  ---
+  duration_ms: 1.384484
+  ...
+# Subtest: P4 reuses canonical workers and crews without duplicate Partner workforce tables
+ok 16 - P4 reuses canonical workers and crews without duplicate Partner workforce tables
+  ---
+  duration_ms: 1.732577
+  ...
+# Subtest: P4 schema stores restricted personnel facts without full driver-license or public URL fields
+ok 17 - P4 schema stores restricted personnel facts without full driver-license or public URL fields
+  ---
+  duration_ms: 0.472452
+  ...
+# Subtest: P4 Partner self-service permissions are organization-scoped but internal review is not Partner-scoped
+ok 18 - P4 Partner self-service permissions are organization-scoped but internal review is not Partner-scoped
+  ---
+  duration_ms: 0.298351
+  ...
+# Subtest: P4 secure file-byte implementation rejects client storage keys and public URL responses
+ok 19 - P4 secure file-byte implementation rejects client storage keys and public URL responses
+  ---
+  duration_ms: 0.775413
+  ...
+# Subtest: P4 seed grants workforce actions narrowly to Partner personas
+ok 20 - P4 seed grants workforce actions narrowly to Partner personas
+  ---
+  duration_ms: 1.226805
+  ...
+# Subtest: P4 E2E is registered in global certification
+ok 21 - P4 E2E is registered in global certification
+  ---
+  duration_ms: 0.296691
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 185.545817
