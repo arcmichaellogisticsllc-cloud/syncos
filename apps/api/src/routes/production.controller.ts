@@ -1,3 +1,4 @@
+import { lockFieldWork } from "./field-stop-scope";
 import { requireCustomerAcceptedBilling, validateAcceptedBillingQuantity } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
@@ -1862,6 +1863,7 @@ export class ProductionController {
       return await this.write(request, "stop_work.issue", "production_record.stop_work_issued", "production_record", async (client) => {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, stopWorkIssueAuthorityRoles, "Safety Manager, QC Manager, or Executive authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
+        if (before.work_order_id && before.crew_id) await lockFieldWork(client, request.auth.tenantId, String(before.work_order_id), String(before.crew_id));
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
           stop_work_status: "active",
           stop_work_reason: reason,
@@ -1885,6 +1887,7 @@ export class ProductionController {
       return await this.write(request, "stop_work.release", "production_record.stop_work_released", "production_record", async (client) => {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, stopWorkReleaseAuthorityRoles, "Safety Manager or Executive authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
+        if (before.work_order_id && before.crew_id) await lockFieldWork(client, request.auth.tenantId, String(before.work_order_id), String(before.crew_id));
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
           stop_work_status: "released",
           stop_work_release_reason: releaseReason,

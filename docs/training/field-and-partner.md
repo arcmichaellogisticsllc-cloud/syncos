@@ -199,9 +199,9 @@ These paths are implemented in the current local candidate. Execute the matching
 
 ### Attach photos or documents
 1. Sign in as the assigned foreman (Sync crew or partner crew), select the intended assignment, and open **Review & Submit**.
-2. Under **Photos and evidence**, choose **Evidence file**: JPEG, PNG or PDF, up to 2 MB.
-3. Describe what it shows, then select **Upload evidence**. Wait for **Evidence saved**.
-4. The file appears with its description. **Download [filename]** retrieves the authorized file. An upload failure keeps the selected file and description for retry.
+2. Under **Photos and evidence**, choose **Evidence file**: JPEG, PNG, PDF or MP4, up to 20 MB.
+3. Describe what it shows, then select **Upload evidence**. Wait for **Evidence saved on the server**.
+4. The file appears with its description. **Download [filename]** retrieves the authorized file. Before transmission, the application stores a device copy and its request identifier. If confirmation is lost or you are offline, reconnect, reopen the same report as the same user and select **Retry upload**. The unchanged request is recorded once. **Discard device copy** removes only the pending local copy; keep your original file. Signing out clears local field data.
 5. Evidence added after submission is an additional record. It does not overwrite the submitted quantity, accept work, create billing, or replace the original submission.
 
 ### Report an incident or near miss

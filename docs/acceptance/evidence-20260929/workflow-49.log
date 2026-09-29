@@ -1,0 +1,57 @@
+
+Running 49 tests using 1 worker
+
+(node:90503) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:39:7 › P12 accepted production financials › production item choices stay tenant-scoped and exclude unauthorized partners
+[2/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:50:7 › P12 accepted production financials › Customer-accepted production converts to one Billable using Customer rate only
+[3/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:66:7 › P12 accepted production financials › Invoice, cash, payment application, and invoice balance stay in Customer revenue chain
+[4/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:90:7 › P12 accepted production financials › Partner settlement, Contractor Payable, and pay-when-paid eligibility use Partner rate
+[5/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:106:7 › P12 accepted production financials › Partner Admin sees own settlement without Customer rate or margin; Foreman and Partner B are denied
+[6/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:117:7 › P12 accepted production financials › Customer and Partner coil commercial policies are independent and preserve base accepted quantity
+[7/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:162:7 › P12 accepted production financials › Missing Partner rate creates settlement exception but does not block Customer Billable
+[8/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:172:7 › P12 accepted production financials › Post-billing Customer QC change creates exception without rewriting issued invoice or Billable
+[9/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:331:5 › a newer pending customer QC cycle blocks readiness using an older accepted decision
+[10/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:368:6 › Financial handoff completion safeguards › workflow choices are tenant-scoped; cash retry and duplicate settlement cannot double financial facts
+[11/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:388:6 › Financial handoff completion safeguards › accepted correction production code controls locked customer rate, preserving original record
+[12/49] [chromium] › tests/e2e/accepted-production-financials.spec.ts:403:5 › targeted reinspection retains unrelated accepted production while unresolved corrected work stays blocked
+[13/49] [chromium] › tests/e2e/internal-workforce.spec.ts:6:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries
+[14/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:37:7 › P13 payment, retainage, and controlled financial adjustments › eligible Contractor Payable creates, submits, and confirms one Partner payment instruction
+[15/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:73:7 › P13 payment, retainage, and controlled financial adjustments › failed provider attempt preserves history and releases in-flight amount for retry
+[16/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:91:7 › P13 payment, retainage, and controlled financial adjustments › retainage release creates separate payable and preserves original retained history
+[17/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:112:7 › P13 payment, retainage, and controlled financial adjustments › controlled adjustment preserves issued invoice and Partner payment view remains scoped and redacted
+[18/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:267:5 › external payment records are idempotent, evidence-backed, and serialized against concurrent overpayment
+[19/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:292:5 › competing pending retainage authorizations cannot exceed the remaining balance
+[20/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:311:5 › payment advancement rejects unverified agreements and duplicate payable exposure
+[21/49] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:325:5 › finance review UI retains unmatched observations without posting payments and hides controls from foremen
+[22/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:52:7 › P10 Customer QC intake, correction relay, and reinspection › production gate, Work Order codes, and field UI hydrate without rates
+[23/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:81:7 › P10 Customer QC intake, correction relay, and reinspection › browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once
+[24/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:118:7 › P10 Customer QC intake, correction relay, and reinspection › offline replay revalidates lost production-start authorization and keeps failed work traceable
+[25/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:142:7 › P10 Customer QC intake, correction relay, and reinspection › Asset, Route, and Daily production create authoritative records with subordinate annotations and idempotency
+[26/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:166:7 › P10 Customer QC intake, correction relay, and reinspection › submission creates immutable revision snapshot and blocks ordinary edits without QC or finance
+[27/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:200:7 › P10 Customer QC intake, correction relay, and reinspection › field evidence is scoped, idempotent, readable by QC and rejects disguised files; incidents persist
+[28/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:214:7 › P10 Customer QC intake, correction relay, and reinspection › Customer QC intake preserves reported quantities and creates Partner-safe correction history without finance
+[29/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:299:7 › P10 Customer QC intake, correction relay, and reinspection › Partner correction resubmission creates Revision 2 and Customer reinspection cycle without reopening Revision 1
+[30/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:360:7 › P10 Customer QC intake, correction relay, and reinspection › submitted-report offline conflict does not reopen the report or create production
+[31/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:375:7 › P10 Customer QC intake, correction relay, and reinspection › Partner-local queue isolation hides pending field work after account switch
+[32/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:388:7 › P10 Customer QC intake, correction relay, and reinspection › Partner Admin receives safe read-only report and duplicate submitted work requires traceability
+[33/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:408:7 › P10 Customer QC intake, correction relay, and reinspection › extended correction keeps authorized code, map and evidence in immutable revision and rejects unrelated references
+[34/49] [chromium] › tests/e2e/syncfield-customer-qc.spec.ts:447:7 › P10 Customer QC intake, correction relay, and reinspection › the same Partner field work reaches accepted billing, funded payable and one external payment
+[35/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:56:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › production gate, Work Order codes, and field UI hydrate without rates
+[36/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:85:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › evidence survives lost responses, reload and offline capture without duplicate uploads
+[37/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:121:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once
+[38/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:158:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › offline replay revalidates lost production-start authorization and keeps failed work traceable
+[39/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:182:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Asset, Route, and Daily production create authoritative records with subordinate annotations and idempotency
+[40/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:224:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency
+[41/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:502:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submission creates immutable revision snapshot and blocks ordinary edits without QC or finance
+[42/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:574:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submitted-report offline conflict does not reopen the report or create production
+[43/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:589:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner-local queue isolation hides pending field work after account switch
+[44/49] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:602:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner Admin receives safe read-only report and duplicate submitted work requires traceability
+[45/49] [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:46:7 › P8 SyncField map foundation and Daily JSA › internal Manager creates immutable private Map Version, Work Zones, and active assignment
+[46/49] [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:127:7 › P8 SyncField map foundation and Daily JSA › Partner Foreman opens read-only field map and cannot cross scope or see storage internals
+[47/49] [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:170:7 › P8 SyncField map foundation and Daily JSA › Crew participation buttons identify the worker and announce the saved state
+[48/49] [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:182:7 › P8 SyncField map foundation and Daily JSA › Foreman completes one Daily JSA for own Crew without changing mobilization or downstream records
+[49/49] [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:220:7 › P8 SyncField map foundation and Daily JSA › Partner Admin sees safe JSA history and P9-era field navigation remains QC-safe
+  49 passed (48.4s)

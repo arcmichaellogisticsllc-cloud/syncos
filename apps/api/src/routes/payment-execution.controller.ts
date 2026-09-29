@@ -1,3 +1,4 @@
+import { requirePartnerPayableLineage } from "./partner-financial-lineage";
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
@@ -561,6 +562,8 @@ export class PaymentExecutionController {
   private async requireContractorPayable(client: PoolClient, tenantId: string, id: string) {
     const result = await client.query("SELECT * FROM contractor_payables WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException("contractor payable not found");
+    const payable = result.rows[0];
+    if (payable.partner_organization_id || ["subcontractor", "crew"].includes(String(payable.payable_type))) await requirePartnerPayableLineage(client, tenantId, payable);
     return result.rows[0] as Row;
   }
 

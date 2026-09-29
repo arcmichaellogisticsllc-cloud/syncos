@@ -1,3 +1,5 @@
+import { normalizePaymentObservation } from "./external-payment-observation";
+import { requirePartnerPayableLineage } from "./partner-financial-lineage";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -78,6 +80,56 @@ export class PaymentRetainageAdjustmentsController {
     // Pure invented fixtures. No tenant data, provider calls or financial writes.
     const { buildPreview } = require("../../../../packages/passport/src/preview");
     return buildPreview();
+  }
+
+  @Get("external-payment-observations")
+  @RequirePermission("partner_payment.confirm")
+  async paymentObservations(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async client => (await client.query("SELECT * FROM external_payment_observations WHERE tenant_id=$1 ORDER BY received_at DESC LIMIT 200", [request.auth.tenantId])).rows);
+  }
+
+  @Post("external-payment-observations")
+  @RequirePermission("partner_payment.confirm")
+  async observeExternalPayment(@Req() request: AuthenticatedRequest, @Body() body: Row) {
+    const observation = normalizePaymentObservation(body, this.today());
+    const evidence = requireString(body.evidence_reference, "Evidence reference is required");
+    return this.write(request, "external_payment.observed", "external_payment.observed", "external_payment_observation", async client => {
+      const key = [request.auth.tenantId, observation.provider, observation.account_reference, observation.transaction_reference];
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [JSON.stringify(key)]);
+      const existing = (await client.query("SELECT * FROM external_payment_observations WHERE tenant_id=$1 AND provider=$2 AND account_reference=$3 AND transaction_reference=$4 AND fingerprint=$5", [...key, observation.fingerprint])).rows[0];
+      if (existing) return { entityType: "external_payment_observation", entityId: existing.id, afterState: existing, skipEventAudit: true };
+      const row = (await client.query(`INSERT INTO external_payment_observations
+        (tenant_id,provider,account_reference,transaction_reference,payee_reference,amount,currency,observed_status,completed_date,evidence_reference,fingerprint,received_by)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`, [...key, observation.payee_reference, observation.amount, observation.currency, observation.observed_status, observation.completed_date, evidence, observation.fingerprint, request.auth.userId])).rows[0];
+      return { entityType: "external_payment_observation", entityId: row.id, afterState: row };
+    });
+  }
+
+  @Post("external-payment-observations/:id/link-recorded-payment")
+  @RequirePermission("partner_payment.confirm")
+  async linkObservedPayment(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
+    const paymentId = requireString(body.external_partner_payment_id, "Select an already recorded external payment");
+    const note = requireString(body.review_note, "Document the account and payee mapping review");
+    if (body.account_and_payee_verified !== true) throw new BadRequestException("Verify the account and payee mapping first");
+    return this.write(request, "external_payment.reviewed", "external_payment.reviewed", "external_payment_observation", async client => {
+      const before = (await client.query("SELECT * FROM external_payment_observations WHERE tenant_id=$1 AND id=$2", [request.auth.tenantId,id])).rows[0];
+      if (!before) throw new NotFoundException("Observation not found");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [JSON.stringify([request.auth.tenantId,before.provider,before.account_reference,before.transaction_reference])]);
+      const current = (await client.query("SELECT * FROM external_payment_observations WHERE tenant_id=$1 AND id=$2 FOR UPDATE", [request.auth.tenantId,id])).rows[0];
+      if (current.review_status === "linked") {
+        if (current.external_partner_payment_id !== paymentId) throw new BadRequestException("Observation already linked to a different payment");
+        return { entityType: "external_payment_observation", entityId: id, afterState: current, skipEventAudit: true };
+      }
+      const conflicts = (await client.query(`SELECT id FROM external_payment_observations WHERE tenant_id=$1 AND provider=$2 AND account_reference=$3 AND transaction_reference=$4
+        AND (observed_status IN ('failed','returned','reversed') OR (observed_status='completed' AND (amount<>$5 OR currency<>$6 OR payee_reference<>$7 OR completed_date<>$8)))`, [request.auth.tenantId,current.provider,current.account_reference,current.transaction_reference,current.amount,current.currency,current.payee_reference,current.completed_date])).rows;
+      if (conflicts.length) throw new BadRequestException("Conflicting or reversed payment remains under review; do not mark reconciled");
+      const payment = (await client.query("SELECT * FROM external_partner_payments WHERE tenant_id=$1 AND id=$2", [request.auth.tenantId,paymentId])).rows[0];
+      const date = payment?.payment_date instanceof Date ? payment.payment_date.toISOString().slice(0,10) : String(payment?.payment_date).slice(0,10);
+      const observedDate = current.completed_date instanceof Date ? current.completed_date.toISOString().slice(0,10) : String(current.completed_date).slice(0,10);
+      if (!payment || current.observed_status !== "completed" || current.currency !== "USD" || Number(payment.amount) !== Number(current.amount) || payment.reference !== current.transaction_reference || date !== observedDate || (current.provider === "passport" && payment.method !== "passport")) throw new BadRequestException("Recorded payment must match completed reference, amount, currency and date");
+      const after = (await client.query("UPDATE external_payment_observations SET review_status='linked',external_partner_payment_id=$3,reviewed_by=$4,reviewed_at=now(),review_note=$5 WHERE tenant_id=$1 AND id=$2 RETURNING *", [request.auth.tenantId,id,paymentId,request.auth.userId,note])).rows[0];
+      return { entityType: "external_payment_observation", entityId: id, beforeState: current, afterState: after };
+    });
   }
 
   @Get("external-payments")
@@ -416,6 +468,7 @@ export class PaymentRetainageAdjustmentsController {
     if (["voided", "archived", "rejected", "held", "disputed"].includes(String(payable.status))) throw new BadRequestException("contractor payable lifecycle blocks payment");
     if (["open", "under_review"].includes(String(payable.dispute_status))) throw new BadRequestException("disputed payable amount unavailable");
     if (payable.hold_status === "hold") throw new BadRequestException("held payable amount unavailable");
+    await requirePartnerPayableLineage(client, tenantId, payable);
     const active = await client.query(
       `
       SELECT COALESCE(sum(amount),0)::numeric AS amount

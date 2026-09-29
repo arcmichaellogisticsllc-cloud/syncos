@@ -10,7 +10,7 @@ Use one named Sync employee crew and one partner crew. Preserve existing demo re
 2. Open **Map**. Read the assigned PDF, change page/zoom, rotate portrait/landscape and open the original. Check readability without losing the selected assignment.
 3. Open the daily **JSA**. Record the actual practice participants, hazards and controls. Confirm required fields prevent incomplete submission and the successful completion is visible.
 4. Open **Production**. Record a designated quantity and asset/span, with the assigned production code. Check numeric keyboard, labels, unit and totals. Rotate the phone and enlarge system text; controls must remain reachable.
-5. Under **Photos and evidence**, choose a camera photo or existing JPEG/PNG/PDF up to 2 MB. Describe it and **Upload evidence**. Download and inspect the same file. Record any HEIC or size limitation; do not mark unsupported formats as passed.
+5. Under **Photos and evidence**, choose a camera photo or existing JPEG/PNG/PDF/MP4 up to 20 MB. Describe it and **Upload evidence**. Download and inspect the same file. Record any HEIC or size limitation; do not mark unsupported formats as passed.
 6. On Today, open **Report an incident or near miss**. Use a clearly labeled training event and **Record incident**. The trainer verifies it appears in the internal incident queue before report submission. This is recordkeeping, not emergency dispatch.
 7. Review the daily report. Submit once; confirm the submitted state and disabled repeat-submit action. Reopen to confirm persistence.
 8. Trainer: open **Customer QC**, select the report, complete administrative review, open the documented customer inspection cycle and issue a correction for the designated line. Internal QC is not customer acceptance.
@@ -21,9 +21,13 @@ Use one named Sync employee crew and one partner crew. Preserve existing demo re
 
 ## Connection interruption — separate scenarios
 
-- **Loaded session:** Load the assignment online. Enable airplane mode, enter a practice draft, and attempt save/submission. Record the exact error or queue indicator. Do not assume photo/incident uploads are queued. Drafts must not be presented as saved when the server has not confirmed them.
+- **Loaded session:** Load the assignment online. Enable airplane mode, enter a practice draft, and attempt save/submission. Record the exact error or queue indicator. Evidence uploads in the pre-payment candidate save a device copy before transmission and require Retry upload after reconnection. Incident uploads are not queued. Drafts must not be presented as saved when the server has not confirmed them.
 - **Reconnect:** Restore connection and retry the unchanged operation. Reopen the record; confirm one saved result, no duplicate quantity/payment and no lost draft. If a response was lost, inspect current state before changing and retrying a financial instruction.
 - **Cold start:** Close the tab, enable airplane mode, then reopen the app. Record the actual outcome separately. Full offline cold start is not certified; crews must understand the connection requirement.
+
+- **Interrupted evidence response:** During a photo upload, switch off connectivity before confirmation. Reconnect, reopen the page and select **Retry upload**. The same file must appear once with one upload audit entry; compare the downloaded file with the original.
+- **Phone shutdown:** Save a production draft and an evidence upload while offline. Once the device-save message appears, fully close the browser or restart the phone. Reconnect, sign in as the same user and reopen the same assignment. Confirm the original pending requests replay once. Also test loss before device-save confirmation; keep the original file and do not claim it was saved.
+- **Work shutdown:** A supervisor places the crew/work order on stop-work while the phone has queued production. Reconnect. The server must reject advancement, retain the pending change and explain the hold. Resume only through authorized release and renewed safety/readiness review.
 
 ## Evidence ledger
 

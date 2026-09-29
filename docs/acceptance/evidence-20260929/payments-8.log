@@ -1,0 +1,16 @@
+
+Running 8 tests using 1 worker
+
+(node:91999) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:37:7 › P13 payment, retainage, and controlled financial adjustments › eligible Contractor Payable creates, submits, and confirms one Partner payment instruction
+[2/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:73:7 › P13 payment, retainage, and controlled financial adjustments › failed provider attempt preserves history and releases in-flight amount for retry
+[3/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:91:7 › P13 payment, retainage, and controlled financial adjustments › retainage release creates separate payable and preserves original retained history
+[4/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:112:7 › P13 payment, retainage, and controlled financial adjustments › controlled adjustment preserves issued invoice and Partner payment view remains scoped and redacted
+[5/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:267:5 › external payment records are idempotent, evidence-backed, and serialized against concurrent overpayment
+[6/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:305:5 › competing pending retainage authorizations cannot exceed the remaining balance
+[7/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:324:5 › payment advancement rejects unverified agreements and duplicate payable exposure
+[8/8] [chromium] › tests/e2e/payment-retainage-adjustments.spec.ts:341:5 › finance review UI retains unmatched observations without posting payments and hides controls from foremen
+  8 passed (3.1s)

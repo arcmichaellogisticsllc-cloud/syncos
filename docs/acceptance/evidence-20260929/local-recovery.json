@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "tables": 180,
+  "tableContents": "all row counts and sorted row-content hashes matched",
+  "privateFiles": 16,
+  "privateFileHashes": "matched",
+  "observationReplay": "same id; no additional observation, payment or audit",
+  "backupSha256": "a64d84cd4d7c30174219f899c2390f1bcc283f14519fd0d5d9ebbfe669257680",
+  "target": "syncos_recovery_1790716895161",
+  "artifactDirectory": "/private/tmp/syncos-acceptance-recovery-Y3TZ63"
+}

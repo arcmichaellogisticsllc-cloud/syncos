@@ -176,6 +176,7 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
   const settlement = crypto.randomUUID();
   const payable = crypto.randomUUID();
   const retainagePayable = crypto.randomUUID();
+  const retainageProduction=crypto.randomUUID(), retainageDecision=crypto.randomUUID(), retainageSettlement=crypto.randomUUID(), retainageSource=crypto.randomUUID();
   const permissions = [
     "partner_payment.execute", "partner_payment.submit", "partner_payment.confirm", "partner_payment.read", "retainage.release", "financial_adjustment.create",
     "financial_exception.read", "partner_context.read",
@@ -198,6 +199,10 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("INSERT INTO crews (id,tenant_id,capacity_provider_id,organization_id,name,crew_type,status,lifecycle_status,target_staffing_level) VALUES ($1,$2,$3,$4,'P13 Crew','aerial','active','active',1)", [crew, tenantA, provider, partnerOrg]);
     await client.query("INSERT INTO contracts (id,tenant_id,organization_id,partner_organization_id,capacity_provider_id,name,contract_type,status,agreement_lifecycle_status,agreement_effective_date) VALUES ($1,$2,$3,$3,$4,'P13 Partner MSA','partner_master_agreement','active','active','2026-08-01')", [contract, tenantA, partnerOrg, provider]);
     await client.query("INSERT INTO partner_agreement_versions (id,tenant_id,organization_id,capacity_provider_id,contract_id,version_number,status,effective_date,created_by_user_id) VALUES ($1,$2,$3,$4,$5,1,'effective','2026-08-01',$6)", [agreementVersion, tenantA, partnerOrg, provider, contract, internalUser]);
+    // Synthetic verified agreement evidence for the financial lineage gate.
+    const agreementFile = crypto.randomUUID();
+    await client.query("INSERT INTO partner_restricted_file_objects (id,tenant_id,organization_id,capacity_provider_id,category,related_entity_type,related_entity_id,file_name,mime_type,size_bytes,checksum,storage_key,uploaded_by_user_id) VALUES ($1,$2,$3,$4,'partner_msa_executed','partner_agreement_version',$5,'synthetic-agreement.pdf','application/pdf',16,'synthetic-agreement-checksum',$6,$7)", [agreementFile,tenantA,partnerOrg,provider,agreementVersion,`${tenantA}/${partnerOrg}/${agreementFile}.pdf`,internalUser]);
+    await client.query("UPDATE partner_agreement_versions SET executed_at='2026-08-01',artifact_file_object_id=$3,artifact_verified_at='2026-08-01',artifact_verified_by_user_id=$4 WHERE tenant_id=$1 AND id=$2",[tenantA,agreementVersion,agreementFile,internalUser]);
     await client.query("INSERT INTO rate_schedules (id,tenant_id,organization_id,name,effective_date,status) VALUES ($1,$2,$3,'P13 Partner Rates','2026-08-01','active')", [partnerSchedule, tenantA, partnerOrg]);
     await client.query("INSERT INTO workers (id,tenant_id,capacity_provider_id,crew_id,organization_id,first_name,last_name,status,review_status) VALUES ($1,$2,$3,$4,$5,'P13','Foreman','active','approved')", [foremanWorker, tenantA, provider, crew, partnerOrg]);
     await client.query("INSERT INTO partner_crew_memberships (tenant_id,organization_id,capacity_provider_id,crew_id,worker_id,membership_role,status) VALUES ($1,$2,$3,$4,$5,'foreman','active')", [tenantA, partnerOrg, provider, crew, foremanWorker]);
@@ -217,7 +222,13 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("UPDATE billable_items SET invoice_item_id = $1 WHERE tenant_id = $2 AND id = $3", [invoiceItem, tenantA, billable]);
     await client.query("UPDATE accepted_production_financial_sources SET billable_item_id = $1, invoice_item_id = $2 WHERE tenant_id = $3 AND id = $4", [billable, invoiceItem, tenantA, source]);
     await client.query("INSERT INTO settlements (id,tenant_id,settlement_number,settlement_type,status,readiness_status,customer_organization_id,capacity_provider_id,project_id,work_order_id,settlement_period_start,settlement_period_end,gross_amount,contractor_payable_amount,net_amount,net_settlement_amount,total_amount,payable_ready,issued_at,dispute_deadline) VALUES ($1,$2,'PSET-P13','contractor_payable','payable_ready','ready_for_approval',$3,$4,$5,$6,'2026-08-24','2026-08-30',98.70,98.70,98.70,98.70,98.70,true,now(),'2026-09-04')", [settlement, tenantA, customerOrg, provider, project, workOrder]);
-    await client.query("INSERT INTO contractor_payables (id,tenant_id,payable_number,payable_type,payable_party_type,status,approval_status,payment_readiness_status,payment_status,capacity_provider_id,partner_organization_id,project_id,settlement_id,pay_cycle_start,pay_cycle_end,gross_payable_amount,retainage_amount,retained_balance_amount,deduction_amount,chargeback_amount,net_payable_amount,eligible_amount,ineligible_amount,pay_when_paid_status,payment_execution_status,compliance_status,tax_document_status) VALUES ($1,$2,'CP-P13-1','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$6,'2026-08-24','2026-08-30',98.70,0,0,0,0,98.70,98.70,0,'eligible','not_started','ready','ready'),($7,$2,'CP-P13-RET','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$6,'2026-08-24','2026-08-30',700,700,700,0,0,630,630,0,'eligible','not_started','ready','ready')", [payable, tenantA, provider, partnerOrg, project, settlement, retainagePayable]);
+    await client.query("INSERT INTO settlement_items (tenant_id,settlement_id,accepted_production_source_id,production_record_id,partner_organization_id,capacity_provider_id,item_type,status,quantity,unit,unit_rate,gross_amount,amount,net_amount,contractor_payable_amount) VALUES ($1,$2,$3,$4,$5,$6,'contractor_payable','payable_ready',141,'feet',0.70,98.70,98.70,98.70,98.70)",[tenantA,settlement,source,production,partnerOrg,provider]);
+    await client.query("INSERT INTO production_records (id,tenant_id,project_id,work_order_id,work_order_version_id,capacity_provider_id,crew_id,foreman_user_id,submitted_by_user_id,submitted_by,production_date,quantity_submitted,quantity,claimed_quantity,unit_type,unit,production_type,qc_status,billable_status,status,daily_production_report_id,partner_organization_id,syncfield_location_type,syncfield_status,locked_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$8,'2026-08-25',1900,1900,1900,'feet','feet','daily_production','not_started','not_billable','submitted',$9,$10,'route','complete',now())", [retainageProduction, tenantA, project, workOrder, workOrderVersion, provider, crew, foremanUser, report, partnerOrg]);
+    await client.query("INSERT INTO customer_qc_decisions (id,tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,customer_reason_code,recorded_by_user_id,source_reference,current) VALUES ($1,$2,$3,$4,'accepted',1900,1900,'feet','customer_acceptance',$5,'customer-report',true)", [retainageDecision, tenantA, cycle, retainageProduction, internalUser]);
+    await client.query("INSERT INTO settlements (id,tenant_id,settlement_number,settlement_type,status,readiness_status,customer_organization_id,capacity_provider_id,project_id,work_order_id,settlement_period_start,settlement_period_end,gross_amount,contractor_payable_amount,net_amount,net_settlement_amount,total_amount,payable_ready,issued_at,dispute_deadline) VALUES ($1,$2,'PSET-P13-RET','contractor_payable','payable_ready','ready_for_approval',$3,$4,$5,$6,'2026-08-24','2026-08-30',1330,1330,1330,1330,1330,true,now(),'2026-09-04')", [retainageSettlement, tenantA, customerOrg, provider, project, workOrder]);
+    await client.query("INSERT INTO accepted_production_financial_sources (id,tenant_id,project_id,work_order_id,partner_organization_id,capacity_provider_id,crew_id,production_record_id,customer_qc_cycle_id,customer_qc_decision_id,production_code,production_description,accepted_quantity,unit_of_measure,customer_rate,customer_extended_amount,partner_rate,partner_extended_amount,source_fingerprint,created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'FIBER','Place Fiber',1900,'feet',0.94,1786,0.70,1330,$11,$12)", [retainageSource, tenantA, project, workOrder, partnerOrg, provider, crew, retainageProduction, cycle, retainageDecision, `p13-retainage-source-${suffix}`, internalUser]);
+    await client.query("INSERT INTO settlement_items (tenant_id,settlement_id,accepted_production_source_id,production_record_id,partner_organization_id,capacity_provider_id,item_type,status,quantity,unit,unit_rate,gross_amount,amount,net_amount,contractor_payable_amount) VALUES ($1,$2,$6,$3,$4,$5,'contractor_payable','payable_ready',1900,'feet',0.70,1330,1330,1330,1330)",[tenantA,retainageSettlement,retainageProduction,partnerOrg,provider,retainageSource]);
+    await client.query("INSERT INTO contractor_payables (id,tenant_id,payable_number,payable_type,payable_party_type,status,approval_status,payment_readiness_status,payment_status,capacity_provider_id,partner_organization_id,project_id,settlement_id,pay_cycle_start,pay_cycle_end,gross_payable_amount,retainage_amount,retained_balance_amount,deduction_amount,chargeback_amount,net_payable_amount,eligible_amount,ineligible_amount,pay_when_paid_status,payment_execution_status,compliance_status,tax_document_status) VALUES ($1,$2,'CP-P13-1','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$6,'2026-08-24','2026-08-30',98.70,0,0,0,0,98.70,98.70,0,'eligible','not_started','ready','ready'),($7,$2,'CP-P13-RET','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$8,'2026-08-24','2026-08-30',1330,700,700,0,0,630,630,0,'eligible','not_started','ready','ready')", [payable, tenantA, provider, partnerOrg, project, settlement, retainagePayable, retainageSettlement]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -275,6 +286,19 @@ test('external payment records are idempotent, evidence-backed, and serialized a
     const history=await apiJson(request,f.internalToken,'GET','/payment-retainage-adjustments/external-payments');expect(history.some((r:any)=>r.id===winner.id&&r.evidence_reference===body.evidence_reference)).toBe(true);
     const partnerHistory=await apiJson(request,f.partnerToken,'GET','/payment-retainage-adjustments/partner/payments');expect(JSON.stringify(partnerHistory)).toContain(winner.reference);expect(JSON.stringify(partnerHistory)).not.toContain(body.evidence_reference);
     const rows=await client.query('SELECT count(*)::int AS count FROM external_partner_payments WHERE tenant_id=$1 AND contractor_payable_id=$2',[f.tenantA,f.payableId]);expect(rows.rows[0].count).toBe(1);
+    const observationBody={provider:'bank',account_reference:'synthetic-bank',transaction_reference:winner.reference,payee_reference:'synthetic-partner',amount:amount.toFixed(2),currency:'USD',observed_status:'completed',completed_date:body.payment_date,evidence_reference:'Synthetic bank settlement evidence'};
+    const observation=await apiJson(request,f.internalToken,'POST','/payment-retainage-adjustments/external-payment-observations',observationBody);
+    const review={external_partner_payment_id:winner.id,review_note:'Synthetic account and payee mapping checked',account_and_payee_verified:true};
+    const linkPath=`/payment-retainage-adjustments/external-payment-observations/${observation.id}/link-recorded-payment`;
+    expect((await request.post(apiUrl(linkPath),{headers:auth(f.internalToken),data:{...review,account_and_payee_verified:false}})).status()).toBe(400);
+    const linked=await apiJson(request,f.internalToken,'POST',linkPath,review);expect(linked.review_status).toBe('linked');
+    const replay=await apiJson(request,f.internalToken,'POST',linkPath,review);expect(replay.id).toBe(linked.id);
+    expect((await client.query('SELECT count(*)::int AS n FROM external_partner_payments WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(1);
+    expect((await client.query("SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id=$1 AND entity_id=$2",[f.tenantA,observation.id])).rows[0].n).toBe(2);
+    const reversal=await apiJson(request,f.internalToken,'POST','/payment-retainage-adjustments/external-payment-observations',{...observationBody,observed_status:'returned'});
+    expect(reversal.review_status).toBe('needs_review');
+    expect((await request.post(apiUrl(`/payment-retainage-adjustments/external-payment-observations/${reversal.id}/link-recorded-payment`),{headers:auth(f.internalToken),data:review})).status()).toBe(400);
+
   } finally {await client.end();}
 });
 
@@ -295,4 +319,45 @@ test('competing pending retainage authorizations cannot exceed the remaining bal
   await apiJson(request,f.internalToken,'POST',`/payment-retainage-adjustments/retainage-releases/${remainder.id}/authorize`,{});
   const after=await client.query('SELECT retained_balance_amount,retainage_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.retainagePayableId]);expect(Number(after.rows[0].retained_balance_amount)).toBe(0);expect(Number(after.rows[0].retainage_amount)).toBe(700);
  } finally {await client.end();}
+});
+
+test('payment advancement rejects unverified agreements and duplicate payable exposure',async({request})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedP13Fixture(db,process.env.AUTH_JWT_SECRET!);
+  const body={contractor_payable_id:f.payableId,amount:1,idempotency_key:crypto.randomUUID()};
+  await db.query('UPDATE partner_agreement_versions SET artifact_verified_at=NULL WHERE tenant_id=$1',[f.tenantA]);
+  let denied=await request.post(apiUrl('/payment-retainage-adjustments/payment-instructions'),{headers:auth(f.internalToken),data:body});expect(denied.status()).toBe(400);expect(await denied.text()).toContain('approved agreement');
+  await db.query('UPDATE partner_agreement_versions SET artifact_verified_at=now() WHERE tenant_id=$1',[f.tenantA]);
+  await db.query('UPDATE settlement_items SET net_amount=net_amount+1 WHERE tenant_id=$1 AND settlement_id=(SELECT settlement_id FROM contractor_payables WHERE id=$2)',[f.tenantA,f.payableId]);
+  denied=await request.post(apiUrl('/payment-retainage-adjustments/payment-instructions'),{headers:auth(f.internalToken),data:body});expect(denied.status()).toBe(400);expect(await denied.text()).toContain('locked partner rate');
+  await db.query('UPDATE settlement_items SET net_amount=net_amount-1 WHERE tenant_id=$1 AND settlement_id=(SELECT settlement_id FROM contractor_payables WHERE id=$2)',[f.tenantA,f.payableId]);
+  await db.query('UPDATE contractor_payables SET net_payable_amount=100 WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.payableId]);
+  denied=await request.post(apiUrl('/payment-retainage-adjustments/payment-instructions'),{headers:auth(f.internalToken),data:body});expect(denied.status()).toBe(400);expect(await denied.text()).toContain('settlement budget');
+  expect((await db.query('SELECT id FROM partner_payment_instructions WHERE tenant_id=$1',[f.tenantA])).rows).toHaveLength(0);
+ }finally{await db.end();}
+});
+
+test('finance review UI retains unmatched observations without posting payments and hides controls from foremen',async({request,page})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedP13Fixture(db,process.env.AUTH_JWT_SECRET!);
+  await page.addInitScript(bearer=>localStorage.setItem('syncos.apiToken',bearer),f.internalToken);
+  await page.goto('/payment-retainage-adjustments');
+  await page.getByText('Add an observed transaction',{exact:true}).click();
+  await page.getByLabel('Account reference (not a bank number)').fill('synthetic-account');
+  const reference=crypto.randomUUID();await page.getByLabel('Transaction reference',{exact:true}).fill(reference);
+  await page.getByLabel('Payee reference',{exact:true}).fill('synthetic-payee');
+  await page.getByLabel('Amount (for example 125.00)').fill('12.34');
+  await page.getByLabel('Evidence reference',{exact:true}).fill('SYNTHETIC-OBSERVATION');
+  await page.getByRole('button',{name:'Save for review',exact:true}).click();
+  await expect(page.getByText('Observation saved for review. No payment was posted or sent.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:reference,exact:true})).toBeVisible();
+  expect((await db.query('SELECT review_status FROM external_payment_observations WHERE tenant_id=$1',[f.tenantA])).rows).toEqual([{review_status:'needs_review'}]);
+  expect((await db.query('SELECT id FROM payments WHERE tenant_id=$1',[f.tenantA])).rows).toHaveLength(0);
+  await page.addInitScript(bearer=>localStorage.setItem('syncos.apiToken',bearer),f.foremanToken);
+  await page.goto('/payment-retainage-adjustments');
+  await expect(page.getByRole('button',{name:'Save for review',exact:true})).toHaveCount(0);
+  expect((await request.get(apiUrl('/payment-retainage-adjustments/external-payment-observations'),{headers:auth(f.foremanToken)})).status()).toBe(403);
+ }finally{await db.end();}
 });

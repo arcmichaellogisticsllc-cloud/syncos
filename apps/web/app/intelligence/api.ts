@@ -316,9 +316,11 @@ export function clearAuthContext() {
   window.localStorage.removeItem(permissionKey);
   for (const key of partnerSensitiveStorageKeys) window.localStorage.removeItem(key);
   if ("indexedDB" in window) {
-    const request = window.indexedDB.deleteDatabase("syncos-field-production");
-    request.onerror = () => undefined;
-    request.onblocked = () => undefined;
+    for (const database of ["syncos-field-production", "syncos-field-evidence"]) {
+      const request = window.indexedDB.deleteDatabase(database);
+      request.onerror = () => undefined;
+      request.onblocked = () => undefined;
+    }
   }
 }
 

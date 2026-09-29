@@ -1,4 +1,5 @@
 "use client";
+import { ObservationReview } from "./observation-review";
 import { AdjustmentForms } from "./adjustment-forms";
 import { Capability, useCapability } from "../access-control";
 
@@ -128,6 +129,7 @@ export default function PaymentRetainageAdjustmentsPage() {
         </fieldset></form>
       </section></Capability></Capability>
       <Capability permission="partner_payment.execute"><section className="workspace-panel"><h2>Recorded external payments</h2><p>Most recent 100 completed payments. Receipt references remain available for reconciliation.</p><div className="table-wrap"><table><thead><tr><th>Date</th><th>Partner / payable</th><th>Amount</th><th>Method / reference</th><th>Proof</th><th>Recorded by</th></tr></thead><tbody>{(state.history??[]).map(r=><tr key={r.id}><td>{String(r.payment_date).slice(0,10)}</td><td>{r.partner_name} · {r.payable_number}</td><td>{money(r.amount)}</td><td>{r.method} · {r.reference}</td><td>{r.evidence_reference}</td><td>{r.recorded_by}</td></tr>)}</tbody></table></div>{!state.history?.length&&<p>No external payments recorded.</p>}</section></Capability>
+      <Capability permission="partner_payment.execute"><Capability permission="partner_payment.confirm"><ObservationReview payments={(state.history ?? []).map(row=>({id:String(row.id),reference:String(row.reference),amount:String(row.amount),partner_name:String(row.partner_name ?? "Partner")}))} /></Capability></Capability>
       <AdjustmentForms />
     </main>
   );

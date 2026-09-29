@@ -1,0 +1,20 @@
+
+Running 12 tests using 1 worker
+
+(node:91723) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:56:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › production gate, Work Order codes, and field UI hydrate without rates
+[2/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:85:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › changed safety conditions preserve the signed revision and block production until renewed review
+[3/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:101:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › evidence survives lost responses, reload and offline capture without duplicate uploads
+[4/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:137:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once
+[5/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:174:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › offline replay revalidates lost production-start authorization and keeps failed work traceable
+[6/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:198:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Asset, Route, and Daily production create authoritative records with subordinate annotations and idempotency
+[7/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:240:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › a crew work shutdown blocks new records and requires authorized release
+[8/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:260:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency
+[9/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:538:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submission creates immutable revision snapshot and blocks ordinary edits without QC or finance
+[10/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:610:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submitted-report offline conflict does not reopen the report or create production
+[11/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:625:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner-local queue isolation hides pending field work after account switch
+[12/12] [chromium] › tests/e2e/syncfield-daily-production.spec.ts:638:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner Admin receives safe read-only report and duplicate submitted work requires traceability
+  12 passed (12.2s)

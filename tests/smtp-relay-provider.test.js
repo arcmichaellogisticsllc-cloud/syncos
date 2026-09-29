@@ -57,3 +57,14 @@ test("invitation URLs remain sourced from APPLICATION_BASE_URL without token log
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
+
+test('patched SMTP transport initializes with isolated TLS settings without opening a connection', () => {
+  const {createSmtpTransport}=require('../apps/api/dist/email/smtp-relay');
+  const transport=createSmtpTransport({host:'synthetic-mail.synccommsystems.com',port:587,secure:false,requireTLS:true});
+  assert.equal(typeof transport.sendMail,'function');
+  assert.equal(transport.options.tls.servername,'synthetic-mail.synccommsystems.com');
+  assert.equal(transport.options.requireTLS,true);
+  assert.equal(transport.options.disableFileAccess,true);
+  assert.equal(transport.options.disableUrlAccess,true);
+  transport.close();
+});

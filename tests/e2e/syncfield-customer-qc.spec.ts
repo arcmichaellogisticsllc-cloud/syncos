@@ -444,6 +444,48 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
 
 
   });
+  test("the same Partner field work reaches accepted billing, funded payable and one external payment", async ({request}) => {
+    const tenant=seeded.tenantA, user=crypto.randomUUID(), membership=crypto.randomUUID(), role=crypto.randomUUID();
+    const grants=['billing.read','billing.create_billable','billing.create_invoice','cash_receipt.record','payment_application.create','partner_settlement.create','contractor_payable.create','contractor_payable.calculate_eligibility','partner_payment.execute','partner_payment.confirm'];
+    await client.query("INSERT INTO users(id,email,display_name) VALUES($1,$2,'Synthetic independent finance reviewer')",[user,`${user}@syncos.test`]);
+    await client.query('INSERT INTO tenant_users(id,tenant_id,user_id) VALUES($1,$2,$3)',[membership,tenant,user]);
+    await client.query("INSERT INTO roles(id,tenant_id,name,system_key) VALUES($1,$2,'Pilot Finance','pilot_finance')",[role,tenant]);
+    for(const key of grants)await ensurePermission(client,key);
+    await grantPermissions(client,tenant,role,grants);
+    await client.query("INSERT INTO user_roles(tenant_id,tenant_user_id,role_id,scope_type,scope_id) VALUES($1,$2,$3,'tenant',$1)",[tenant,membership,role]);
+    const finance=token(user,tenant,process.env.AUTH_JWT_SECRET!);
+    const work=(await client.query('SELECT w.*,p.customer_organization_id FROM partner_work_order_versions w JOIN projects p ON p.tenant_id=w.tenant_id AND p.id=w.project_id WHERE w.tenant_id=$1 AND w.id=$2',[tenant,seeded.workOrderVersionId])).rows[0];
+    const customerSchedule=crypto.randomUUID();
+    await client.query("INSERT INTO rate_schedules(id,tenant_id,organization_id,name,effective_date,status) VALUES($1,$2,$3,'Synthetic approved customer rates','2026-01-01','active')",[customerSchedule,tenant,work.customer_organization_id]);
+    const decision=(await client.query('SELECT d.*,c.code,c.unit_of_measure AS code_unit FROM customer_qc_decisions d JOIN customer_qc_cycles cycle ON cycle.tenant_id=d.tenant_id AND cycle.id=d.qc_cycle_id JOIN production_records p ON p.tenant_id=d.tenant_id AND p.id=d.production_record_id JOIN syncfield_production_codes c ON c.tenant_id=p.tenant_id AND c.id=p.syncfield_production_code_id WHERE d.tenant_id=$1 AND d.production_record_id=$2 AND d.current=true AND d.deleted_at IS NULL ORDER BY cycle.cycle_number DESC LIMIT 1',[tenant,submittedRecordId])).rows[0];
+    // This work's final correction changes its code; seed the approved rates for that code.
+    const codesToPrice=(await client.query('SELECT code,unit_of_measure FROM syncfield_production_codes WHERE tenant_id=$1 AND active=true',[tenant])).rows;
+    for(const code of codesToPrice){
+      for(const [schedule,rate] of [[customerSchedule,10],[work.rate_schedule_id,5]] as const){
+        await client.query("INSERT INTO rate_codes(tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,contractor_rate,status) VALUES($1,$2,$3,'Synthetic approved rate',$4,$4,$5,$5,$5,'active') ON CONFLICT DO NOTHING",[tenant,schedule,code.code,code.unit_of_measure,rate]);
+      }
+    }
+    await client.query('UPDATE work_orders SET customer_rate_schedule_id=$3 WHERE tenant_id=$1 AND id=$2',[tenant,work.work_order_id,customerSchedule]);
+    await client.query("UPDATE partner_agreement_versions SET executed_at='2026-08-16' WHERE tenant_id=$1 AND id=$2",[tenant,work.governing_agreement_version_id]);
+    const billable=await apiJson(request,finance,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:decision.id});
+    expect(Number(billable.net_billable_amount)).toBe(10);
+    const invoice=await apiJson(request,finance,'POST','/accepted-production-financials/invoices/create',{billable_item_ids:[billable.id],retainage_percent:0});
+    const source=(await client.query('SELECT * FROM accepted_production_financial_sources WHERE tenant_id=$1 AND billable_item_id=$2',[tenant,billable.id])).rows[0];
+    const settlement=await apiJson(request,finance,'POST','/accepted-production-financials/partner-settlements/create',{accepted_production_source_ids:[source.id]});
+    const payable=await apiJson(request,finance,'POST','/accepted-production-financials/contractor-payables/create',{settlement_id:settlement.id});
+    expect(Number(payable.net_payable_amount)).toBe(5);expect(Number(payable.eligible_amount)).toBe(0);
+    const paymentBody={contractor_payable_id:payable.id,amount:5,payment_date:today(),method:'ach',reference:crypto.randomUUID(),evidence_reference:'SYNTHETIC-COMPLETED-BANK-RECEIPT',idempotency_key:crypto.randomUUID(),confirmed_completed:true};
+    const endpoint='/payment-retainage-adjustments/external-payments';
+    expect((await request.post(apiUrl(endpoint),{headers:auth(finance),data:paymentBody})).status()).toBe(400);
+    const receipt=await apiJson(request,finance,'POST','/accepted-production-financials/cash-receipts',{customer_organization_id:work.customer_organization_id,amount:10,payment_reference:crypto.randomUUID(),idempotency_key:crypto.randomUUID()});
+    await apiJson(request,finance,'POST',`/accepted-production-financials/cash-receipts/${receipt.id}/clear`,{});
+    await apiJson(request,finance,'POST','/accepted-production-financials/payment-applications',{cash_receipt_id:receipt.id,invoice_id:invoice.id,amount:10});
+    const eligible=await apiJson(request,finance,'POST',`/accepted-production-financials/contractor-payables/${payable.id}/calculate-eligibility`,{});expect(Number(eligible.eligible_amount)).toBe(5);
+    const payment=await apiJson(request,finance,'POST',endpoint,paymentBody);
+    const replay=await apiJson(request,finance,'POST',endpoint,paymentBody);expect(replay.id).toBe(payment.id);
+    const result=(await client.query('SELECT paid_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[tenant,payable.id])).rows[0];expect(Number(result.paid_amount)).toBe(5);
+    expect((await client.query('SELECT id FROM external_partner_payments WHERE tenant_id=$1 AND contractor_payable_id=$2',[tenant,payable.id])).rows).toHaveLength(1);
+  });
 });
 
 async function seedSyncfieldFixture(client: Client, secret: string): Promise<Seeded> {

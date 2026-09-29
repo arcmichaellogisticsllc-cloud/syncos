@@ -1,3 +1,5 @@
+import { hasActiveFieldStop } from "./field-stop-scope";
+import { decodeFieldEvidence, assertEvidenceReplay } from "./field-evidence-validation";
 import { resolveFieldIdentity } from "../security/field-identity";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
@@ -838,6 +840,27 @@ export class SyncfieldController {
     });
   }
 
+  @Post("foreman/jsa/today/revise")
+  @RequirePermission("partner_jsa.complete")
+  async reviseForemanJsa(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return this.withClient(async client => {
+      const context = await this.requirePartnerForeman(client, request);
+      const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
+      const date = this.workDate(String(body.work_date ?? ""));
+      const reason = requireString(body.revision_reason, "Explain the changed location or conditions");
+      return this.writeWithClient(client, request, "daily_jsa.revise", "daily_jsa.revised", "daily_jsa", async writeClient => {
+        await writeClient.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${assignment.tenant_id}:jsa:${assignment.work_order_version_id}:${assignment.crew_id}:${date}`]);
+        const prior = await this.findJsa(writeClient, assignment, date);
+        if (!prior || prior.status !== "completed") throw new BadRequestException("Only a completed current JSA can be revised");
+        if (body.prior_jsa_id !== prior.id) throw new BadRequestException("JSA changed; refresh before revising");
+        await writeClient.query("UPDATE daily_jsas SET current=false WHERE tenant_id=$1 AND id=$2", [assignment.tenant_id, prior.id]);
+        const draft = await this.createDraftJsa(writeClient, request, assignment, date, { ...body, hazards: [], controls: [] });
+        const next = (await writeClient.query("UPDATE daily_jsas SET prior_jsa_id=$3,revision_number=$4,revision_reason=$5 WHERE tenant_id=$1 AND id=$2 RETURNING *", [assignment.tenant_id,draft.id,prior.id,Number(prior.revision_number)+1,reason])).rows[0];
+        return { entityType: "daily_jsa", entityId: next.id, beforeState: this.safeJsa(prior), afterState: this.safeJsa(next) };
+      });
+    });
+  }
+
   @Post("foreman/jsa/today/complete")
   @RequirePermission("partner_jsa.complete")
   async completeForemanJsa(@Req() request: AuthenticatedRequest, @Query("work_date") workDate: string | undefined, @Body() body: Record<string, unknown>) {
@@ -847,7 +870,16 @@ export class SyncfieldController {
       const date = this.workDate(workDate ?? String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "daily_jsa.complete", "daily_jsa.completed", "daily_jsa", async (writeClient) => {
         const current = await this.findJsa(writeClient, assignment, date) ?? await this.createDraftJsa(writeClient, request, assignment, date, body);
-        if (current.status === "completed") return { entityType: "daily_jsa", entityId: current.id, afterState: this.safeJsa(current) };
+        if (current.status === "completed") {
+          for (const key of ["work_location", "weather", "site_conditions"]) {
+            if (body[key] !== undefined && String(body[key] ?? "") !== String(current[key] ?? "")) throw new BadRequestException("Site conditions changed; start a JSA revision");
+          }
+          for (const key of ["hazards", "controls"]) {
+            if (body[key] !== undefined && (!Array.isArray(body[key]) || JSON.stringify([...(body[key] as string[])].sort()) !== JSON.stringify([...(current[key] ?? [])].sort()))) throw new BadRequestException("Safety controls changed; start a JSA revision");
+          }
+          if (body.foreman_certified === false) throw new BadRequestException("Create a JSA revision before changing certification");
+          return { entityType: "daily_jsa", entityId: current.id, afterState: this.safeJsa(current), skipEventAudit: true };
+        }
         if (current.status !== "draft") throw new BadRequestException("only draft JSA can be completed");
         const hazards = this.textArray(body.hazards ?? current.hazards, hazardValues, "hazards");
         const controls = this.textArray(body.controls ?? current.controls, controlValues, "controls");
@@ -874,13 +906,14 @@ export class SyncfieldController {
             crew_participation_confirmed = true,
             foreman_certified = true,
             notes = COALESCE($9, notes),
+            work_location = $10, weather = $11, site_conditions = $12,
             updated_at = now()
           WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
           RETURNING *
           `,
-          [assignment.tenant_id, current.id, request.auth.userId, hazards, controls, controls.includes("traffic_control_reviewed"), controls.includes("utilities_reviewed"), controls.includes("aerial_hazards_reviewed"), this.optionalString(body.notes)],
+          [assignment.tenant_id, current.id, request.auth.userId, hazards, controls, controls.includes("traffic_control_reviewed"), controls.includes("utilities_reviewed"), controls.includes("aerial_hazards_reviewed"), this.optionalString(body.notes), requireString(body.work_location ?? current.work_location, "work_location is required"), this.optionalString(body.weather ?? current.weather), this.optionalString(body.site_conditions ?? current.site_conditions)],
         );
-        await writeClient.query("UPDATE daily_jsa_participants SET acknowledged = true WHERE tenant_id = $1 AND daily_jsa_id = $2", [assignment.tenant_id, current.id]);
+        // Foreman certification is not an individual worker acknowledgment.
         return { entityType: "daily_jsa", entityId: current.id, beforeState: this.safeJsa(current), afterState: this.safeJsa(completed.rows[0]) };
       });
     });
@@ -897,6 +930,7 @@ export class SyncfieldController {
       if (!participationStatuses.has(participationStatus)) throw new BadRequestException("participation_status is invalid");
       return this.writeWithClient(client, request, "daily_jsa.participant.update", "daily_jsa.participant_updated", "daily_jsa_participant", async (writeClient) => {
         const current = await this.findJsa(writeClient, assignment, date) ?? await this.createDraftJsa(writeClient, request, assignment, date, body);
+        if (current.status === "completed") throw new BadRequestException("Create a JSA revision before changing certified attendance");
         const before = await writeClient.query(
           `
           SELECT p.*, w.first_name, w.last_name
@@ -915,11 +949,12 @@ export class SyncfieldController {
           `
           UPDATE daily_jsa_participants
           SET participation_status = $4,
-              acknowledged = CASE WHEN $4 = 'present' THEN acknowledged ELSE false END
+              acknowledged = CASE WHEN $4 = 'present' THEN acknowledged ELSE false END,
+              attendance_recorded_by = $5, attendance_recorded_at = now()
           WHERE tenant_id = $1 AND daily_jsa_id = $2 AND worker_id = $3
           RETURNING *
           `,
-          [assignment.tenant_id, current.id, workerId, participationStatus],
+          [assignment.tenant_id, current.id, workerId, participationStatus, request.auth.userId],
         );
         if (note) {
           await writeClient.query(
@@ -1043,7 +1078,7 @@ export class SyncfieldController {
       const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "production.record", "production.recorded", "production_record", async (writeClient) => {
-        await this.assertProductionGate(writeClient, assignment, date);
+        const safetyGate = await this.assertProductionGate(writeClient, assignment, date);
         const report = await this.findDailyReport(writeClient, assignment, date) ?? await this.createReportInline(writeClient, request, assignment, date, body);
         if (report.status !== "draft") throw new BadRequestException("submitted report is read-only");
         const mutationId = requireString(body.client_mutation_id, "clientMutationId is required");
@@ -1098,7 +1133,7 @@ export class SyncfieldController {
         }
         if (locationType !== "daily") await this.insertAnnotation(writeClient, request, assignment, record, locationType, values, status);
         await this.recordMutationReceipt(writeClient, request, mutationId, "create_production", "production_record", record.id, body);
-        return { entityType: "production_record", entityId: record.id, afterState: await this.safeProductionRecordDetail(writeClient, record) };
+        return { entityType: "production_record", entityId: record.id, afterState: { ...await this.safeProductionRecordDetail(writeClient, record), safety_jsa_id: safetyGate.daily_jsa_id } };
       });
     });
   }
@@ -1192,12 +1227,18 @@ export class SyncfieldController {
       }
       const mime = requireString(body.mime_type, "mime_type is required");
       const encoded = requireString(body.content_base64, "file is required");
-      if (encoded.length > 2796204 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new BadRequestException("file must be valid base64 and at most 2 MB");
-      const bytes = Buffer.from(encoded, "base64");
-      const valid = mime === "image/png" ? bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : mime === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 : mime === "application/pdf" ? bytes.subarray(0,5).toString() === "%PDF-" : false;
-      if (!valid || bytes.length > 2097152) throw new BadRequestException("Choose a PNG, JPEG, or PDF file up to 2 MB");
+      const { bytes, checksum } = decodeFieldEvidence(mime, encoded);
+      const fileName = this.sanitizeFileName(requireString(body.file_name,"file_name is required"));
+      const description = requireString(body.description,"description is required");
+      const mutationId = requireString(body.client_mutation_id,"client_mutation_id is required");
       return this.writeWithClient(client, request, "field_evidence.create", "field_evidence.created", "field_evidence", async writeClient => {
-        const inserted = await writeClient.query(`INSERT INTO syncfield_field_evidence (tenant_id,daily_report_id,production_record_id,crew_id,organization_id,file_name,mime_type,content_bytes,description,checksum,uploaded_by_user_id,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(tenant_id,uploaded_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id = EXCLUDED.client_mutation_id RETURNING id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at`, [context.tenant_id,report.id,recordId,crew.id,context.organization.id,this.sanitizeFileName(requireString(body.file_name,"file_name is required")),mime,bytes,requireString(body.description,"description is required"),createHash("sha256").update(bytes).digest("hex"),request.auth.userId,requireString(body.client_mutation_id,"client_mutation_id is required")]);
+        await writeClient.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${context.tenant_id}:field-evidence:${request.auth.userId}:${mutationId}`]);
+        const previous = (await writeClient.query("SELECT id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at FROM syncfield_field_evidence WHERE tenant_id=$1 AND uploaded_by_user_id=$2 AND client_mutation_id=$3", [context.tenant_id, request.auth.userId, mutationId])).rows[0];
+        if (previous) {
+          assertEvidenceReplay(previous, { daily_report_id: report.id, production_record_id: recordId, file_name: fileName, mime_type: mime, description, checksum });
+          return { entityType: "field_evidence", entityId: previous.id, afterState: previous, skipEventAudit: true };
+        }
+        const inserted = await writeClient.query(`INSERT INTO syncfield_field_evidence (tenant_id,daily_report_id,production_record_id,crew_id,organization_id,file_name,mime_type,content_bytes,description,checksum,uploaded_by_user_id,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(tenant_id,uploaded_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id = EXCLUDED.client_mutation_id RETURNING id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at`, [context.tenant_id,report.id,recordId,crew.id,context.organization.id,fileName,mime,bytes,description,checksum,request.auth.userId,mutationId]);
         if (inserted.rows[0].daily_report_id !== report.id || inserted.rows[0].production_record_id !== recordId) throw new BadRequestException("mutation belongs to another evidence upload");
         return { entityType: "field_evidence", entityId: inserted.rows[0].id, afterState: inserted.rows[0] };
       });
@@ -2847,7 +2888,8 @@ export class SyncfieldController {
   }
 
   private async findJsa(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
-    const result = await client.query("SELECT * FROM daily_jsas WHERE tenant_id = $1 AND work_order_version_id = $2 AND crew_id = $3 AND work_date = $4 AND deleted_at IS NULL AND status <> 'void' LIMIT 1", [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_id, workDate]);
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${assignment.tenant_id}:jsa:${assignment.work_order_version_id}:${assignment.crew_id}:${workDate}`]);
+    const result = await client.query("SELECT * FROM daily_jsas WHERE tenant_id = $1 AND work_order_version_id = $2 AND crew_id = $3 AND work_date = $4 AND deleted_at IS NULL AND status <> 'void' AND current = true LIMIT 1", [assignment.tenant_id, assignment.work_order_version_id, assignment.crew_id, workDate]);
     return result.rows[0] ?? null;
   }
 
@@ -2887,6 +2929,7 @@ export class SyncfieldController {
 
   private async productionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
     const blockers: string[] = [];
+    if (await hasActiveFieldStop(client, assignment.tenant_id, assignment.work_order_id, assignment.crew_id)) blockers.push("crew_work_order_stopped");
     const execution = await client.query("SELECT execution_model,status FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [assignment.tenant_id,assignment.work_order_version_id]);
     if (execution.rows[0]?.status !== "active") blockers.push("work_order_not_active");
     if (execution.rows[0]?.execution_model === "internal") {
@@ -3563,6 +3606,8 @@ export class SyncfieldController {
       role: row.crew_role,
       participation_status: row.participation_status,
       acknowledged: row.acknowledged,
+      attendance_recorded_by: row.attendance_recorded_by,
+      attendance_recorded_at: row.attendance_recorded_at,
     };
   }
 
@@ -3675,7 +3720,7 @@ export class SyncfieldController {
   }
 
   private safeJsa(row: QueryResultRow) {
-    return { id: row.id, work_date: this.dateOnly(row.work_date), work_order_version_id: row.work_order_version_id, crew_id: row.crew_id, crew_name: row.crew_name, foreman_worker_id: row.foreman_worker_id, foreman_name: `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim(), work_order_number: row.work_order_number, map_version_id: row.map_version_id, status: row.status, meeting_started_at: row.meeting_started_at, meeting_completed_at: row.meeting_completed_at, work_location: row.work_location, weather: row.weather, site_conditions: row.site_conditions, hazards: row.hazards ?? [], controls: row.controls ?? [], foreman_certified: row.foreman_certified };
+    return { id: row.id, revision_number: row.revision_number, current: row.current, prior_jsa_id: row.prior_jsa_id, revision_reason: row.revision_reason, work_date: this.dateOnly(row.work_date), work_order_version_id: row.work_order_version_id, crew_id: row.crew_id, crew_name: row.crew_name, foreman_worker_id: row.foreman_worker_id, foreman_name: `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim(), work_order_number: row.work_order_number, map_version_id: row.map_version_id, status: row.status, meeting_started_at: row.meeting_started_at, meeting_completed_at: row.meeting_completed_at, work_location: row.work_location, weather: row.weather, site_conditions: row.site_conditions, hazards: row.hazards ?? [], controls: row.controls ?? [], foreman_certified: row.foreman_certified };
   }
 
   private async withClient<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {

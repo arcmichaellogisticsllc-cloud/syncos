@@ -82,6 +82,58 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(cross.status()).toBeGreaterThanOrEqual(403);
   });
 
+  test("changed safety conditions preserve the signed revision and block production until renewed review", async ({request}) => {
+    const prior=await apiJson(request,seeded.foremanToken,"GET","/syncfield/foreman/jsa/today");
+    const overwrite=await request.post(apiUrl('/syncfield/foreman/jsa/today/complete'),{headers:auth(seeded.foremanToken),data:{work_date:today(),work_location:'Different location',foreman_certified:true}});
+    expect(overwrite.status()).toBe(400);
+    const revised=await apiJson(request,seeded.foremanToken,"POST","/syncfield/foreman/jsa/today/revise",{work_date:today(),prior_jsa_id:prior.id,revision_reason:'Synthetic changing work conditions',work_location:'Revised work area'});
+    expect(revised.prior_jsa_id).toBe(prior.id);expect(revised.revision_number).toBe(Number(prior.revision_number)+1);
+    const blocked=await request.post(apiUrl('/syncfield/foreman/production/records'),{headers:auth(seeded.foremanToken),data:{work_date:today(),client_mutation_id:crypto.randomUUID(),production_code_id:codes.LABOR,location_type:'daily',reported_quantity:1,status:'complete'}});
+    expect(blocked.status()).toBe(400);expect(await blocked.text()).toContain('jsa');
+    await completeJsa(request,seeded);
+    const history=(await client.query('SELECT id,status,current,work_location FROM daily_jsas WHERE tenant_id=$1 AND id=ANY($2::uuid[]) ORDER BY revision_number',[seeded.tenantA,[prior.id,revised.id]])).rows;
+    expect(history[0]).toMatchObject({id:prior.id,status:'completed',current:false,work_location:prior.work_location});
+    expect(history[1]).toMatchObject({id:revised.id,status:'completed',current:true});
+    const participants=(await client.query('SELECT acknowledged FROM daily_jsa_participants WHERE tenant_id=$1 AND daily_jsa_id=$2',[seeded.tenantA,revised.id])).rows;
+    expect(participants.length).toBeGreaterThan(0);expect(participants.every(p=>p.acknowledged===false)).toBe(true);
+  });
+
+  test("evidence survives lost responses, reload and offline capture without duplicate uploads", async ({ page, context }) => {
+    await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
+    await page.setViewportSize({width:390,height:844});
+    await page.goto("/syncfield/production/review");
+    const panel=page.getByRole('region',{name:'Photos and evidence'});
+    const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jLzQAAAAASUVORK5CYII=','base64');
+    await panel.getByLabel('Evidence file').setInputFiles({name:'retry-photo.png',mimeType:'image/png',buffer:picture});
+    await panel.getByLabel('What does this evidence show?').fill('Synthetic lost-response evidence');
+    let interrupted=false;
+    await page.route('**/syncfield/foreman/evidence',async route=>{
+      if(route.request().method()==='POST'&&!interrupted){interrupted=true;const response=await route.fetch();expect(response.ok()).toBeTruthy();await route.abort('failed');}
+      else await route.continue();
+    });
+    await panel.getByRole('button',{name:'Upload evidence',exact:true}).click();
+    await expect(panel.getByRole('alert')).toBeVisible();
+    await page.reload();
+    await expect(panel.getByText(/Waiting for confirmation: retry-photo/)).toBeVisible();
+    await panel.getByRole('button',{name:'Retry upload'}).click();
+    await expect(panel.getByText('Evidence saved on the server.',{exact:true})).toBeVisible();
+    const stored=await client.query("SELECT id,checksum FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND file_name='retry-photo.png'",[seeded.tenantA,reportId]);
+    expect(stored.rows).toHaveLength(1);expect(stored.rows[0].checksum).toBe(crypto.createHash('sha256').update(picture).digest('hex'));
+    const audit=await client.query("SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id=$1 AND entity_id=$2",[seeded.tenantA,stored.rows[0].id]);expect(audit.rows[0].n).toBe(1);
+    await context.setOffline(true);
+    await panel.getByLabel('Evidence file').setInputFiles({name:'offline-photo.png',mimeType:'image/png',buffer:picture});
+    await panel.getByLabel('What does this evidence show?').fill('Synthetic offline evidence');
+    await panel.getByRole('button',{name:'Upload evidence',exact:true}).click();
+    await expect(panel.getByText(/Saved on this device; not uploaded/)).toBeVisible();
+    await context.setOffline(false);
+    await page.reload();
+    await expect(panel.getByText(/Waiting for confirmation: offline-photo/)).toBeVisible();
+    await panel.getByRole('button',{name:'Retry upload'}).click();
+    await expect(panel.getByText('Evidence saved on the server.',{exact:true})).toBeVisible();
+    expect((await client.query("SELECT id FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND file_name='offline-photo.png'",[seeded.tenantA,reportId])).rows).toHaveLength(1);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  });
+
   test("browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once", async ({ page, context, request }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
@@ -183,6 +235,26 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
       data: { client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Bad", map_page: 1, x_ratio: 1.4, y_ratio: 0.5, reported_quantity: 1, status: "complete" },
     });
     expect(badCoordinate.status()).toBe(400);
+  });
+
+  test("a crew work shutdown blocks new records and requires authorized release",async({request})=>{
+    const actor=JSON.parse(Buffer.from(seeded.internalToken.split('.')[1],'base64url').toString()).sub;
+    const role=crypto.randomUUID();
+    await client.query("INSERT INTO roles(id,tenant_id,name,system_key) VALUES($1,$2,'Safety Manager',$3)",[role,seeded.tenantA,'p9_safety_'+role]);
+    for(const permission of ['stop_work.issue','stop_work.release'])await ensurePermission(client,permission);
+    await grantPermissions(client,seeded.tenantA,role,['stop_work.issue','stop_work.release']);
+    await client.query("INSERT INTO user_roles(tenant_id,tenant_user_id,role_id,scope_type,scope_id) SELECT tenant_id,id,$3,'tenant',tenant_id FROM tenant_users WHERE tenant_id=$1 AND user_id=$2",[seeded.tenantA,actor,role]);
+    await apiJson(request,seeded.internalToken,'POST',`/production-records/${submittedRecordId}/stop-work`,{reason:'Synthetic shutdown drill'});
+    const before=(await client.query('SELECT count(*)::int AS n FROM production_records WHERE tenant_id=$1',[seeded.tenantA])).rows[0].n;
+    const blocked=await request.post(apiUrl('/syncfield/foreman/production/records'),{headers:auth(seeded.foremanToken),data:{work_date:today(),client_mutation_id:crypto.randomUUID(),production_code_id:codes.LABOR,location_type:'daily',reported_quantity:1,status:'complete'}});
+    expect(blocked.status()).toBe(400);expect(await blocked.text()).toContain('crew_work_order_stopped');
+    expect((await client.query('SELECT count(*)::int AS n FROM production_records WHERE tenant_id=$1',[seeded.tenantA])).rows[0].n).toBe(before);
+    expect((await request.post(apiUrl(`/production-records/${submittedRecordId}/release-stop-work`),{headers:auth(seeded.foremanToken),data:{release_reason:'Unauthorized'}})).status()).toBe(403);
+    await apiJson(request,seeded.internalToken,'POST',`/production-records/${submittedRecordId}/release-stop-work`,{release_reason:'Safety review completed for synthetic drill'});
+    // The production creation event retains the JSA actually used after revision.
+    const current=(await client.query('SELECT id FROM daily_jsas WHERE tenant_id=$1 AND current=true',[seeded.tenantA])).rows[0];
+    const creation=(await client.query("SELECT after_state FROM audit_logs WHERE tenant_id=$1 AND entity_id=$2 AND after_state ? 'safety_jsa_id'",[seeded.tenantA,submittedRecordId])).rows;
+    expect(creation.some(row=>row.after_state.safety_jsa_id===current.id)).toBe(true);
   });
 
   test("DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency", async ({ request, page }) => {

@@ -28,7 +28,8 @@ test('Sync management provisions a real internal crew through field production w
         }
         const management = await actor('operations_manager', ['crew.read','crew.create','worker.create','work_order.assign','work_order.start','syncfield_map.create','syncfield_map.version.upload','syncfield_map.assignment.manage']);
         const customerQc = await actor('qc_manager', ['customer_qc.completeness_review','customer_qc.decision_record']);
-        const finance = await actor('billing_manager', ['billing.create_billable']);
+        const finance = await actor('billing_manager', ['billing.create_billable','billing.create_invoice']);
+        const collections = await actor('finance_manager', ['cash_receipt.record','payment_application.create']);
         const org = crypto.randomUUID();
         const customer = crypto.randomUUID();
         const schedule = crypto.randomUUID();
@@ -90,11 +91,30 @@ test('Sync management provisions a real internal crew through field production w
         await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'authorized', checklist, evidence_reference: 'SYNTHETIC-READINESS-PACK', valid_until: date });
         expect((await produce()).status()).toBe(400); // daily JSA still mandatory
         await api(request, employee, 'syncfield/foreman/jsa/today/complete', { work_date: date, work_location: 'Synthetic block', hazards: ['traffic'], controls: ['ppe_reviewed', 'emergency_procedures_reviewed', 'stop_work_authority_reviewed'], foreman_certified: true });
+        const originalJsa = await api(request, employee, `syncfield/foreman/jsa/today?work_date=${date}`);
+        const revision = await api(request, employee, 'syncfield/foreman/jsa/today/revise', { work_date: date, prior_jsa_id: originalJsa.id, revision_reason: 'Moved to next synthetic block', work_location: 'Synthetic second block' });
+        expect(revision.status).toBe('draft');
+        expect((await produce()).status()).toBe(400);
+        await api(request, employee, 'syncfield/foreman/jsa/today/complete', { work_date: date, work_location: 'Synthetic second block', hazards: ['traffic'], controls: ['ppe_reviewed', 'emergency_procedures_reviewed', 'stop_work_authority_reviewed'], foreman_certified: true });
+        const history = (await db.query('SELECT status,current,work_location FROM daily_jsas WHERE tenant_id=$1 AND crew_id=$2 ORDER BY revision_number',[t,crew.id])).rows;
+        expect(history).toEqual([{status:'completed',current:false,work_location:'Synthetic block'},{status:'completed',current:true,work_location:'Synthetic second block'}]);
+        expect((await db.query('SELECT acknowledged FROM daily_jsa_participants WHERE tenant_id=$1 AND daily_jsa_id=$2',[t,revision.id])).rows.every(row=>row.acknowledged===false)).toBe(true);
         expect((await produce()).ok()).toBeTruthy();
         const codes = await api(request, employee, 'syncfield/foreman/production/codes');
         const code = codes.find((r: any) => r.code === 'LABOR');
         const record = await api(request, employee, 'syncfield/foreman/production/records', { work_date: date, client_mutation_id: crypto.randomUUID(), production_code_id: code.id, location_type: 'daily', reported_quantity: 8, status: 'complete', notes: 'Synthetic employee work' });
         expect(record.id).toBeTruthy();
+        // Scoped shutdown fixture: queued/new work must be rechecked by the server.
+        await db.query("UPDATE production_records SET stop_work_status='active' WHERE tenant_id=$1 AND id=$2",[t,record.id]);
+        const queuedBody = {work_date:date,client_mutation_id:crypto.randomUUID(),production_code_id:code.id,location_type:'daily',reported_quantity:1,status:'complete'};
+        const stopped = await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/records`,{headers:{authorization:`Bearer ${employee}`},data:queuedBody});
+        expect(stopped.status()).toBe(400);expect(await stopped.text()).toContain('crew_work_order_stopped');
+        await db.query("UPDATE production_records SET stop_work_status='released' WHERE tenant_id=$1 AND id=$2",[t,record.id]);
+        const photo=Buffer.alloc(3500000);photo.set([255,216,255]);
+        const evidenceBody={daily_report_id:record.daily_report_id,production_record_id:record.id,file_name:'synthetic-photo.jpg',mime_type:'image/jpeg',description:'Synthetic crossing evidence',content_base64:photo.toString('base64'),client_mutation_id:crypto.randomUUID()};
+        const evidence=await api(request,employee,'syncfield/foreman/evidence',evidenceBody);
+        const evidenceRetry=await api(request,employee,'syncfield/foreman/evidence',evidenceBody);expect(evidenceRetry.id).toBe(evidence.id);
+        const changedEvidence=await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/evidence`,{headers:{authorization:`Bearer ${employee}`},data:{...evidenceBody,description:'Different content'}});expect(changedEvidence.status()).toBe(400);
         const fiber=await api(request,employee,'syncfield/foreman/production/records',{work_date:date,client_mutation_id:crypto.randomUUID(),production_code_id:codes.find((r:any)=>r.code==='FIBER').id,location_type:'route',from_asset_identifier:'P-1',to_asset_identifier:'P-2',map_page:1,start_x_ratio:0.2,start_y_ratio:0.3,end_x_ratio:0.6,end_y_ratio:0.3,reported_quantity:10,status:'complete'});
         const pole=await api(request,employee,'syncfield/foreman/production/records',{work_date:date,client_mutation_id:crypto.randomUUID(),production_code_id:codes.find((r:any)=>r.code==='POLE-ATT').id,location_type:'asset',asset_type:'pole',asset_identifier:'P-1',map_page:1,x_ratio:0.2,y_ratio:0.3,reported_quantity:1,status:'complete'});
         await page.addInitScript(({ bearer, permissions }) => { localStorage.setItem('syncos.apiToken', bearer); localStorage.setItem('syncos.permissions', permissions.join(',')); }, { bearer: employee, permissions: auth.permissions });
@@ -147,6 +167,12 @@ test('Sync management provisions a real internal crew through field production w
           const accepted=await api(request,customerQc,`syncfield/customer-qc/cycles/${cycle.id}/decisions`,{production_record_id:item.record.id,decision:'accepted',customer_accepted_quantity:item.quantity,client_mutation_id:crypto.randomUUID()});
           const billed=await api(request,finance,'accepted-production-financials/billables/convert',{customer_qc_decision_id:accepted.id});expect(Number(billed.net_billable_amount)).toBe(item.amount);expect(billed.unit).toBe(item.unit);
         }
+        const invoice=await api(request,finance,'accepted-production-financials/invoices/create',{billable_item_ids:[billable.id],retainage_percent:0});
+        expect(Number(invoice.original_amount)).toBe(700);
+        const receipt=await api(request,collections,'accepted-production-financials/cash-receipts',{customer_organization_id:customer,amount:700,payment_reference:crypto.randomUUID(),idempotency_key:crypto.randomUUID()});
+        await api(request,collections,`accepted-production-financials/cash-receipts/${receipt.id}/clear`,{});
+        await api(request,collections,'accepted-production-financials/payment-applications',{cash_receipt_id:receipt.id,invoice_id:invoice.id,amount:700});
+        expect(Number((await db.query('SELECT balance_amount FROM invoices WHERE tenant_id=$1 AND id=$2',[t,invoice.id])).rows[0].balance_amount)).toBe(0);
         const effects = await db.query("SELECT (SELECT count(*) FROM contractor_payables WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS payables,(SELECT count(*) FROM partner_agreement_versions WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS agreements", [t, crew.capacity_provider_id]);
         expect(effects.rows[0]).toEqual({ payables: 0, agreements: 0 });
     }

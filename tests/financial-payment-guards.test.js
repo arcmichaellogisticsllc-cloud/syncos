@@ -3,8 +3,16 @@ const assert = require('node:assert/strict');
 const { PaymentRetainageAdjustmentsController } = require('../apps/api/dist/routes/payment-retainage-adjustments.controller');
 const { PaymentExecutionController } = require('../apps/api/dist/routes/payment-execution.controller');
 
-const eligible = { id: 'payable', pay_when_paid_status: 'eligible', status: 'payment_ready', hold_status: 'none', dispute_status: 'none', eligible_amount: 100, paid_amount: 10 };
-const emptyInstructions = { query: async () => ({ rows: [{ amount: 0 }] }) };
+const eligible = { id: 'payable', settlement_id: 'settlement', partner_organization_id: 'partner', capacity_provider_id: 'provider', pay_when_paid_status: 'eligible', status: 'payment_ready', hold_status: 'none', dispute_status: 'none', eligible_amount: 100, paid_amount: 10 };
+const emptyInstructions = { query: async sql => {
+  if(sql.includes('AS accepted_budget')) return {rows:[{accepted_budget:100,committed_amount:100}]};
+  if(sql.includes('FROM accepted_production_financial_sources')) return {rows:[{production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',accepted_quantity:1,partner_rate:100}]};
+  if(sql.includes('FROM settlement_items')) return {rows:[{id:'item',net_amount:100,production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',quantity:1,unit:'feet'}]};
+  if(sql.includes('FROM customer_qc_decisions')) return {rows:[{id:'decision',decision:'accepted',customer_accepted_quantity:1,unit_of_measure:'feet'}]};
+  if(sql.includes('JOIN partner_agreement_versions')) return {rows:[{agreement_id:'agreement',agreement_status:'effective',execution_model:'partner',organization_id:'partner',work_organization_id:'partner',capacity_provider_id:'provider',work_provider_id:'provider',executed_at:'2026-01-01',artifact_verified_at:'2026-01-01',artifact_file_object_id:'file',effective_for_work:true}]};
+  if(sql.includes('FROM production_records')) return {rows:[{id:'production',unit_type:'feet'}]};
+  return {rows:[{amount:0}]};
+} };
 
 test('external payment eligibility rejects disputes and retired lifecycle states before allocating money', async () => {
   const controller = new PaymentRetainageAdjustmentsController({});

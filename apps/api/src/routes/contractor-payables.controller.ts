@@ -1,3 +1,4 @@
+import { requirePartnerPayableLineage } from "./partner-financial-lineage";
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
@@ -257,6 +258,7 @@ export class ContractorPayablesController {
     return this.payableStateAction(request, id, "contractor_payable.approve", "contractor_payable.approved", async (payable, client) => {
       this.requireText(body.approval_note, "approval_note is required");
       const hasOverride = this.hasOverride(body);
+      if (payable.partner_organization_id || ["subcontractor", "crew"].includes(String(payable.payable_type))) await requirePartnerPayableLineage(client, request.auth.tenantId, payable);
       if (!["under_review", "ready_for_review"].includes(String(payable.status))) throw new BadRequestException("payable must be under review or ready for review");
       await this.requireActiveItemCount(client, request.auth.tenantId, id);
       if (Number(payable.net_payable_amount ?? 0) <= 0) throw new BadRequestException("net payable amount must be > 0");
@@ -287,6 +289,7 @@ export class ContractorPayablesController {
     return this.payableStateAction(request, id, "contractor_payable.mark_payment_ready", "contractor_payable.payment_ready", async (payable, client) => {
       this.requireText(body.ready_note, "ready_note is required");
       const hasOverride = this.hasOverride(body);
+      if (payable.partner_organization_id || ["subcontractor", "crew"].includes(String(payable.payable_type))) await requirePartnerPayableLineage(client, request.auth.tenantId, payable);
       if (payable.approval_status !== "approved") throw new BadRequestException("payable must be approved");
       if (Number(payable.net_payable_amount ?? 0) <= 0) throw new BadRequestException("net payable amount must be > 0");
       if (payable.compliance_status !== "ready" && !hasOverride) throw new BadRequestException("compliance must be ready unless override supplied");

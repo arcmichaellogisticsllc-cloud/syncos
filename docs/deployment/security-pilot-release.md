@@ -8,7 +8,7 @@ This release updates the field-readiness candidate for known dependency vulnerab
 
 - Next.js 15.5.26 maintenance release replaces unsupported 14.2.35. React and React DOM move together to 19.3.0. Dynamic page parameters, optional search parameters and API proxy parameters are awaited under the new framework contract.
 - Nest common/core/Express adapter move together to 11.2.5. The correlation middleware uses the named catch-all route syntax supported by Express 5. Nest CLI 11.0.24 supports the server's Node 20 runtime.
-- Nodemailer moves to the patched 9.1 series.
+- Nodemailer moved to 9.1 in the original release; the September 29 pre-payment candidate updates it to 10.0.12 after a new advisory. See the candidate acceptance report and current audit.
 - Root overrides require patched compatible lines for Multer 2.4, PostCSS 8.5.28, Nano ID 3.3.19, and qs 6.16. These overrides must stay until upstream packages declare safe versions themselves. Do not force a major-version audit fix without checking compatibility.
 - The lockfile was regenerated from a clean workspace dependency tree; it is the reproducible installation source for npm ci.
 
@@ -35,7 +35,7 @@ Before cutover:
 3. Install/build the exact committed candidate in its own release directory. Require a clean audit and completed functional verification.
 4. Rehearse the actual staging upgrade in a disposable restored database under the application database role.
 5. Keep application settings on the server, keep persistent private storage, and explicitly bind the API to 127.0.0.1. Do not place secrets in Git or build artifacts.
-6. After authorized activation, verify all 64 migrations, role/permission readiness, login, worker health and private-file access.
+6. After authorized activation, verify every migration in the candidate manifest, role/permission readiness, login, worker health and private-file access.
 7. Rehearse both workforce types with synthetic data before introducing real crew pilot records.
 
 ## Backup wrapper

@@ -1575,6 +1575,7 @@ function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowled
   const notice = data.notice;
   const map = data.mapAssignment?.map;
   const jsa = data.jsaToday;
+
   return (
     <div className="partner-field-layout">
       <section className="field-status-band" aria-label="Today assignment">
@@ -1856,6 +1857,10 @@ const requiredJsaControls = ["ppe_reviewed", "emergency_procedures_reviewed", "s
 
 function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJsa: (payload: JsaCompletionPayload) => Promise<void> }) {
   const jsa = data.jsaToday;
+  const [revisionReason, setRevisionReason] = useState("");
+  const [revisionBusy, setRevisionBusy] = useState(false);
+  const [revisionError, setRevisionError] = useState("");
+
   const defaultWorkLocation = jsa?.work_location || data.mapAssignment?.work_order?.primary_work_area || data.notice?.initial_work_area || "Assigned work area";
   const [workLocation, setWorkLocation] = useState(defaultWorkLocation);
   const [weather, setWeather] = useState(jsa?.weather ?? "");
@@ -1903,6 +1908,21 @@ function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJs
         ]} />
         {jsa?.status === "completed" ? <p className="partner-safe-text">Foreman attestation is complete for today. This does not create production, QC, billable, settlement, payable, or payment records.</p> : null}
       </Panel>
+      {jsa?.status === "completed" && readPermissions().includes("partner_jsa.complete") ? <Panel title="Location or conditions changed" eyebrow="New safety review required">
+        <p>Keep the completed JSA as history and start a new review before continuing production. Foreman certification does not represent individual worker signatures.</p>
+        <form onSubmit={async event => {
+          event.preventDefault(); if (revisionBusy) return;
+          setRevisionBusy(true); setRevisionError("");
+          try {
+            await syncosFetch("syncfield/foreman/jsa/today/revise", { method: "POST", body: { assignment_id: data.selectedAssignment?.id, work_date: jsa.work_date, prior_jsa_id: jsa.id, revision_reason: revisionReason, work_location: workLocation } });
+            window.location.reload();
+          } catch (error) { setRevisionError(error instanceof Error ? error.message : "Revision failed. Refresh and try again."); setRevisionBusy(false); }
+        }}>
+          <label>Reason for new review<textarea required disabled={revisionBusy} value={revisionReason} onChange={event => setRevisionReason(event.target.value)} /></label>
+          <button className="partner-button wide-touch" disabled={revisionBusy || !revisionReason.trim()}>{revisionBusy ? "Starting review…" : "Start JSA revision"}</button>
+          {revisionError ? <p role="alert">{revisionError}</p> : null}
+        </form>
+      </Panel> : null}
       {jsa?.status !== "completed" && readPermissions().includes("partner_jsa.complete") ? (
         <form className="field-jsa-form partner-stack" onSubmit={submit}>
           <Panel title="Project / Site" eyebrow="Tailgate setup">

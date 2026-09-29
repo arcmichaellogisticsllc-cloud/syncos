@@ -1,0 +1,4 @@
+/opt/syncos/staging/shared/backups/pre-payment-recovery-20260929-01/database.dump: OK
+/opt/syncos/staging/shared/backups/pre-payment-recovery-20260929-01/storage.tar.gz: OK
+Restore and private-file comparison passed. Tables: 179
+Restore target: syncos_recovery_20260929_01; application owner: syncos_staging_app

@@ -62,7 +62,7 @@
     "@syncos/events": "file:../../packages/events",
     "@syncos/permissions": "file:../../packages/permissions",
     "@syncos/shared": "file:../../packages/shared",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "^10.0.12",
     "pg": "^8.12.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"

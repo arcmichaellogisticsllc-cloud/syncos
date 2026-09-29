@@ -1,3 +1,4 @@
+import { requirePartnerPayableLineage, requirePartnerWorkAgreement } from "./partner-financial-lineage";
 import { requireCustomerAcceptedBilling, requireLinkedBillableAcceptance, lockProductionBilling } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
@@ -295,6 +296,9 @@ export class AcceptedProductionFinancialsController {
       }
       const internal = await client.query("SELECT id FROM capacity_providers WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND provider_type='internal_workforce'",[request.auth.tenantId,sources.map(row=>row.capacity_provider_id)]);
       if(internal.rows.length) throw new BadRequestException("Sync employee work is not eligible for partner settlement; use the internal payroll workflow");
+      for (const source of sources) {
+        await requirePartnerWorkAgreement(client, request.auth.tenantId, String(source.production_record_id), String(source.partner_organization_id), String(source.capacity_provider_id));
+      }
       if (sources.some((row) => !row.partner_rate_code_id || Number(row.partner_rate ?? 0) <= 0)) {
         const exception = await this.createException(client, request, "missing_partner_rate", sources[0], "SETTLEMENT EXCEPTION - MISSING PARTNER RATE");
         return { entityType: "financial_exception", entityId: exception.id, eventType: "financial_exception.created", afterState: exception };
@@ -435,6 +439,7 @@ export class AcceptedProductionFinancialsController {
       );
       if (partnerRows.rowCount !== 1 || !partnerRows.rows[0].partner_organization_id) throw new BadRequestException("settlement must resolve one Partner organization");
       const partnerId = partnerRows.rows[0].partner_organization_id;
+      await requirePartnerPayableLineage(client, request.auth.tenantId, { settlement_id: settlement.id, partner_organization_id: partnerId, capacity_provider_id: settlement.capacity_provider_id });
       const payable = await client.query(
         `
         INSERT INTO contractor_payables (
@@ -579,6 +584,10 @@ export class AcceptedProductionFinancialsController {
       values.push(query.partner_organization_id);
       where.push(`pr.partner_organization_id = $${values.length}`);
     }
+    if (query.customer_qc_decision_id) {
+      values.push(query.customer_qc_decision_id);
+      where.push(`cqd.id = $${values.length}`);
+    }
     const result = await client.query(
       `
       SELECT
@@ -652,7 +661,7 @@ export class AcceptedProductionFinancialsController {
   }
 
   private async requireAcceptedProduction(client: PoolClient, tenantId: string, decisionId?: string | null) {
-    const rows = await this.acceptedProductionRows(client, tenantId, {});
+    const rows = await this.acceptedProductionRows(client, tenantId, decisionId ? { customer_qc_decision_id: decisionId } : {});
     const accepted = decisionId ? rows.find((row) => row.customer_qc_decision_id === decisionId) : rows.find((row) => !row.billable_item_id);
     if (!accepted) throw new NotFoundException("accepted production not found");
     return accepted;

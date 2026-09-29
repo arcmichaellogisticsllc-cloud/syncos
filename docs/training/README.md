@@ -32,7 +32,7 @@ These manuals describe the current implementation. They retain incomplete requir
 | Reconnect and duplicate protection | Restore connectivity and retry the same failed submission. Reopen the record and verify one submission/revision, unchanged totals and clear confirmation. |
 | Offline cold start | Close the browser tab, enable airplane mode, and open the application afresh. Record the actual result separately from the loaded-session test. Offline startup is not certified. |
 | Corrections | On a designated rejected test item, open the correction, edit a supported field, submit, and confirm original history remains. An authorized reviewer then opens **Customer QC**, records the documented reinspection decision, and verifies that the inspected correction resolves. Do not substitute general internal QC approval. |
-| Evidence | Upload a camera JPEG/PNG or PDF under **Photos and evidence** (up to 2 MB), verify download integrity, then record a designated test incident from Today. Confirm the internal incident queue receives it even before daily submission. Record any phone format or size incompatibility. |
+| Evidence | Upload a camera JPEG/PNG, PDF or MP4 under **Photos and evidence** (up to 20 MB), verify download integrity, then record a designated test incident from Today. Confirm the internal incident queue receives it even before daily submission. Record any phone format or size incompatibility. |
 
 Record device model, OS/browser version, workforce, role, test record IDs, connection condition, expected/actual outcome, time, evidence and retest result. Do not include passwords, tokens or private document contents.
 
