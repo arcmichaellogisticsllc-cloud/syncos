@@ -1,0 +1,125 @@
+{
+  "status": "passed",
+  "candidate": "1d51523f8adc60a3b8ea46b39fc93c250912c2af",
+  "priorityAutomationEnabled": false,
+  "authenticatedPrivateFileHashMatched": true,
+  "checks": [
+    {
+      "loginRole": "administrator",
+      "status": 200
+    },
+    {
+      "path": "/auth/me",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/customer-qc/completeness-queue",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/accepted-production-financials/workflow-choices",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/payment-retainage-adjustments/external-payment-observations",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "loginRole": "operations",
+      "status": 200
+    },
+    {
+      "path": "/auth/me",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "loginRole": "partner",
+      "status": 200
+    },
+    {
+      "path": "/syncfield/partner/map-assignment",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/partner/production",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/partner/customer-qc",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "loginRole": "foreman",
+      "status": 200
+    },
+    {
+      "path": "/syncfield/foreman/context",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/foreman/assignments",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/foreman/production-history",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/payment-retainage-adjustments/external-payment-observations",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "path": "/accepted-production-financials/workflow-choices",
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "path": "/syncfield/foreman/context",
+      "status": 401,
+      "expected": 401
+    },
+    {
+      "path": "/syncfield/foreman/assignments",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/syncfield/foreman/map-versions/dafbbc8e-f504-50bb-8b92-e1e7f3c4ee3c/bytes?assignment_id=c631d4a8-3788-5c31-a321-8343a051827e",
+      "status": 401,
+      "expected": 401
+    },
+    {
+      "path": "/syncfield/foreman/map-versions/dafbbc8e-f504-50bb-8b92-e1e7f3c4ee3c/bytes?assignment_id=c631d4a8-3788-5c31-a321-8343a051827e",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "check": "20 MiB encoded ingress, no record written",
+      "host": "staging-api.synccommsystems.com",
+      "status": 401
+    },
+    {
+      "check": "20 MiB encoded ingress, no record written",
+      "host": "staging-app.synccommsystems.com",
+      "status": 401
+    },
+    {
+      "check": "oversized JSON rejected",
+      "status": 413
+    }
+  ],
+  "physicalPhones": "not tested",
+  "checkedAt": "2026-09-29T22:30:02.451Z"
+}

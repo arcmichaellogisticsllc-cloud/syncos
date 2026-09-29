@@ -1,0 +1,323 @@
+Cloning into '/opt/syncos/staging/releases/1d51523f8adc60a3b8ea46b39fc93c250912c2af'...
+done.
+From /var/tmp/syncos-pre-payment-candidate.bundle
+ * branch            HEAD       -> FETCH_HEAD
+HEAD is now at 1d51523 Harden pre-payment field evidence, safety revisions, and financial lineage
+npm warn deprecated cron-parser@4.9.0: v4 is no longer maintained, upgrade to v5
+
+added 399 packages, and audited 411 packages in 26s
+
+87 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+found 0 vulnerabilities
+
+> @syncos/api@0.1.0 build
+> npm run clean && npm run build:deps && nest build
+
+
+> @syncos/api@0.1.0 clean
+> node -e "require('fs').rmSync('dist', { recursive: true, force: true })"
+
+
+> @syncos/api@0.1.0 build:deps
+> npm run build -w @syncos/auth && npm run build -w @syncos/database && npm run build -w @syncos/events && npm run build -w @syncos/permissions && npm run build -w @syncos/shared
+
+
+> @syncos/auth@0.1.0 build
+> tsc
+
+
+> @syncos/database@0.1.0 build
+> tsc
+
+
+> @syncos/events@0.1.0 build
+> tsc
+
+
+> @syncos/permissions@0.1.0 build
+> tsc
+
+
+> @syncos/shared@0.1.0 build
+> tsc
+
+
+> @syncos/web@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.26
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 24.7s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/103) ...
+   Generating static pages (25/103) 
+   Generating static pages (51/103) 
+   Generating static pages (77/103) 
+ ✓ Generating static pages (103/103)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                         Size  First Load JS
+┌ ○ /                                            2.21 kB         118 kB
+├ ○ /_not-found                                    990 B         104 kB
+├ ○ /accepted-production-financials              3.95 kB         118 kB
+├ ƒ /accounting-export-items/[id]                  174 B         133 kB
+├ ○ /accounting-exports                            174 B         133 kB
+├ ƒ /accounting-exports/[id]                       174 B         133 kB
+├ ƒ /accounting-exports/[id]/edit                  175 B         133 kB
+├ ○ /accounting-exports/new                        175 B         133 kB
+├ ○ /activate-employee                           2.99 kB         112 kB
+├ ƒ /api/syncos/[...path]                          138 B         103 kB
+├ ○ /bank-reconciliation                           174 B         133 kB
+├ ƒ /bank-reconciliation/accounts/[id]             174 B         133 kB
+├ ƒ /bank-reconciliation/accounts/[id]/edit        174 B         133 kB
+├ ○ /bank-reconciliation/accounts/new              174 B         133 kB
+├ ƒ /bank-reconciliation/transactions/[id]         173 B         133 kB
+├ ƒ /bank-reconciliation/transactions/[id]/edit    172 B         133 kB
+├ ○ /bank-reconciliation/transactions/new          174 B         133 kB
+├ ○ /billable                                      170 B         128 kB
+├ ƒ /billable/[id]                                 171 B         128 kB
+├ ƒ /billable/[id]/edit                            171 B         128 kB
+├ ○ /billable/new                                  171 B         128 kB
+├ ○ /cash                                          174 B         131 kB
+├ ƒ /cash/receipts/[id]                            173 B         131 kB
+├ ƒ /cash/receipts/[id]/edit                       173 B         131 kB
+├ ○ /cash/receipts/new                             172 B         131 kB
+├ ○ /collection-actions                            171 B         131 kB
+├ ƒ /collection-actions/[id]                       169 B         131 kB
+├ ○ /collections                                   171 B         131 kB
+├ ƒ /collections/[id]                              171 B         131 kB
+├ ƒ /collections/[id]/edit                         170 B         131 kB
+├ ○ /collections/new                               171 B         131 kB
+├ ○ /command-center                              2.92 kB         119 kB
+├ ○ /constraints-center                          1.05 kB         117 kB
+├ ○ /contractor-payables                           174 B         133 kB
+├ ƒ /contractor-payables/[id]                      175 B         133 kB
+├ ƒ /contractor-payables/[id]/edit                 173 B         133 kB
+├ ○ /contractor-payables/new                       174 B         133 kB
+├ ○ /customer-qc                                 5.38 kB         115 kB
+├ ○ /executive                                   2.08 kB         118 kB
+├ ○ /field-setup                                 3.64 kB         113 kB
+├ ○ /finance                                     1.86 kB         118 kB
+├ ○ /growth                                      1.12 kB         117 kB
+├ ○ /intelligence                                  138 B         103 kB
+├ ○ /intelligence/account-onboarding             6.92 kB         123 kB
+├ ○ /intelligence/contacts                         171 B         127 kB
+├ ƒ /intelligence/contacts/[id]                    171 B         127 kB
+├ ƒ /intelligence/contacts/[id]/edit               174 B         127 kB
+├ ○ /intelligence/contacts/new                     174 B         127 kB
+├ ○ /intelligence/organizations                    171 B         129 kB
+├ ƒ /intelligence/organizations/[id]               171 B         129 kB
+├ ƒ /intelligence/organizations/[id]/edit          174 B         129 kB
+├ ○ /intelligence/organizations/new                174 B         129 kB
+├ ○ /intelligence/relationship-maps                170 B         128 kB
+├ ƒ /intelligence/relationship-maps/[id]           169 B         128 kB
+├ ƒ /intelligence/relationship-maps/[id]/edit      174 B         128 kB
+├ ○ /intelligence/relationship-maps/new            174 B         128 kB
+├ ○ /intelligence/signals                        6.21 kB         124 kB
+├ ƒ /intelligence/signals/[id]                   5.71 kB         123 kB
+├ ○ /internal-workforce                           4.3 kB         114 kB
+├ ○ /invoices                                      174 B         132 kB
+├ ƒ /invoices/[id]                                 174 B         132 kB
+├ ƒ /invoices/[id]/edit                            174 B         132 kB
+├ ○ /invoices/new                                  174 B         132 kB
+├ ○ /kpis-center                                 1.01 kB         117 kB
+├ ○ /login                                       3.27 kB         113 kB
+├ ○ /operations                                  2.56 kB         119 kB
+├ ○ /opportunities                                 138 B         103 kB
+├ ƒ /opportunities/[id]                            170 B         129 kB
+├ ƒ /opportunities/[id]/edit                       172 B         129 kB
+├ ○ /opportunities/candidates                      171 B         128 kB
+├ ƒ /opportunities/candidates/[id]                 171 B         128 kB
+├ ƒ /opportunities/candidates/[id]/edit            172 B         128 kB
+├ ○ /opportunities/candidates/new                  172 B         128 kB
+├ ○ /opportunities/capacity-matching             3.07 kB         119 kB
+├ ○ /opportunities/coverage                        171 B         131 kB
+├ ƒ /opportunities/coverage/[id]                   170 B         131 kB
+├ ƒ /opportunities/coverage/[id]/edit              173 B         131 kB
+├ ƒ /opportunities/coverage/new                    173 B         131 kB
+├ ○ /opportunities/new                             172 B         129 kB
+├ ○ /opportunities/pipeline                        167 B         129 kB
+├ ○ /partner                                       130 B         161 kB
+├ ○ /partner-network                             4.88 kB         121 kB
+├ ○ /partner-performance                         4.86 kB         114 kB
+├ ○ /partner/agreements                            129 B         161 kB
+├ ƒ /partner/agreements/[id]                       130 B         161 kB
+├ ○ /partner/company                               129 B         161 kB
+├ ○ /partner/compliance                            128 B         161 kB
+├ ○ /partner/corrections                           129 B         161 kB
+├ ○ /partner/crews                                 130 B         161 kB
+├ ƒ /partner/crews/[id]                            130 B         161 kB
+├ ○ /partner/customer-qc                           129 B         161 kB
+├ ○ /partner/field/map                             138 B         103 kB
+├ ○ /partner/field/today                           138 B         103 kB
+├ ƒ /partner/invite/[token]                      1.77 kB         111 kB
+├ ○ /partner/jsa                                   130 B         161 kB
+├ ○ /partner/mobilization                          129 B         161 kB
+├ ○ /partner/onboarding                            129 B         161 kB
+├ ○ /partner/payments                              130 B         161 kB
+├ ○ /partner/performance                           130 B         161 kB
+├ ○ /partner/production                            129 B         161 kB
+├ ○ /partner/production/review                     130 B         161 kB
+├ ○ /partner/settlements                           130 B         161 kB
+├ ○ /partner/vehicles                              130 B         161 kB
+├ ○ /partner/work-orders                           129 B         161 kB
+├ ƒ /partner/work-orders/[id]                      129 B         161 kB
+├ ○ /partner/workers                               129 B         161 kB
+├ ƒ /partner/workers/[id]                          130 B         161 kB
+├ ○ /partner/workforce                             130 B         161 kB
+├ ○ /passport                                    2.06 kB         118 kB
+├ ○ /payment-applications                          175 B         131 kB
+├ ƒ /payment-applications/[id]                     173 B         131 kB
+├ ƒ /payment-items/[id]                            174 B         132 kB
+├ ○ /payment-retainage-adjustments               4.55 kB         119 kB
+├ ○ /payments                                      174 B         132 kB
+├ ƒ /payments/[id]                                 174 B         132 kB
+├ ƒ /payments/[id]/edit                            172 B         132 kB
+├ ○ /payments/new                                  174 B         132 kB
+├ ○ /payroll                                       169 B         131 kB
+├ ƒ /payroll/[id]                                  169 B         131 kB
+├ ƒ /payroll/[id]/edit                             168 B         131 kB
+├ ○ /payroll/new                                   170 B         131 kB
+├ ○ /production                                    175 B         134 kB
+├ ○ /production-dashboard                        2.81 kB         119 kB
+├ ƒ /production/[id]                               174 B         134 kB
+├ ƒ /production/[id]/edit                          175 B         134 kB
+├ ○ /production/new                                175 B         134 kB
+├ ○ /project-handoffs                            3.47 kB         119 kB
+├ ○ /projects                                      169 B         126 kB
+├ ƒ /projects/[id]                                 170 B         126 kB
+├ ƒ /projects/[id]/edit                            169 B         126 kB
+├ ○ /qc                                            182 B         132 kB
+├ ƒ /qc/[id]                                       174 B         132 kB
+├ ƒ /qc/[id]/edit                                  175 B         132 kB
+├ ○ /qc/new                                        174 B         132 kB
+├ ○ /recommendations-center                      1.05 kB         117 kB
+├ ƒ /reconciliation-matches/[id]                   174 B         133 kB
+├ ○ /settlements                                   170 B         130 kB
+├ ƒ /settlements/[id]                              170 B         130 kB
+├ ƒ /settlements/[id]/edit                         171 B         130 kB
+├ ○ /settlements/new                               171 B         130 kB
+├ ○ /syncfield/corrections                         129 B         161 kB
+├ ○ /syncfield/crew                                130 B         161 kB
+├ ○ /syncfield/design-prep                       4.07 kB         113 kB
+├ ○ /syncfield/jsa                                 129 B         161 kB
+├ ○ /syncfield/map                                 129 B         161 kB
+├ ○ /syncfield/production                          130 B         161 kB
+├ ○ /syncfield/production/review                   129 B         161 kB
+├ ○ /syncfield/today                               130 B         161 kB
+├ ○ /syncfield/workload                            130 B         161 kB
+├ ○ /training                                    30.5 kB         146 kB
+├ ○ /work-orders                                   174 B         133 kB
+├ ƒ /work-orders/[id]                              174 B         133 kB
+├ ƒ /work-orders/[id]/edit                         174 B         133 kB
+├ ○ /work-orders/new                               174 B         133 kB
+└ ○ /workflows-center                            1.11 kB         117 kB
++ First Load JS shared by all                     103 kB
+  ├ chunks/18-498168fb58dcd546.js                46.4 kB
+  ├ chunks/87c73c54-24122e7b92478d00.js          54.2 kB
+  └ other shared chunks (total)                  1.95 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+> @syncos/worker@0.1.0 build
+> npm run build:deps && tsc
+
+
+> @syncos/worker@0.1.0 build:deps
+> npm run build -w @syncos/shared
+
+
+> @syncos/shared@0.1.0 build
+> tsc
+
+
+> syncos@0.1.0 typecheck
+> npm run typecheck --workspaces --if-present
+
+
+> @syncos/api@0.1.0 typecheck
+> npm run build:deps && tsc --noEmit
+
+
+> @syncos/api@0.1.0 build:deps
+> npm run build -w @syncos/auth && npm run build -w @syncos/database && npm run build -w @syncos/events && npm run build -w @syncos/permissions && npm run build -w @syncos/shared
+
+
+> @syncos/auth@0.1.0 build
+> tsc
+
+
+> @syncos/database@0.1.0 build
+> tsc
+
+
+> @syncos/events@0.1.0 build
+> tsc
+
+
+> @syncos/permissions@0.1.0 build
+> tsc
+
+
+> @syncos/shared@0.1.0 build
+> tsc
+
+
+> @syncos/web@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/worker@0.1.0 typecheck
+> npm run build:deps && tsc --noEmit
+
+
+> @syncos/worker@0.1.0 build:deps
+> npm run build -w @syncos/shared
+
+
+> @syncos/shared@0.1.0 build
+> tsc
+
+
+> @syncos/auth@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/database@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/events@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/permissions@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/shared@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/ui@0.1.0 typecheck
+> tsc --noEmit
+
+
+> @syncos/workflows@0.1.0 typecheck
+> tsc --noEmit
+
+VERIFIED_CANDIDATE_BUILD

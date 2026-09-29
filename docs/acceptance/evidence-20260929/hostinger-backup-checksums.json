@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "backups": [
+    {
+      "type": "postgres",
+      "release": "1d51523f8adc60a3b8ea46b39fc93c250912c2af",
+      "manifest": "/opt/syncos/staging/shared/backups/postgres/manifests/syncos_staging_20260929T223019Z_1d51523f8adc.dump.manifest.json",
+      "checksumVerified": true,
+      "timestamp": "20260929T223019Z"
+    },
+    {
+      "type": "files",
+      "release": "1d51523f8adc60a3b8ea46b39fc93c250912c2af",
+      "manifest": "/opt/syncos/staging/shared/backups/files/manifests/syncos_staging_files_20260929T223019Z_1d51523f8adc.tar.gz.manifest.json",
+      "checksumVerified": true,
+      "timestamp": "20260929T223019Z"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+/opt/syncos/staging/shared/backups/activation-20260929-1d51523/database.dump: OK
+/opt/syncos/staging/shared/backups/activation-20260929-1d51523/storage.tar.gz: OK
+staging migration precheck ok; applied=69
+
+> syncos@0.1.0 db:migrate
+> npm run migrate -w @syncos/database
+
+
+> @syncos/database@0.1.0 migrate
+> node scripts/migrate.js
+
+applied 070_pre_payment_evidence_limits.sql
+applied 071_jsa_revision_provenance.sql
+applied 072_external_payment_review_inbox.sql
+staging migrations applied through 072_external_payment_review_inbox.sql; applied=72
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+Startup verified through 072_external_payment_review_inbox.sql
+CONTROLLED_STAGING_ACTIVATION_PASSED

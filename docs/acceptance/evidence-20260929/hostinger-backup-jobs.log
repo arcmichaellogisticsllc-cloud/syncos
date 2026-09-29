@@ -1,0 +1,11 @@
+Result=success
+ExecMainStatus=0
+Id=syncos-staging-db-backup.service
+
+Result=success
+ExecMainStatus=0
+Id=syncos-staging-files-backup.service
+active
+active
+active
+/opt/syncos/staging/releases/1d51523f8adc60a3b8ea46b39fc93c250912c2af
