@@ -1,0 +1,30 @@
+{
+  "environment": "staging",
+  "backup_type": "postgres",
+  "timestamp_utc": "20260930T021019Z",
+  "deployed_sha": "1d51523f8adc60a3b8ea46b39fc93c250912c2af",
+  "migration_ceiling": "072_external_payment_review_inbox.sql",
+  "database": "syncos_staging",
+  "filename": "syncos_staging_20260930T021019Z_1d51523f8adc.dump",
+  "size_bytes": 1720047,
+  "sha256": "466edc8095ef1433e07792a6eaef3fcf1e8d525a04c3519bd4a8bb1ec413af16"
+}
+{
+  "environment": "staging",
+  "backup_type": "private_files",
+  "timestamp_utc": "20260930T023019Z",
+  "deployed_sha": "1d51523f8adc60a3b8ea46b39fc93c250912c2af",
+  "migration_ceiling": "072_external_payment_review_inbox.sql",
+  "storage_root": "/opt/syncos/staging/shared/storage",
+  "filename": "syncos_staging_files_20260930T023019Z_1d51523f8adc.tar.gz",
+  "file_count": 2,
+  "size_bytes": 615,
+  "sha256": "a089c083631c5e24c9e35c43e27d32cbeba4cde9025af3cc7fd087f120a8d6b6"
+}
+Result=success
+ExecMainStatus=0
+
+Result=success
+ExecMainStatus=0
+/opt/syncos/staging/shared/backups/postgres/daily/syncos_staging_20260930T021019Z_1d51523f8adc.dump: OK
+/opt/syncos/staging/shared/backups/files/daily/syncos_staging_files_20260930T023019Z_1d51523f8adc.tar.gz: OK

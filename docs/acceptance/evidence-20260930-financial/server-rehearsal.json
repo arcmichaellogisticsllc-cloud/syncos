@@ -1,0 +1,12 @@
+{
+  "candidate": "5919c45eac3dd7370f566e835d2b20897c10d8c8",
+  "node": "20.20.2",
+  "database": "syncos_financial_5919c45",
+  "application_role": "syncos_staging_app",
+  "migrations": 82,
+  "checked_business_counts_preserved": true,
+  "active_staging_sha": "1d51523f8adc60a3b8ea46b39fc93c250912c2af",
+  "activated": false,
+  "physical_phone_tests_executed": false,
+  "offsite_recovery_demonstrated": false
+}

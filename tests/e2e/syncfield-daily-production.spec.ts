@@ -690,7 +690,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await page.getByLabel('Minimum after files',{exact:true}).fill('1');
     await page.getByLabel('Governing customer requirements and approval reference').fill('SYNTHETIC customer requires one readable after-work photo');
     await page.getByRole('button',{name:'Approve evidence requirements',exact:true}).click();
-    await expect(page.getByRole('status')).toContainText('Safety record saved');
+    await expect(page.getByRole('status').filter({hasText:'Safety record saved'})).toBeVisible();
     const date=new Date();date.setUTCDate(date.getUTCDate()-1);const workDate=date.toISOString().slice(0,10);
     await completeJsa(request,seeded,workDate);
     const record=await createProduction(request,seeded,{work_date:workDate,client_mutation_id:crypto.randomUUID(),production_code_id:codes.LABOR,location_type:'daily',reported_quantity:1,status:'complete'});
@@ -722,8 +722,8 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await expect(page.getByRole('button',{name:'Confirm completeness'})).toBeEnabled();
     const customer=crypto.randomUUID();await client.query("INSERT INTO organizations(id,tenant_id,name,organization_type,status) VALUES($1,$2,'Synthetic evidence acceptance customer','customer','active')",[customer,seeded.tenantA]);
     await client.query('UPDATE work_orders SET qc_authority_organization_id=$3 WHERE tenant_id=$1 AND id=(SELECT work_order_id FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2)',[seeded.tenantA,seeded.workOrderVersionId,customer]);
-    await page.getByRole('button',{name:'Confirm completeness'}).click();await expect(page.getByRole('status')).toContainText('Completeness confirmed');
-    await page.getByLabel('Customer source reference').fill('SYNTHETIC customer evidence decision');await page.getByRole('button',{name:'Open customer inspection cycle'}).click();await expect(page.getByRole('status')).toContainText('inspection cycle opened');
+    await page.getByRole('button',{name:'Confirm completeness'}).click();await expect(page.getByRole('status').filter({hasText:'Completeness confirmed'})).toBeVisible();
+    await page.getByLabel('Customer source reference').fill('SYNTHETIC customer evidence decision');await page.getByRole('button',{name:'Open customer inspection cycle'}).click();await expect(page.getByRole('status').filter({hasText:'inspection cycle opened'})).toBeVisible();
     const detail=await apiJson(request,reviewer,'GET',`/syncfield/customer-qc/reports/${report}`);
     const quantityForm=page.getByRole('group',{name:'Quantity relationship',exact:true});
     await page.getByText(/LABOR.*Quantity review required/).click();

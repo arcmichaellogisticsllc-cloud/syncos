@@ -1,6 +1,6 @@
 # Financial completion candidate — September 30, 2026
 
-Status: implemented and undergoing final local verification; **not activated on staging and not signed off for the crew pilot**. The durable managed checkout is `/Users/User/.codex/worktrees/syncos-financial-completion/syncos`, reconstructed from `16164b9` after the earlier temporary checkout disappeared. The main checkout and shared staging/demo data were not reset or reseeded.
+Status: implemented and verified for the scoped scenarios below; **not activated on staging and not signed off for the crew pilot**. The durable managed checkout is `/Users/User/.codex/worktrees/syncos-financial-completion/syncos`, reconstructed from `16164b9` after the earlier temporary checkout disappeared. The main checkout and shared staging/demo data were not reset or reseeded.
 
 ## Delivered scope
 
@@ -14,8 +14,9 @@ Status: implemented and undergoing final local verification; **not activated on 
 
 ## Verification evidence
 
-Evidence logs are copied into `evidence-20260930-financial/` after checks finish. Do not add repeat test runs together as additional coverage.
+Evidence logs are saved in `evidence-20260930-financial/`. Application commit: `5919c45eac3dd7370f566e835d2b20897c10d8c8`; later commits contain test-selector and documentation changes only. Do not add repeat test runs together as additional coverage.
 
+- Final regression suite: **224 passed, 0 failed, 0 skipped**. Workspace type checks, API, worker and web builds passed. The final combined seven-file end-to-end run passed **61 checks**.
 - Both workforce paths: 30 end-to-end tests passed, including safety, individual acknowledgments, shutdown replay, original evidence, quantity correction/reinspection, customer acceptance, approved pricing, invoice package receipt lifecycle and partner financial boundaries. The Sync crew invoice test uses 10% retainage and pays the resulting net amount.
 - Older workflows: 31 end-to-end tests passed covering partner onboarding, local-only invitation lifecycle, exports, closeout, retainage release, external-payment concurrency/idempotency, adjustments and access boundaries. Historical P17 payables lacking accepted settlement items are now explicitly tested as blocked; successful payment behavior is covered by the complete P13/crew fixtures.
 - Synthetic payment fixtures explicitly include quantity-review pins and approved-term snapshots. This fixture preparation is restricted to disposable local databases and is not an operational backfill.
@@ -32,7 +33,7 @@ Read-only staging verification found release `1d51523f8adc60a3b8ea46b39fc93c2509
 3. The implemented commercial model covers calendar-day triggers and flat retainage. Business-day clauses, unusual exceptions, and per-partial-payment maturity schedules are not certified. Current customer-payment eligibility prorates against gross customer source value and records the earliest funding trigger; confirm the actual relationship's treatment of retained customer funds and later receipt tranches before use. Do not enable automated payment scheduling from this model without that review.
 4. Historical demo invoices/payables without canonical lineage remain preserved and blocked. There is no bulk historical repricing/backdating action. Operational equivalents require documented reconciliation, not invented acceptance. Legacy escalation/reassignment parity and every historical application smoke path have not been exhaustively certified by the scoped tests above.
 5. Demonstrate offsite total-server-loss recovery and name the backup/alert owner. Local restoration and current scheduled jobs do not establish offsite recovery.
-6. Before activation: commit the exact candidate, build under the server runtime, rehearse the upgrade under the actual application role, take a fresh coordinated database/private-file backup, then verify the complete migration manifest, permissions, authentication and both crew paths. Preserve the legacy service shutdown. Roll back code, database and files together; do not assume old code is compatible with newly recorded facts.
+6. Hostinger Node 20.20.2 built application commit 5919c45 successfully in `/opt/syncos/staging/release-candidates/5919c45`. The separate restored database `syncos_financial_5919c45` upgraded through 082 as `syncos_staging_app`, preserving checked business counts. Before activation, take a fresh coordinated database/private-file backup, then verify the complete migration manifest, permissions, authentication and both crew paths. Preserve the legacy service shutdown. Roll back code, database and files together; do not assume old code is compatible with newly recorded facts.
 7. Passport sandbox/provider mapping and automation remain outside this candidate. No real payments, external invitations or customer package emails were sent.
 
 ## Training and continuity
