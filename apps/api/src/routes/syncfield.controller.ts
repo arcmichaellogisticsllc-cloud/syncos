@@ -1474,8 +1474,10 @@ export class SyncfieldController {
         if (decision !== "accepted" && !reason) throw new BadRequestException("customer reason is required");
         const acceptedEvidence=body.accepted_evidence_ids??[];
         if(!Array.isArray(acceptedEvidence)||acceptedEvidence.some(id=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))||new Set(acceptedEvidence).size!==acceptedEvidence.length)throw new BadRequestException('Select distinct evidence files reviewed by the customer');
+        let acceptedQuantityReview: Record<string, any> | null = null;
         if(['accepted','partially_accepted'].includes(decision)){
           const reviewed=await requireReviewedProductionQuantity(writeClient,request.auth.tenantId,record.id);
+          acceptedQuantityReview=reviewed.review;
           if(acceptedQuantity!==null&&acceptedQuantity>Number(reviewed.record.quantity_submitted))throw new BadRequestException("Accepted quantity cannot exceed the reconciled field quantity; correct and review the source first");
           const readiness=await requireEvidenceReady(writeClient,request.auth.tenantId,cycle.daily_report_id,true,acceptedEvidence);
           if(acceptedEvidence.some(id=>!readiness.files.some(f=>f.id===id && f.readability_status==='readable' && (!f.production_record_id||f.production_record_id===record.id))))throw new BadRequestException('Accepted evidence must be readable and belong to this report and work item');
@@ -1496,7 +1498,7 @@ export class SyncfieldController {
             this.optionalString(body.source_reference) ?? cycle.source_reference, mutationId,
           ],
         );
-        await writeClient.query('UPDATE customer_qc_decisions SET accepted_evidence_ids=$3 WHERE tenant_id=$1 AND id=$2',[request.auth.tenantId,inserted.rows[0].id,acceptedEvidence]);
+        await writeClient.query('UPDATE customer_qc_decisions SET accepted_evidence_ids=$3,accepted_quantity_review_id=$4,accepted_quantity_fingerprint=$5 WHERE tenant_id=$1 AND id=$2',[request.auth.tenantId,inserted.rows[0].id,acceptedEvidence,acceptedQuantityReview?.id??null,acceptedQuantityReview?.source_fingerprint??null]);
         inserted.rows[0].accepted_evidence_ids=acceptedEvidence;
         if (["correction_required", "rejected"].includes(decision)) {
           await this.createCorrectionForDecision(writeClient, request, cycle, inserted.rows[0], record, body);

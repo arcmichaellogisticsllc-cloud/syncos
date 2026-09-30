@@ -28,7 +28,9 @@ export async function requireCustomerAcceptedBilling(client: PoolClient, tenantI
   if (expectedDecisionId && decision.id !== expectedDecisionId) {
     throw new BadRequestException("Customer acceptance changed; review the existing billable through controlled financial adjustments");
   }
-  await requireReviewedProductionQuantity(client, tenantId, productionId);
+  const reviewed=await requireReviewedProductionQuantity(client, tenantId, productionId);
+  if(!decision.accepted_quantity_review_id || decision.accepted_quantity_review_id!==reviewed.review.id || decision.accepted_quantity_fingerprint!==reviewed.review.source_fingerprint)throw new BadRequestException("Customer acceptance must cover the current quantity review; obtain a documented customer decision for the reconciled source");
+  if(Number(decision.customer_accepted_quantity)>Number(reviewed.record.quantity_submitted) || decision.unit_of_measure!==(reviewed.record.unit??reviewed.record.unit_type))throw new BadRequestException("Customer acceptance no longer matches the current production quantity or unit");
   return decision;
 }
 

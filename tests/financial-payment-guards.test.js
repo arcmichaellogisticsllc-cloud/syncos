@@ -7,8 +7,9 @@ const { PaymentExecutionController } = require('../apps/api/dist/routes/payment-
 // Quantity-review rejection and source changes are covered by production-quantity-integrity.test.js.
 const {productionQuantityFingerprint}=require('../apps/api/dist/routes/production-quantity-integrity');
 const reviewedSource={id:'production',quantity_submitted:100,unit_type:'feet',quantity_review_id:'quantity-review'};
+function acceptedPins(){return {accepted_quantity_review_id:'quantity-review',accepted_quantity_fingerprint:productionQuantityFingerprint(reviewedSource)};}
 function quantityRows(sql){
- if(sql.includes('FROM production_quantity_reviews'))return [{disposition:'primary_work',source_fingerprint:productionQuantityFingerprint(reviewedSource)}];
+ if(sql.includes('FROM production_quantity_reviews'))return [{id:'quantity-review',disposition:'primary_work',source_fingerprint:productionQuantityFingerprint(reviewedSource)}];
  if(sql.includes('FROM production_records'))return [reviewedSource];
  return [];
 }
@@ -17,7 +18,7 @@ const emptyInstructions = { query: async sql => {
   if(sql.includes('AS accepted_budget')) return {rows:[{accepted_budget:100,committed_amount:100}]};
   if(sql.includes('FROM accepted_production_financial_sources')) return {rows:[{production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',accepted_quantity:1,partner_rate:100}]};
   if(sql.includes('FROM settlement_items')) return {rows:[{id:'item',net_amount:100,production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',quantity:1,unit:'feet'}]};
-  if(sql.includes('FROM customer_qc_decisions')) return {rows:[{id:'decision',decision:'accepted',customer_accepted_quantity:1,unit_of_measure:'feet'}]};
+  if(sql.includes('FROM customer_qc_decisions')) return {rows:[{...acceptedPins(),id:'decision',decision:'accepted',customer_accepted_quantity:1,unit_of_measure:'feet'}]};
   if(sql.includes('JOIN partner_agreement_versions')) return {rows:[{agreement_id:'agreement',agreement_status:'effective',execution_model:'partner',organization_id:'partner',work_organization_id:'partner',capacity_provider_id:'provider',work_provider_id:'provider',executed_at:'2026-01-01',artifact_verified_at:'2026-01-01',artifact_file_object_id:'file',effective_for_work:true}]};
   if(quantityRows(sql).length)return {rows:quantityRows(sql)};
   return {rows:[{amount:0}]};
@@ -86,7 +87,7 @@ test('legacy create and update cannot override accepted quantities or invent cus
   controller.billableContextFromQcReview = async () => ({ qcReview: { id: 'review', review_status: 'approved', unit: 'feet' }, productionRecord: { id: 'production', status: 'approved' }, workOrder: {}, project: {} });
   const req = { auth: { tenantId: 'tenant', userId: 'user' } };
   await assert.rejects(controller.createBillableItem(req, { qc_review_id: 'review', customer_acceptance_status: 'accepted', billable_quantity: 100 }), /customer acceptance is required/);
-  decision = { id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 60, unit_of_measure: 'feet' };
+  decision = { ...acceptedPins(), id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 60, unit_of_measure: 'feet' };
   await assert.rejects(controller.createBillableItem(req, { qc_review_id: 'review', billable_quantity: 100, override_reasons: { billable_quantity_override_reason: 'override' } }), /customer-accepted quantity/);
   controller.requireRecord = async () => ({ id: 'billable', production_record_id: 'production', billable_quantity: 60, unit: 'feet', status: 'needs_rate' });
   await assert.rejects(controller.updateBillableItem(req, 'billable', { billable_quantity: 100 }), /customer-accepted quantity/);
@@ -94,7 +95,7 @@ test('legacy create and update cannot override accepted quantities or invent cus
 
 
 test('billable lineage cannot silently move to a different current customer decision', async () => {
-  const client = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ id: 'new-decision', decision: 'accepted', customer_accepted_quantity: 100, unit_of_measure: 'feet' }] : quantityRows(sql) }) };
+  const client = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ ...acceptedPins(), id: 'new-decision', decision: 'accepted', customer_accepted_quantity: 100, unit_of_measure: 'feet' }] : quantityRows(sql) }) };
   await assert.rejects(requireCustomerAcceptedBilling(client, 'tenant', 'production', 'prior-decision'), /acceptance changed/);
   assert.equal((await requireCustomerAcceptedBilling(client, 'tenant', 'production', 'new-decision')).id, 'new-decision');
 });
@@ -126,7 +127,7 @@ const { requireLinkedBillableAcceptance } = require('../apps/api/dist/routes/cus
 test('historical production billables cannot advance using stored readiness without customer acceptance', async () => {
   const client = { query: async () => ({ rows: [] }) };
   await assert.rejects(requireLinkedBillableAcceptance(client, 'tenant', { production_record_id: 'legacy-production', status: 'ready_for_settlement' }), /customer acceptance is required/);
-  const partial = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }] : quantityRows(sql) }) };
+  const partial = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ ...acceptedPins(), id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }] : quantityRows(sql) }) };
   await assert.rejects(requireLinkedBillableAcceptance(partial, 'tenant', { production_record_id: 'legacy-production', billable_quantity: 100, unit: 'feet' }), /customer-accepted quantity/);
   await requireLinkedBillableAcceptance(partial, 'tenant', { production_record_id: 'legacy-production', billable_quantity: 50, unit: 'feet' });
 });
@@ -164,7 +165,7 @@ test('direct-production settlement creation requires customer acceptance despite
 
 test('linked settlement quantity edits cannot exceed current customer acceptance or reassign source', async () => {
   const controller = new SettlementsController({});
-  controller.write = async (_r, _a, _e, _t, work) => work(acceptanceClient({ id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }));
+  controller.write = async (_r, _a, _e, _t, work) => work(acceptanceClient({ ...acceptedPins(), id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }));
   controller.requireRecord = async (_c, table) => table === 'settlement_items'
     ? { id: 'item', billable_item_id: 'billable', production_record_id: 'production', quantity: 50 }
     : { id: 'billable', production_record_id: 'production', customer_qc_decision_id: 'decision', billable_quantity: 50, unit: 'feet' };
@@ -210,4 +211,18 @@ test('draft invoice approval and first sending cannot use stale production accep
   await assert.rejects(controller.approveInvoice(financeReq, 'invoice', { approval_note: 'Reviewed' }), /customer acceptance is required/);
   controller.requireRecord = async () => ({ id: 'invoice', status: 'approved', approval_status: 'approved' });
   await assert.rejects(controller.markSent(financeReq, 'invoice', { sent_note: 'Send' }), /customer acceptance is required/);
+});
+
+test('a new quantity review cannot reuse acceptance of an earlier source or classification',async()=>{
+ let decision={...acceptedPins(),id:'decision',decision:'accepted',customer_accepted_quantity:100,unit_of_measure:'feet'};
+ const c={query:async sql=>({rows:sql.includes('FROM customer_qc_decisions')?[decision]:quantityRows(sql)})};
+ await requireCustomerAcceptedBilling(c,'tenant','production');
+ decision={...decision,accepted_quantity_review_id:'prior-review'};
+ await assert.rejects(requireCustomerAcceptedBilling(c,'tenant','production'),/current quantity review/);
+ decision={...decision,...acceptedPins(),accepted_quantity_fingerprint:'old-source'};
+ await assert.rejects(requireCustomerAcceptedBilling(c,'tenant','production'),/current quantity review/);
+ decision={...decision,...acceptedPins(),customer_accepted_quantity:101};
+ await assert.rejects(requireCustomerAcceptedBilling(c,'tenant','production'),/no longer matches/);
+ decision={...decision,customer_accepted_quantity:100,unit_of_measure:'hours'};
+ await assert.rejects(requireCustomerAcceptedBilling(c,'tenant','production'),/no longer matches/);
 });

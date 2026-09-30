@@ -513,7 +513,12 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     }
     await client.query('UPDATE work_orders SET customer_rate_schedule_id=$3 WHERE tenant_id=$1 AND id=$2',[tenant,work.work_order_id,customerSchedule]);
     await client.query("UPDATE partner_agreement_versions SET executed_at='2026-08-16' WHERE tenant_id=$1 AND id=$2",[tenant,work.governing_agreement_version_id]);
-    const billable=await apiJson(request,finance,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:decision.id});
+    await reviewFixtureQuantity(request,seeded.internalToken,submittedRecordId);
+    const staleAcceptance=await request.post(apiUrl('/accepted-production-financials/billables/convert'),{headers:auth(finance),data:{customer_qc_decision_id:decision.id}});
+    expect(staleAcceptance.status()).toBe(400);expect(await staleAcceptance.text()).toContain('current quantity review');
+    const inspection=await apiJson(request,seeded.internalToken,'POST',`/syncfield/customer-qc/reports/${reportId}/cycles`,{source_reference:'SYNTHETIC documented customer confirmation of renewed quantity review',client_mutation_id:crypto.randomUUID()});
+    const renewed=await apiJson(request,seeded.internalToken,'POST',`/syncfield/customer-qc/cycles/${inspection.id}/decisions`,{production_record_id:submittedRecordId,decision:'accepted',customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()});
+    const billable=await apiJson(request,finance,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:renewed.id});
     expect(Number(billable.net_billable_amount)).toBe(10);
     const invoice=await apiJson(request,finance,'POST','/accepted-production-financials/invoices/create',{billable_item_ids:[billable.id],retainage_percent:0});
     const source=(await client.query('SELECT * FROM accepted_production_financial_sources WHERE tenant_id=$1 AND billable_item_id=$2',[tenant,billable.id])).rows[0];

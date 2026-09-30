@@ -74,5 +74,6 @@
   "073_work_safety_authorization.sql",
   "074_field_evidence_readiness.sql",
   "075_production_quantity_review.sql",
-  "076_prime_correction_deadlines.sql"
+  "076_prime_correction_deadlines.sql",
+  "077_customer_acceptance_quantity_provenance.sql"
 ]
