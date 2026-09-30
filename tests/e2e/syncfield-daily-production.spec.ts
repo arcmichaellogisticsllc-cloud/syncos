@@ -1,3 +1,5 @@
+import { verifySafetyLifecycle } from "./helpers/safety-lifecycle";
+import { acknowledgeFixtureJsa, reviewFixtureSafetyScope, safetyActor } from "./helpers/individual-safety";
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
@@ -44,6 +46,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await client.connect();
     seeded = await seedSyncfieldFixture(client, secret);
     await authorizeMobilization(request, seeded);
+    await reviewFixtureSafetyScope(request,seeded.tenantA,seeded.workOrderVersionId);
     await createAssignedMap(request, seeded);
     await completeJsa(request, seeded);
     downstreamCountsBefore = await downstreamCounts(client);
@@ -71,6 +74,11 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
 
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });
+    await page.goto("/work-safety");
+    await expect(page.getByRole('heading',{name:'Safety reviews and work authorization'})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Place work on hold'})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Record verified approval'})).toHaveCount(0);
+    await expect(page.getByText('Personally acknowledged at',{exact:false})).toBeVisible();
     await page.goto("/syncfield/production");
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("button", { name: "Asset" })).toBeVisible();
@@ -95,7 +103,11 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(history[0]).toMatchObject({id:prior.id,status:'completed',current:false,work_location:prior.work_location});
     expect(history[1]).toMatchObject({id:revised.id,status:'completed',current:true});
     const participants=(await client.query('SELECT acknowledged FROM daily_jsa_participants WHERE tenant_id=$1 AND daily_jsa_id=$2',[seeded.tenantA,revised.id])).rows;
-    expect(participants.length).toBeGreaterThan(0);expect(participants.every(p=>p.acknowledged===false)).toBe(true);
+    expect(participants.length).toBeGreaterThan(0);expect(participants.every(p=>p.acknowledged===true)).toBe(true);
+  });
+
+  test("partner crew independently acknowledges, obtains pre-bore approval and completes ordered utility-strike restart",async({request})=>{
+    await verifySafetyLifecycle(request,seeded.tenantA,seeded.workOrderVersionId,seeded.foremanToken,today());
   });
 
   test("evidence survives lost responses, reload and offline capture without duplicate uploads", async ({ page, context }) => {
@@ -244,17 +256,25 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     for(const permission of ['stop_work.issue','stop_work.release'])await ensurePermission(client,permission);
     await grantPermissions(client,seeded.tenantA,role,['stop_work.issue','stop_work.release']);
     await client.query("INSERT INTO user_roles(tenant_id,tenant_user_id,role_id,scope_type,scope_id) SELECT tenant_id,id,$3,'tenant',tenant_id FROM tenant_users WHERE tenant_id=$1 AND user_id=$2",[seeded.tenantA,actor,role]);
-    await apiJson(request,seeded.internalToken,'POST',`/production-records/${submittedRecordId}/stop-work`,{reason:'Synthetic shutdown drill'});
+    await apiJson(request,seeded.internalToken,'POST',`/production-records/${submittedRecordId}/stop-work`,{reason:'Synthetic shutdown drill',utility_strike:false});
     const before=(await client.query('SELECT count(*)::int AS n FROM production_records WHERE tenant_id=$1',[seeded.tenantA])).rows[0].n;
     const blocked=await request.post(apiUrl('/syncfield/foreman/production/records'),{headers:auth(seeded.foremanToken),data:{work_date:today(),client_mutation_id:crypto.randomUUID(),production_code_id:codes.LABOR,location_type:'daily',reported_quantity:1,status:'complete'}});
     expect(blocked.status()).toBe(400);expect(await blocked.text()).toContain('crew_work_order_stopped');
     expect((await client.query('SELECT count(*)::int AS n FROM production_records WHERE tenant_id=$1',[seeded.tenantA])).rows[0].n).toBe(before);
     expect((await request.post(apiUrl(`/production-records/${submittedRecordId}/release-stop-work`),{headers:auth(seeded.foremanToken),data:{release_reason:'Unauthorized'}})).status()).toBe(403);
-    await apiJson(request,seeded.internalToken,'POST',`/production-records/${submittedRecordId}/release-stop-work`,{release_reason:'Safety review completed for synthetic drill'});
+    const premature=await request.post(apiUrl(`/production-records/${submittedRecordId}/release-stop-work`),{headers:auth(seeded.internalToken),data:{release_reason:'Single release must not suffice'}});expect(premature.status()).toBe(400);
+    const control=(await client.query("SELECT id FROM work_safety_controls WHERE tenant_id=$1 AND source_production_record_id=$2 AND status='active'",[seeded.tenantA,submittedRecordId])).rows[0];
+    for(const [kind,roleKey] of [['safety','safety_manager'],['operations','operations_manager']]){
+      const approver=await safetyActor(seeded.tenantA,roleKey);
+      await apiJson(request,approver,'POST',`/work-safety/controls/${control.id}/approvals`,{approval_kind:kind,approver_name:'Synthetic '+kind,approved_at:new Date().toISOString(),evidence_reference:'SYNTHETIC restart '+kind,verified:true});
+    }
+    expect((await client.query('SELECT stop_work_status FROM production_records WHERE tenant_id=$1 AND id=$2',[seeded.tenantA,submittedRecordId])).rows[0].stop_work_status).toBe('released');
     // The production creation event retains the JSA actually used after revision.
     const current=(await client.query('SELECT id FROM daily_jsas WHERE tenant_id=$1 AND current=true',[seeded.tenantA])).rows[0];
     const creation=(await client.query("SELECT after_state FROM audit_logs WHERE tenant_id=$1 AND entity_id=$2 AND after_state ? 'safety_jsa_id'",[seeded.tenantA,submittedRecordId])).rows;
     expect(creation.some(row=>row.after_state.safety_jsa_id===current.id)).toBe(true);
+    await apiJson(request,seeded.foremanToken,'POST','/syncfield/foreman/jsa/today/revise',{work_date:today(),prior_jsa_id:current.id,revision_reason:'Synthetic restart following reviewed shutdown',work_location:'P8 Initial Work Area'});
+    await completeJsa(request,seeded);
   });
 
   test("DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency", async ({ request, page }) => {
@@ -794,6 +814,7 @@ async function completeJsa(request: APIRequestContext, fixture: Seeded, workDate
     foreman_certified: true,
   });
   expect(result.status).toBe("completed");
+  await acknowledgeFixtureJsa(request,fixture.tenantA,result.id);
 }
 
 async function createProduction(request: APIRequestContext, fixture: Seeded, body: Record<string, unknown>) {

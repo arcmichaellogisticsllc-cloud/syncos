@@ -70,5 +70,6 @@
   "069_demo_crew_organization_link.sql",
   "070_pre_payment_evidence_limits.sql",
   "071_jsa_revision_provenance.sql",
-  "072_external_payment_review_inbox.sql"
+  "072_external_payment_review_inbox.sql",
+  "073_work_safety_authorization.sql"
 ]

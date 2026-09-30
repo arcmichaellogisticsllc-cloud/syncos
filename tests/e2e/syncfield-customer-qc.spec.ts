@@ -1,3 +1,4 @@
+import { acknowledgeFixtureJsa, reviewFixtureSafetyScope } from "./helpers/individual-safety";
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
@@ -40,6 +41,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await client.connect();
     seeded = await seedSyncfieldFixture(client, secret);
     await authorizeMobilization(request, seeded);
+    await reviewFixtureSafetyScope(request,seeded.tenantA,seeded.workOrderVersionId);
     await createAssignedMap(request, seeded);
     await completeJsa(request, seeded);
     downstreamCountsBefore = await downstreamCounts(client);
@@ -621,6 +623,7 @@ async function completeJsa(request: APIRequestContext, fixture: Seeded, workDate
     foreman_certified: true,
   });
   expect(result.status).toBe("completed");
+  await acknowledgeFixtureJsa(request,fixture.tenantA,result.id);
 }
 
 async function createProduction(request: APIRequestContext, fixture: Seeded, body: Record<string, unknown>) {

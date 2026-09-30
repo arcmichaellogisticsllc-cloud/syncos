@@ -1,3 +1,5 @@
+import { verifySafetyLifecycle } from "./helpers/safety-lifecycle";
+import { acknowledgeFixtureJsa } from "./helpers/individual-safety";
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { Client } from 'pg';
 import crypto from 'node:crypto';
@@ -89,6 +91,7 @@ test('Sync management provisions a real internal crew through field production w
         const checklist = Object.fromEntries(['customer_authorization', 'crew_qualifications', 'insurance', 'equipment_inspection', 'safety_plan'].map(k => [k, true]));
         const invalidDecision=await request.post(`${process.env.API_BASE_URL}/internal-workforce/assignments/${assignment.id}/clearance`,{headers:{authorization:`Bearer ${management}`},data:{status:'typo',checklist,evidence_reference:'SYNTHETIC',valid_until:date}});expect(invalidDecision.status()).toBe(400);
         await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'authorized', checklist, evidence_reference: 'SYNTHETIC-READINESS-PACK', valid_until: date });
+        await api(request, management, `work-safety/work-orders/${assignment.id}/scope-review`, {pre_bore_required:false,evidence_reference:'SYNTHETIC aerial-only scope'});
         expect((await produce()).status()).toBe(400); // daily JSA still mandatory
         await api(request, employee, 'syncfield/foreman/jsa/today/complete', { work_date: date, work_location: 'Synthetic block', hazards: ['traffic'], controls: ['ppe_reviewed', 'emergency_procedures_reviewed', 'stop_work_authority_reviewed'], foreman_certified: true });
         const originalJsa = await api(request, employee, `syncfield/foreman/jsa/today?work_date=${date}`);
@@ -99,6 +102,9 @@ test('Sync management provisions a real internal crew through field production w
         const history = (await db.query('SELECT status,current,work_location FROM daily_jsas WHERE tenant_id=$1 AND crew_id=$2 ORDER BY revision_number',[t,crew.id])).rows;
         expect(history).toEqual([{status:'completed',current:false,work_location:'Synthetic block'},{status:'completed',current:true,work_location:'Synthetic second block'}]);
         expect((await db.query('SELECT acknowledged FROM daily_jsa_participants WHERE tenant_id=$1 AND daily_jsa_id=$2',[t,revision.id])).rows.every(row=>row.acknowledged===false)).toBe(true);
+        expect((await produce()).status()).toBe(400); // every present worker must personally acknowledge
+        await acknowledgeFixtureJsa(request,t,revision.id);
+        await verifySafetyLifecycle(request,t,assignment.id,employee,date);
         expect((await produce()).ok()).toBeTruthy();
         const codes = await api(request, employee, 'syncfield/foreman/production/codes');
         const code = codes.find((r: any) => r.code === 'LABOR');

@@ -1899,6 +1899,7 @@ function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJs
   return (
     <div className="partner-stack">
       <Panel title="Daily JSA" eyebrow={jsa?.work_date || "Today"}>
+        <NextLink className="partner-button wide-touch" href="/work-safety">My safety acknowledgment and pre-bore review</NextLink>
         <StatusRows rows={[
           ["Status", jsa?.status === "completed" ? "complete" : "required"],
           ["Work Area", jsa?.work_location || data.mapAssignment?.work_order?.primary_work_area || data.notice?.initial_work_area || "Assigned work area"],

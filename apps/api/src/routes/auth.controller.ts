@@ -79,7 +79,7 @@ export class AuthController {
       context: {
         ...context,
         routing: {
-          workspace: this.workspaceFor(context.roles, context.permissions, context.partner_context),
+          workspace: this.workspaceFor(context.roles, context.permissions, context.partner_context, context.is_linked_worker),
           policy: "server_trusted_workspace_routing_v1",
         },
       },
@@ -93,7 +93,7 @@ export class AuthController {
     return {
       ...context,
       routing: {
-        workspace: this.workspaceFor(context.roles, context.permissions, context.partner_context),
+        workspace: this.workspaceFor(context.roles, context.permissions, context.partner_context, context.is_linked_worker),
         policy: "server_trusted_workspace_routing_v1",
         precedence: [
           "internal executive",
@@ -212,12 +212,17 @@ export class AuthController {
     const roleNames = Array.from(new Set(result.rows.map((row) => row.role_name)));
     const permissions = Array.from(new Set(result.rows.map((row) => row.permission_key)));
     const partnerRow = partner.rows[0];
+    const linkedWorker = await this.pool.query(`SELECT 1 FROM partner_worker_user_links l
+      JOIN tenant_users tu ON tu.tenant_id=l.tenant_id AND tu.id=l.tenant_user_id AND tu.status='active' AND tu.deleted_at IS NULL
+      JOIN workers w ON w.tenant_id=l.tenant_id AND w.id=l.worker_id AND w.status='active' AND w.deleted_at IS NULL
+      WHERE l.tenant_id=$1 AND tu.user_id=$2 AND l.status='active' AND l.deleted_at IS NULL LIMIT 1`,[tenantId,userId]);
 
     return {
       user_id: userId,
       tenant_id: tenantId,
       roles,
       role_names: roleNames,
+      is_linked_worker: linkedWorker.rows.length > 0,
       permissions,
       partner_context: partnerRow ? {
         persona: partnerRow.role_key,
@@ -233,7 +238,7 @@ export class AuthController {
     };
   }
 
-  private workspaceFor(roles: string[], permissions: string[], partnerContext: Record<string, unknown> | null) {
+  private workspaceFor(roles: string[], permissions: string[], partnerContext: Record<string, unknown> | null, linkedWorker = false) {
     const has = (permission: string) => permissions.includes(permission);
     if (roles.includes("sync_foreman")) return "/syncfield/today";
     const internal = roles.some((role) => !["partner_admin", "partner_foreman"].includes(role));
@@ -246,7 +251,7 @@ export class AuthController {
     if (has("project.read") || has("work_order.read")) return "/operations";
     if (has("invoice.read") || has("billable_item.read")) return "/finance";
     if (has("partner_context.read")) return roles.includes("partner_foreman") && !roles.includes("partner_admin") ? "/syncfield/today" : "/partner";
-    return "/";
+    return linkedWorker ? "/work-safety" : "/";
   }
 
   private createSessionToken(tenantId: string, userId: string, email: string) {

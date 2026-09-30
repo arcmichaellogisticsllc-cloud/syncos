@@ -39,6 +39,7 @@ export function routeAllowed(path: string, context: AuthContext | null): boolean
   const route = path.split(/[?#]/)[0];
   if (publicRoute(route)) return true;
   if (!context) return false;
+  if (route === "/work-safety") return true; // API returns only own acknowledgments or authorized staff controls.
   if (route === "/training") return context.permissions.length > 0;
   // Field/company routes enforce assignment and persona boundaries in their own shell and APIs.
   if (route === "/syncfield/design-prep") return context.permissions.includes("syncfield_map.work_zone.manage");

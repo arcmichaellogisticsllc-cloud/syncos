@@ -1,4 +1,5 @@
-import { lockFieldWork } from "./field-stop-scope";
+import { lockWorkSafety, safetyBlockers } from "./work-safety";
+import { lockFieldWork, hasActiveFieldStop } from "./field-stop-scope";
 import { requireCustomerAcceptedBilling, validateAcceptedBillingQuantity } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
@@ -1516,6 +1517,7 @@ export class ProductionController {
       const status = body.status === undefined ? "submitted" : requireAllowed(body.status, new Set(["draft", "submitted"]), "production status");
       return await this.write(request, "production_record.create", status === "submitted" ? "production.submitted" : "production.created", "production_record", async (client) => {
         const context = await this.validateProductionCreateContext(client, request.auth.tenantId, body, productionType);
+        await this.requireNoActiveStopWork(client,{tenant_id:request.auth.tenantId,work_order_id:context.workOrder.id,crew_id:body.crew_id??context.workOrder.assigned_crew_id});
         const quantity = this.productionClaimedQuantity(body, productionType);
         const unit = this.productionUnit(body, quantity);
         this.validateProductionTypeNotes(body, productionType);
@@ -1599,6 +1601,7 @@ export class ProductionController {
       }
       return await this.write(request, "production_record.update", "production_record.updated", "production_record", async (client) => {
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
+        await this.requireNoActiveStopWork(client,before);
         if (["approved", "billable", "rejected", "voided", "archived"].includes(before.status)) throw new BadRequestException("approved, rejected, voided, billable, and archived production records cannot be edited");
         await this.validateProductionReferences(client, request.auth.tenantId, values, body, before);
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, values);
@@ -1712,7 +1715,7 @@ export class ProductionController {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcManagerRoles, "QC Manager authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         if (!["qc_review", "under_review"].includes(before.status)) throw new BadRequestException("production record must be in review");
-        this.requireNoActiveStopWork(before);
+        await this.requireNoActiveStopWork(client,before);
         await this.requireQcValidation(client, request.auth.tenantId, before);
         this.requireQuantityAtMost(acceptedQuantity, before.quantity_submitted, "accepted_quantity", "quantity_submitted");
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
@@ -1770,7 +1773,7 @@ export class ProductionController {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, approveAuthorityRoles, "QC Manager or Operations Manager authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         if (!["accepted", "submitted", "under_review", "corrected"].includes(before.status)) throw new BadRequestException("production record must be accepted, submitted, under_review, or corrected");
-        this.requireNoActiveStopWork(before);
+        await this.requireNoActiveStopWork(client,before);
         const maximum = before.accepted_quantity ?? before.claimed_quantity ?? before.quantity_submitted;
         this.requireQuantityAtMost(approvedQuantity, maximum, "approved_quantity", before.accepted_quantity ? "accepted_quantity" : "claimed_quantity");
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
@@ -1800,7 +1803,7 @@ export class ProductionController {
       await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, billableAuthorityRoles, "Billing Manager or QC Manager authority is required");
       const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
       if (before.status !== "approved") throw new BadRequestException("production record must be approved");
-      this.requireNoActiveStopWork(before);
+      await this.requireNoActiveStopWork(client,before);
       if (!before.approved_quantity || Number(before.approved_quantity) <= 0) throw new BadRequestException("approved_quantity must be > 0");
       const rateCodeId = body.rate_code_id ?? before.rate_code_id;
       if (rateCodeId) await this.requireActiveRateCode(client, request.auth.tenantId, rateCodeId, String(before.unit_type));
@@ -1860,10 +1863,16 @@ export class ProductionController {
   async issueStopWork(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       const reason = requireString(body.reason ?? body.stop_work_reason, "stop work reason is required");
+      if(typeof body.utility_strike!=="boolean")throw new BadRequestException("Explicitly confirm whether this is a utility strike");
       return await this.write(request, "stop_work.issue", "production_record.stop_work_issued", "production_record", async (client) => {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, stopWorkIssueAuthorityRoles, "Safety Manager, QC Manager, or Executive authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         if (before.work_order_id && before.crew_id) await lockFieldWork(client, request.auth.tenantId, String(before.work_order_id), String(before.crew_id));
+        if (!before.work_order_id) throw new BadRequestException("Assign the record to a work order before issuing a scoped shutdown");
+        await lockWorkSafety(client,request.auth.tenantId,String(before.work_order_id));
+        const existing = await client.query("SELECT id FROM work_safety_controls WHERE tenant_id=$1 AND source_production_record_id=$2 AND status='active'",[request.auth.tenantId,id]);
+        if (!existing.rows.length) await client.query(`INSERT INTO work_safety_controls(tenant_id,work_order_id,crew_id,control_type,reason,utility_strike,status,required_approvals,created_by,source_production_record_id)
+          VALUES($1,$2,$3,'stop',$4,$5,'active',$6,$7,$8)`,[request.auth.tenantId,before.work_order_id,before.crew_id,reason,body.utility_strike===true,body.utility_strike===true?['utility_owner','safety','operations']:['safety','operations'],request.auth.userId,id]);
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
           stop_work_status: "active",
           stop_work_reason: reason,
@@ -1888,6 +1897,7 @@ export class ProductionController {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, stopWorkReleaseAuthorityRoles, "Safety Manager or Executive authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         if (before.work_order_id && before.crew_id) await lockFieldWork(client, request.auth.tenantId, String(before.work_order_id), String(before.crew_id));
+        if (before.stop_work_status === "active") throw new BadRequestException("Record the required restart approvals in Safety reviews and work authorization; a single release cannot clear this stop");
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
           stop_work_status: "released",
           stop_work_release_reason: releaseReason,
@@ -3494,8 +3504,13 @@ export class ProductionController {
     if (!(await this.hasActiveEvidence(client, tenantId, String(record.id)))) throw new BadRequestException("active evidence is required");
   }
 
-  private requireNoActiveStopWork(record: Record<string, unknown>) {
+  private async requireNoActiveStopWork(client: PoolClient, record: Record<string, any>) {
     if (record.stop_work_status === "active") throw new BadRequestException("active stop work blocks this action");
+    if(record.work_order_id){
+      if(record.crew_id && await hasActiveFieldStop(client,record.tenant_id,record.work_order_id,record.crew_id))throw new BadRequestException('crew_work_order_stopped');
+      const blocked=await safetyBlockers(client,record.tenant_id,record.work_order_id,record.crew_id??null,null,false);
+      if(blocked.length)throw new BadRequestException(blocked.join(','));
+    }
   }
 
   private async requireActiveRateCode(client: PoolClient, tenantId: string, rateCodeId: unknown, unitType: string) {

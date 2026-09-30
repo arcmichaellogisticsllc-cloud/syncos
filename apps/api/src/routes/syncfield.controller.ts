@@ -1,3 +1,4 @@
+import { safetyBlockers } from "./work-safety";
 import { hasActiveFieldStop } from "./field-stop-scope";
 import { decodeFieldEvidence, assertEvidenceReplay } from "./field-evidence-validation";
 import { resolveFieldIdentity } from "../security/field-identity";
@@ -1088,6 +1089,7 @@ export class SyncfieldController {
           return { entityType: "production_record", entityId: existing.id, afterState: await this.safeProductionRecordDetail(writeClient, existing), skipEventAudit: true };
         }
         const code = await this.requireAuthorizedProductionCode(writeClient, assignment, requireString(body.production_code_id, "production_code_id is required"));
+        await this.requireUndergroundApproval(writeClient,assignment,date,code);
         const locationType = requireString(body.location_type ?? code.location_type, "location_type is required");
         if (!productionLocationTypes.has(locationType) || locationType !== code.location_type) throw new BadRequestException("production code is not valid for location type");
         const status = requireString(body.status ?? "complete", "status is required").toLowerCase();
@@ -1552,6 +1554,18 @@ export class SyncfieldController {
         if (!["open", "acknowledged", "in_progress"].includes(correction.status)) throw new BadRequestException("correction is not open for resubmission");
         this.validateCorrectionAllowedFields(correction, body);
         const correctionRecord = await this.requireProductionRecord(writeClient, context.tenant_id, correction.production_record_id);
+        if (await hasActiveFieldStop(writeClient,context.tenant_id,correctionRecord.work_order_id,crew.id)) throw new BadRequestException('crew_work_order_stopped');
+        if(correction.correction_type==='rework' || body.production_code_id!==undefined){
+          const assignment=await this.requireForemanOperationalAssignment(writeClient,context);
+          if(assignment.work_order_version_id!==correctionRecord.work_order_version_id)throw new BadRequestException('Rework requires the original assigned work order');
+          const today=new Date().toISOString().slice(0,10);
+          await this.assertProductionGate(writeClient,assignment,today);
+          const code=(await writeClient.query('SELECT code FROM syncfield_production_codes WHERE tenant_id=$1 AND id=$2',[context.tenant_id,body.production_code_id??correctionRecord.syncfield_production_code_id])).rows[0];
+          if(code)await this.requireUndergroundApproval(writeClient,assignment,today,code);
+        }
+        const activeStops=await safetyBlockers(writeClient,context.tenant_id,correctionRecord.work_order_id,crew.id,null,false);
+        if(activeStops.length)throw new BadRequestException(activeStops.join(','));
+
         if (body.production_code_id !== undefined) {
           const code = await writeClient.query(`SELECT pc.id FROM syncfield_work_order_production_codes wopc JOIN syncfield_production_codes pc ON pc.tenant_id=wopc.tenant_id AND pc.id=wopc.production_code_id WHERE wopc.tenant_id=$1 AND wopc.work_order_version_id=$2 AND pc.id=$3 AND pc.location_type=$4 AND pc.active=true AND pc.deleted_at IS NULL AND wopc.status='active' AND wopc.deleted_at IS NULL AND pc.unit_of_measure=$5`,[context.tenant_id,correctionRecord.work_order_version_id,body.production_code_id,correctionRecord.syncfield_location_type,correctionRecord.unit_of_measure ?? correctionRecord.unit]);
           if (!code.rows[0]) throw new BadRequestException("production code must match the authorized Work Order, location type and submitted unit");
@@ -2930,7 +2944,8 @@ export class SyncfieldController {
   private async productionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
     const blockers: string[] = [];
     if (await hasActiveFieldStop(client, assignment.tenant_id, assignment.work_order_id, assignment.crew_id)) blockers.push("crew_work_order_stopped");
-    const execution = await client.query("SELECT execution_model,status FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [assignment.tenant_id,assignment.work_order_version_id]);
+    const execution = await client.query("SELECT execution_model,status,pre_bore_required,safety_scope_reviewed_at FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [assignment.tenant_id,assignment.work_order_version_id]);
+    if (!execution.rows[0]?.safety_scope_reviewed_at) blockers.push("work_safety_scope_not_reviewed");
     if (execution.rows[0]?.status !== "active") blockers.push("work_order_not_active");
     if (execution.rows[0]?.execution_model === "internal") {
       const clearance = await client.query("SELECT id FROM internal_field_clearances WHERE tenant_id=$1 AND work_order_version_id=$2 AND status='authorized' AND valid_until >= CURRENT_DATE AND valid_until >= $3::date", [assignment.tenant_id,assignment.work_order_version_id,workDate]);
@@ -2964,8 +2979,19 @@ export class SyncfieldController {
     }
     const jsa = await this.findJsa(client, assignment, workDate);
     if (!jsa || jsa.status !== "completed") blockers.push("daily_jsa_incomplete");
+    const underground = await client.query(`SELECT 1 FROM production_records pr JOIN syncfield_production_codes pc ON pc.tenant_id=pr.tenant_id AND pc.id=pr.syncfield_production_code_id
+      WHERE pr.tenant_id=$1 AND pr.work_order_version_id=$2 AND pr.crew_id=$3 AND pr.production_date=$4::date AND pr.deleted_at IS NULL AND pr.status <> 'void'
+      AND upper(pc.code) IN ('BORE','PLOW','EXCAVATION') LIMIT 1`,[assignment.tenant_id,assignment.work_order_version_id,assignment.crew_id,workDate]);
+    blockers.push(...await safetyBlockers(client,assignment.tenant_id,assignment.work_order_id,assignment.crew_id,jsa,execution.rows[0]?.pre_bore_required===true || underground.rows.length>0));
     if (assignment.version_status !== "ready" || assignment.processing_status !== "ready") blockers.push("map_version_not_ready");
     return { allowed: blockers.length === 0, blockers, daily_jsa_id: jsa?.id ?? null };
+  }
+
+  private async requireUndergroundApproval(client: PoolClient, assignment: MapAssignmentRow, date: string, code: QueryResultRow) {
+    if (!["BORE","PLOW","EXCAVATION"].includes(String(code.code).toUpperCase())) return;
+    const jsa=await this.findJsa(client,assignment,date);
+    const blocks=await safetyBlockers(client,assignment.tenant_id,assignment.work_order_id,assignment.crew_id,jsa??undefined,true);
+    if(blocks.length)throw new BadRequestException(blocks.join(","));
   }
 
   private async assertProductionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
@@ -3230,6 +3256,7 @@ export class SyncfieldController {
     const productionCodeId = this.optionalString(body.production_code_id) ?? designSegment?.production_code_id;
     if (!productionCodeId) throw new BadRequestException("production_code_id is required");
     const code = await this.requireAuthorizedProductionCode(client, assignment, String(productionCodeId));
+    await this.requireUndergroundApproval(client,assignment,workDate,code);
     if (code.location_type !== "route") throw new BadRequestException("SpanCompletion requires a route production code");
     const quantity = this.positiveNumber(body.reported_quantity, "reported_quantity must be positive");
     const sequence = this.sequenceTraceability(body, quantity, code);
