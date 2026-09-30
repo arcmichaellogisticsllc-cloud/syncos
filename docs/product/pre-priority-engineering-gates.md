@@ -1,0 +1,63 @@
+# Engineering gates before Priority automation
+
+User-confirmed order, 2026-09-29. These requirements supplement the operating model and supersede any interpretation that the September 29 acceptance checks established full field readiness. Preserve existing application scope, both workforce types, and demo data. Priority automation remains disabled.
+
+## 1. Safety and authorization
+
+Required: version safety records when location or conditions change; record each worker's own acknowledgment with identity, time and revision; require applicable pre-bore approval; apply stops to affected crews and work locations, including queued offline requests; require applicable approval before restart.
+
+Current evidence: JSA revisions and crew/work-order stop enforcement exist in `apps/api/src/routes/syncfield.controller.ts` and `field-stop-scope.ts`. Bulk acknowledgment was removed. This does not implement individual acknowledgment, location-scoped stop propagation, a pre-bore authorization model, or the full restart approval chain.
+
+Acceptance: an old acknowledgment cannot satisfy a new revision; a foreman cannot acknowledge for another person; absent/unauthorized pre-bore approval blocks affected work; offline replay rechecks current stops and approval scope; releasing one stop does not remove another applicable hold. Test both workforce types and physical devices.
+
+## 2. Complete field evidence
+
+Required: required formats and practical sizes, retained original bytes, capture details, duplicate-safe retries, and distinct missing/readable/submitted/accepted evidence states.
+
+Current evidence: scoped durable device retries and server checksum/idempotency checks support JPEG/PNG/PDF/MP4 up to 20 MiB. Signature checks are not full readability validation. Required-evidence policies, complete capture provenance, unsupported phone formats, delayed delivery and physical-device suspension remain to be validated or completed. Do not silently discard unsupported originals.
+
+Acceptance: missing or unreadable mandatory evidence blocks the relevant handoff; late evidence attaches to the correct work/revision without rewriting the original; interrupted upload and resend preserve one original file and an accurate status.
+
+## 3. Production quantity integrity
+
+Required: immutable correction history and one authoritative installed quantity per work item. Date conflicts, overlapping summaries and quantity subsets require explicit reconciliation.
+
+Acceptance: 886 installed feet including 180 rock feet remains 886 installed feet. Rock is a classified subset, not another 180 installed feet. Any premium is a separately approved commercial item linked to the same underlying work. Replaying or importing an overlapping summary cannot increase installed quantity. Historical records remain unchanged when corrections supersede them.
+
+Existing correction/replay tests do not certify every overlap, subset or conflicting-date case.
+
+## 4. QC through customer acceptance
+
+Required: versioned prime-specific deadline policy and clear ownership through finding, correction, evidence, review and customer acceptance. Internal QC does not authorize billing.
+
+Current evidence: correction/reinspection and customer-acceptance guards exist, but `syncfield.controller.ts` currently accepts a manually supplied correction due date. Prime-policy derivation and its timing/calendar rules are not established by that implementation.
+
+Acceptance: deadlines retain the policy/version, triggering event, timezone/calendar and responsible owner. Escalations do not silently close findings. Corrected evidence must be reviewed; only the applicable customer decision authorizes accepted quantities for finance. Do not invent a prime deadline when its policy is unavailable.
+
+## 5. Contract-driven financial calculations
+
+Required: approved relationship-specific rates, effective periods, payment triggers, retainage and authorized exceptions. PKS Net 14 begins with invoice acceptance, not invoice creation.
+
+Confirmed gap: `accepted-production-financials.controller.ts` currently inserts `net_30`, sets due date to today plus 30 days, and inserts invoice acceptance status `accepted` at creation. `cash.controller.ts` also defaults to Net 30 and lacks an explicit Net 14 option. Customer acceptance of production must not be confused with customer acceptance of an invoice package.
+
+Acceptance: an unaccepted PKS invoice has no fabricated acceptance date; recording actual invoice acceptance calculates its contractual due date. Rejection/resubmission follows the approved policy without silently resetting or inventing terms. Preserve historical invoices; use explicit reviewed correction rather than bulk rewriting due dates.
+
+## 6. Billing packets and delivery receipts
+
+Required: prime-specific package templates and completeness checks; separate generation, delivery, rejection, resubmission and acceptance records. A field report, export or generated invoice alone is not proof of package delivery or acceptance.
+
+Acceptance: immutable packet versions reference the accepted work, rates, required evidence and invoice. Delivery records identify destination, time and receipt/proof. Rejected packets retain their history; resubmission creates a traceable version. Actual acceptance is an explicit authorized event, available as a contractual due-date trigger.
+
+## 7. Reconciliation and payment controls
+
+Required: trace accepted work to customer invoices and separately to partner earnings; handle duplicate/partial payments, holds, adjustments and unmatched events. Sync employee production must not generate partner settlements.
+
+Current evidence: partner lineage/amount guards, serialized external payment recording, durable observation review, duplicate protection and recovery replay tests exist. They do not certify live Passport authentication, account/payee mapping, provider status semantics or production automation.
+
+Acceptance: each payment allocation has an eligible source and cannot exceed its remaining amount. Conflicts/returns and unmatched observations stay reviewable. No money moves from an observation. Customer receipts and partner payments remain separate. Known legacy demo payables remain preserved and blocked where lineage is missing; provider automation must exclude demo records.
+
+## Evidence and signoff
+
+For each gate record the governing requirement/policy, actor, prerequisites, stored facts, UI behavior, successful workflow, prohibited action, adverse/retry case and actual test result. Mark implemented, verified, partial and untested separately. See `docs/acceptance/pre-payment-20260929.md` for the scoped checks already performed. Those results remain valid for their stated scenarios, but none waives the requirements above.
+
+Complete in this order. Do not enable Priority automation until the required gates and supported-device acceptance are signed off with evidence.

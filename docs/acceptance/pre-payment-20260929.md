@@ -2,6 +2,10 @@
 
 The tested engineering candidate is **1d51523f8adc60a3b8ea46b39fc93c250912c2af**, on `codex/pre-payment-acceptance-20260929`, based on 228eac1. Later documentation commits do not change the deployed application. Priority automation remains disabled. This report is not physical-device or payment-provider certification.
 
+## Scope clarification
+
+The user subsequently confirmed seven ordered [engineering gates](../product/pre-priority-engineering-gates.md). The checks below are scoped regression evidence, not signoff for those broader requirements. Individual safety acknowledgment, pre-bore authorization, prime policy deadlines, contract-triggered invoice terms and packet acceptance remain open. Invoice creation currently hardcodes Net 30 and accepted status; this must be corrected before payment automation.
+
 ## Implemented safeguards
 
 - Evidence is saved to scoped device storage before transmission, survives reload, and retries with the original request identity. Server replay compares content hash and metadata; an identical retry produces one evidence record and one audit entry. JPEG, PNG, PDF and MP4 are capped at 20 MiB decoded; malformed content and changed retries fail.
