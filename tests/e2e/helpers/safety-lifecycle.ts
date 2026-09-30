@@ -21,6 +21,14 @@ export async function verifySafetyLifecycle(request:APIRequestContext,tenant:str
    }finally{await db.query('ROLLBACK');}
   }
   let jsa=await current();
+  // Removed or inactive participants cannot continue satisfying a signed crew review.
+  const participant=(await db.query("SELECT p.worker_id FROM daily_jsa_participants p WHERE p.tenant_id=$1 AND p.daily_jsa_id=$2 AND p.participation_status='present' ORDER BY (p.worker_id=$3) ASC LIMIT 1",[tenant,jsa.id,jsa.foreman_worker_id])).rows[0];
+  const memberships=(await db.query("SELECT id FROM partner_crew_memberships WHERE tenant_id=$1 AND crew_id=$2 AND worker_id=$3 AND status='active' AND deleted_at IS NULL",[tenant,wo.assigned_crew_id,participant.worker_id])).rows.map(row=>row.id);
+  expect(memberships.length).toBeGreaterThan(0);
+  await db.query("UPDATE partner_crew_memberships SET status='ended' WHERE tenant_id=$1 AND id=ANY($2::uuid[])",[tenant,memberships]);
+  try{const {safetyBlockers}=require('../../../apps/api/dist/routes/work-safety');const blockers=await safetyBlockers(db,tenant,wo.work_order_id,wo.assigned_crew_id,jsa,false);expect(blockers).toContain('crew_changed_requires_jsa_revision');}
+  finally{await db.query("UPDATE partner_crew_memberships SET status='active' WHERE tenant_id=$1 AND id=ANY($2::uuid[])",[tenant,memberships]);}
+
   await post(foreman,`work-safety/jsas/${jsa.id}/acknowledge`,{confirmed:true,revision_number:jsa.revision_number-1},400);
   await post(foreman,`work-safety/jsas/${jsa.id}/acknowledge`,{confirmed:true,revision_number:jsa.revision_number,worker_id:jsa.foreman_worker_id},400);
   await post(foreman,`work-safety/work-orders/${version}/scope-review`,{pre_bore_required:false,evidence_reference:'SYNTHETIC unauthorized override'},403);

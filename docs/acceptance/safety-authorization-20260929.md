@@ -28,3 +28,7 @@ An earlier browser test timed out during context cleanup; it passed on subsequen
 - Staff verify and record external approval evidence; the application does not contact utilities or supervisors or manufacture their approval.
 - The shared administrative gate passed two lifecycle scenarios; this is not a certification of every older administrative screen. Physical rework entered through older administrative correction routes still needs review.
 - The separate evidence completeness, quantity overlap/subset, prime-policy deadline, contract terms, invoice-package and reconciliation priorities remain open. Existing end-to-end test success does not waive them.
+
+## September 30 roster regression
+
+Present JSA participants count toward staffing only while their worker and crew membership remain active. A departed present participant requires a reviewed JSA revision. The shared safety lifecycle test removes a member from each synthetic crew, verifies the block, and restores only the synthetic fixture for subsequent cases. All 16 internal-workforce and daily-production browser/API checks passed (`/private/tmp/syncos-crew-change-e2e.log`). This does not certify the older administrative physical-rework path or actual-phone operation.

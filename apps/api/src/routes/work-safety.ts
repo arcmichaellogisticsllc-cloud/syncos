@@ -20,11 +20,17 @@ export async function safetyBlockers(c: PoolClient, tenant: string, workOrder: s
     const attendance=(await c.query(`SELECT count(*) FILTER(WHERE p.participation_status='present')::int AS present,
       bool_or(p.worker_id=$3 AND p.participation_status='present') AS foreman_present,c.target_staffing_level
       FROM daily_jsa_participants p JOIN crews c ON c.tenant_id=p.tenant_id AND c.id=$4
-      WHERE p.tenant_id=$1 AND p.daily_jsa_id=$2 GROUP BY c.id`,[tenant,jsa.id,jsa.foreman_worker_id,crew])).rows[0];
+      JOIN workers w ON w.tenant_id=p.tenant_id AND w.id=p.worker_id AND w.status='active' AND w.deleted_at IS NULL
+      WHERE p.tenant_id=$1 AND p.daily_jsa_id=$2 AND EXISTS(SELECT 1 FROM partner_crew_memberships m
+        WHERE m.tenant_id=p.tenant_id AND m.worker_id=p.worker_id AND m.crew_id=$4 AND m.status='active' AND m.deleted_at IS NULL)
+      GROUP BY c.id`,[tenant,jsa.id,jsa.foreman_worker_id,crew])).rows[0];
     if(!attendance || !attendance.foreman_present || attendance.present<Number(attendance.target_staffing_level))blockers.push('daily_crew_attendance_not_ready');
     const membershipChanged=await c.query(`SELECT m.id FROM partner_crew_memberships m JOIN workers w ON w.tenant_id=m.tenant_id AND w.id=m.worker_id AND w.status='active' AND w.deleted_at IS NULL
       WHERE m.tenant_id=$1 AND m.crew_id=$2 AND m.status='active' AND m.deleted_at IS NULL
-      AND NOT EXISTS(SELECT 1 FROM daily_jsa_participants p WHERE p.tenant_id=m.tenant_id AND p.daily_jsa_id=$3 AND p.worker_id=m.worker_id) LIMIT 1`,[tenant,crew,jsa.id]);
+      AND NOT EXISTS(SELECT 1 FROM daily_jsa_participants p WHERE p.tenant_id=m.tenant_id AND p.daily_jsa_id=$3 AND p.worker_id=m.worker_id)
+      UNION ALL SELECT p.id FROM daily_jsa_participants p WHERE p.tenant_id=$1 AND p.daily_jsa_id=$3 AND p.participation_status='present'
+      AND NOT EXISTS(SELECT 1 FROM partner_crew_memberships m JOIN workers w ON w.tenant_id=m.tenant_id AND w.id=m.worker_id AND w.status='active' AND w.deleted_at IS NULL
+        WHERE m.tenant_id=p.tenant_id AND m.worker_id=p.worker_id AND m.crew_id=$2 AND m.status='active' AND m.deleted_at IS NULL) LIMIT 1`,[tenant,crew,jsa.id]);
     if(membershipChanged.rows.length)blockers.push('crew_changed_requires_jsa_revision');
     const missing = await c.query(`SELECT p.id FROM daily_jsa_participants p
       WHERE p.tenant_id=$1 AND p.daily_jsa_id=$2 AND p.participation_status='present'
