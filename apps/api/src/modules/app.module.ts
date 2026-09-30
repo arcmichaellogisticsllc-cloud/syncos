@@ -1,3 +1,4 @@
+import { PrimeCorrectionPolicyController } from "../routes/prime-correction-policy.controller";
 import { ProductionQuantityReviewController } from "../routes/production-quantity-review.controller";
 import { FieldEvidenceReviewController } from "../routes/field-evidence-review.controller";
 import { WorkSafetyController } from "../routes/work-safety.controller";
@@ -58,7 +59,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [ProductionQuantityReviewController, FieldEvidenceReviewController,
+  controllers: [PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,

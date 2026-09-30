@@ -24,13 +24,13 @@ Required: immutable correction history and one authoritative installed quantity 
 
 Acceptance: 886 installed feet including 180 rock feet remains 886 installed feet. Rock is a classified subset, not another 180 installed feet. Any premium is a separately approved commercial item linked to the same underlying work. Replaying or importing an overlapping summary cannot increase installed quantity. Historical records remain unchanged when corrections supersede them.
 
-Existing correction/replay tests do not certify every overlap, subset or conflicting-date case.
+Current local candidate: immutable quantity reviews, stable work-item identity, included-subset and summary relationships, correction-aware source fingerprints and finance/acceptance gates are implemented. The combined 29-check workflow run passed. See `docs/acceptance/production-quantity-20260929.md`. Older administrative rollups and broader reporting remain to be reconciled; geometric overlap still requires source review.
 
 ## 4. QC through customer acceptance
 
 Required: versioned prime-specific deadline policy and clear ownership through finding, correction, evidence, review and customer acceptance. Internal QC does not authorize billing.
 
-Current evidence: correction/reinspection and customer-acceptance guards exist, but `syncfield.controller.ts` currently accepts a manually supplied correction due date. Prime-policy derivation and its timing/calendar rules are not established by that implementation.
+Current local candidate: migration 076 and the customer-QC UI support approved prime-policy revisions, original event timing, time zones, explicit holiday calendars and responsible foreman identity. Failed findings remain recorded when deadline prerequisites are missing. Existing scheduled deadlines do not change with later policies. See `docs/acceptance/correction-deadlines-20260930.md`; actual policy coverage, legacy parity, reassignment and escalation remain unverified.
 
 Acceptance: deadlines retain the policy/version, triggering event, timezone/calendar and responsible owner. Escalations do not silently close findings. Corrected evidence must be reviewed; only the applicable customer decision authorizes accepted quantities for finance. Do not invent a prime deadline when its policy is unavailable.
 

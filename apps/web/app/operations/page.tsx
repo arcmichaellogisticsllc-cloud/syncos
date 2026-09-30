@@ -9,7 +9,9 @@ export default function OperationsPage() {
   if (!data) return <DashboardStatus title="Operations Board" state={dashboard} />;
   const coverage = valueAt(data, "capacityCoverageRatio.currentValue");
   const activatedProviders = valueAt(data, "activatedProviders");
-  const productionVolume = valueAt(data, "productionVolume");
+  const productionGroups = valueAt(data, "productionQuantities.by_unit", []) as {unit:string;quantity:number}[];
+  const productionVolume = productionGroups.map(group=>`${formatValue(group.quantity)} ${group.unit}`).join(" · ") || "No reviewed quantities";
+  const pendingQuantityReviews = valueAt(data, "productionQuantities.pending_review_count");
   const stopWorkCount = valueAt(data, "stopWorkCount");
   const correctionRate = valueAt(data, "correctionRate.currentValue");
   const approvalRate = valueAt(data, "qcScore.approvalRate.currentValue");
@@ -37,7 +39,7 @@ export default function OperationsPage() {
           items={[
             { label: "Capacity coverage", value: formatValue(coverage), helper: "Latest capacity coverage KPI." },
             { label: "Activated providers", value: formatValue(activatedProviders), helper: "Providers available for execution." },
-            { label: "Production volume", value: formatValue(productionVolume), helper: "Submitted production quantity." },
+            { label: "Reviewed production", value: productionVolume, helper: "By unit; summaries, subsets and unreviewed work are excluded." },
             { label: "Stop-work items", value: formatValue(stopWorkCount), helper: "Active stop-work risk." },
           ]}
         />
@@ -65,7 +67,7 @@ export default function OperationsPage() {
           title="Execute work"
           purpose="Watch field production and stop-work signals."
           rows={[
-            { label: "Production board", value: formatValue(productionVolume), href: "/production", helper: "Submitted production volume." },
+            { label: "Production board", value: productionVolume, href: "/production", helper: "Reviewed quantities by unit." },
             { label: "Stop-work active", value: formatValue(stopWorkCount), href: "/production", helper: "Records needing field/ops decision." },
             { label: "Capacity coverage", value: formatValue(coverage), href: "/operations", helper: "KPI signal for execution readiness." },
           ]}
@@ -96,7 +98,7 @@ export default function OperationsPage() {
           description="Open these queues when execution, production, or quality signals need a decision."
           rows={[
             { label: "Work orders ready for coordination", value: "Open", href: "/work-orders", helper: "Assign work, monitor status, and inspect blockers." },
-            { label: "Production needing review", value: formatValue(productionVolume), href: "/production", helper: "Move submitted field work through review." },
+            { label: "Quantity reviews needed", value: formatValue(pendingQuantityReviews), href: "/production", helper: "Move submitted field work through review." },
             { label: "QC review and corrections", value: formatValue(correctionRate), href: "/qc", helper: "Resolve correction and approval pressure." },
           ]}
         />

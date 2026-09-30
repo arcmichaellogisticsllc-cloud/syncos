@@ -1,5 +1,5 @@
 import {reviewFixtureQuantity} from "./helpers/quantity-review";
-import { acknowledgeFixtureJsa, reviewFixtureSafetyScope } from "./helpers/individual-safety";
+import { acknowledgeFixtureJsa, reviewFixtureSafetyScope, safetyActor } from "./helpers/individual-safety";
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
@@ -226,8 +226,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
 
     await installSession(page,seeded.internalToken,seeded.internalPermissions);
     await page.goto("/customer-qc");await page.getByLabel("Submitted daily report").selectOption(reportId);
-    await page.getByRole("button",{name:"Confirm completeness"}).click();await expect(page.getByRole("status")).toContainText("Completeness confirmed");
-    await page.getByLabel("Customer source reference").fill("customer-email-arl019");await page.getByRole("button",{name:"Open customer inspection cycle"}).click();await expect(page.getByRole("status")).toContainText("inspection cycle opened");
+    await page.getByRole("button",{name:"Confirm completeness"}).click();await expect(page.getByRole("status").filter({hasText:"Completeness confirmed"})).toBeVisible();
+    await page.getByLabel("Customer source reference").fill("customer-email-arl019");await page.getByRole("button",{name:"Open customer inspection cycle"}).click();await expect(page.getByRole("status").filter({hasText:"inspection cycle opened"})).toBeVisible();
     const inspection=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
     expect(inspection.completeness_status).toBe("complete");expect(inspection).toHaveProperty("customer_qc_outcome");
     const cycle=inspection.cycles[0];expect(cycle.status).toBe("awaiting_customer");expect(cycle.qc_authority_organization_id).toBeTruthy();
@@ -265,7 +265,6 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
       correction_type: "asset_identifier",
       allowed_fields: ["asset_identifier", "notes"],
       partner_safe_instructions: "Correct the pole identifier and resubmit for Customer reinspection.",
-      due_date: "2026-08-29",
       client_mutation_id: crypto.randomUUID(),
     });
     correctionId = correction.correction.id;
@@ -298,6 +297,46 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     await expect(page.getByText("approved by Sync", { exact: false })).toHaveCount(0);
 
     expect(await downstreamCounts(client)).toEqual({ ...downstreamCountsBefore, production: downstreamCountsBefore.production + 6 });
+  });
+
+  test("prime policy derives deadlines from original receipt and preserves scheduled dates across revisions", async ({request,page}) => {
+    const before=await apiJson(request,seeded.internalToken,"GET",`/prime-correction-policies/reports/${reportId}`);
+    expect(before.can_manage).toBe(false);expect(before.corrections.find((c:any)=>c.id===correctionId).deadline_status).toBe('needs_policy_review');
+    const manager=await safetyActor(seeded.tenantA,'qc_manager');
+    const role=(await client.query("SELECT id FROM roles WHERE tenant_id=$1 AND system_key='qc_manager'",[seeded.tenantA])).rows[0].id;
+    await grantPermissions(client,seeded.tenantA,role,seeded.internalPermissions);
+    const endpoint=`/prime-correction-policies/work-orders/${seeded.workOrderVersionId}`;
+    const policy={duration:1,duration_unit:'business_days',trigger_event:'customer_received',time_zone:'America/New_York',holidays:['2026-09-07'],effective_from:'2026-01-01T00:00:00Z',source_reference:'SYNTHETIC approved prime policy for deadline acceptance only',verified:true,client_mutation_id:crypto.randomUUID()};
+    expect((await request.post(apiUrl(endpoint),{headers:auth(seeded.internalToken),data:policy})).status()).toBe(403);
+    expect((await request.post(apiUrl(endpoint),{headers:auth(seeded.foremanToken),data:policy})).status()).toBe(403);
+    expect((await request.get(apiUrl(`/prime-correction-policies/reports/${reportId}`),{headers:auth(seeded.foremanToken)})).status()).toBe(403);
+    const saved=await apiJson(request,manager,'POST',endpoint,policy);
+    expect((await apiJson(request,manager,'POST',endpoint,policy)).id).toBe(saved.id);
+    expect((await request.post(apiUrl(endpoint),{headers:auth(manager),data:{...policy,duration:2}})).status()).toBe(400);
+    const schedule=`/prime-correction-policies/corrections/${correctionId}/schedule`;
+    const missing=await apiJson(request,seeded.internalToken,'POST',schedule,{});expect(missing.deadline_status).toBe('needs_received_time');
+    const received={customer_received_at:'2026-09-04T15:00:00-04:00',verified:true};
+    const scheduled=await apiJson(request,seeded.internalToken,'POST',schedule,received);
+    expect(scheduled.due_at).toBe('2026-09-08T19:00:00.000Z');expect(scheduled.responsible_user_id).toBeTruthy();
+    await apiJson(request,manager,'POST',endpoint,{...policy,duration:5,client_mutation_id:crypto.randomUUID()});
+    expect((await apiJson(request,seeded.internalToken,'POST',schedule,received)).due_at).toBe(scheduled.due_at);
+    expect((await request.post(apiUrl(schedule),{headers:auth(seeded.internalToken),data:{customer_received_at:'2026-09-05T15:00:00-04:00',verified:true}})).status()).toBe(400);
+    await installSession(page,seeded.internalToken,seeded.internalPermissions);await page.goto('/customer-qc');
+    await page.getByLabel('Submitted daily report').selectOption(reportId);
+    await expect(page.getByRole('heading',{name:'Correction deadlines and ownership'})).toBeVisible();
+    await expect(page.getByText('Approve a prime correction policy',{exact:true})).toHaveCount(0);
+    await expect(page.getByText(/America\/New_York/).first()).toBeVisible();
+    await installSession(page,manager,seeded.internalPermissions);await page.goto('/customer-qc');await page.getByLabel('Submitted daily report').selectOption(reportId);
+    await page.getByText('Approve a prime correction policy',{exact:true}).click();
+    const form=page.locator('form').filter({has:page.getByRole('button',{name:'Approve correction policy',exact:true})});
+    await form.getByLabel('Duration',{exact:true}).fill('2');
+    await form.getByLabel('Policy time zone').fill('America/New_York');
+    await form.getByLabel('Effective from, with UTC offset').fill('2026-01-01T00:00:00Z');
+    await form.getByLabel('Governing policy and approval reference').fill('SYNTHETIC UI-approved policy; not commercial terms');
+    await form.getByRole('checkbox').check();await form.getByRole('button',{name:'Approve correction policy',exact:true}).click();
+    await expect(page.getByRole('status').filter({hasText:'Saved. Review the deadline status'})).toBeVisible();
+    expect((await apiJson(request,seeded.internalToken,'GET',`/prime-correction-policies/reports/${reportId}`)).policies).toHaveLength(3);
+
   });
 
   test("Partner correction resubmission creates Revision 2 and Customer reinspection cycle without reopening Revision 1", async ({ request, page }) => {

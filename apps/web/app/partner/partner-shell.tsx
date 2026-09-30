@@ -289,6 +289,7 @@ type CustomerCorrection = {
   partner_safe_instructions?: string;
   customer_reason?: string;
   due_date?: string | null;
+  due_at?: string | null; deadline_status?: string; deadline_time_zone?: string;
   allowed_fields?: string[];
   production_record_id?: string;
 };
@@ -2758,7 +2759,7 @@ function CorrectionList({ reports, field = false, canResubmit = false }: { repor
             ["Reported Quantity", report.decision?.reported_quantity === undefined ? "Not set" : `${report.decision.reported_quantity} ${report.decision.unit_of_measure ?? ""}`],
             ["Customer Instruction", correction.partner_safe_instructions || correction.customer_reason],
             ["Allowed Fields", (correction.allowed_fields ?? []).map(partnerFieldLabel).join(", ") || "Correction scope required"],
-            ["Due", correction.due_date || "Not set"],
+            ["Due", correction.deadline_status === "scheduled" && correction.due_at ? `${new Date(correction.due_at).toLocaleString(undefined,{timeZone:correction.deadline_time_zone})} (${correction.deadline_time_zone})` : (correction.deadline_status ?? "Deadline policy review required").replaceAll("_"," ")],
           ]} />
           {field && canResubmit && correction.id && ["open", "acknowledged", "in_progress"].includes(correction.status ?? "") ? <CorrectionEditor correction={correction} /> : null}
         </RecordCard>

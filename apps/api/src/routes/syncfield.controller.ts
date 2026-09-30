@@ -1,3 +1,4 @@
+import { scheduleCorrectionDeadline, verifiedReceivedTime } from "./prime-correction-deadlines";
 import { requireReviewedProductionQuantity, productionQuantityFingerprint, productionQuantitySource, quantityReviewCurrent } from "./production-quantity-integrity";
 import { evidenceKinds, evidenceReadiness, requireEvidenceReady } from "./field-evidence-readiness";
 import { safetyBlockers, lockWorkSafety } from "./work-safety";
@@ -1463,6 +1464,7 @@ export class SyncfieldController {
         const latestCycle = await writeClient.query("SELECT max(cycle_number) AS number FROM customer_qc_cycles WHERE tenant_id=$1 AND daily_report_id=$2 AND deleted_at IS NULL",[request.auth.tenantId,cycle.daily_report_id]);
         if (Number(cycle.cycle_number) !== Number(latestCycle.rows[0].number)) throw new BadRequestException("Record the decision against the current inspection cycle");
         const record = await this.requireCycleProductionRecord(writeClient, cycle, requireString(body.production_record_id, "production_record_id is required"));
+        const effectiveSource = await productionQuantitySource(writeClient, request.auth.tenantId, record.id);
         const decision = requireString(body.decision, "decision is required").toLowerCase();
         if (!customerQcDecisions.has(decision)) throw new BadRequestException("customer decision is invalid");
         const acceptedQuantity = body.customer_accepted_quantity === undefined || body.customer_accepted_quantity === null ? null : this.nonNegativeNumber(body.customer_accepted_quantity, "customer_accepted_quantity must be non-negative");
@@ -1489,8 +1491,8 @@ export class SyncfieldController {
           RETURNING *
           `,
           [
-            request.auth.tenantId, cycle.id, record.id, decision, record.quantity_submitted, acceptedQuantity,
-            record.unit_of_measure ?? record.unit, reason, this.optionalString(body.customer_comments), ["correction_required", "rejected"].includes(decision), request.auth.userId,
+            request.auth.tenantId, cycle.id, record.id, decision, effectiveSource.quantity_submitted, acceptedQuantity,
+            effectiveSource.unit ?? effectiveSource.unit_type, reason, this.optionalString(body.customer_comments), ["correction_required", "rejected"].includes(decision), request.auth.userId,
             this.optionalString(body.source_reference) ?? cycle.source_reference, mutationId,
           ],
         );
@@ -1527,9 +1529,9 @@ export class SyncfieldController {
               daily_report_id: cycle.daily_report_id,
               qc_cycle_id: cycle.id,
               qc_authority_organization_id: cycle.qc_authority_organization_id,
-              reported_quantity: Number(record.quantity_submitted),
+              reported_quantity: Number(effectiveSource.quantity_submitted),
               customer_accepted_quantity: acceptedQuantity,
-              unit: record.unit_of_measure ?? record.unit,
+              unit: effectiveSource.unit ?? effectiveSource.unit_type,
               decision,
             },
           }],
@@ -2428,6 +2430,8 @@ export class SyncfieldController {
     const correctionType = String(body.correction_type ?? (decision.decision === "rejected" ? "rework" : "other")).toLowerCase();
     if (!correctionTypes.has(correctionType)) throw new BadRequestException("correction_type is invalid");
     const allowedFields = this.textArray(body.allowed_fields ?? ["notes"], correctionFieldValues, "allowed_fields");
+    if(body.due_date !== undefined || body.due_at !== undefined)throw new BadRequestException("Correction deadlines must be derived from the approved prime policy");
+    const received = verifiedReceivedTime(body.customer_received_at, decision.recorded_at);
     const result = await client.query(
       `
       INSERT INTO production_corrections (
@@ -2442,10 +2446,12 @@ export class SyncfieldController {
         cycle.tenant_id, cycle.id, decision.id, cycle.daily_report_id, record.id, cycle.partner_organization_id, cycle.crew_id,
         correctionType, allowedFields, requireString(body.customer_reason ?? body.customer_comments ?? body.customer_reason_code, "customer reason is required"),
         requireString(body.partner_safe_instructions ?? body.customer_comments ?? "Customer correction required.", "partner_safe_instructions is required"),
-        body.due_date ?? null, request.auth.userId,
+        null, request.auth.userId,
       ],
     );
-    return result.rows[0] ?? null;
+    if(!result.rows[0])return null;
+    await client.query(`UPDATE production_corrections SET customer_received_at=$3,responsible_user_id=(SELECT foreman_user_id FROM daily_production_reports WHERE tenant_id=$1 AND id=$4) WHERE tenant_id=$1 AND id=$2`,[cycle.tenant_id,result.rows[0].id,received,cycle.daily_report_id]);
+    return scheduleCorrectionDeadline(client,cycle.tenant_id,result.rows[0].id);
   }
 
   private async updateCycleAndReportOutcome(client: PoolClient, cycle: QueryResultRow) {
@@ -2512,7 +2518,7 @@ export class SyncfieldController {
         wov.work_order_number, c.name AS crew_name, cyc.id AS cycle_id, cyc.cycle_number, cyc.status AS cycle_status,
         qa.name AS qc_authority_name, d.id AS decision_id, d.production_record_id, d.decision,
         d.reported_quantity, d.customer_accepted_quantity, d.unit_of_measure, d.customer_reason_code,
-        corr.id AS correction_id, corr.status AS correction_status, corr.correction_type, corr.partner_safe_instructions, corr.due_date, corr.allowed_fields,
+        corr.id AS correction_id, corr.status AS correction_status, corr.correction_type, corr.partner_safe_instructions, corr.due_date, corr.due_at, corr.deadline_status, corr.deadline_time_zone, corr.responsible_user_id, corr.allowed_fields,
         pr.asset_identifier, pr.from_asset_identifier, pr.to_asset_identifier, pc.code, pc.description
       FROM daily_production_reports r
       JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
@@ -2562,6 +2568,7 @@ export class SyncfieldController {
         correction_type: row.correction_type,
         partner_safe_instructions: row.partner_safe_instructions,
         due_date: this.dateOnly(row.due_date),
+        due_at: row.due_at, deadline_status: row.deadline_status, deadline_time_zone: row.deadline_time_zone, responsible_user_id: row.responsible_user_id,
         allowed_fields: row.allowed_fields ?? [],
       } : null,
     }));
@@ -2686,6 +2693,7 @@ export class SyncfieldController {
       customer_reason: row.customer_reason,
       partner_safe_instructions: row.partner_safe_instructions,
       due_date: this.dateOnly(row.due_date),
+      due_at: row.due_at, deadline_status: row.deadline_status, deadline_time_zone: row.deadline_time_zone, responsible_user_id: row.responsible_user_id,
       status: row.status,
       resubmitted_at: row.resubmitted_at,
     };
