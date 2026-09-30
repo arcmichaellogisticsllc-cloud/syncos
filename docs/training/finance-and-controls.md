@@ -259,3 +259,44 @@ For each F01–F14 exercise, record actor, actual permissions, tenant, device/br
 - External records/Passport preview: `apps/api/src/routes/payment-retainage-adjustments.controller.ts`.
 - Older lifecycle paths: billable, settlement, invoice, cash application, collections, contractor payable, payroll, payment execution, bank reconciliation and accounting export route controllers.
 - Business boundary: `docs/product/syncos-operating-model.md`. Current user direction supersedes older manual-only future-payment text: prepare automatic Passport recording, keep connection disabled pending sandbox certification.
+
+## Approved agreements and billing packages — candidate update, September 30
+
+These controls are in the financial-completion candidate. Check the deployed release before following this section on staging. Demo records with missing acceptance or agreement provenance remain preserved and blocked; do not approve invented facts to make them progress.
+
+### Approve the governing commercial terms
+
+1. Sign in with contract review and update authority. Open **Accepted Production Financials**.
+2. In **Approved agreement terms**, choose the customer's or partner's **Agreement rate schedule**. If none is listed, link an active rate schedule to its executed contract first.
+3. Compare the displayed rates with the signed agreement and approved pricing addendum. Choose **Customer** or **Partner contractor**.
+4. Select the actual **Payment clock starts at** event. Enter calendar days, retainage, effective work dates and the agreement time zone. For an agreement requiring Net 14 from invoice acceptance, choose **Invoice acceptance** and enter **14**. Do not choose invoice issue as a substitute.
+5. Enter a reference to the executed source. Check the verification box only after checking it, then click **Approve agreement revision**.
+6. Confirm the revision appears in **Approval history**. Existing invoices retain their original terms. Changed terms require another reviewed revision; approval does not rewrite history. Business-day clauses, unusual exceptions and partial-payment timing arrangements require finance review before use; do not approximate them with a different trigger.
+
+### Create and prepare a customer invoice
+
+1. Complete field evidence, quantity review, customer correction/reinspection and customer acceptance for either workforce type.
+2. Open **1. Convert accepted production**, select the accepted production, and submit.
+3. Open **2. Create customer invoice**, select the billable, and submit. Prices and retainage come from the approved agreement. Invoice creation does not mean customer invoice acceptance.
+4. In **Invoice packages and customer responses**, select the new invoice.
+5. Open **Review prime package requirements**. Enter each additional required document on its own line and the prime's requirements source. Verify and approve. Leave the list empty only when the prime requires no additional documents.
+6. For each listed requirement, open **Attach reviewed billing document**, choose its type and original PDF, open/read the document yourself, confirm readability, and attach it. The additional PDF limit is 20 MiB per document. Original accepted field evidence is included automatically.
+7. Open **Prepare complete invoice package** and click **Prepare package**. Resolve missing evidence, pricing or document errors. Preparation is limited to 100 MiB of original attachments; split larger invoices into accepted-work groups.
+8. Download the numbered package revision. It contains a printable invoice, machine-readable manifest, accepted-work references and original evidence/documents. Check any prime-specific cover sheet, certification or required invoice PDF before delivery. Package generation does not send email or prove receipt.
+
+### Record delivery, rejection, resubmission and acceptance
+
+1. Deliver the reviewed package through the prime's approved channel.
+2. Open **Record customer delivery**, select the revision actually sent, enter the actual timestamp with time-zone offset, recipient, receipt reference and notes; verify and save.
+3. If rejected, open **Record customer rejection** and record the actual response. Preserve the rejected version. Correct the required documents or invoice through the authorized workflow, prepare the current complete package, deliver it, and use **Record resubmission**.
+4. When the prime accepts the invoice, open **Record customer invoice acceptance**, select the delivered revision and record the actual acceptance evidence. Internal QC or field-report acceptance is not an invoice receipt.
+5. Check **Delivery and acceptance history** and **Payment due**. The due date starts only at the approved trigger. Repeated submission with the same request identity does not create another event.
+
+### Partner payments and historical exceptions
+
+1. Employee work follows customer billing and employee compensation; it must not create partner settlements.
+2. For partner work, create the settlement and payable from accepted sources tied to the governing partner agreement and approved partner prices.
+3. If the partner's agreement uses invoice issue/delivery/acceptance, record the verified event in **Record a partner invoice payment trigger**. A customer-payment trigger comes from cleared, allocated customer receipts instead.
+4. Run **8. Calculate payment eligibility**. Review amounts, holds, source trace and timing before recording any externally completed payment.
+5. Keep Priority automation disabled pending sandbox and account/payee certification. Unmatched or conflicting external observations stay in review; they do not create payments.
+6. Historical demo transactions without the required lineage remain reference examples. Use the complete field-to-finance path for pilot transactions. Never fabricate customer acceptance or backdate an agreement to release a legacy payable.

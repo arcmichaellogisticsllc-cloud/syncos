@@ -1,3 +1,6 @@
+import { productionQuantitySource } from './production-quantity-integrity';
+import { reviewedProductionSummary } from './production-reporting';
+import { canonicalRateUnit } from './commercial-terms';
 import { requireRecordWorkAuthorization } from "./record-work-authorization";
 import { lockWorkSafety, safetyBlockers } from "./work-safety";
 import { lockFieldWork, hasActiveFieldStop } from "./field-stop-scope";
@@ -1853,6 +1856,11 @@ export class ProductionController {
       await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcReviewAuthorityRoles, "QC Manager or Project Manager authority is required");
       const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
       if (before.status !== "correction_required") throw new BadRequestException("production record must be correction_required");
+      if(before.daily_production_report_id)throw new BadRequestException('Use the field report correction workflow so its evidence and customer reinspection history are preserved');
+      await requireRecordWorkAuthorization(client,{...before,production_date:new Date().toISOString().slice(0,10)});
+      const corrected=body.corrected_quantity===undefined?Number(before.corrected_quantity??before.quantity_submitted??before.quantity):this.requireNonNegative(body.corrected_quantity,'corrected_quantity');
+      const note=requireString(body.correction_note,'Describe the correction and its evidence');
+      await client.query('INSERT INTO administrative_production_corrections(tenant_id,production_record_id,prior_quantity,corrected_quantity,correction_note,recorded_by) VALUES($1,$2,$3,$4,$5,$6)',[request.auth.tenantId,id,Number(before.corrected_quantity??before.quantity_submitted??before.quantity),corrected,note,request.auth.userId]);
       if (!before.correction_required_at) throw new BadRequestException("correction_required_at is required");
       if (!(await this.hasActiveEvidenceAfter(client, request.auth.tenantId, id, before.correction_required_at))) {
         throw new BadRequestException("updated active evidence is required");
@@ -3153,16 +3161,16 @@ export class ProductionController {
   }
 
   private async validateProductionQuantityRules(client: PoolClient, tenantId: string, workOrder: Record<string, unknown>, body: Record<string, unknown>, quantity: number | null, unit: string | null) {
-    if (unit && workOrder.unit && unit !== workOrder.unit && !this.hasOverride(body.override_reasons, "unit_override_reason")) {
+    if (unit && workOrder.unit && canonicalRateUnit(unit) !== canonicalRateUnit(workOrder.unit) && !this.hasOverride(body.override_reasons, "unit_override_reason")) {
       throw new BadRequestException({ message: "Production unit mismatch requires override.", required_override_fields: ["unit_override_reason"] });
     }
     if (quantity === null) return;
-    const current = await client.query(
-      "SELECT COALESCE(sum(COALESCE(claimed_quantity, quantity_submitted, quantity)), 0)::numeric AS claimed FROM production_records WHERE tenant_id = $1 AND work_order_id = $2 AND status NOT IN ('voided', 'archived', 'rejected') AND deleted_at IS NULL",
-      [tenantId, workOrder.id],
-    );
+    const records=(await client.query(`SELECT p.id FROM production_records p LEFT JOIN production_quantity_reviews q ON q.tenant_id=p.tenant_id AND q.id=p.quantity_review_id
+      WHERE p.tenant_id=$1 AND p.work_order_id=$2 AND p.status NOT IN ('voided','archived','rejected') AND p.deleted_at IS NULL AND COALESCE(q.disposition,'primary_work') NOT IN ('summary','included_subset') ORDER BY p.id`,[tenantId,workOrder.id])).rows;
+    let claimed=0;
+    for(const {id} of records){const source=await productionQuantitySource(client,tenantId,id);if(canonicalRateUnit(source.unit??source.unit_type)===canonicalRateUnit(unit))claimed+=Number(source.quantity_submitted??source.quantity);}
     const planned = Number(workOrder.planned_quantity ?? workOrder.expected_units ?? 0);
-    const cumulative = Number(current.rows[0]?.claimed ?? 0) + quantity;
+    const cumulative=claimed+quantity;
     if (planned >= 0 && cumulative > planned && !this.hasOverride(body.override_reasons, "quantity_overage_override_reason")) {
       throw new BadRequestException({ message: "Production quantity overage requires override.", required_override_fields: ["quantity_overage_override_reason"] });
     }
@@ -3176,23 +3184,22 @@ export class ProductionController {
   }
 
   private async recalculateWorkOrderProductionRollups(client: PoolClient, tenantId: string, workOrderId: string, actorUserId: string) {
-    const result = await client.query(
-      `
-      SELECT
-        COALESCE(sum(COALESCE(claimed_quantity, quantity_submitted, quantity)) FILTER (WHERE status IN ('submitted', 'under_review', 'qc_review', 'correction_required', 'corrected', 'accepted', 'approved', 'billable')), 0)::numeric AS completed_quantity,
-        COALESCE(sum(approved_quantity) FILTER (WHERE status IN ('approved', 'billable')), 0)::numeric AS approved_quantity,
-        COALESCE(sum(COALESCE(billable_quantity, approved_quantity)) FILTER (WHERE status = 'billable' OR billable_status = 'billable'), 0)::numeric AS billable_quantity
-      FROM production_records
-      WHERE tenant_id = $1 AND work_order_id = $2 AND status NOT IN ('voided', 'archived', 'rejected') AND deleted_at IS NULL
-      `,
-      [tenantId, workOrderId],
-    );
-    await updateTenantRecord(client, "work_orders", tenantId, workOrderId, {
-      completed_quantity: Number(result.rows[0]?.completed_quantity ?? 0),
-      approved_quantity: Number(result.rows[0]?.approved_quantity ?? 0),
-      billable_quantity: Number(result.rows[0]?.billable_quantity ?? 0),
-      updated_by: actorUserId,
-    });
+    const workOrder=(await client.query('SELECT unit,unit_type FROM work_orders WHERE tenant_id=$1 AND id=$2',[tenantId,workOrderId])).rows[0];
+    const summary=await reviewedProductionSummary(client,tenantId,workOrderId);
+    const unit=canonicalRateUnit(workOrder?.unit??workOrder?.unit_type);
+    const completed=summary.by_unit.find(group=>group.unit===unit)?.quantity??0;
+    const records=(await client.query('SELECT id FROM production_records WHERE tenant_id=$1 AND work_order_id=$2 AND deleted_at IS NULL ORDER BY id',[tenantId,workOrderId])).rows;
+    const accepted=new Map<string,number>();
+    for(const record of records){try{const decision=await requireCustomerAcceptedBilling(client,tenantId,record.id);if(canonicalRateUnit(decision.unit_of_measure)===unit)accepted.set(record.id,Number(decision.customer_accepted_quantity));}catch(error){if(!(error instanceof BadRequestException))throw error;}}
+    const approved=[...accepted.values()].reduce((sum,value)=>sum+value,0);
+    const billables=(await client.query(`SELECT b.production_record_id,b.billable_quantity,b.unit FROM billable_items b
+      LEFT JOIN accepted_production_financial_sources s ON s.tenant_id=b.tenant_id AND s.id=b.accepted_production_source_id
+      WHERE b.tenant_id=$1 AND b.work_order_id=$2 AND b.deleted_at IS NULL AND b.status NOT IN ('voided','archived','held','disputed')
+        AND COALESCE(b.hold_reason,'')='' AND COALESCE(b.dispute_reason,'')='' AND (s.id IS NULL OR (s.source_kind='accepted_production' AND s.deleted_at IS NULL AND s.financial_status<>'void'))`,[tenantId,workOrderId])).rows;
+    const billed=new Map<string,number>();
+    for(const item of billables){if(canonicalRateUnit(item.unit)===unit&&accepted.has(item.production_record_id))billed.set(item.production_record_id,Math.min(accepted.get(item.production_record_id)!,Math.max(billed.get(item.production_record_id)??0,Number(item.billable_quantity))));}
+    const billable=[...billed.values()].reduce((sum,value)=>sum+value,0);
+    await updateTenantRecord(client,'work_orders',tenantId,workOrderId,{completed_quantity:completed,approved_quantity:approved,billable_quantity:billable,updated_by:actorUserId});
   }
 
   private async archiveRecord(request: AuthenticatedRequest, table: string, id: string, entityType: string, action: string, eventType: string) {

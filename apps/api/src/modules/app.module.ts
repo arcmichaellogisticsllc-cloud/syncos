@@ -1,3 +1,5 @@
+import { InvoicePackagesController } from '../routes/invoice-packages.controller';
+import { CommercialTermsController } from '../routes/commercial-terms.controller';
 import { PrimeCorrectionPolicyController } from "../routes/prime-correction-policy.controller";
 import { ProductionQuantityReviewController } from "../routes/production-quantity-review.controller";
 import { FieldEvidenceReviewController } from "../routes/field-evidence-review.controller";
@@ -59,7 +61,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
+  controllers: [InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,

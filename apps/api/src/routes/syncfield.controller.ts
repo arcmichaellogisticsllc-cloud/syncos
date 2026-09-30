@@ -1800,12 +1800,12 @@ export class SyncfieldController {
           INSERT INTO production_export_artifacts (
             tenant_id, project_id, work_order_id, daily_report_id, daily_report_revision_id, map_version_id,
             partner_organization_id, crew_id, artifact_type, generation_mode, status, mime_type,
-            generated_by_user_id, source_fingerprint
+            generated_by_user_id, source_fingerprint,source_query
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'processing',$11,$12,$13)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'processing',$11,$12,$13,$14::jsonb)
           RETURNING *
           `,
-          [request.auth.tenantId, context.project_id, context.work_order_id, context.daily_report_id, context.daily_report_revision_id, context.map_version_id, context.partner_organization_id, context.crew_id, artifactType, generationMode, this.mimeTypeForArtifact(artifactType), request.auth.userId, fingerprint],
+          [request.auth.tenantId, context.project_id, context.work_order_id, context.daily_report_id, context.daily_report_revision_id, context.map_version_id, context.partner_organization_id, context.crew_id, artifactType, generationMode, this.mimeTypeForArtifact(artifactType), request.auth.userId, fingerprint,JSON.stringify(query)],
         );
         try {
           const content = this.renderArtifactContent(artifactType, generationMode, rows);
@@ -2089,11 +2089,11 @@ export class SyncfieldController {
     add("partner_organization_id = ?", scope.partnerOrganizationId ?? query.partner_organization_id);
     add("crew_id = ?", scope.crewId ?? query.crew_id);
     const result = await client.query(`SELECT * FROM production_export_artifacts WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 50`, values);
-    return result.rows.map((row) => this.safeProductionArtifact(row, false));
+    return Promise.all(result.rows.map(async row => this.safeProductionArtifact(row, await this.isArtifactStale(client,row))));
   }
 
   private sourceFingerprint(artifactType: string, generationMode: string, query: Record<string, string | undefined>, rows: QueryResultRow[]) {
-    const facts = rows.map((row) => ({
+    const facts = [...rows].sort((a,b)=>String(a.production_record_id).localeCompare(String(b.production_record_id))).map((row) => ({
       report: row.daily_report_id,
       revision: row.revision_number,
       record: row.production_record_id,
@@ -2118,7 +2118,7 @@ export class SyncfieldController {
       coil_variance_ft: row.coil_variance_ft === null ? null : Number(row.coil_variance_ft),
       coil_types: row.coil_types,
     }));
-    return createHash("sha256").update(JSON.stringify({ artifactType, generationMode, query, facts })).digest("hex");
+    return createHash("sha256").update(JSON.stringify({ artifactType, generationMode, query:Object.fromEntries(Object.entries(query).filter(([,value])=>value!==undefined).sort(([a],[b])=>a.localeCompare(b))), facts })).digest("hex");
   }
 
   private artifactContext(rows: QueryResultRow[]) {
@@ -2310,6 +2310,7 @@ export class SyncfieldController {
 
   private async readAuthorizedProductionArtifact(client: PoolClient, request: AuthenticatedRequest, artifact: QueryResultRow) {
     const bytes = await readFile(this.storagePath(artifact.storage_key));
+    if(createHash("sha256").update(bytes).digest("hex")!==artifact.checksum)throw new BadRequestException("Export failed original-file checksum verification");
     await appendAuditLog(client, {
       tenantId: request.auth.tenantId,
       actorUserId: request.auth.userId,
@@ -2329,14 +2330,9 @@ export class SyncfieldController {
   }
 
   private async isArtifactStale(client: PoolClient, artifact: QueryResultRow, rows?: QueryResultRow[]) {
-    const currentRows = rows ?? await this.acceptedProductionRows(client, artifact.tenant_id, {
-      project_id: artifact.project_id,
-      work_order_id: artifact.work_order_id,
-      daily_report_id: artifact.daily_report_id,
-      partner_organization_id: artifact.partner_organization_id,
-      crew_id: artifact.crew_id,
-    });
-    return this.sourceFingerprint(artifact.artifact_type, artifact.generation_mode, {}, currentRows) !== artifact.source_fingerprint && false;
+    if(!artifact.source_query)return true;
+    const currentRows=rows??await this.acceptedProductionRows(client,artifact.tenant_id,artifact.source_query);
+    return this.sourceFingerprint(artifact.artifact_type,artifact.generation_mode,artifact.source_query,currentRows)!==artifact.source_fingerprint;
   }
 
   private mimeTypeForArtifact(artifactType: string) {

@@ -97,29 +97,13 @@ test.describe.serial("P17 production readiness release-candidate acceptance", ()
     expect(summary.boundary.customer_ar_partner_ap_collapsed).toBe(false);
   });
 
-  test("Partner payment uses local test provider and confirmation is the only paid effect", async ({ request }) => {
-    const created = await apiJson(request, fixture.internalToken, "POST", "/payment-retainage-adjustments/payment-instructions", {
-      contractor_payable_id: fixture.payableId,
-      amount: 2100,
-      idempotency_key: `p17-payment-${fixture.payableId}`,
-    });
-    const duplicate = await apiJson(request, fixture.internalToken, "POST", "/payment-retainage-adjustments/payment-instructions", {
-      contractor_payable_id: fixture.payableId,
-      amount: 2100,
-      idempotency_key: `p17-payment-${fixture.payableId}`,
-    });
-    expect(duplicate.id).toBe(created.id);
-    await apiJson(request, fixture.internalToken, "POST", `/payment-retainage-adjustments/payment-instructions/${created.id}/submit`, { idempotency_key: `p17-submit-${fixture.payableId}` });
-    const submitted = await client.query("SELECT paid_amount,in_flight_payment_amount FROM contractor_payables WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.payableId]);
-    expect(Number(submitted.rows[0].paid_amount)).toBe(0);
-    expect(Number(submitted.rows[0].in_flight_payment_amount)).toBe(2100);
-    await apiJson(request, fixture.internalToken, "POST", `/payment-retainage-adjustments/payment-instructions/${created.id}/confirm`, {});
-    await apiJson(request, fixture.internalToken, "POST", `/payment-retainage-adjustments/payment-instructions/${created.id}/confirm`, {});
-    const paid = await client.query("SELECT paid_amount,in_flight_payment_amount FROM contractor_payables WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.payableId]);
-    const attempts = await client.query("SELECT count(*)::int AS count, min(provider_name) AS provider FROM partner_payment_attempts WHERE tenant_id = $1 AND payment_instruction_id = $2", [fixture.tenantA, created.id]);
-    expect(Number(paid.rows[0].paid_amount)).toBe(2100);
-    expect(Number(paid.rows[0].in_flight_payment_amount)).toBe(0);
-    expect(attempts.rows[0]).toEqual({ count: 1, provider: "local_test_provider" });
+  test("historical payable without accepted-work settlement items cannot advance to payment", async ({ request }) => {
+    const response=await request.post(apiUrl('/payment-retainage-adjustments/payment-instructions'),{headers:auth(fixture.internalToken),data:{contractor_payable_id:fixture.payableId,amount:2100,idempotency_key:`p17-payment-${fixture.payableId}`}});
+    expect(response.status()).toBe(400);
+    expect(await response.text()).toContain('accepted-work settlement items');
+    const payable=(await client.query('SELECT paid_amount,in_flight_payment_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[fixture.tenantA,fixture.payableId])).rows[0];
+    expect(Number(payable.paid_amount)).toBe(0);expect(Number(payable.in_flight_payment_amount)).toBe(0);
+    expect((await client.query('SELECT id FROM partner_payment_instructions WHERE tenant_id=$1',[fixture.tenantA])).rows).toHaveLength(0);
   });
 
   test("performance, opportunity matching, and command intelligence are recommendation-only", async ({ request }) => {
@@ -140,6 +124,8 @@ test.describe.serial("P17 production readiness release-candidate acceptance", ()
       `/opportunity-capacity-matching/opportunities/${fixture.opportunity}`,
       `/partner-performance/partners/${fixture.otherPartnerOrg}`,
       "/payment-retainage-adjustments/ready-to-pay",
+      "/commercial-terms/choices",
+      "/invoice-packages/choices",
     ]) {
       const partner = await request.get(apiUrl(route), { headers: auth(fixture.partnerToken) });
       expect(partner.status(), `partner route ${route}`).toBeGreaterThanOrEqual(403);

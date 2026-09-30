@@ -1,3 +1,4 @@
+import { rateFromTerms } from './commercial-terms';
 import { BadRequestException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { requireFinancialItemAcceptance } from './customer-accepted-billing';
@@ -53,6 +54,15 @@ export async function requirePartnerPayableLineage(client: PoolClient, tenantId:
     }
     await requireFinancialItemAcceptance(client, tenantId, item);
     await requirePartnerWorkAgreement(client, tenantId, item.production_record_id, payable.partner_organization_id, payable.capacity_provider_id);
+    const terms=(await client.query(`SELECT t.* FROM commercial_terms_revisions t
+      JOIN production_records p ON p.tenant_id=t.tenant_id AND p.id=$3
+      JOIN partner_work_order_versions w ON w.tenant_id=p.tenant_id AND w.id=p.work_order_version_id
+      JOIN partner_agreement_versions a ON a.tenant_id=w.tenant_id AND a.id=w.governing_agreement_version_id
+      WHERE t.tenant_id=$1 AND t.id=$2 AND t.party_type='partner' AND t.counterparty_organization_id=$4 AND t.contract_id=a.contract_id
+        AND t.effective_from<=p.production_date AND (t.effective_until IS NULL OR t.effective_until>=p.production_date)`,[tenantId,source.partner_terms_revision_id,item.production_record_id,payable.partner_organization_id])).rows[0];
+    if(!terms)throw new BadRequestException('Payable pricing must trace to approved terms for the governing partner agreement');
+    const approvedRate=rateFromTerms(terms,source.production_code,source.unit_of_measure);
+    if(Number(approvedRate.rate)!==rate)throw new BadRequestException('Payable source rate differs from the approved agreement snapshot');
   }
   if (payable.id) {
     const balance = (await client.query(`SELECT

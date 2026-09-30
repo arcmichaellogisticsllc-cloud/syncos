@@ -33,10 +33,9 @@ export function FinancialWorkflow({ onChange }: { onChange: () => void }) {
       <FinanceAction permission="billing.create_billable" title="1. Convert accepted production" endpoint="billables/convert" submitLabel="Create billable" onSaved={refresh}>
         <ChoiceSelect label="Accepted production" name="customer_qc_decision_id" rows={data.accepted.filter(r => !r.billable_item_id).map(r => ({ ...r, id: r.customer_qc_decision_id, label: `${r.work_order_number || "Work order"} · ${String(r.production_date || "").slice(0,10)} · ${r.production_code} · ${r.accepted_quantity} ${r.unit_of_measure} · ${r.from_asset_identifier || r.production_description}${r.to_asset_identifier ? ` → ${r.to_asset_identifier}` : ""}` }))} />
       </FinanceAction>
-      <FinanceAction permission="billing.create_invoice" title="2. Create customer invoice" endpoint="invoices/create" submitLabel="Create customer invoice" onSaved={refresh} transform={f => ({ ...f, billable_item_ids: [f.billable_item_id], retainage_percent: Number(f.retainage_percent) })}>
-        <p>The invoice is created as approved under your invoice-creation authority. Check the selected billable and retainage before submitting.</p>
+      <FinanceAction permission="billing.create_invoice" title="2. Create customer invoice" endpoint="invoices/create" submitLabel="Create customer invoice" onSaved={refresh} transform={f => ({ ...f, billable_item_ids: [f.billable_item_id] })}>
+        <p>The invoice is created as approved under your invoice-creation authority. Check the selected billable before submitting. Retainage and payment terms come from its approved agreement.</p>
         <ChoiceSelect label="Customer billable" name="billable_item_id" rows={data.billables} />
-        <label>Retainage percent<input name="retainage_percent" type="number" min="0" max="100" step="0.01" defaultValue="0" required /></label>
         <label>Billing period start<input name="period_start" type="date" required /></label><label>Billing period end<input name="period_end" type="date" required /></label>
       </FinanceAction>
       <FinanceAction permission="cash_receipt.record" title="3. Record customer cash received" endpoint="cash-receipts" submitLabel="Record customer receipt" onSaved={refresh} transform={f => { if (!invoice) throw new Error("Select a current customer invoice."); return { ...f, customer_organization_id: invoice.customer_organization_id, amount: Number(f.amount) }; }}>
@@ -63,9 +62,16 @@ export function FinancialWorkflow({ onChange }: { onChange: () => void }) {
       <FinanceAction permission="contractor_payable.create" title="7. Create partner payable" endpoint="contractor-payables/create" submitLabel="Create partner payable" onSaved={refresh}>
         <ChoiceSelect label="Partner settlement awaiting payable" name="settlement_id" rows={data.settlements} />
       </FinanceAction>
+      <FinanceAction permission="contractor_payable.calculate_eligibility" title="Record a partner invoice payment trigger" endpoint={f=>`contractor-payables/${f.contractor_payable_id}/contract-trigger`} submitLabel="Record partner invoice event" onSaved={refresh} transform={f=>({...f,verified:f.verified==='on'})}>
+        <ChoiceSelect label="Partner payable for invoice event" name="contractor_payable_id" rows={data.payables}/>
+        <label>Actual event time with UTC offset<input name="occurred_at" required placeholder="2026-09-30T14:30:00-04:00"/></label>
+        <label>Partner invoice event proof<input name="proof_reference" required/></label>
+        <label><input name="verified" type="checkbox" required/> I verified the partner invoice event specified by the agreement.</label>
+        <p>Use this for partner invoice issue, delivery or acceptance terms. Customer-payment triggers come from cleared allocated receipts.</p>
+      </FinanceAction>
       <FinanceAction permission="contractor_payable.calculate_eligibility" title="8. Calculate payment eligibility" endpoint={f => `contractor-payables/${f.contractor_payable_id}/calculate-eligibility`} submitLabel="Calculate payment eligibility" onSaved={refresh}>
         <ChoiceSelect label="Partner payable" name="contractor_payable_id" rows={data.payables} />
-        <p>Eligibility follows cleared customer cash allocated to the accepted work. It does not mark the partner paid.</p>
+        <p>Eligibility follows the approved partner agreement and its recorded trigger. Customer-payment terms use cleared cash allocated to accepted work. This does not mark the partner paid.</p>
       </FinanceAction>
     </fieldset>
   </section>;
@@ -81,7 +87,7 @@ export function FinanceAction({ permission, title, endpoint, submitLabel, childr
     const form = event.currentTarget; const fields = Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
     if (!key.current) key.current = crypto.randomUUID();
     try {
-      const result = await syncosFetch<{ entityType?: string; afterState?: Record<string, unknown> }>(`${prefix}/${typeof endpoint === "function" ? endpoint(fields) : endpoint}`, { method: "POST", body: { ...(transform ? transform(fields) : fields), idempotency_key: key.current } });
+      const result = await syncosFetch<{ entityType?: string; afterState?: Record<string, unknown> }>(`${prefix}/${typeof endpoint === "function" ? endpoint(fields) : endpoint}`, { method: "POST", body: { ...(transform ? transform(fields) : fields), idempotency_key: key.current, client_mutation_id: key.current } });
       key.current = "";
       const state = result.afterState ?? result as Record<string, unknown>;
       if (result.entityType !== "financial_exception" && !state.exception_type) form.reset();

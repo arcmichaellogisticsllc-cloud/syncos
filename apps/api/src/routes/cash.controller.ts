@@ -1,3 +1,5 @@
+import { InvoicePackagesController } from './invoice-packages.controller';
+import { requireInvoiceCommercialIntegrity } from './commercial-terms';
 import { requireLinkedBillableAcceptance, requireFinancialItemAcceptance } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
@@ -168,9 +170,9 @@ export class CashController {
         const projectId = this.optionalString(body.project_id) ?? settlement?.project_id ?? null;
         if (projectId) await this.requireRecord(client, "projects", request.auth.tenantId, String(projectId), "project not found");
         const invoiceType = this.allowed(body.invoice_type ?? "standard", "invoice_type", invoiceTypes);
-        const paymentTerms = this.allowed(body.payment_terms ?? "net_30", "payment_terms", paymentTermsValues);
+        const paymentTerms = "custom";
         const invoiceDate = this.optionalString(body.invoice_date) ?? new Date().toISOString().slice(0, 10);
-        const dueDate = this.optionalString(body.due_date) ?? this.calculateDueDate(invoiceDate, paymentTerms);
+        const dueDate = null; // Draft terms are bound from approved accepted-work pricing before approval.
         const invoiceNumber = this.optionalString(body.invoice_number) ?? (await this.nextInvoiceNumber(client, request.auth.tenantId));
         await this.ensureInvoiceNumberAvailable(client, request.auth.tenantId, invoiceNumber);
         const startingAmount = body.invoice_amount !== undefined ? this.requireNonNegative(body.invoice_amount, "invoice_amount") : 0;
@@ -206,7 +208,7 @@ export class CashController {
           cash_application_status: "not_ready",
           invoice_package_status: this.allowed(body.invoice_package_status ?? "not_started", "invoice_package_status", invoicePackageStatuses),
           documentation_status: this.allowed(body.documentation_status ?? "not_started", "documentation_status", invoicePackageStatuses),
-          customer_acceptance_status: this.allowed(body.customer_acceptance_status ?? "not_required", "customer_acceptance_status", acceptanceStatuses),
+          customer_acceptance_status: "pending",
           prime_acceptance_status: this.allowed(body.prime_acceptance_status ?? "not_required", "prime_acceptance_status", acceptanceStatuses),
           override_reasons: this.objectValue(body.override_reasons),
           created_by: request.auth.userId,
@@ -225,6 +227,7 @@ export class CashController {
   async updateInvoice(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       if (body.status !== undefined) throw new BadRequestException("status changes must use lifecycle action routes");
+      if(['due_date','payment_terms','customer_acceptance_status','prime_acceptance_status'].some(key=>body[key]!==undefined))throw new BadRequestException('Use approved contract terms and recorded customer delivery/acceptance events to change payment timing or acceptance');
       const values = pick(body, [
         "invoice_date",
         "due_date",
@@ -246,7 +249,7 @@ export class CashController {
         if (values.documentation_status !== undefined) values.documentation_status = this.allowed(values.documentation_status, "documentation_status", invoicePackageStatuses);
         if (values.customer_acceptance_status !== undefined) values.customer_acceptance_status = this.allowed(values.customer_acceptance_status, "customer_acceptance_status", acceptanceStatuses);
         if (values.prime_acceptance_status !== undefined) values.prime_acceptance_status = this.allowed(values.prime_acceptance_status, "prime_acceptance_status", acceptanceStatuses);
-        const dueDate = values.due_date ?? before.due_date ?? this.calculateDueDate(values.invoice_date ?? before.invoice_date ?? new Date().toISOString().slice(0, 10), values.payment_terms ?? before.payment_terms ?? "net_30");
+        const dueDate = before.due_date;
         const receivable = this.calculateReceivableState(dueDate, Number(before.original_amount || before.total_amount || 0), Number(before.paid_amount || 0), String(before.status));
         Object.assign(values, receivable, { updated_by: request.auth.userId });
         const after = await updateTenantRecord(client, "invoices", request.auth.tenantId, id, values);
@@ -290,6 +293,7 @@ export class CashController {
       requireString(body.approval_note, "approval_note is required");
       await this.requireActiveInvoiceItems(client, request.auth.tenantId, id);
       await this.requireInvoiceItemsAcceptance(client, request.auth.tenantId, id);
+      await requireInvoiceCommercialIntegrity(client,request.auth.tenantId,before);
       if (!["pending", "not_submitted"].includes(String(before.approval_status)) && before.status !== "ready_for_review" && before.status !== "under_review") {
         throw new BadRequestException("invoice is not ready for approval");
       }
@@ -337,28 +341,7 @@ export class CashController {
   @Post("invoices/:id/mark-sent")
   @RequirePermission("invoice.mark_sent")
   async markSent(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
-    return this.write(request, "invoice.mark_sent", "invoice.sent", "invoice", async (client) => {
-      requireString(body.sent_note, "sent_note is required");
-      const before = await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
-      if (before.status !== "approved" || before.approval_status !== "approved") throw new BadRequestException("invoice must be approved");
-      await this.requireInvoiceItemsAcceptance(client, request.auth.tenantId, id);
-      const originalAmount = Number(before.original_amount || before.total_amount || 0);
-      const receivable = this.calculateReceivableState(before.due_date, originalAmount, Number(before.paid_amount ?? 0), "sent");
-      const after = await updateTenantRecord(client, "invoices", request.auth.tenantId, id, {
-        status: "sent",
-        delivery_status: this.allowed(body.delivery_status ?? "sent", "delivery_status", deliveryStatuses),
-        sent_by: request.auth.userId,
-        sent_at: new Date(),
-        original_amount: originalAmount,
-        balance_amount: receivable.balance_amount,
-        payment_status: receivable.payment_status,
-        collection_status: receivable.collection_status,
-        aging_days: receivable.aging_days,
-        updated_by: request.auth.userId,
-      });
-      if (!after) throw new NotFoundException("invoice not found");
-      return { entityType: "invoice", entityId: id, beforeState: before, afterState: after };
-    });
+    return new InvoicePackagesController(this.pool).delivery(request,id,{...body,event_type:'delivered'});
   }
 
   @Post("invoices/:id/mark-ready-for-cash-application")
@@ -2661,7 +2644,7 @@ export class CashController {
     if (status === "disputed") collectionStatus = "disputed";
     else if (balanceAmount <= 0) collectionStatus = "resolved";
     else if (agingDays > 0) collectionStatus = "overdue";
-    else if (this.daysPastDue(dueDate) === 0) collectionStatus = "due";
+    else if (dueDate && this.daysPastDue(dueDate) === 0) collectionStatus = "due";
     return { original_amount: originalAmount, paid_amount: paidAmount, balance_amount: balanceAmount, aging_days: agingDays, payment_status: paymentStatus, collection_status: collectionStatus };
   }
 

@@ -1,3 +1,4 @@
+import {approveFixtureCommercialTerms,verifyInvoicePackageLifecycle} from "./helpers/commercial-approval";
 import {reviewFixtureQuantity} from "./helpers/quantity-review";
 import { verifySafetyLifecycle } from "./helpers/safety-lifecycle";
 import { acknowledgeFixtureJsa } from "./helpers/individual-safety";
@@ -31,7 +32,7 @@ test('Sync management provisions a real internal crew through field production w
         }
         const management = await actor('operations_manager', ['crew.read','crew.create','worker.create','work_order.assign','work_order.start','syncfield_map.create','syncfield_map.version.upload','syncfield_map.assignment.manage']);
         const customerQc = await actor('qc_manager', ['customer_qc.completeness_review','customer_qc.decision_record']);
-        const finance = await actor('billing_manager', ['billing.create_billable','billing.create_invoice']);
+        const finance = await actor('billing_manager', ['billing.create_billable','billing.create_invoice','contract.read','contract.update','invoice.read','invoice.update','invoice.mark_sent','invoice.approve']);
         const collections = await actor('finance_manager', ['cash_receipt.record','payment_application.create']);
         const org = crypto.randomUUID();
         const customer = crypto.randomUUID();
@@ -59,6 +60,7 @@ test('Sync management provisions a real internal crew through field production w
         await db.query("INSERT INTO rate_schedules (id,tenant_id,organization_id,name,effective_date,status) VALUES ($1,$2,$3,'Synthetic customer rates','2026-01-01','active')", [schedule, t, customer]);
         await db.query("INSERT INTO rate_codes (tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,status) VALUES ($1,$2,'LABOR','Crew labor','hours','hours',100,100,'active')", [t, schedule]);
         await db.query("INSERT INTO rate_codes (tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,status) VALUES ($1,$2,'FIBER','Fiber placement','feet','feet',2,2,'active'),($1,$2,'POLE-ATT','Pole attachment','each','each',50,50,'active')",[t,schedule]);
+        const approvedContract=await approveFixtureCommercialTerms(db,request,finance,t,schedule,'customer',10);
         await db.query("UPDATE projects SET customer_organization_id=$3 WHERE tenant_id=$1 AND id=$2", [t, project, customer]);
         await db.query("UPDATE work_orders SET customer_rate_schedule_id=$3,qc_authority_organization_id=$4 WHERE tenant_id=$1 AND id=$2", [t, wo, schedule, customer]);
         const crew = await api(request, management, 'internal-workforce/crews', { organization_id: org, name: 'Sync employee crew', crew_type: 'aerial', target_staffing_level: 1 });
@@ -177,11 +179,14 @@ test('Sync management provisions a real internal crew through field production w
           const accepted=await api(request,customerQc,`syncfield/customer-qc/cycles/${cycle.id}/decisions`,{production_record_id:item.record.id,decision:'accepted',customer_accepted_quantity:item.quantity,client_mutation_id:crypto.randomUUID()});
           const billed=await api(request,finance,'accepted-production-financials/billables/convert',{customer_qc_decision_id:accepted.id});expect(Number(billed.net_billable_amount)).toBe(item.amount);expect(billed.unit).toBe(item.unit);
         }
-        const invoice=await api(request,finance,'accepted-production-financials/invoices/create',{billable_item_ids:[billable.id],retainage_percent:0});
-        expect(Number(invoice.original_amount)).toBe(700);
-        const receipt=await api(request,collections,'accepted-production-financials/cash-receipts',{customer_organization_id:customer,amount:700,payment_reference:crypto.randomUUID(),idempotency_key:crypto.randomUUID()});
+        const invoice=await api(request,finance,'accepted-production-financials/invoices/create',{billable_item_ids:[billable.id]});
+        expect(Number(invoice.original_amount)).toBe(630);
+        expect(Number(invoice.retainage_amount)).toBe(70);
+        expect(invoice.due_date).toBeNull();
+        await verifyInvoicePackageLifecycle(request,finance,invoice.id,approvedContract);
+        const receipt=await api(request,collections,'accepted-production-financials/cash-receipts',{customer_organization_id:customer,amount:630,payment_reference:crypto.randomUUID(),idempotency_key:crypto.randomUUID()});
         await api(request,collections,`accepted-production-financials/cash-receipts/${receipt.id}/clear`,{});
-        await api(request,collections,'accepted-production-financials/payment-applications',{cash_receipt_id:receipt.id,invoice_id:invoice.id,amount:700});
+        await api(request,collections,'accepted-production-financials/payment-applications',{cash_receipt_id:receipt.id,invoice_id:invoice.id,amount:630});
         expect(Number((await db.query('SELECT balance_amount FROM invoices WHERE tenant_id=$1 AND id=$2',[t,invoice.id])).rows[0].balance_amount)).toBe(0);
         const effects = await db.query("SELECT (SELECT count(*) FROM contractor_payables WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS payables,(SELECT count(*) FROM partner_agreement_versions WHERE tenant_id=$1 AND capacity_provider_id=$2)::int AS agreements", [t, crew.capacity_provider_id]);
         expect(effects.rows[0]).toEqual({ payables: 0, agreements: 0 });

@@ -440,7 +440,7 @@ type PartnerDashboardReadModel = {
   crews?: { active?: number; ready?: number; incomplete?: number; assigned?: number; activeToday?: number; blocked?: number };
   todayByCrew?: CrewToday[];
   workOrders?: { active?: number; blocked?: number; items?: PartnerDashboardWorkOrder[] };
-  production?: { rows?: Array<{ label?: string; code?: string; unit?: string; reported?: string; accepted?: string; correction?: string }> };
+  production?: { pending_review_count?:number; rows?: Array<{ label?: string; code?: string; unit?: string; reported?: string; accepted?: string; open_findings?: string }> };
   qcCorrections?: { openCorrectionCount?: number; qcPendingCount?: number; items?: Array<Record<string, unknown>> };
   actions?: {
     needsYourAction?: PartnerDashboardAction[];
@@ -1194,14 +1194,15 @@ function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowl
       </Panel>
 
       <div className="partner-dashboard-layout">
-        <Panel title="Production & QC" eyebrow="Reported, accepted, and corrections stay separate">
+        <Panel title="Production & QC" eyebrow="Reviewed quantities, customer acceptance, and open findings">
+          <p>{dashboard.production?.pending_review_count ?? 0} production records await quantity review. They are excluded from reviewed totals.</p>
           <div className="dashboard-quantity-grid">
             {productionRows.map((row) => (
               <div className="dashboard-quantity-row" key={`${row.code ?? row.label}:${row.unit}`}>
                 <strong>{row.label ?? row.code ?? "Production"}</strong>
-                <span>Reported: {quantityText(row.reported ?? "0", row.unit)}</span>
+                <span>Reviewed: {quantityText(row.reported ?? "0", row.unit)}</span>
                 <span>Customer Accepted: {quantityText(row.accepted ?? "0", row.unit)}</span>
-                <span>Correction: {quantityText(row.correction ?? "0", row.unit)}</span>
+                <span>Open findings: {row.open_findings ?? "0"}</span>
               </div>
             ))}
           </div>

@@ -75,5 +75,10 @@
   "074_field_evidence_readiness.sql",
   "075_production_quantity_review.sql",
   "076_prime_correction_deadlines.sql",
-  "077_customer_acceptance_quantity_provenance.sql"
+  "077_customer_acceptance_quantity_provenance.sql",
+  "078_approved_commercial_terms.sql",
+  "079_invoice_packages_delivery.sql",
+  "080_partner_contract_payment_terms.sql",
+  "081_legacy_correction_export_provenance.sql",
+  "082_invoice_event_order.sql"
 ]

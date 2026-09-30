@@ -1,4 +1,6 @@
 "use client";
+import { InvoicePackages } from "./invoice-packages";
+import { CommercialTerms } from "./commercial-terms";
 import { FinancialWorkflow } from "./financial-workflow";
 import { Capability, useCapability } from "../access-control";
 
@@ -198,8 +200,10 @@ export default function AcceptedProductionFinancialsPage() {
         </div>
       </section>
       <section className="workspace-panel warning-box">
-        Settlement is not payment. Contractor Payable is not payment. Customer cash is applied to Customer invoices and only creates Partner pay-when-paid eligibility.
+        Settlement is not payment. Contractor Payable is not payment. Customer cash is applied to customer invoices. Partner payment eligibility follows the approved agreement trigger and accepted-work controls.
       </section>
+      <CommercialTerms />
+      <InvoicePackages />
       <FinancialWorkflow onChange={() => setRetry(value => value + 1)} />
       <section className="workspace-panel">
         <h2>Coil Commercial Policy</h2>

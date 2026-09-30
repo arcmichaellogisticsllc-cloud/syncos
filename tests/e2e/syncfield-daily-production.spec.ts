@@ -718,7 +718,7 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await reviewForm.getByLabel('Review findings').fill('Synthetic review-control fixture only; actual-phone readability is a separate acceptance test');
     await reviewForm.getByLabel('I opened the original and checked the required details.').check();
     await reviewForm.getByRole('button',{name:'Save evidence review'}).click();
-    await expect(page.getByRole('status')).toContainText('Evidence readability review recorded');
+    await expect(page.getByRole('status').filter({hasText:'Evidence readability review recorded'})).toBeVisible();
     await expect(page.getByRole('button',{name:'Confirm completeness'})).toBeEnabled();
     const customer=crypto.randomUUID();await client.query("INSERT INTO organizations(id,tenant_id,name,organization_type,status) VALUES($1,$2,'Synthetic evidence acceptance customer','customer','active')",[customer,seeded.tenantA]);
     await client.query('UPDATE work_orders SET qc_authority_organization_id=$3 WHERE tenant_id=$1 AND id=(SELECT work_order_id FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2)',[seeded.tenantA,seeded.workOrderVersionId,customer]);

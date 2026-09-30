@@ -19,6 +19,10 @@ export async function productionQuantitySource(c:PoolClient,tenant:string,id:str
    WHERE revision.tenant_id=$1 AND revision.daily_report_id=$2 AND revision.snapshot_json->>'original_production_record_id'=$3
     AND correction.deleted_at IS NULL AND correction.status IN ('awaiting_customer_reinspection','resolved') ORDER BY revision.revision_number`,[tenant,original.daily_production_report_id,id])).rows:[];
  const source={...original,quantity_revision_ids:revisions.map(r=>r.id)};
+ if(!original.daily_production_report_id){
+  const corrections=(await c.query('SELECT id,corrected_quantity FROM administrative_production_corrections WHERE tenant_id=$1 AND production_record_id=$2 ORDER BY recorded_at,id',[tenant,id])).rows;
+  if(corrections.length){source.quantity_submitted=Number(corrections.at(-1).corrected_quantity);source.quantity_revision_ids=corrections.map(r=>r.id);}
+ }
  for(const {proposal} of revisions){
   if(proposal?.reported_quantity!==null&&proposal?.reported_quantity!==undefined)source.quantity_submitted=Number(proposal.reported_quantity);
   if(proposal?.asset_identifier)source.asset_identifier=proposal.asset_identifier;

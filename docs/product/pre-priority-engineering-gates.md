@@ -24,7 +24,7 @@ Required: immutable correction history and one authoritative installed quantity 
 
 Acceptance: 886 installed feet including 180 rock feet remains 886 installed feet. Rock is a classified subset, not another 180 installed feet. Any premium is a separately approved commercial item linked to the same underlying work. Replaying or importing an overlapping summary cannot increase installed quantity. Historical records remain unchanged when corrections supersede them.
 
-Current local candidate: immutable quantity reviews, stable work-item identity, included-subset and summary relationships, correction-aware source fingerprints and finance/acceptance gates are implemented. The combined 29-check workflow run passed. See `docs/acceptance/production-quantity-20260929.md`. Older administrative rollups and broader reporting remain to be reconciled; geometric overlap still requires source review.
+Current local candidate: immutable quantity reviews, stable work-item identity, included-subset and summary relationships, correction-aware source fingerprints and finance/acceptance gates are implemented. The combined 29-check workflow run passed. See `docs/acceptance/production-quantity-20260929.md`. The September 30 candidate also preserves administrative corrections, uses current reviewed quantities in work-order/partner summaries, and verifies export staleness from its original query and source fingerprint. Geometric overlap still requires source review.
 
 ## 4. QC through customer acceptance
 
@@ -38,7 +38,7 @@ Acceptance: deadlines retain the policy/version, triggering event, timezone/cale
 
 Required: approved relationship-specific rates, effective periods, payment triggers, retainage and authorized exceptions. PKS Net 14 begins with invoice acceptance, not invoice creation.
 
-Confirmed gap: `accepted-production-financials.controller.ts` currently inserts `net_30`, sets due date to today plus 30 days, and inserts invoice acceptance status `accepted` at creation. `cash.controller.ts` also defaults to Net 30 and lacks an explicit Net 14 option. Customer acceptance of production must not be confused with customer acceptance of an invoice package.
+September 30 financial-completion candidate: approved immutable rate/term revisions replace the Net 30 default. Invoice acceptance starts pending, and an acceptance-triggered due date stays empty until a verified customer invoice event. The legacy invoice path also has no invented default date. Existing invoices remain intact and require accepted-work/approved-pricing provenance before advancement. Calendar-day terms are supported; business-day clauses and nonstandard exceptions still require a specified implementation and acceptance test before use. See `docs/acceptance/financial-completion-20260930.md`.
 
 Acceptance: an unaccepted PKS invoice has no fabricated acceptance date; recording actual invoice acceptance calculates its contractual due date. Rejection/resubmission follows the approved policy without silently resetting or inventing terms. Preserve historical invoices; use explicit reviewed correction rather than bulk rewriting due dates.
 

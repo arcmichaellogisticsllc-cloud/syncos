@@ -15,8 +15,10 @@ function quantityRows(sql){
 }
 const eligible = { id: 'payable', settlement_id: 'settlement', partner_organization_id: 'partner', capacity_provider_id: 'provider', pay_when_paid_status: 'eligible', status: 'payment_ready', hold_status: 'none', dispute_status: 'none', eligible_amount: 100, paid_amount: 10 };
 const emptyInstructions = { query: async sql => {
+  if(sql.includes('FROM administrative_production_corrections'))return {rows:[]};
+  if(sql.includes('FROM commercial_terms_revisions'))return {rows:[{id:'terms',rate_snapshot:[{code:'BORE',unit:'LF',rate:100}]}]};
   if(sql.includes('AS accepted_budget')) return {rows:[{accepted_budget:100,committed_amount:100}]};
-  if(sql.includes('FROM accepted_production_financial_sources')) return {rows:[{production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',accepted_quantity:1,partner_rate:100}]};
+  if(sql.includes('FROM accepted_production_financial_sources')) return {rows:[{production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',accepted_quantity:1,partner_rate:100,partner_terms_revision_id:'terms',production_code:'BORE',unit_of_measure:'feet'}]};
   if(sql.includes('FROM settlement_items')) return {rows:[{id:'item',net_amount:100,production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',quantity:1,unit:'feet'}]};
   if(sql.includes('FROM customer_qc_decisions')) return {rows:[{...acceptedPins(),id:'decision',decision:'accepted',customer_accepted_quantity:1,unit_of_measure:'feet'}]};
   if(sql.includes('JOIN partner_agreement_versions')) return {rows:[{agreement_id:'agreement',agreement_status:'effective',execution_model:'partner',organization_id:'partner',work_organization_id:'partner',capacity_provider_id:'provider',work_provider_id:'provider',executed_at:'2026-01-01',artifact_verified_at:'2026-01-01',artifact_file_object_id:'file',effective_for_work:true}]};
@@ -202,7 +204,7 @@ test('settlement approval and both readiness transitions recheck current custome
   }
 });
 
-test('draft invoice approval and first sending cannot use stale production acceptance', async () => {
+test('draft invoice approval rejects stale acceptance and legacy sending requires receipt details', async () => {
   const controller = new CashController({});
   controller.write = async (_r, _a, _e, _t, work) => work(staleProductionItemsClient());
   controller.requireRoleAuthority = async () => {};
@@ -210,7 +212,7 @@ test('draft invoice approval and first sending cannot use stale production accep
   controller.requireRecord = async () => ({ id: 'invoice', status: 'ready_for_review', approval_status: 'pending' });
   await assert.rejects(controller.approveInvoice(financeReq, 'invoice', { approval_note: 'Reviewed' }), /customer acceptance is required/);
   controller.requireRecord = async () => ({ id: 'invoice', status: 'approved', approval_status: 'approved' });
-  await assert.rejects(controller.markSent(financeReq, 'invoice', { sent_note: 'Send' }), /customer acceptance is required/);
+  await assert.rejects(controller.markSent(financeReq, 'invoice', { sent_note: 'Send' }), /Customer event time/);
 });
 
 test('a new quantity review cannot reuse acceptance of an earlier source or classification',async()=>{

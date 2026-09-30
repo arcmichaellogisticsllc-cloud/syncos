@@ -1,3 +1,4 @@
+import {approveFixtureCommercialTerms,verifyInvoicePackageLifecycle} from "./helpers/commercial-approval";
 import {reviewFixtureQuantity} from "./helpers/quantity-review";
 import { acknowledgeFixtureJsa, reviewFixtureSafetyScope, safetyActor } from "./helpers/individual-safety";
 import crypto from "node:crypto";
@@ -492,7 +493,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
   });
   test("the same Partner field work reaches accepted billing, funded payable and one external payment", async ({request}) => {
     const tenant=seeded.tenantA, user=crypto.randomUUID(), membership=crypto.randomUUID(), role=crypto.randomUUID();
-    const grants=['billing.read','billing.create_billable','billing.create_invoice','cash_receipt.record','payment_application.create','partner_settlement.create','contractor_payable.create','contractor_payable.calculate_eligibility','partner_payment.execute','partner_payment.confirm'];
+    const grants=['contract.read','contract.update','invoice.read','invoice.update','invoice.mark_sent','invoice.approve','billing.read','billing.create_billable','billing.create_invoice','cash_receipt.record','payment_application.create','partner_settlement.create','contractor_payable.create','contractor_payable.calculate_eligibility','partner_payment.execute','partner_payment.confirm'];
     await client.query("INSERT INTO users(id,email,display_name) VALUES($1,$2,'Synthetic independent finance reviewer')",[user,`${user}@syncos.test`]);
     await client.query('INSERT INTO tenant_users(id,tenant_id,user_id) VALUES($1,$2,$3)',[membership,tenant,user]);
     await client.query("INSERT INTO roles(id,tenant_id,name,system_key) VALUES($1,$2,'Pilot Finance','pilot_finance')",[role,tenant]);
@@ -511,6 +512,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
         await client.query("INSERT INTO rate_codes(tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,contractor_rate,status) VALUES($1,$2,$3,'Synthetic approved rate',$4,$4,$5,$5,$5,'active') ON CONFLICT DO NOTHING",[tenant,schedule,code.code,code.unit_of_measure,rate]);
       }
     }
+    const approvedContract=await approveFixtureCommercialTerms(client,request,finance,tenant,customerSchedule,'customer');
+    await approveFixtureCommercialTerms(client,request,finance,tenant,work.rate_schedule_id,'partner');
     await client.query('UPDATE work_orders SET customer_rate_schedule_id=$3 WHERE tenant_id=$1 AND id=$2',[tenant,work.work_order_id,customerSchedule]);
     await client.query("UPDATE partner_agreement_versions SET executed_at='2026-08-16' WHERE tenant_id=$1 AND id=$2",[tenant,work.governing_agreement_version_id]);
     await reviewFixtureQuantity(request,seeded.internalToken,submittedRecordId);
@@ -521,6 +524,8 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     const billable=await apiJson(request,finance,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:renewed.id});
     expect(Number(billable.net_billable_amount)).toBe(10);
     const invoice=await apiJson(request,finance,'POST','/accepted-production-financials/invoices/create',{billable_item_ids:[billable.id],retainage_percent:0});
+    expect(invoice.due_date).toBeNull();
+    await verifyInvoicePackageLifecycle(request,finance,invoice.id,approvedContract);
     const source=(await client.query('SELECT * FROM accepted_production_financial_sources WHERE tenant_id=$1 AND billable_item_id=$2',[tenant,billable.id])).rows[0];
     const settlement=await apiJson(request,finance,'POST','/accepted-production-financials/partner-settlements/create',{accepted_production_source_ids:[source.id]});
     const payable=await apiJson(request,finance,'POST','/accepted-production-financials/contractor-payables/create',{settlement_id:settlement.id});

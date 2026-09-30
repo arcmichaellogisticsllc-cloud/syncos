@@ -1,3 +1,6 @@
+import { productionQuantitySource, quantityReviewCurrent } from './production-quantity-integrity';
+import { requireCustomerAcceptedBilling } from './customer-accepted-billing';
+import { canonicalRateUnit } from './commercial-terms';
 import { BadRequestException, ConflictException, Controller, ForbiddenException, Get, Headers, Inject, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
@@ -660,48 +663,24 @@ export class PartnerDashboardController {
 
   private async productionPanel(client: PoolClient, context: PartnerDashboardContext, panelStatus: Record<string, PanelState>, warnings: Array<{ panel: string; code: string; message: string }>) {
     return this.optionalPanel(client, panelStatus, warnings, "production", async () => {
-      const result = await client.query(
-        `
-        WITH reported AS (
-          SELECT COALESCE(spc.code, pr.production_type, 'Production') AS code,
-            COALESCE(spc.description, pr.production_type, 'Production') AS description,
-            COALESCE(spc.unit_of_measure, pr.unit, 'Unit') AS unit,
-            COALESCE(sum(pr.quantity_submitted),0)::numeric AS reported_quantity
-          FROM daily_production_reports dpr
-          JOIN production_records pr ON pr.tenant_id = dpr.tenant_id AND pr.daily_production_report_id = dpr.id AND pr.deleted_at IS NULL
-          LEFT JOIN syncfield_production_codes spc ON spc.tenant_id = pr.tenant_id AND spc.id = pr.syncfield_production_code_id
-          WHERE dpr.tenant_id = $1 AND dpr.organization_id = $2 AND dpr.current = true AND dpr.deleted_at IS NULL AND dpr.status <> 'void'
-          GROUP BY COALESCE(spc.code, pr.production_type, 'Production'), COALESCE(spc.description, pr.production_type, 'Production'), COALESCE(spc.unit_of_measure, pr.unit, 'Unit')
-        ),
-        accepted AS (
-          SELECT production_code AS code, COALESCE(production_description, production_code) AS description, unit_of_measure AS unit,
-            COALESCE(sum(accepted_quantity),0)::numeric AS accepted_quantity
-          FROM accepted_production_financial_sources
-          WHERE tenant_id = $1 AND partner_organization_id = $2 AND deleted_at IS NULL AND financial_status <> 'void' AND source_kind IN ('accepted_production','partner_coil_supplement')
-          GROUP BY production_code, COALESCE(production_description, production_code), unit_of_measure
-        )
-        SELECT COALESCE(r.code, a.code) AS code, COALESCE(r.description, a.description) AS description, COALESCE(r.unit, a.unit) AS unit,
-          COALESCE(r.reported_quantity,0)::text AS reported_quantity,
-          COALESCE(a.accepted_quantity,0)::text AS accepted_quantity,
-          GREATEST(COALESCE(r.reported_quantity,0) - COALESCE(a.accepted_quantity,0), 0)::text AS correction_quantity
-        FROM reported r
-        FULL OUTER JOIN accepted a ON a.code = r.code AND a.unit = r.unit
-        ORDER BY COALESCE(r.description, a.description)
-        LIMIT 20
-        `,
-        [context.tenantId, context.organizationId],
-      );
-      return {
-        rows: result.rows.map((row) => ({
-          label: row.description ?? row.code ?? "Production",
-          code: row.code ?? "Production",
-          unit: row.unit ?? "Unit",
-          reported: row.reported_quantity ?? "0",
-          accepted: row.accepted_quantity ?? "0",
-          correction: row.correction_quantity ?? "0",
-        })),
-      };
-    }, { rows: [] });
+      const records=(await client.query(`SELECT p.id FROM production_records p JOIN daily_production_reports d ON d.tenant_id=p.tenant_id AND d.id=p.daily_production_report_id
+        WHERE p.tenant_id=$1 AND d.organization_id=$2 AND p.deleted_at IS NULL AND d.deleted_at IS NULL AND d.current=true AND p.status NOT IN ('voided','archived','rejected') ORDER BY p.id`,[context.tenantId,context.organizationId])).rows;
+      const groups=new Map<string,{label:string,code:string,unit:string,reported:number,accepted:number,open_findings:number}>();let pending=0;
+      for(const {id} of records){
+        const record=await productionQuantitySource(client,context.tenantId,id);
+        const review=(await client.query('SELECT * FROM production_quantity_reviews WHERE tenant_id=$1 AND id=$2',[context.tenantId,record.quantity_review_id])).rows[0];
+        if(['summary','included_subset'].includes(review?.disposition))continue;
+        if(!await quantityReviewCurrent(client,context.tenantId,record,review)){pending++;continue;}
+        const code=(await client.query('SELECT code,description FROM syncfield_production_codes WHERE tenant_id=$1 AND id=$2',[context.tenantId,record.syncfield_production_code_id])).rows[0];
+        const unit=canonicalRateUnit(record.unit??record.unit_type),key=(code?.code??record.production_type)+'|'+unit;
+        const group=groups.get(key)??{label:code?.description??record.production_type,code:code?.code??record.production_type,unit,reported:0,accepted:0,open_findings:0};
+        group.reported+=Number(record.quantity_submitted);
+        try{const decision=await requireCustomerAcceptedBilling(client,context.tenantId,id);group.accepted+=Number(decision.customer_accepted_quantity);}catch(error){if(!(error instanceof BadRequestException))throw error;}
+        group.open_findings+=Number((await client.query("SELECT count(*) AS n FROM production_corrections WHERE tenant_id=$1 AND production_record_id=$2 AND deleted_at IS NULL AND status NOT IN ('resolved','cancelled')",[context.tenantId,id])).rows[0].n);
+        groups.set(key,group);
+      }
+      return {pending_review_count:pending,rows:[...groups.values()].map(g=>({...g,reported:String(g.reported),accepted:String(g.accepted),open_findings:String(g.open_findings)}))};
+    }, { rows: [],pending_review_count:0 });
   }
 
   private async qcCorrectionsPanel(client: PoolClient, context: PartnerDashboardContext, panelStatus: Record<string, PanelState>, warnings: Array<{ panel: string; code: string; message: string }>) {

@@ -1,3 +1,5 @@
+import { absoluteTime } from './prime-correction-deadlines';
+import { approvedCommercialTerms, rateFromTerms, invoiceCommercialTerms, invoiceTermsAmounts, contractualDueDate, allocateRetainage, partnerSettlementTerms } from './commercial-terms';
 import { requirePartnerPayableLineage, requirePartnerWorkAgreement } from "./partner-financial-lineage";
 import { requireCustomerAcceptedBilling, requireLinkedBillableAcceptance, lockProductionBilling } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
@@ -173,34 +175,36 @@ export class AcceptedProductionFinancialsController {
       if (billables.some((row) => row.customer_organization_id !== customerId)) throw new BadRequestException("cross-customer invoice grouping denied");
       const invoiceNumber = this.optionalString(body.invoice_number) ?? await this.nextNumber(client, request.auth.tenantId, "invoices", "invoice_number", "INV-P12");
       const subtotal = this.roundMoney(billables.reduce((sum, row) => sum + Number(row.net_billable_amount ?? row.estimated_billable_amount ?? 0), 0));
-      const retainagePercent = body.retainage_percent === undefined ? 0 : this.nonNegative(body.retainage_percent, "retainage_percent");
-      if (retainagePercent > 100) throw new BadRequestException("retainage_percent must not exceed 100");
-      const retainage = this.roundMoney(subtotal * retainagePercent / 100);
-      const total = this.roundMoney(subtotal - retainage);
+      const terms = await invoiceCommercialTerms(client,request.auth.tenantId,billables);
+      if(body.retainage_percent!==undefined && Number(body.retainage_percent)!==Number(terms.retainage_percent))throw new BadRequestException('Retainage must match the approved agreement');
+      const {retainage,total}=invoiceTermsAmounts(subtotal,Number(terms.retainage_percent));
+      const trigger=terms.payment_trigger==='invoice_issue'?new Date().toISOString():null;
+      const due=contractualDueDate(terms,trigger);
       const invoice = await client.query(
         `
         INSERT INTO invoices (
           tenant_id, organization_id, customer_organization_id, project_id, invoice_number, invoice_type, invoice_date, due_date,
           payment_terms, billing_period_start, billing_period_end, subtotal_amount, retainage_amount, invoice_amount, total_amount,
           original_amount, paid_amount, balance_amount, currency, status, approval_status, delivery_status, cash_application_status,
-          customer_acceptance_status, p12_source_fingerprint, p12_retained_balance_amount, created_by, updated_by
+          customer_acceptance_status, p12_source_fingerprint, p12_retained_balance_amount, created_by, updated_by, commercial_terms_revision_id,contractual_due_at,contract_trigger_at
         )
-        VALUES ($1,$2,$2,$3,$4,'standard',$5,$6,'net_30',$7,$8,$9,$10,$11,$11,$11,0,$11,'USD','approved','approved','not_sent','ready_for_cash_application','accepted',$12,$10,$13,$13)
+        VALUES ($1,$2,$2,$3,$4,'standard',$5,$6,'custom',$7,$8,$9,$10,$11,$11,$11,0,$11,'USD','approved','approved','not_sent','not_ready','pending',$12,$10,$13,$13,$14,$15,$16)
         RETURNING *
         `,
-        [request.auth.tenantId, customerId, billables[0].project_id, invoiceNumber, this.today(), this.addDays(this.today(), 30), body.period_start ?? this.today(), body.period_end ?? this.today(), subtotal, retainage, total, this.sourceFingerprint(billables.map((row) => row.id).sort()), request.auth.userId],
+        [request.auth.tenantId, customerId, billables[0].project_id, invoiceNumber, this.today(), due.due_date, body.period_start ?? this.today(), body.period_end ?? this.today(), subtotal, retainage, total, this.sourceFingerprint(billables.map((row) => row.id).sort()), request.auth.userId,terms.id,due.due_at,trigger],
       );
-      for (const billable of billables) {
+      const retainedLines=allocateRetainage(billables.map(b=>Number(b.net_billable_amount)),Number(terms.retainage_percent));
+      for (const [lineIndex,billable] of billables.entries()) {
         const item = await client.query(
           `
           INSERT INTO invoice_items (
             tenant_id, invoice_id, billable_item_id, accepted_production_source_id, production_record_id, work_order_id, project_id,
             customer_organization_id, item_type, status, description, quantity, unit, unit_rate, gross_amount, retainage_amount, net_amount, created_by, updated_by
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'customer_billable','invoiced',$9,$10,$11,$12,$13,0,$13,$14,$14)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'customer_billable','invoiced',$9,$10,$11,$12,$13,$15,$16,$14,$14)
           RETURNING *
           `,
-          [request.auth.tenantId, invoice.rows[0].id, billable.id, billable.accepted_production_source_id, billable.production_record_id, billable.work_order_id, billable.project_id, billable.customer_organization_id, billable.rate_description, billable.billable_quantity, billable.unit, billable.unit_rate, billable.net_billable_amount, request.auth.userId],
+          [request.auth.tenantId, invoice.rows[0].id, billable.id, billable.accepted_production_source_id, billable.production_record_id, billable.work_order_id, billable.project_id, billable.customer_organization_id, billable.rate_description, billable.billable_quantity, billable.unit, billable.unit_rate, billable.net_billable_amount, request.auth.userId,retainedLines[lineIndex].retainage,retainedLines[lineIndex].net],
         );
         await client.query("UPDATE billable_items SET status = 'settlement_created', invoice_item_id = $1, updated_by = $2, updated_at = now() WHERE tenant_id = $3 AND id = $4", [item.rows[0].id, request.auth.userId, request.auth.tenantId, billable.id]);
         await client.query("UPDATE accepted_production_financial_sources SET invoice_item_id = $1, financial_status = 'invoiced', updated_at = now() WHERE tenant_id = $2 AND id = $3", [item.rows[0].id, request.auth.tenantId, billable.accepted_production_source_id]);
@@ -299,10 +303,22 @@ export class AcceptedProductionFinancialsController {
       for (const source of sources) {
         await requirePartnerWorkAgreement(client, request.auth.tenantId, String(source.production_record_id), String(source.partner_organization_id), String(source.capacity_provider_id));
       }
+      for(const source of sources) {
+        if(source.partner_terms_revision_id)continue;
+        if(source.settlement_item_id||source.contractor_payable_item_id)throw new BadRequestException('Historical partner amounts require controlled agreement review');
+        const context=(await client.query(`SELECT pr.production_date,wo.partner_rate_schedule_id FROM production_records pr JOIN work_orders wo ON wo.tenant_id=pr.tenant_id AND wo.id=pr.work_order_id WHERE pr.tenant_id=$1 AND pr.id=$2`,[request.auth.tenantId,source.production_record_id])).rows[0];
+        const terms=await approvedCommercialTerms(client,request.auth.tenantId,context.partner_rate_schedule_id,'partner',source.partner_organization_id,context.production_date);
+        const governing=(await client.query('SELECT a.contract_id FROM production_records p JOIN partner_work_order_versions w ON w.tenant_id=p.tenant_id AND w.id=p.work_order_version_id JOIN partner_agreement_versions a ON a.tenant_id=w.tenant_id AND a.id=w.governing_agreement_version_id WHERE p.tenant_id=$1 AND p.id=$2',[request.auth.tenantId,source.production_record_id])).rows[0];
+        if(governing?.contract_id!==terms.contract_id)throw new BadRequestException('Partner rate schedule must reference the governing executed agreement');
+        const rate=rateFromTerms(terms,source.production_code,source.unit_of_measure);
+        const updated=(await client.query(`UPDATE accepted_production_financial_sources SET partner_terms_revision_id=$3,partner_rate_code_id=$4,partner_rate_schedule_id=$5,partner_rate=$6,partner_extended_amount=$7,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *`,[request.auth.tenantId,source.id,terms.id,rate.id,rate.rate_schedule_id,rate.rate,this.roundMoney(Number(source.accepted_quantity)*rate.rate)])).rows[0];
+        Object.assign(source,updated);
+      }
       if (sources.some((row) => !row.partner_rate_code_id || Number(row.partner_rate ?? 0) <= 0)) {
         const exception = await this.createException(client, request, "missing_partner_rate", sources[0], "SETTLEMENT EXCEPTION - MISSING PARTNER RATE");
         return { entityType: "financial_exception", entityId: exception.id, eventType: "financial_exception.created", afterState: exception };
       }
+      if(new Set(sources.map(source=>source.partner_terms_revision_id)).size!==1)throw new BadRequestException('Create separate settlements for different approved partner terms');
       const partnerId = String(sources[0].partner_organization_id);
       if (sources.some((row) => row.partner_organization_id !== partnerId)) throw new BadRequestException("cross-Partner settlement denied");
       const providerId = sources[0].capacity_provider_id;
@@ -322,7 +338,7 @@ export class AcceptedProductionFinancialsController {
           $3,$4,$5,$6,$7,$8,$7,$8,$9,0,$9,$9,$9,$9,false,true,now(),$10,$11,$11)
         RETURNING *
         `,
-        [request.auth.tenantId, await this.nextNumber(client, request.auth.tenantId, "settlements", "settlement_number", "PSET-P12"), sources[0].customer_organization_id, providerId, sources[0].project_id, sources[0].work_order_id, periodStart, periodEnd, gross, this.addDays(this.today(), 10), request.auth.userId],
+        [request.auth.tenantId, await this.nextNumber(client, request.auth.tenantId, "settlements", "settlement_number", "PSET-P12"), sources[0].customer_organization_id, providerId, sources[0].project_id, sources[0].work_order_id, periodStart, periodEnd, gross, null, request.auth.userId],
       );
       for (const source of sources) {
         const item = await client.query(
@@ -440,22 +456,25 @@ export class AcceptedProductionFinancialsController {
       if (partnerRows.rowCount !== 1 || !partnerRows.rows[0].partner_organization_id) throw new BadRequestException("settlement must resolve one Partner organization");
       const partnerId = partnerRows.rows[0].partner_organization_id;
       await requirePartnerPayableLineage(client, request.auth.tenantId, { settlement_id: settlement.id, partner_organization_id: partnerId, capacity_provider_id: settlement.capacity_provider_id });
+      const terms=await partnerSettlementTerms(client,request.auth.tenantId,String(settlement.id));
+      const items = await client.query("SELECT * FROM settlement_items WHERE tenant_id = $1 AND settlement_id = $2 AND deleted_at IS NULL AND status <> ALL($3::text[]) ORDER BY id", [request.auth.tenantId, settlement.id, ["voided", "archived"]]);
+      const amounts=invoiceTermsAmounts(items.rows.reduce((sum,item)=>sum+Number(item.net_amount),0),Number(terms.retainage_percent));
+      const allocations=allocateRetainage(items.rows.map(item=>Number(item.net_amount)),Number(terms.retainage_percent));
       const payable = await client.query(
         `
         INSERT INTO contractor_payables (
           tenant_id, payable_number, payable_type, payable_party_type, status, approval_status, payment_readiness_status, payment_status,
           capacity_provider_id, partner_organization_id, project_id, settlement_id, pay_cycle_start, pay_cycle_end,
           gross_payable_amount, retainage_amount, deduction_amount, chargeback_amount, net_payable_amount,
-          eligible_amount, ineligible_amount, pay_when_paid_status, compliance_status, tax_document_status, created_by, updated_by
+          eligible_amount, ineligible_amount, pay_when_paid_status, compliance_status, tax_document_status, created_by, updated_by, commercial_terms_revision_id, retained_balance_amount
         )
         VALUES ($1,$2,'subcontractor','capacity_provider','approved','approved','not_ready','not_paid',
-          $3,$4,$5,$6,$7,$8,$9,0,0,0,$9,0,$9,'awaiting_customer_funds','ready','ready',$10,$10)
+          $3,$4,$5,$6,$7,$8,$9,$11,0,0,$12,0,$12,'awaiting_customer_funds','ready','ready',$10,$10,$13,$11)
         RETURNING *
         `,
-        [request.auth.tenantId, await this.nextNumber(client, request.auth.tenantId, "contractor_payables", "payable_number", "CP-P12"), settlement.capacity_provider_id, partnerId, settlement.project_id, settlement.id, settlement.settlement_period_start, settlement.settlement_period_end, settlement.net_settlement_amount, request.auth.userId],
+        [request.auth.tenantId, await this.nextNumber(client, request.auth.tenantId, "contractor_payables", "payable_number", "CP-P12"), settlement.capacity_provider_id, partnerId, settlement.project_id, settlement.id, settlement.settlement_period_start, settlement.settlement_period_end, amounts.subtotal, request.auth.userId,amounts.retainage,amounts.total,terms.id],
       );
-      const items = await client.query("SELECT * FROM settlement_items WHERE tenant_id = $1 AND settlement_id = $2 AND deleted_at IS NULL AND status <> ALL($3::text[])", [request.auth.tenantId, settlement.id, ["voided", "archived"]]);
-      for (const item of items.rows) {
+      for (const [index,item] of items.rows.entries()) {
         const payableItem = await client.query(
           `
           INSERT INTO contractor_payable_items (
@@ -464,10 +483,10 @@ export class AcceptedProductionFinancialsController {
             quantity, unit, contractor_rate, gross_payable_amount, retainage_amount, net_payable_amount, compliance_status, tax_document_status,
             created_by, updated_by
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'subcontractor_production','ready',$12,$13,$14,$15,$16,0,$16,'ready','ready',$17,$17)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'subcontractor_production','ready',$12,$13,$14,$15,$16,$18,$19,'ready','ready',$17,$17)
           RETURNING *
           `,
-          [request.auth.tenantId, payable.rows[0].id, settlement.id, item.id, item.accepted_production_source_id, item.billable_item_id, item.production_record_id, item.work_order_id, item.project_id, item.capacity_provider_id, item.crew_id, item.description, item.quantity, item.unit, item.contractor_rate, item.net_amount, request.auth.userId],
+          [request.auth.tenantId, payable.rows[0].id, settlement.id, item.id, item.accepted_production_source_id, item.billable_item_id, item.production_record_id, item.work_order_id, item.project_id, item.capacity_provider_id, item.crew_id, item.description, item.quantity, item.unit, item.contractor_rate, item.net_amount, request.auth.userId,allocations[index].retainage,allocations[index].net],
         );
         await client.query("UPDATE accepted_production_financial_sources SET contractor_payable_item_id = $1, financial_status = 'payable_created', updated_at = now() WHERE tenant_id = $2 AND id = $3", [payableItem.rows[0].id, request.auth.tenantId, item.accepted_production_source_id]);
       }
@@ -480,13 +499,20 @@ export class AcceptedProductionFinancialsController {
   async calculateEligibility(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.write(request, "contractor_payable.eligibility_changed", "contractor_payable.eligibility_changed", "contractor_payable", async (client) => {
       const payable = await this.requireRecord(client, "contractor_payables", request.auth.tenantId, id, "contractor payable not found");
+      await requirePartnerPayableLineage(client,request.auth.tenantId,payable);
+      const terms=await partnerSettlementTerms(client,request.auth.tenantId,String(payable.settlement_id));
+      if(payable.commercial_terms_revision_id!==terms.id)throw new BadRequestException('Review historical payable terms before calculating eligibility');
+      const milestone=terms.payment_trigger==='customer_payment'?null:(await client.query('SELECT occurred_at FROM partner_payment_trigger_events WHERE tenant_id=$1 AND contractor_payable_id=$2 AND trigger_type=$3',[request.auth.tenantId,id,terms.payment_trigger])).rows[0];
+      let triggerTime:string|null=milestone?new Date(milestone.occurred_at).toISOString():null;
       const itemRows = await client.query(
         `
-        SELECT cpi.*, COALESCE(sum(paa.allocated_customer_amount),0)::numeric AS funded_customer_amount
+        SELECT cpi.*, COALESCE(sum(CASE WHEN cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived') AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied') THEN paa.allocated_customer_amount ELSE 0 END),0)::numeric AS funded_customer_amount, min(CASE WHEN cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived') AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied') THEN pa.created_at END) AS first_funded_at
         FROM contractor_payable_items cpi
         LEFT JOIN payment_application_allocations paa ON paa.tenant_id = cpi.tenant_id
           AND paa.accepted_production_source_id = cpi.accepted_production_source_id
           AND paa.deleted_at IS NULL
+        LEFT JOIN payment_applications pa ON pa.tenant_id=paa.tenant_id AND pa.id=paa.payment_application_id
+        LEFT JOIN cash_receipts cr ON cr.tenant_id=pa.tenant_id AND cr.id=pa.cash_receipt_id AND cr.deleted_at IS NULL
         WHERE cpi.tenant_id = $1 AND cpi.contractor_payable_id = $2 AND cpi.deleted_at IS NULL AND cpi.status <> ALL($3::text[])
         GROUP BY cpi.id
         `,
@@ -500,7 +526,8 @@ export class AcceptedProductionFinancialsController {
         const customerAmount = Number(source.customer_extended_amount ?? 0);
         const partnerNet = Number(item.net_payable_amount ?? 0);
         const ratio = customerAmount > 0 ? Math.min(1, funded / customerAmount) : 0;
-        const itemEligible = this.roundMoney(partnerNet * ratio);
+        const itemEligible = terms.payment_trigger==='customer_payment'?this.roundMoney(partnerNet * ratio):milestone?partnerNet:0;
+        if(terms.payment_trigger==='customer_payment'&&itemEligible>0&&item.first_funded_at){const timestamp=new Date(item.first_funded_at).toISOString();if(!triggerTime||timestamp<triggerTime)triggerTime=timestamp;}
         eligible += itemEligible;
         allocatedCustomer += funded;
         await client.query("UPDATE contractor_payable_items SET funded_customer_amount = $1, eligible_partner_amount = $2, updated_by = $3, updated_at = now() WHERE tenant_id = $4 AND id = $5", [funded, itemEligible, request.auth.userId, request.auth.tenantId, item.id]);
@@ -508,14 +535,30 @@ export class AcceptedProductionFinancialsController {
       eligible = this.roundMoney(Math.min(eligible, Number(payable.net_payable_amount ?? 0)));
       const status = eligible <= 0 ? "awaiting_customer_funds" : eligible < Number(payable.net_payable_amount ?? 0) ? "partially_eligible" : "eligible";
       const version = Number((await client.query("SELECT COALESCE(max(calculation_version),0)::int + 1 AS version FROM contractor_payable_eligibility_snapshots WHERE tenant_id = $1 AND contractor_payable_id = $2", [request.auth.tenantId, id])).rows[0].version);
-      const eligibleAt = eligible > 0 ? new Date() : null;
-      const due = eligibleAt ? this.addBusinessDays(this.today(), 3) : null;
+      const eligibleAt = eligible > 0 && triggerTime ? new Date(triggerTime) : null;
+      const due = contractualDueDate(terms,triggerTime).due_at;
       await client.query(
-        "INSERT INTO contractor_payable_eligibility_snapshots (tenant_id,contractor_payable_id,calculation_version,cleared_customer_funds,allocated_customer_funds,eligible_partner_amount,status,eligible_at,payment_due_at,source_payment_application_ids,created_by_user_id) SELECT $1,$2,$3,COALESCE(sum(cr.gross_received_amount),0),$4,$5,$6,$7,$8,COALESCE(array_agg(DISTINCT pa.id) FILTER (WHERE pa.id IS NOT NULL),'{}'::uuid[]),$9 FROM payment_applications pa LEFT JOIN cash_receipts cr ON cr.tenant_id = pa.tenant_id AND cr.id = pa.cash_receipt_id WHERE pa.tenant_id = $1 AND pa.deleted_at IS NULL",
+        "INSERT INTO contractor_payable_eligibility_snapshots (tenant_id,contractor_payable_id,calculation_version,cleared_customer_funds,allocated_customer_funds,eligible_partner_amount,status,eligible_at,payment_due_at,source_payment_application_ids,created_by_user_id) SELECT $1,$2,$3,$4,$4,$5,$6,$7,$8,COALESCE(array_agg(DISTINCT pa.id) FILTER (WHERE pa.id IS NOT NULL),'{}'::uuid[]),$9 FROM payment_applications pa JOIN cash_receipts cr ON cr.tenant_id=pa.tenant_id AND cr.id=pa.cash_receipt_id AND cr.deleted_at IS NULL AND cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived') WHERE pa.tenant_id=$1 AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied') AND EXISTS(SELECT 1 FROM payment_application_allocations x JOIN contractor_payable_items i ON i.tenant_id=x.tenant_id AND i.accepted_production_source_id=x.accepted_production_source_id WHERE x.tenant_id=pa.tenant_id AND x.payment_application_id=pa.id AND x.deleted_at IS NULL AND i.contractor_payable_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived'))",
         [request.auth.tenantId, id, version, this.roundMoney(allocatedCustomer), eligible, status, eligibleAt, due, request.auth.userId],
       );
       const after = await client.query("UPDATE contractor_payables SET eligible_amount = $1, ineligible_amount = GREATEST(net_payable_amount - $1, 0), pay_when_paid_status = $2, payment_readiness_status = $3, status = CASE WHEN $2 = 'eligible' THEN 'payment_ready' ELSE status END, eligible_at = COALESCE(eligible_at,$4), payment_due_at = $5, updated_by = $6, updated_at = now() WHERE tenant_id = $7 AND id = $8 RETURNING *", [eligible, status, status === "eligible" ? "ready_for_payment" : "ready_with_warning", eligibleAt, due, request.auth.userId, request.auth.tenantId, id]);
       return { entityType: "contractor_payable", entityId: id, beforeState: payable, afterState: this.safePayable(after.rows[0]) };
+    });
+  }
+
+  @Post("contractor-payables/:id/contract-trigger")
+  @RequirePermission("contractor_payable.calculate_eligibility")
+  async recordContractTrigger(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Row){
+    const time=absoluteTime(body.occurred_at,'Partner invoice event time');
+    if(new Date(time).getTime()>Date.now()||body.verified!==true)throw new BadRequestException('Verify the actual partner invoice event and its time');
+    const proof=requireString(body.proof_reference,'Partner invoice event proof is required');
+    return this.write(request,'partner_contract.trigger_recorded','partner_contract.trigger_recorded','contractor_payable',async client=>{
+      const payable=await this.requireRecord(client,'contractor_payables',request.auth.tenantId,id,'Payable not found');
+      const terms=await partnerSettlementTerms(client,request.auth.tenantId,String(payable.settlement_id));
+      if(terms.payment_trigger==='customer_payment')throw new BadRequestException('Customer-payment triggers come from cleared allocated receipts');
+      const prior=(await client.query('SELECT * FROM partner_payment_trigger_events WHERE tenant_id=$1 AND contractor_payable_id=$2 AND trigger_type=$3',[request.auth.tenantId,id,terms.payment_trigger])).rows[0];
+      if(prior){if(new Date(prior.occurred_at).toISOString()!==new Date(time).toISOString()||prior.proof_reference!==proof)throw new BadRequestException('The recorded trigger is immutable; use controlled financial review for corrections');return {entityType:'partner_payment_trigger',entityId:prior.id,afterState:prior,skipEventAudit:true};}
+      const row=(await client.query('INSERT INTO partner_payment_trigger_events(tenant_id,contractor_payable_id,trigger_type,occurred_at,proof_reference,recorded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[request.auth.tenantId,id,terms.payment_trigger,time,proof,request.auth.userId])).rows[0];return {entityType:'partner_payment_trigger',entityId:row.id,afterState:row};
     });
   }
 
@@ -670,8 +713,8 @@ export class AcceptedProductionFinancialsController {
   private async ensureFinancialSource(client: PoolClient, tenantId: string, userId: string, accepted: Row) {
     const existing = await client.query("SELECT * FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2 AND source_kind = 'accepted_production' AND deleted_at IS NULL AND financial_status <> 'void'", [tenantId, accepted.customer_qc_decision_id]);
     if (existing.rows[0]) return existing.rows[0];
-    const customerRate = await this.resolveRate(client, tenantId, accepted.customer_rate_schedule_id, accepted.production_code, accepted.unit_of_measure, "customer");
-    const partnerRate = await this.resolveRate(client, tenantId, accepted.partner_rate_schedule_id, accepted.production_code, accepted.unit_of_measure, "partner");
+    const customerRate = await this.resolveRate(client, tenantId, accepted.customer_rate_schedule_id, accepted.production_code, accepted.unit_of_measure, "customer", accepted);
+    const partnerRate = null as Row | null;
     const acceptedQuantity = Number(accepted.accepted_quantity);
     const fingerprint = this.sourceFingerprint([accepted.customer_qc_decision_id, accepted.production_record_id, acceptedQuantity, accepted.unit_of_measure]);
     const inserted = await client.query(
@@ -680,9 +723,9 @@ export class AcceptedProductionFinancialsController {
         tenant_id, project_id, work_order_id, partner_organization_id, capacity_provider_id, crew_id, production_record_id,
         customer_qc_cycle_id, customer_qc_decision_id, production_code_id, production_code, production_description,
         source_kind, accepted_quantity, unit_of_measure, customer_rate_code_id, customer_rate_schedule_id, customer_rate, customer_extended_amount,
-        partner_rate_code_id, partner_rate_schedule_id, partner_rate, partner_extended_amount, source_fingerprint, created_by_user_id
+        partner_rate_code_id, partner_rate_schedule_id, partner_rate, partner_extended_amount, source_fingerprint, created_by_user_id, customer_terms_revision_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'accepted_production',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'accepted_production',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
       RETURNING *
       `,
       [
@@ -710,22 +753,15 @@ export class AcceptedProductionFinancialsController {
         partnerRate ? this.roundMoney(acceptedQuantity * Number(partnerRate.rate)) : null,
         fingerprint,
         userId,
+        customerRate?.terms_revision_id,
       ],
     );
     return inserted.rows[0];
   }
 
-  private async resolveRate(client: PoolClient, tenantId: string, scheduleId: unknown, code: unknown, unit: unknown, mode: "customer" | "partner") {
-    if (!scheduleId) return null;
-    const requestedUnit = String(unit).toUpperCase();
-    const aliases: Record<string,string[]> = {LF:["LF","FEET"],FEET:["FEET","LF"],EA:["EA","EACH"],EACH:["EACH","EA"],HR:["HR","HOURS"],HOURS:["HOURS","HR"]};
-    const units = aliases[requestedUnit] ?? [requestedUnit];
-    const column = mode === "customer" ? "COALESCE(customer_rate, amount)" : "contractor_rate";
-    const result = await client.query(
-      `SELECT id, rate_schedule_id, ${column} AS rate, unit, updated_at FROM rate_codes WHERE tenant_id = $1 AND rate_schedule_id = $2 AND code = $3 AND upper(unit) = ANY($4::text[]) AND status = 'active' AND deleted_at IS NULL ORDER BY CASE WHEN upper(unit)=$5 THEN 0 ELSE 1 END, updated_at DESC, id LIMIT 1`,
-      [tenantId, scheduleId, code, units, requestedUnit],
-    );
-    return result.rows[0] ?? null;
+  private async resolveRate(client: PoolClient, tenantId: string, scheduleId: unknown, code: unknown, unit: unknown, mode: "customer" | "partner", accepted: Row) {
+    const terms = await approvedCommercialTerms(client,tenantId,scheduleId,mode,mode==='customer'?accepted.customer_organization_id:accepted.partner_organization_id,accepted.production_date);
+    return rateFromTerms(terms,code,unit);
   }
 
   private async billablesForBody(client: PoolClient, tenantId: string, body: Row) {
@@ -896,7 +932,7 @@ export class AcceptedProductionFinancialsController {
       if (existing.rows[0]) continue;
       const quantity = Number(coil.actual_length_ft);
       const productionCode = policy.treatment === "separate_pay_item" ? await this.productionCodeById(client, request.auth.tenantId, policy.separate_production_code_id) : { id: accepted.production_code_id, code: accepted.production_code, description: `${accepted.production_description ?? accepted.production_code} coil footage`, unit_of_measure: accepted.unit_of_measure };
-      const rate = await this.resolveRate(client, request.auth.tenantId, partyType === "customer" ? accepted.customer_rate_schedule_id : accepted.partner_rate_schedule_id, productionCode.code, productionCode.unit_of_measure, partyType);
+      const rate = await this.resolveRate(client, request.auth.tenantId, partyType === "customer" ? accepted.customer_rate_schedule_id : accepted.partner_rate_schedule_id, productionCode.code, productionCode.unit_of_measure, partyType, accepted);
       if (!rate || Number(rate.rate ?? 0) <= 0) {
         await this.createException(client, request, "missing_coil_rate_mapping", { ...accepted, coil_observation_id: coil.id }, `MISSING ${partyType.toUpperCase()} COIL RATE MAPPING`);
         continue;
@@ -912,9 +948,9 @@ export class AcceptedProductionFinancialsController {
           customer_qc_cycle_id, customer_qc_decision_id, production_code_id, production_code, production_description, source_kind,
           coil_observation_id, customer_coil_policy_id, partner_coil_policy_id, commercial_treatment, policy_version,
           accepted_quantity, unit_of_measure, customer_rate_code_id, customer_rate_schedule_id, customer_rate, customer_extended_amount,
-          partner_rate_code_id, partner_rate_schedule_id, partner_rate, partner_extended_amount, rate_revision_locked_at, source_fingerprint, created_by_user_id
+          partner_rate_code_id, partner_rate_schedule_id, partner_rate, partner_extended_amount, rate_revision_locked_at, source_fingerprint, created_by_user_id, customer_terms_revision_id, partner_terms_revision_id
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now(),$29,$30,$31,$32)
         ON CONFLICT DO NOTHING
         `,
         [
@@ -948,6 +984,8 @@ export class AcceptedProductionFinancialsController {
           partyType === "partner" ? amount : null,
           fingerprint,
           request.auth.userId,
+          partyType === "customer" ? rate.terms_revision_id : null,
+          partyType === "partner" ? rate.terms_revision_id : null,
         ],
       );
     }
