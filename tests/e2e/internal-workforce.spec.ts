@@ -92,6 +92,7 @@ test('Sync management provisions a real internal crew through field production w
         const invalidDecision=await request.post(`${process.env.API_BASE_URL}/internal-workforce/assignments/${assignment.id}/clearance`,{headers:{authorization:`Bearer ${management}`},data:{status:'typo',checklist,evidence_reference:'SYNTHETIC',valid_until:date}});expect(invalidDecision.status()).toBe(400);
         await api(request, management, `internal-workforce/assignments/${assignment.id}/clearance`, { status: 'authorized', checklist, evidence_reference: 'SYNTHETIC-READINESS-PACK', valid_until: date });
         await api(request, management, `work-safety/work-orders/${assignment.id}/scope-review`, {pre_bore_required:false,evidence_reference:'SYNTHETIC aerial-only scope'});
+        await api(request,management,`work-safety/work-orders/${assignment.id}/evidence-policy`,{requirements:{},capture_time_required:false,source_reference:'SYNTHETIC fixture baseline: evidence requirements tested independently'});
         expect((await produce()).status()).toBe(400); // daily JSA still mandatory
         await api(request, employee, 'syncfield/foreman/jsa/today/complete', { work_date: date, work_location: 'Synthetic block', hazards: ['traffic'], controls: ['ppe_reviewed', 'emergency_procedures_reviewed', 'stop_work_authority_reviewed'], foreman_certified: true });
         const originalJsa = await api(request, employee, `syncfield/foreman/jsa/today?work_date=${date}`);

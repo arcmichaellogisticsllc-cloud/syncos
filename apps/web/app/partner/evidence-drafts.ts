@@ -3,6 +3,7 @@ import { readToken } from "../intelligence/api";
 export const evidenceDatabase = "syncos-field-evidence";
 export type EvidenceDraft = {
   scope: string; mutationId: string; reportId: string; recordId?: string;
+  evidenceKind?: string; capturedAt?: string; captureLocation?: string;
   file: Blob; fileName: string; mimeType: string; description: string; savedAt: string;
 };
 // This key isolates local drafts; server authorization remains authoritative.

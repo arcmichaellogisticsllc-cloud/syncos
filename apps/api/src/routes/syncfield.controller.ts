@@ -1,4 +1,5 @@
-import { safetyBlockers } from "./work-safety";
+import { evidenceKinds, evidenceReadiness, requireEvidenceReady } from "./field-evidence-readiness";
+import { safetyBlockers, lockWorkSafety } from "./work-safety";
 import { hasActiveFieldStop } from "./field-stop-scope";
 import { decodeFieldEvidence, assertEvidenceReplay } from "./field-evidence-validation";
 import { resolveFieldIdentity } from "../security/field-identity";
@@ -1191,6 +1192,7 @@ export class SyncfieldController {
         if (report.status !== "draft") throw new BadRequestException("only draft reports can be submitted");
         const records = await this.reportRecords(writeClient, assignment.tenant_id, report.id);
         if (!records.length) throw new BadRequestException("at least one production record is required");
+        await requireEvidenceReady(writeClient,assignment.tenant_id,report.id);
         const snapshot = await this.buildReportSnapshot(writeClient, report);
         const revision = await writeClient.query(
           `
@@ -1233,26 +1235,45 @@ export class SyncfieldController {
       const fileName = this.sanitizeFileName(requireString(body.file_name,"file_name is required"));
       const description = requireString(body.description,"description is required");
       const mutationId = requireString(body.client_mutation_id,"client_mutation_id is required");
+      const kind=String(body.evidence_kind??'other');if(!evidenceKinds.includes(kind))throw new BadRequestException('Unsupported evidence category');
+      const captured=body.captured_at?new Date(String(body.captured_at)):null;
+      if(captured && (!Number.isFinite(captured.getTime())||captured.getTime()>Date.now()+120000))throw new BadRequestException('Capture time must be valid and cannot be in the future');
+      const captureTime=captured?.toISOString()??null,captureLocation=this.optionalString(body.capture_location);
       return this.writeWithClient(client, request, "field_evidence.create", "field_evidence.created", "field_evidence", async writeClient => {
         await writeClient.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${context.tenant_id}:field-evidence:${request.auth.userId}:${mutationId}`]);
-        const previous = (await writeClient.query("SELECT id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at FROM syncfield_field_evidence WHERE tenant_id=$1 AND uploaded_by_user_id=$2 AND client_mutation_id=$3", [context.tenant_id, request.auth.userId, mutationId])).rows[0];
+        const previous = (await writeClient.query("SELECT id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at,evidence_kind,captured_at,capture_location,readability_status FROM syncfield_field_evidence WHERE tenant_id=$1 AND uploaded_by_user_id=$2 AND client_mutation_id=$3", [context.tenant_id, request.auth.userId, mutationId])).rows[0];
         if (previous) {
-          assertEvidenceReplay(previous, { daily_report_id: report.id, production_record_id: recordId, file_name: fileName, mime_type: mime, description, checksum });
+          assertEvidenceReplay(previous, { daily_report_id: report.id, production_record_id: recordId, file_name: fileName, mime_type: mime, description, checksum, evidence_kind:kind,captured_at:captureTime,capture_location:captureLocation });
           return { entityType: "field_evidence", entityId: previous.id, afterState: previous, skipEventAudit: true };
         }
-        const inserted = await writeClient.query(`INSERT INTO syncfield_field_evidence (tenant_id,daily_report_id,production_record_id,crew_id,organization_id,file_name,mime_type,content_bytes,description,checksum,uploaded_by_user_id,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(tenant_id,uploaded_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id = EXCLUDED.client_mutation_id RETURNING id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at`, [context.tenant_id,report.id,recordId,crew.id,context.organization.id,fileName,mime,bytes,description,checksum,request.auth.userId,mutationId]);
+        const inserted = await writeClient.query(`INSERT INTO syncfield_field_evidence (tenant_id,daily_report_id,production_record_id,crew_id,organization_id,file_name,mime_type,content_bytes,description,checksum,uploaded_by_user_id,client_mutation_id,evidence_kind,captured_at,capture_location,received_revision_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT(tenant_id,uploaded_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id = EXCLUDED.client_mutation_id RETURNING id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at`, [context.tenant_id,report.id,recordId,crew.id,context.organization.id,fileName,mime,bytes,description,checksum,request.auth.userId,mutationId,kind,captureTime,captureLocation,report.revision_number]);
         if (inserted.rows[0].daily_report_id !== report.id || inserted.rows[0].production_record_id !== recordId) throw new BadRequestException("mutation belongs to another evidence upload");
         return { entityType: "field_evidence", entityId: inserted.rows[0].id, afterState: inserted.rows[0] };
       });
     });
   }
 
+  @Get("foreman/evidence-readiness")
+  @RequirePermission("partner_daily_production.read")
+  async foremanEvidenceReadiness(@Req() request:AuthenticatedRequest,@Query("daily_report_id") reportId:string){return this.withClient(async client=>{
+    const context=await this.requirePartnerForeman(client,request),crew=await this.requireForemanCrew(client,context);
+    const report=await this.requireDailyReportById(client,context.tenant_id,reportId);
+    if(report.crew_id!==crew.id||report.organization_id!==context.organization.id)throw new NotFoundException('Report not found');
+    const result=await evidenceReadiness(client,context.tenant_id,reportId);
+    return {ready:result.ready,missing:result.missing,policy:result.policy?{id:result.policy.id,revision_number:result.policy.revision_number,requirements:result.policy.requirements,capture_time_required:result.policy.capture_time_required}:null};
+  });}
+
   @Get("foreman/evidence")
   @RequirePermission("partner_daily_production.read")
   async fieldEvidenceList(@Req() request: AuthenticatedRequest, @Query("daily_report_id") reportId: string) {
     return this.withClient(async client => {
       const context = await this.requirePartnerForeman(client, request); const crew = await this.requireForemanCrew(client, context);
-      const result = await client.query("SELECT id, daily_report_id, production_record_id, file_name, mime_type, description, created_at FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND crew_id=$3 AND organization_id=$4 ORDER BY created_at DESC", [context.tenant_id,reportId,crew.id,context.organization.id]); return result.rows;
+      const result = await client.query("SELECT id, daily_report_id, production_record_id, file_name, mime_type, description, created_at,evidence_kind,captured_at,capture_location,readability_status,received_revision_number FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND crew_id=$3 AND organization_id=$4 ORDER BY created_at DESC", [context.tenant_id,reportId,crew.id,context.organization.id]); const history=(await client.query(`SELECT e.id,
+        EXISTS(SELECT 1 FROM daily_production_report_revisions v WHERE v.tenant_id=e.tenant_id AND v.daily_report_id=e.daily_report_id AND
+          (v.snapshot_json->'evidence' @> jsonb_build_array(jsonb_build_object('id',e.id)) OR v.snapshot_json->'proposed_correction'->'evidence' @> to_jsonb(ARRAY[e.id::text]))) AS included_in_submission,
+        EXISTS(SELECT 1 FROM customer_qc_decisions d JOIN customer_qc_cycles c ON c.tenant_id=d.tenant_id AND c.id=d.qc_cycle_id WHERE d.tenant_id=e.tenant_id AND c.daily_report_id=e.daily_report_id AND e.id=ANY(d.accepted_evidence_ids) AND d.decision IN ('accepted','partially_accepted') AND d.deleted_at IS NULL) AS included_in_customer_acceptance
+        FROM syncfield_field_evidence e WHERE e.tenant_id=$1 AND e.daily_report_id=$2 AND e.crew_id=$3 AND e.organization_id=$4`,[context.tenant_id,reportId,crew.id,context.organization.id])).rows;
+      return result.rows.map(row=>({...row,...history.find(h=>h.id===row.id)}));
     });
   }
 
@@ -1332,9 +1353,9 @@ export class SyncfieldController {
       const report = await this.requireSubmittedDailyReport(client, request.auth.tenantId, reportId);
       const cycles = await client.query("SELECT * FROM customer_qc_cycles WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL ORDER BY cycle_number DESC", [request.auth.tenantId, reportId]);
       const revisions = await client.query("SELECT revision_number, snapshot_json, created_at FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2 ORDER BY revision_number DESC", [request.auth.tenantId, reportId]);
-      const evidence = await client.query("SELECT id,file_name,mime_type,description,production_record_id,created_at FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY created_at", [request.auth.tenantId,reportId]);
+      const evidence = await client.query("SELECT id,file_name,mime_type,description,production_record_id,created_at,evidence_kind,captured_at,capture_location,readability_status,received_revision_number FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY created_at", [request.auth.tenantId,reportId]);
       const incidents=await client.query("SELECT id,occurred_at,incident_type,location,description,immediate_action FROM syncfield_field_incidents WHERE tenant_id=$1 AND crew_id=$2 AND work_order_id=$3 ORDER BY occurred_at DESC",[request.auth.tenantId,report.crew_id,report.work_order_id]);
-      return { ...(await this.safeDailyProductionDetail(client, report)), ...this.safeCustomerQcReportSummary(report), incidents: incidents.rows, evidence: evidence.rows, cycles: await Promise.all(cycles.rows.map(row => this.safeCustomerQcCycleDetail(client, row))), revisions: revisions.rows };
+      return { ...(await this.safeDailyProductionDetail(client, report)), ...this.safeCustomerQcReportSummary(report), incidents: incidents.rows, evidence: evidence.rows, evidence_readiness:await evidenceReadiness(client,request.auth.tenantId,reportId,true), cycles: await Promise.all(cycles.rows.map(row => this.safeCustomerQcCycleDetail(client, row))), revisions: revisions.rows };
     });
   }
 
@@ -1344,6 +1365,7 @@ export class SyncfieldController {
     return this.withClient(async (client) => {
       return this.writeWithClient(client, request, "daily_report.completeness_confirm", "daily_report.completeness_confirmed", "daily_report", async (writeClient) => {
         const before = await this.requireSubmittedDailyReport(writeClient, request.auth.tenantId, reportId);
+        await requireEvidenceReady(writeClient,request.auth.tenantId,reportId,true);
         const authorityId = await this.resolveQcAuthority(writeClient, before, this.optionalString(body.qc_authority_organization_id));
         const updated = await writeClient.query(
           `
@@ -1445,6 +1467,12 @@ export class SyncfieldController {
         const reason = this.optionalString(body.customer_reason_code);
         if (acceptedQuantity !== null && acceptedQuantity > Number(record.quantity_submitted) && !reason) throw new BadRequestException("accepted quantity above reported requires customer reason");
         if (decision !== "accepted" && !reason) throw new BadRequestException("customer reason is required");
+        const acceptedEvidence=body.accepted_evidence_ids??[];
+        if(!Array.isArray(acceptedEvidence)||acceptedEvidence.some(id=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))||new Set(acceptedEvidence).size!==acceptedEvidence.length)throw new BadRequestException('Select distinct evidence files reviewed by the customer');
+        if(['accepted','partially_accepted'].includes(decision)){
+          const readiness=await requireEvidenceReady(writeClient,request.auth.tenantId,cycle.daily_report_id,true,acceptedEvidence);
+          if(acceptedEvidence.some(id=>!readiness.files.some(f=>f.id===id && f.readability_status==='readable' && (!f.production_record_id||f.production_record_id===record.id))))throw new BadRequestException('Accepted evidence must be readable and belong to this report and work item');
+        }else if(acceptedEvidence.length)throw new BadRequestException('Only customer acceptance can accept evidence');
         const inserted = await writeClient.query(
           `
           INSERT INTO customer_qc_decisions (
@@ -1461,6 +1489,8 @@ export class SyncfieldController {
             this.optionalString(body.source_reference) ?? cycle.source_reference, mutationId,
           ],
         );
+        await writeClient.query('UPDATE customer_qc_decisions SET accepted_evidence_ids=$3 WHERE tenant_id=$1 AND id=$2',[request.auth.tenantId,inserted.rows[0].id,acceptedEvidence]);
+        inserted.rows[0].accepted_evidence_ids=acceptedEvidence;
         if (["correction_required", "rejected"].includes(decision)) {
           await this.createCorrectionForDecision(writeClient, request, cycle, inserted.rows[0], record, body);
         }
@@ -2944,6 +2974,8 @@ export class SyncfieldController {
   private async productionGate(client: PoolClient, assignment: MapAssignmentRow, workDate: string) {
     const blockers: string[] = [];
     if (await hasActiveFieldStop(client, assignment.tenant_id, assignment.work_order_id, assignment.crew_id)) blockers.push("crew_work_order_stopped");
+    const jsa = await this.findJsa(client, assignment, workDate);
+    await lockWorkSafety(client,assignment.tenant_id,assignment.work_order_id);
     const execution = await client.query("SELECT execution_model,status,pre_bore_required,safety_scope_reviewed_at FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", [assignment.tenant_id,assignment.work_order_version_id]);
     if (!execution.rows[0]?.safety_scope_reviewed_at) blockers.push("work_safety_scope_not_reviewed");
     if (execution.rows[0]?.status !== "active") blockers.push("work_order_not_active");
@@ -2977,7 +3009,6 @@ export class SyncfieldController {
     );
     if (!authorization.rows[0]) blockers.push("production_start_not_authorized");
     }
-    const jsa = await this.findJsa(client, assignment, workDate);
     if (!jsa || jsa.status !== "completed") blockers.push("daily_jsa_incomplete");
     const underground = await client.query(`SELECT 1 FROM production_records pr JOIN syncfield_production_codes pc ON pc.tenant_id=pr.tenant_id AND pc.id=pr.syncfield_production_code_id
       WHERE pr.tenant_id=$1 AND pr.work_order_version_id=$2 AND pr.crew_id=$3 AND pr.production_date=$4::date AND pr.deleted_at IS NULL AND pr.status <> 'void'
@@ -3592,7 +3623,8 @@ export class SyncfieldController {
     const spans = await client.query("SELECT * FROM syncfield_span_completions WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
     const observations = await client.query("SELECT * FROM syncfield_asset_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
     const coils = await client.query("SELECT * FROM syncfield_coil_observations WHERE tenant_id = $1 AND daily_report_id = $2 AND deleted_at IS NULL", [report.tenant_id, report.id]);
-    return { report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), coil_observations: coils.rows.map((coil) => this.safeCoilObservation(coil)), totals: { ...this.productionTotals(records), coils: this.coilTotals(coils.rows) } };
+    const evidence=await evidenceReadiness(client,report.tenant_id,report.id);
+    return { evidence_policy_id:evidence.policy?.id??null,evidence: evidence.files, report: this.safeDailyProductionSummary(report), records: records.map((record) => this.safeProductionRecord(record)), annotations: annotations.rows.map((annotation) => this.safeAnnotation(annotation)), span_completions: spans.rows.map((span) => this.safeSpanCompletion(span)), asset_observations: observations.rows.map((observation) => this.safeAssetObservation(observation)), coil_observations: coils.rows.map((coil) => this.safeCoilObservation(coil)), totals: { ...this.productionTotals(records), coils: this.coilTotals(coils.rows) } };
   }
 
   private async requireProductionRecord(client: PoolClient, tenantId: string, recordId: string) {

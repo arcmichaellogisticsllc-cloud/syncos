@@ -1,3 +1,4 @@
+import { evidenceRequirements } from "./field-evidence-readiness";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Req } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import { executeWriteAction } from '@syncos/shared';
@@ -60,9 +61,21 @@ export class WorkSafetyController {
        WHERE l.tenant_id=sc.tenant_id AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL AND l.status='active' AND l.deleted_at IS NULL AND (sc.crew_id IS NULL OR sc.crew_id=m.crew_id))) ORDER BY sc.created_at DESC LIMIT 200`,[r.auth.tenantId,r.auth.userId,staff])).rows;
     const orders=staff?(await c.query('SELECT id,work_order_number,title FROM work_orders WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 250',[r.auth.tenantId])).rows:[];
     const crews=staff?(await c.query('SELECT id,name FROM crews WHERE tenant_id=$1 AND deleted_at IS NULL',[r.auth.tenantId])).rows:[];
-    const versions=staff?(await c.query('SELECT id,work_order_number,version_number,pre_bore_required,safety_scope_reviewed_at FROM partner_work_order_versions WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 250',[r.auth.tenantId])).rows:[];
+    const versions=staff?(await c.query(`SELECT v.id,v.work_order_number,v.version_number,v.pre_bore_required,v.safety_scope_reviewed_at,(SELECT to_jsonb(p) FROM field_evidence_policies p WHERE p.tenant_id=v.tenant_id AND p.work_order_version_id=v.id ORDER BY p.revision_number DESC LIMIT 1) AS evidence_policy FROM partner_work_order_versions v WHERE v.tenant_id=$1 AND v.deleted_at IS NULL ORDER BY v.created_at DESC LIMIT 250`,[r.auth.tenantId])).rows:[];
     return {staff,roles:await this.roles(c,r),controls:rows,work_orders:orders,crews,versions};
   }finally{c.release();}}
+  @Post('work-orders/:id/evidence-policy')
+  async evidencePolicy(@Req() r:AuthenticatedRequest,@Param('id') id:string,@Body() b:Record<string,unknown>){return this.write(r,'field_evidence.policy_approved',async c=>{
+    await this.authority(c,r,['safety_manager','operations_manager','project_manager','executive']);
+    const requirements=evidenceRequirements(b.requirements);
+    if(typeof b.capture_time_required!=='boolean')throw new BadRequestException('Explicitly determine whether capture time is required');
+    const source=requireString(b.source_reference,'Governing customer evidence requirements and approval reference are required');
+    const version=(await c.query('SELECT work_order_id FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL',[r.auth.tenantId,id])).rows[0];if(!version)throw new NotFoundException('Work order version not found');
+    await lockWorkSafety(c,r.auth.tenantId,version.work_order_id);
+    const row=(await c.query(`INSERT INTO field_evidence_policies(tenant_id,work_order_version_id,revision_number,requirements,capture_time_required,source_reference,approved_by)
+      SELECT $1,$2,COALESCE(max(revision_number),0)+1,$3,$4,$5,$6 FROM field_evidence_policies WHERE tenant_id=$1 AND work_order_version_id=$2 RETURNING *`,[r.auth.tenantId,id,JSON.stringify(requirements),b.capture_time_required,source,r.auth.userId])).rows[0];
+    return {entityType:'field_evidence_policy',entityId:row.id,afterState:row};
+  });}
   @Post('work-orders/:id/scope-review')
   async scopeReview(@Req() r:AuthenticatedRequest,@Param('id') id:string,@Body() b:Record<string,unknown>){
     if(typeof b.pre_bore_required!=='boolean')throw new BadRequestException('Explicitly determine whether pre-bore approval is required');

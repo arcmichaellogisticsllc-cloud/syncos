@@ -39,5 +39,6 @@ export async function reviewFixtureSafetyScope(request:APIRequestContext,tenant:
  const bearer=await safetyActor(tenant,'operations_manager');
  const response=await request.post(`${process.env.API_BASE_URL}/work-safety/work-orders/${version}/scope-review`,{headers:{authorization:`Bearer ${bearer}`},data:{pre_bore_required:false,evidence_reference:'SYNTHETIC aerial-only scope; no field approval asserted'}});
  expect(response.ok(),await response.text()).toBe(true);
+ const policy=await request.post(`${process.env.API_BASE_URL}/work-safety/work-orders/${version}/evidence-policy`,{headers:{authorization:`Bearer ${bearer}`},data:{requirements:{},capture_time_required:false,source_reference:'SYNTHETIC fixture baseline: evidence requirements tested independently'}});expect(policy.ok(),await policy.text()).toBe(true);
  return bearer;
 }

@@ -6,7 +6,7 @@ User-confirmed order, 2026-09-29. These requirements supplement the operating mo
 
 Required: version safety records when location or conditions change; record each worker's own acknowledgment with identity, time and revision; require applicable pre-bore approval; apply stops to affected crews and work locations, including queued offline requests; require applicable approval before restart.
 
-Current evidence: JSA revisions and crew/work-order stop enforcement exist in `apps/api/src/routes/syncfield.controller.ts` and `field-stop-scope.ts`. Bulk acknowledgment was removed. This does not implement individual acknowledgment, location-scoped stop propagation, a pre-bore authorization model, or the full restart approval chain.
+Current local candidate: individual authenticated JSA acknowledgments, pre-bore approval/revocation, conservative crew/work-order shutdown enforcement and ordered utility/Safety/Operations restart approvals are implemented. See `docs/acceptance/safety-authorization-20260929.md`. Physical-phone acceptance and older administrative correction pathways remain open; this candidate is not yet deployed.
 
 Acceptance: an old acknowledgment cannot satisfy a new revision; a foreman cannot acknowledge for another person; absent/unauthorized pre-bore approval blocks affected work; offline replay rechecks current stops and approval scope; releasing one stop does not remove another applicable hold. Test both workforce types and physical devices.
 
@@ -14,7 +14,7 @@ Acceptance: an old acknowledgment cannot satisfy a new revision; a foreman canno
 
 Required: required formats and practical sizes, retained original bytes, capture details, duplicate-safe retries, and distinct missing/readable/submitted/accepted evidence states.
 
-Current evidence: scoped durable device retries and server checksum/idempotency checks support JPEG/PNG/PDF/MP4 up to 20 MiB. Signature checks are not full readability validation. Required-evidence policies, complete capture provenance, unsupported phone formats, delayed delivery and physical-device suspension remain to be validated or completed. Do not silently discard unsupported originals.
+Current local candidate: approved and pinned requirement revisions, explicit readability review, capture details, original preservation and selected customer-accepted evidence are implemented. Supported formats include JPEG/PNG/HEIC/HEIF/PDF/MP4/MOV up to 20 MiB. See `docs/acceptance/field-evidence-20260929.md`. Larger resumable uploads, actual-phone suspension and historical financial-source advancement remain open.
 
 Acceptance: missing or unreadable mandatory evidence blocks the relevant handoff; late evidence attaches to the correct work/revision without rewriting the original; interrupted upload and resend preserve one original file and an accurate status.
 

@@ -1,3 +1,4 @@
+import { FieldEvidenceReviewController } from "../routes/field-evidence-review.controller";
 import { WorkSafetyController } from "../routes/work-safety.controller";
 import { InternalWorkforceController } from "../routes/internal-workforce.controller";
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
@@ -56,7 +57,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [
+  controllers: [FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,

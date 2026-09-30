@@ -1,5 +1,6 @@
 import { expect,type APIRequestContext } from '@playwright/test';
 import { Client } from 'pg';
+const { requireRecordWorkAuthorization } = require('../../../apps/api/dist/routes/record-work-authorization');
 import { acknowledgeFixtureJsa,safetyActor } from './individual-safety';
 
 // Invoked against independently provisioned Sync and partner crew fixtures.
@@ -11,7 +12,14 @@ export async function verifySafetyLifecycle(request:APIRequestContext,tenant:str
   async function post(token:string,path:string,data:any,status=201){const r=await request.post(`${process.env.API_BASE_URL}/${path}`,{headers:{authorization:`Bearer ${token}`},data});expect(r.status(),await r.text()).toBe(status);return r.json();}
   async function current(){const r=await request.get(`${process.env.API_BASE_URL}/syncfield/foreman/jsa/today?work_date=${date}`,{headers:{authorization:`Bearer ${foreman}`}});expect(r.ok(),await r.text()).toBe(true);return r.json();}
   // A deliberate missing mutation id lets the test inspect the gate without adding work.
-  async function probe(blocker:string){const r=await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/records`,{headers:{authorization:`Bearer ${foreman}`},data:{work_date:date}});expect(r.status()).toBe(400);expect(await r.text()).toContain(blocker);}
+  async function probe(blocker:string){const r=await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/records`,{headers:{authorization:`Bearer ${foreman}`},data:{work_date:date}});expect(r.status()).toBe(400);expect(await r.text()).toContain(blocker);
+   await db.query('BEGIN');
+   try{
+    const input={tenant_id:tenant,work_order_id:wo.work_order_id,crew_id:wo.assigned_crew_id,work_order_version_id:version,production_date:date};
+    if(blocker==='clientMutationId is required')expect((await requireRecordWorkAuthorization(db,input)).work_order_version_id).toBe(version);
+    else await expect(requireRecordWorkAuthorization(db,input)).rejects.toThrow(blocker);
+   }finally{await db.query('ROLLBACK');}
+  }
   let jsa=await current();
   await post(foreman,`work-safety/jsas/${jsa.id}/acknowledge`,{confirmed:true,revision_number:jsa.revision_number-1},400);
   await post(foreman,`work-safety/jsas/${jsa.id}/acknowledge`,{confirmed:true,revision_number:jsa.revision_number,worker_id:jsa.foreman_worker_id},400);

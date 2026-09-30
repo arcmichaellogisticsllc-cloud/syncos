@@ -1,3 +1,4 @@
+import { requireRecordWorkAuthorization } from "./record-work-authorization";
 import { lockWorkSafety, safetyBlockers } from "./work-safety";
 import { lockFieldWork, hasActiveFieldStop } from "./field-stop-scope";
 import { requireCustomerAcceptedBilling, validateAcceptedBillingQuantity } from "./customer-accepted-billing";
@@ -1518,12 +1519,14 @@ export class ProductionController {
       return await this.write(request, "production_record.create", status === "submitted" ? "production.submitted" : "production.created", "production_record", async (client) => {
         const context = await this.validateProductionCreateContext(client, request.auth.tenantId, body, productionType);
         await this.requireNoActiveStopWork(client,{tenant_id:request.auth.tenantId,work_order_id:context.workOrder.id,crew_id:body.crew_id??context.workOrder.assigned_crew_id});
+        const authorization=await requireRecordWorkAuthorization(client,{...body,tenant_id:request.auth.tenantId,work_order_id:context.workOrder.id,crew_id:body.crew_id??context.workOrder.assigned_crew_id,production_date:productionDate});
         const quantity = this.productionClaimedQuantity(body, productionType);
         const unit = this.productionUnit(body, quantity);
         this.validateProductionTypeNotes(body, productionType);
         await this.validateProductionQuantityRules(client, request.auth.tenantId, context.workOrder, body, quantity, unit);
         const record = await insertTenantRecord(client, "production_records", request.auth.tenantId, {
           project_id: context.project.id,
+          work_order_version_id: authorization.work_order_version_id,
           work_order_id: context.workOrder.id,
           capacity_provider_id: body.capacity_provider_id ?? context.workOrder.assigned_capacity_provider_id,
           crew_id: body.crew_id ?? context.workOrder.assigned_crew_id,
@@ -1603,6 +1606,7 @@ export class ProductionController {
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         await this.requireNoActiveStopWork(client,before);
         if (["approved", "billable", "rejected", "voided", "archived"].includes(before.status)) throw new BadRequestException("approved, rejected, voided, billable, and archived production records cannot be edited");
+        await requireRecordWorkAuthorization(client,{...before,...values});
         await this.validateProductionReferences(client, request.auth.tenantId, values, body, before);
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, values);
         if (!after) throw new NotFoundException("production record not found");
@@ -1620,6 +1624,7 @@ export class ProductionController {
     return this.write(request, "production_record.submit", "production.submitted", "production_record", async (client) => {
       const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
       if (!["draft", "corrected"].includes(before.status)) throw new BadRequestException("production record must be draft or corrected");
+      await requireRecordWorkAuthorization(client,before);
       const workOrder = await this.requireRecord(client, "work_orders", request.auth.tenantId, String(before.work_order_id), "work order not found");
       const project = await this.requireRecord(client, "projects", request.auth.tenantId, String(before.project_id), "project not found");
       this.assertProjectAllowsProduction(project, body.override_reasons);

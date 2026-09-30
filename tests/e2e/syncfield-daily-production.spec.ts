@@ -679,6 +679,62 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     const traced = await createProduction(request, seeded, { work_date: workDate, client_mutation_id: crypto.randomUUID(), production_code_id: codes.TRANSFER, location_type: "asset", asset_type: "pole", asset_identifier: "Pole 12301", map_page: 1, x_ratio: 0.3, y_ratio: 0.3, reported_quantity: 1, status: "rework", duplicate_reason: "Customer requested additional pass." });
     expect(traced.duplicate_reason).toBe("Customer requested additional pass.");
   });
+  test('required evidence blocks missing and unreadable handoffs, preserves originals and pins approved requirements',async({request,page})=>{
+    test.setTimeout(90000);
+    if(!codes){const all=await apiJson(request,seeded.foremanToken,'GET','/syncfield/foreman/production/codes');codes=Object.fromEntries(all.map((c:any)=>[c.code,c.id]));}
+    const ops=await safetyActor(seeded.tenantA,'operations_manager');
+    const approvePolicy=(requirements:Record<string,number>)=>apiJson(request,ops,'POST',`/work-safety/work-orders/${seeded.workOrderVersionId}/evidence-policy`,{requirements,capture_time_required:true,source_reference:'SYNTHETIC customer requires one readable after-work photo'});
+    await installSession(page,ops,[]);await page.goto('/work-safety');
+    await page.getByText(/WO-P8-A · version 1 · Reviewed/).click();
+    await page.getByLabel('Minimum after files',{exact:true}).fill('1');
+    await page.getByLabel('Governing customer requirements and approval reference').fill('SYNTHETIC customer requires one readable after-work photo');
+    await page.getByRole('button',{name:'Approve evidence requirements',exact:true}).click();
+    await expect(page.getByRole('status')).toContainText('Safety record saved');
+    const date=new Date();date.setUTCDate(date.getUTCDate()-1);const workDate=date.toISOString().slice(0,10);
+    await completeJsa(request,seeded,workDate);
+    const record=await createProduction(request,seeded,{work_date:workDate,client_mutation_id:crypto.randomUUID(),production_code_id:codes.LABOR,location_type:'daily',reported_quantity:1,status:'complete'});
+    const report=record.daily_report_id;
+    const submit=()=>request.post(apiUrl('/syncfield/foreman/production/review-day/submit'),{headers:auth(seeded.foremanToken),data:{work_date:workDate,client_mutation_id:crypto.randomUUID()}});
+    const absent=await submit();expect(absent.status()).toBe(400);expect(await absent.text()).toContain('after');
+    await ensurePermission(client,'customer_qc.completeness_review');
+    const reviewer=await safetyActor(seeded.tenantA,'qc_manager');
+    const role=(await client.query("SELECT id FROM roles WHERE tenant_id=$1 AND system_key='qc_manager'",[seeded.tenantA])).rows[0].id;
+    await grantPermissions(client,seeded.tenantA,role,['customer_qc.completeness_review','daily_production.completeness_read','customer_qc.evidence_read','customer_qc.decision_record']);
+    const body={daily_report_id:report,production_record_id:record.id,evidence_kind:'after',captured_at:new Date().toISOString(),capture_location:'Synthetic pole',file_name:'after.png',mime_type:'image/png',description:'Synthetic after-work evidence',content_base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jLzQAAAAASUVORK5CYII=',client_mutation_id:crypto.randomUUID()};
+    const first=await apiJson(request,seeded.foremanToken,'POST','/syncfield/foreman/evidence',body);
+    await apiJson(request,reviewer,'POST',`/field-evidence/${first.id}/review`,{readability_status:'unreadable',review_notes:'Synthetic photo is too small to read a pole identifier',verified:true});
+    const rejected=await submit();expect(rejected.status()).toBe(400);expect(await rejected.text()).toContain('after');
+    const replacement=await apiJson(request,seeded.foremanToken,'POST','/syncfield/foreman/evidence',{...body,file_name:'replacement.png',client_mutation_id:crypto.randomUUID()});
+    const changed=await request.post(apiUrl('/syncfield/foreman/evidence'),{headers:auth(seeded.foremanToken),data:{...body,capture_location:'Changed location'}});expect(changed.status()).toBe(400);
+    expect((await submit()).ok()).toBe(true); // unreviewed uploads may reach the review queue
+    const {requireEvidenceReady}=require('../../apps/api/dist/routes/field-evidence-readiness');
+    await client.query('BEGIN');try{await expect(requireEvidenceReady(client,seeded.tenantA,report,true)).rejects.toThrow('not reviewed');}finally{await client.query('ROLLBACK');}
+    // Synthetic assessment exercises the review control, not physical photo quality.
+    await installSession(page,reviewer,['customer_qc.completeness_review','daily_production.completeness_read','customer_qc.evidence_read','customer_qc.decision_record']);
+    await page.goto('/customer-qc');await page.getByLabel('Submitted daily report').selectOption(report);
+    await expect(page.getByRole('button',{name:'Confirm completeness'})).toBeDisabled();
+    const reviewForm=page.getByRole('form',{name:'Review replacement.png'});
+    await reviewForm.getByLabel('Review findings').fill('Synthetic review-control fixture only; actual-phone readability is a separate acceptance test');
+    await reviewForm.getByLabel('I opened the original and checked the required details.').check();
+    await reviewForm.getByRole('button',{name:'Save evidence review'}).click();
+    await expect(page.getByRole('status')).toContainText('Evidence readability review recorded');
+    await expect(page.getByRole('button',{name:'Confirm completeness'})).toBeEnabled();
+    const customer=crypto.randomUUID();await client.query("INSERT INTO organizations(id,tenant_id,name,organization_type,status) VALUES($1,$2,'Synthetic evidence acceptance customer','customer','active')",[customer,seeded.tenantA]);
+    await client.query('UPDATE work_orders SET qc_authority_organization_id=$3 WHERE tenant_id=$1 AND id=(SELECT work_order_id FROM partner_work_order_versions WHERE tenant_id=$1 AND id=$2)',[seeded.tenantA,seeded.workOrderVersionId,customer]);
+    await page.getByRole('button',{name:'Confirm completeness'}).click();await expect(page.getByRole('status')).toContainText('Completeness confirmed');
+    await page.getByLabel('Customer source reference').fill('SYNTHETIC customer evidence decision');await page.getByRole('button',{name:'Open customer inspection cycle'}).click();await expect(page.getByRole('status')).toContainText('inspection cycle opened');
+    const detail=await apiJson(request,reviewer,'GET',`/syncfield/customer-qc/reports/${report}`);
+    const noEvidence=await request.post(apiUrl(`/syncfield/customer-qc/cycles/${detail.cycles[0].id}/decisions`),{headers:auth(reviewer),data:{production_record_id:record.id,decision:'accepted',customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()}});expect(noEvidence.status()).toBe(400);
+    await page.getByLabel('Production record',{exact:true}).selectOption(record.id);await page.getByLabel('Customer-accepted quantity').fill('1');
+    await page.getByLabel('replacement.png · after',{exact:true}).check();await page.getByRole('button',{name:'Record customer decision',exact:true}).click();await expect(page.getByRole('status')).toContainText('Customer decision recorded');
+    const accepted=(await client.query('SELECT accepted_evidence_ids FROM customer_qc_decisions WHERE tenant_id=$1 AND production_record_id=$2',[seeded.tenantA,record.id])).rows[0];expect(accepted.accepted_evidence_ids).toEqual([replacement.id]);
+    await approvePolicy({after:2});
+    await client.query('BEGIN');try{const checked=await requireEvidenceReady(client,seeded.tenantA,report,true);expect(checked.policy.requirements).toEqual({after:1});}finally{await client.query('ROLLBACK');}
+    const original=(await client.query('SELECT content_bytes,readability_status FROM syncfield_field_evidence WHERE tenant_id=$1 AND id=$2',[seeded.tenantA,first.id])).rows[0];expect(original.content_bytes.toString('base64')).toBe(body.content_base64);expect(original.readability_status).toBe('unreadable');
+    const snapshot=(await client.query('SELECT snapshot_json FROM daily_production_report_revisions WHERE tenant_id=$1 AND daily_report_id=$2',[seeded.tenantA,report])).rows[0].snapshot_json;
+    expect(snapshot.evidence.map((e:any)=>e.id)).toContain(replacement.id);
+    expect(snapshot.evidence_policy_id).toBeTruthy();
+  });
 });
 
 async function seedSyncfieldFixture(client: Client, secret: string): Promise<Seeded> {
