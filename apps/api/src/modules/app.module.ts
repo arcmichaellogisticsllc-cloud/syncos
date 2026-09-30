@@ -1,3 +1,4 @@
+import { ProductionQuantityReviewController } from "../routes/production-quantity-review.controller";
 import { FieldEvidenceReviewController } from "../routes/field-evidence-review.controller";
 import { WorkSafetyController } from "../routes/work-safety.controller";
 import { InternalWorkforceController } from "../routes/internal-workforce.controller";
@@ -57,7 +58,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [FieldEvidenceReviewController,
+  controllers: [ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,

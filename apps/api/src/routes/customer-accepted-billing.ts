@@ -1,3 +1,4 @@
+import { requireReviewedProductionQuantity } from "./production-quantity-integrity";
 import { BadRequestException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 
@@ -27,6 +28,7 @@ export async function requireCustomerAcceptedBilling(client: PoolClient, tenantI
   if (expectedDecisionId && decision.id !== expectedDecisionId) {
     throw new BadRequestException("Customer acceptance changed; review the existing billable through controlled financial adjustments");
   }
+  await requireReviewedProductionQuantity(client, tenantId, productionId);
   return decision;
 }
 

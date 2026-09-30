@@ -72,5 +72,6 @@
   "071_jsa_revision_provenance.sql",
   "072_external_payment_review_inbox.sql",
   "073_work_safety_authorization.sql",
-  "074_field_evidence_readiness.sql"
+  "074_field_evidence_readiness.sql",
+  "075_production_quantity_review.sql"
 ]

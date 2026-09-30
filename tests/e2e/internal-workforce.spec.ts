@@ -1,3 +1,4 @@
+import {reviewFixtureQuantity} from "./helpers/quantity-review";
 import { verifySafetyLifecycle } from "./helpers/safety-lifecycle";
 import { acknowledgeFixtureJsa } from "./helpers/individual-safety";
 import { test, expect, type APIRequestContext } from '@playwright/test';
@@ -166,11 +167,13 @@ test('Sync management provisions a real internal crew through field production w
         expect(cycles.rows).toHaveLength(2);
         cycle = cycles.rows[1];
         expect(cycle.status).toBe('awaiting_reinspection');
+        await reviewFixtureQuantity(request,customerQc,record.id);
         const decision = await api(request, customerQc, `syncfield/customer-qc/cycles/${cycle.id}/decisions`, { production_record_id: record.id, decision: 'accepted', customer_accepted_quantity: 7, client_mutation_id: crypto.randomUUID() });
         const billable = await api(request, finance, 'accepted-production-financials/billables/convert', { customer_qc_decision_id: decision.id });
         expect(Number(billable.net_billable_amount)).toBe(700);
         expect(billable.unit).toBe('HR');
         for(const item of [{record:fiber,quantity:10,amount:20,unit:'LF'},{record:pole,quantity:1,amount:50,unit:'EA'}]){
+          await reviewFixtureQuantity(request,customerQc,item.record.id);
           const accepted=await api(request,customerQc,`syncfield/customer-qc/cycles/${cycle.id}/decisions`,{production_record_id:item.record.id,decision:'accepted',customer_accepted_quantity:item.quantity,client_mutation_id:crypto.randomUUID()});
           const billed=await api(request,finance,'accepted-production-financials/billables/convert',{customer_qc_decision_id:accepted.id});expect(Number(billed.net_billable_amount)).toBe(item.amount);expect(billed.unit).toBe(item.unit);
         }

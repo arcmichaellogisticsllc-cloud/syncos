@@ -3,6 +3,15 @@ const assert = require('node:assert/strict');
 const { PaymentRetainageAdjustmentsController } = require('../apps/api/dist/routes/payment-retainage-adjustments.controller');
 const { PaymentExecutionController } = require('../apps/api/dist/routes/payment-execution.controller');
 
+// These tests isolate existing finance controls with an explicitly reviewed source.
+// Quantity-review rejection and source changes are covered by production-quantity-integrity.test.js.
+const {productionQuantityFingerprint}=require('../apps/api/dist/routes/production-quantity-integrity');
+const reviewedSource={id:'production',quantity_submitted:100,unit_type:'feet',quantity_review_id:'quantity-review'};
+function quantityRows(sql){
+ if(sql.includes('FROM production_quantity_reviews'))return [{disposition:'primary_work',source_fingerprint:productionQuantityFingerprint(reviewedSource)}];
+ if(sql.includes('FROM production_records'))return [reviewedSource];
+ return [];
+}
 const eligible = { id: 'payable', settlement_id: 'settlement', partner_organization_id: 'partner', capacity_provider_id: 'provider', pay_when_paid_status: 'eligible', status: 'payment_ready', hold_status: 'none', dispute_status: 'none', eligible_amount: 100, paid_amount: 10 };
 const emptyInstructions = { query: async sql => {
   if(sql.includes('AS accepted_budget')) return {rows:[{accepted_budget:100,committed_amount:100}]};
@@ -10,7 +19,7 @@ const emptyInstructions = { query: async sql => {
   if(sql.includes('FROM settlement_items')) return {rows:[{id:'item',net_amount:100,production_record_id:'production',partner_organization_id:'partner',capacity_provider_id:'provider',quantity:1,unit:'feet'}]};
   if(sql.includes('FROM customer_qc_decisions')) return {rows:[{id:'decision',decision:'accepted',customer_accepted_quantity:1,unit_of_measure:'feet'}]};
   if(sql.includes('JOIN partner_agreement_versions')) return {rows:[{agreement_id:'agreement',agreement_status:'effective',execution_model:'partner',organization_id:'partner',work_organization_id:'partner',capacity_provider_id:'provider',work_provider_id:'provider',executed_at:'2026-01-01',artifact_verified_at:'2026-01-01',artifact_file_object_id:'file',effective_for_work:true}]};
-  if(sql.includes('FROM production_records')) return {rows:[{id:'production',unit_type:'feet'}]};
+  if(quantityRows(sql).length)return {rows:quantityRows(sql)};
   return {rows:[{amount:0}]};
 } };
 
@@ -72,7 +81,7 @@ const { ProductionController } = require('../apps/api/dist/routes/production.con
 test('legacy create and update cannot override accepted quantities or invent customer acceptance', async () => {
   const controller = new ProductionController({});
   let decision;
-  const client = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') && decision ? [decision] : [] }) };
+  const client = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') && decision ? [decision] : quantityRows(sql) }) };
   controller.write = async (_r, _a, _e, _t, work) => work(client);
   controller.billableContextFromQcReview = async () => ({ qcReview: { id: 'review', review_status: 'approved', unit: 'feet' }, productionRecord: { id: 'production', status: 'approved' }, workOrder: {}, project: {} });
   const req = { auth: { tenantId: 'tenant', userId: 'user' } };
@@ -85,7 +94,7 @@ test('legacy create and update cannot override accepted quantities or invent cus
 
 
 test('billable lineage cannot silently move to a different current customer decision', async () => {
-  const client = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ id: 'new-decision', decision: 'accepted', customer_accepted_quantity: 100, unit_of_measure: 'feet' }] : [] }) };
+  const client = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ id: 'new-decision', decision: 'accepted', customer_accepted_quantity: 100, unit_of_measure: 'feet' }] : quantityRows(sql) }) };
   await assert.rejects(requireCustomerAcceptedBilling(client, 'tenant', 'production', 'prior-decision'), /acceptance changed/);
   assert.equal((await requireCustomerAcceptedBilling(client, 'tenant', 'production', 'new-decision')).id, 'new-decision');
 });
@@ -117,7 +126,7 @@ const { requireLinkedBillableAcceptance } = require('../apps/api/dist/routes/cus
 test('historical production billables cannot advance using stored readiness without customer acceptance', async () => {
   const client = { query: async () => ({ rows: [] }) };
   await assert.rejects(requireLinkedBillableAcceptance(client, 'tenant', { production_record_id: 'legacy-production', status: 'ready_for_settlement' }), /customer acceptance is required/);
-  const partial = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }] : [] }) };
+  const partial = { query: async sql => ({ rows: sql.includes('FROM customer_qc_decisions') ? [{ id: 'decision', decision: 'partially_accepted', customer_accepted_quantity: 50, unit_of_measure: 'feet' }] : quantityRows(sql) }) };
   await assert.rejects(requireLinkedBillableAcceptance(partial, 'tenant', { production_record_id: 'legacy-production', billable_quantity: 100, unit: 'feet' }), /customer-accepted quantity/);
   await requireLinkedBillableAcceptance(partial, 'tenant', { production_record_id: 'legacy-production', billable_quantity: 50, unit: 'feet' });
 });
@@ -141,7 +150,7 @@ const financeReq = { auth: { tenantId: 'tenant', userId: 'user' } };
 function acceptanceClient(decision) {
   return { query: async sql => {
     if (/INSERT|UPDATE|DELETE/.test(sql) && !sql.includes('FOR UPDATE')) throw new Error('Unexpected financial write before acceptance validation');
-    return { rows: sql.includes('FROM customer_qc_decisions') && decision ? [decision] : [] };
+    return { rows: sql.includes('FROM customer_qc_decisions') && decision ? [decision] : quantityRows(sql) };
   } };
 }
 

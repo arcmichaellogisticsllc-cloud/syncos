@@ -1,3 +1,4 @@
+import { requireReviewedProductionQuantity, productionQuantityFingerprint, productionQuantitySource, quantityReviewCurrent } from "./production-quantity-integrity";
 import { evidenceKinds, evidenceReadiness, requireEvidenceReady } from "./field-evidence-readiness";
 import { safetyBlockers, lockWorkSafety } from "./work-safety";
 import { hasActiveFieldStop } from "./field-stop-scope";
@@ -1355,7 +1356,9 @@ export class SyncfieldController {
       const revisions = await client.query("SELECT revision_number, snapshot_json, created_at FROM daily_production_report_revisions WHERE tenant_id = $1 AND daily_report_id = $2 ORDER BY revision_number DESC", [request.auth.tenantId, reportId]);
       const evidence = await client.query("SELECT id,file_name,mime_type,description,production_record_id,created_at,evidence_kind,captured_at,capture_location,readability_status,received_revision_number FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 ORDER BY created_at", [request.auth.tenantId,reportId]);
       const incidents=await client.query("SELECT id,occurred_at,incident_type,location,description,immediate_action FROM syncfield_field_incidents WHERE tenant_id=$1 AND crew_id=$2 AND work_order_id=$3 ORDER BY occurred_at DESC",[request.auth.tenantId,report.crew_id,report.work_order_id]);
-      return { ...(await this.safeDailyProductionDetail(client, report)), ...this.safeCustomerQcReportSummary(report), incidents: incidents.rows, evidence: evidence.rows, evidence_readiness:await evidenceReadiness(client,request.auth.tenantId,reportId,true), cycles: await Promise.all(cycles.rows.map(row => this.safeCustomerQcCycleDetail(client, row))), revisions: revisions.rows };
+      const detail=await this.safeDailyProductionDetail(client,report);
+      const quantityReviews=(await client.query('SELECT * FROM production_quantity_reviews WHERE tenant_id=$1 AND id=ANY($2::uuid[])',[request.auth.tenantId,detail.records.map(record=>record.quantity_review?.id).filter(Boolean)])).rows;
+      return { ...detail,records:detail.records.map(record=>({...record,quantity_review:quantityReviews.find(review=>review.id===record.quantity_review?.id)??null})), ...this.safeCustomerQcReportSummary(report), incidents: incidents.rows, evidence: evidence.rows, evidence_readiness:await evidenceReadiness(client,request.auth.tenantId,reportId,true), cycles: await Promise.all(cycles.rows.map(row => this.safeCustomerQcCycleDetail(client, row))), revisions: revisions.rows };
     });
   }
 
@@ -1465,11 +1468,13 @@ export class SyncfieldController {
         const acceptedQuantity = body.customer_accepted_quantity === undefined || body.customer_accepted_quantity === null ? null : this.nonNegativeNumber(body.customer_accepted_quantity, "customer_accepted_quantity must be non-negative");
         if (["accepted", "partially_accepted"].includes(decision) && acceptedQuantity === null) throw new BadRequestException("customer_accepted_quantity is required");
         const reason = this.optionalString(body.customer_reason_code);
-        if (acceptedQuantity !== null && acceptedQuantity > Number(record.quantity_submitted) && !reason) throw new BadRequestException("accepted quantity above reported requires customer reason");
+
         if (decision !== "accepted" && !reason) throw new BadRequestException("customer reason is required");
         const acceptedEvidence=body.accepted_evidence_ids??[];
         if(!Array.isArray(acceptedEvidence)||acceptedEvidence.some(id=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))||new Set(acceptedEvidence).size!==acceptedEvidence.length)throw new BadRequestException('Select distinct evidence files reviewed by the customer');
         if(['accepted','partially_accepted'].includes(decision)){
+          const reviewed=await requireReviewedProductionQuantity(writeClient,request.auth.tenantId,record.id);
+          if(acceptedQuantity!==null&&acceptedQuantity>Number(reviewed.record.quantity_submitted))throw new BadRequestException("Accepted quantity cannot exceed the reconciled field quantity; correct and review the source first");
           const readiness=await requireEvidenceReady(writeClient,request.auth.tenantId,cycle.daily_report_id,true,acceptedEvidence);
           if(acceptedEvidence.some(id=>!readiness.files.some(f=>f.id===id && f.readability_status==='readable' && (!f.production_record_id||f.production_record_id===record.id))))throw new BadRequestException('Accepted evidence must be readable and belong to this report and work item');
         }else if(acceptedEvidence.length)throw new BadRequestException('Only customer acceptance can accept evidence');
@@ -1839,7 +1844,7 @@ export class SyncfieldController {
 
   private async acceptedProductionRows(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, scope: { partnerOrganizationId?: string; crewId?: string } = {}) {
     const values: unknown[] = [tenantId];
-    const where = ["r.tenant_id = $1", "r.status = 'submitted'", "r.deleted_at IS NULL", "pr.deleted_at IS NULL"];
+    const where = ["r.tenant_id = $1", "r.status = 'submitted'", "r.deleted_at IS NULL", "pr.deleted_at IS NULL", "NOT EXISTS (SELECT 1 FROM production_quantity_reviews quantity_review WHERE quantity_review.tenant_id=pr.tenant_id AND quantity_review.id=pr.quantity_review_id AND quantity_review.disposition IN ('summary','included_subset'))"];
     const add = (sql: string, value?: string) => {
       if (!value) return;
       values.push(value);
@@ -2467,10 +2472,12 @@ export class SyncfieldController {
         ORDER BY inspection.cycle_number DESC,decision.recorded_at DESC,decision.id DESC LIMIT 1
       ) latest ON true
       WHERE pr.tenant_id=$1 AND pr.daily_production_report_id=$2 AND pr.status='submitted' AND pr.deleted_at IS NULL`,[cycle.tenant_id,cycle.daily_report_id,cycle.cycle_number]);
-    const reportValues=effective.rows.map(row=>row.decision);
+    const quantityRecords=await this.reportRecords(client,cycle.tenant_id,cycle.daily_report_id);
+    const independent=effective.rows.filter(row=>{const r=quantityRecords.find(p=>p.id===row.id);return !(r?.quantity_review_current&&["summary","included_subset"].includes(r.quantity_review?.disposition));});
+    const reportValues=independent.map(row=>row.decision);
     // A reinspection can concern one corrected record; unrelated earlier decisions stay authoritative.
     const targetRecord = revision.rows[0]?.corrected_record;
-    const cycleDecided = targetRecord ? decisions.rows.some(row=>row.production_record_id===targetRecord) : values.length >= effective.rows.length;
+    const cycleDecided = targetRecord ? decisions.rows.some(row=>row.production_record_id===targetRecord) : values.length >= independent.length;
     let cycleStatus = cycleDecided ? "accepted" : "awaiting_customer";
     if(values.includes("correction_required")) cycleStatus="awaiting_partner_correction";
     else if(values.includes("rejected")) cycleStatus="rejected";
@@ -3373,7 +3380,8 @@ export class SyncfieldController {
       `,
       [tenantId, reportId],
     );
-    return result.rows;
+    const reviews = await client.query('SELECT * FROM production_quantity_reviews WHERE tenant_id=$1 AND id=ANY($2::uuid[])',[tenantId,result.rows.map(r=>r.quantity_review_id).filter(Boolean)]);
+    return Promise.all(result.rows.map(async r=>{const review=reviews.rows.find(q=>q.id===r.quantity_review_id);const source=await productionQuantitySource(client,tenantId,r.id);return {...r,effective_reported_quantity:Number(source.quantity_submitted),quantity_review:review??null,quantity_review_current:await quantityReviewCurrent(client,tenantId,source,review)};}));
   }
 
   private async safeDailyProductionDetail(client: PoolClient, row: QueryResultRow) {
@@ -3400,6 +3408,9 @@ export class SyncfieldController {
       production_code_id: row.syncfield_production_code_id,
       code: row.code,
       description: row.description,
+      effective_reported_quantity: row.effective_reported_quantity ?? Number(row.quantity_submitted),
+      quantity_review: row.quantity_review ? {id:row.quantity_review.id,disposition:row.quantity_review.disposition,canonical_reference:row.quantity_review.canonical_reference,related_record_ids:row.quantity_review.related_record_ids} : null,
+      quantity_review_current: row.quantity_review_current ?? false,
       reported_quantity: Number(row.quantity_submitted),
       unit_of_measure: row.unit_of_measure ?? row.unit,
       location_type: row.syncfield_location_type,
@@ -3586,12 +3597,12 @@ export class SyncfieldController {
     for (const row of records) {
       const key = row.code;
       const current = totals.get(key) ?? { code: row.code, description: row.description, quantity: 0, unit: row.unit_of_measure ?? row.unit, count: 0 };
-      current.quantity += Number(row.quantity_submitted);
+      if (!["included_subset","summary"].includes(row.quantity_review?.disposition)) current.quantity += Number(row.effective_reported_quantity??row.quantity_submitted);
       current.count += 1;
       totals.set(key, current);
       if (status_counts[row.syncfield_status] !== undefined) status_counts[row.syncfield_status] += 1;
     }
-    return { by_code: [...totals.values()], record_count: records.length, status_counts };
+    return { by_code: [...totals.values()], record_count: records.length, status_counts, unreviewed_record_count:records.filter(r=>!r.quantity_review_current).length, excluded_reference_count:records.filter(r=>["included_subset","summary"].includes(r.quantity_review?.disposition)).length };
   }
 
   private coilVarianceStatus(required: number | null, actual: number | null, tolerance: number) {

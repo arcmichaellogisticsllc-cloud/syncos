@@ -1,3 +1,4 @@
+import {reviewFixtureQuantity} from "./helpers/quantity-review";
 import { acknowledgeFixtureJsa, reviewFixtureSafetyScope } from "./helpers/individual-safety";
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
@@ -244,6 +245,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     );
     expect(Number(fiber.rows[0].quantity_submitted)).toBe(141);
 
+    await reviewFixtureQuantity(request,seeded.internalToken,fiber.rows[0].id);
     const partial = await apiJson(request, seeded.internalToken, "POST", `/syncfield/customer-qc/cycles/${cycle.id}/decisions`, {
       production_record_id: fiber.rows[0].id,
       decision: "partially_accepted",
@@ -421,6 +423,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     const original=await client.query("SELECT syncfield_production_code_id,quantity_submitted FROM production_records WHERE tenant_id=$1 AND id=$2",[seeded.tenantA,submittedRecordId]);expect(original.rows[0].syncfield_production_code_id).toBe(codes.TRANSFER);expect(Number(original.rows[0].quantity_submitted)).toBe(1);
     const after=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
     const latest=after.cycles[0];
+    await reviewFixtureQuantity(request,seeded.internalToken,submittedRecordId);
     await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${latest.id}/decisions`,{production_record_id:submittedRecordId,decision:"accepted",customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()});
     const resolved=await client.query("SELECT status FROM production_corrections WHERE tenant_id=$1 AND id=$2",[seeded.tenantA,id]);expect(resolved.rows[0].status).toBe("resolved");
     const incomplete=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);expect(incomplete.customer_qc_outcome).not.toBe("customer_accepted");
@@ -429,6 +432,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     const allDecided=new Set(after.cycles.flatMap((item:any)=>item.decisions.map((decision:any)=>decision.production_record_id)));
     allDecided.add(submittedRecordId);
     for(const record of after.records.filter((item:any)=>!allDecided.has(item.id))) {
+      await reviewFixtureQuantity(request,seeded.internalToken,record.id);
       await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${latest.id}/decisions`,{production_record_id:record.id,decision:"accepted",customer_accepted_quantity:record.reported_quantity,client_mutation_id:crypto.randomUUID()});
     }
     const beforeRepeat=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);expect(beforeRepeat.customer_qc_outcome).toBe("customer_partially_accepted");
@@ -436,6 +440,7 @@ test.describe.serial("P10 Customer QC intake, correction relay, and reinspection
     const repeatCorrection=await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${repeatCycle.id}/decisions`,{production_record_id:submittedRecordId,decision:"correction_required",customer_reason_code:"notes",customer_comments:"Clarify final note",allowed_fields:["notes"],client_mutation_id:crypto.randomUUID()});
     await apiJson(request,seeded.foremanToken,"POST",`/syncfield/foreman/corrections/${repeatCorrection.correction.id}/resubmit`,{notes:"Final customer clarification",client_mutation_id:crypto.randomUUID()});
     const repeatDetail=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);
+    await reviewFixtureQuantity(request,seeded.internalToken,submittedRecordId);
     await apiJson(request,seeded.internalToken,"POST",`/syncfield/customer-qc/cycles/${repeatDetail.cycles[0].id}/decisions`,{production_record_id:submittedRecordId,decision:"accepted",customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()});
     const aggregate=await apiJson(request,seeded.internalToken,"GET",`/syncfield/customer-qc/reports/${reportId}`);expect(aggregate.customer_qc_outcome).toBe("customer_partially_accepted");expect(aggregate.cycles[0].status).toBe("accepted");expect(aggregate.cycles[0].decisions).toHaveLength(1);
     const dashboard=await apiJson(request,seeded.internalToken,"GET",`/syncfield/production-dashboard?daily_report_id=${reportId}`);
@@ -705,7 +710,8 @@ async function queuedFieldMutations(page: Page): Promise<Array<Record<string, an
 }
 
 async function installSession(page: Page, nextToken: string, nextPermissions: string[]) {
-  await page.addInitScript(({ tokenValue, permissionValue }) => {
+  if (!page.url().startsWith(process.env.WEB_BASE_URL!)) await page.goto("/login");
+  await page.evaluate(({ tokenValue, permissionValue }) => {
     window.localStorage.setItem("syncos.apiToken", tokenValue);
     window.localStorage.setItem("syncos.permissions", permissionValue.join(","));
   }, { tokenValue: nextToken, permissionValue: nextPermissions });
@@ -747,14 +753,14 @@ async function enterObservedProduction(page: Page, kind: "asset" | "route" | "da
   if (kind === "route") {
     const form = page.getByRole("form", { name: "Fiber span entry" });
     await expect(form.getByLabel("From pole", { exact: true })).toHaveValue("");
-    for (const [label, value] of Object.entries({ "From pole": "Pole 12301", "To pole": "Pole 12312", "Reel / cable": "REEL-A", "Fiber type": "144ct", "Sequence start": "14826", "Sequence end": "14685", "Reported footage": "141", "Map page": "1", "Start across page (%)": "42", "Start down page (%)": "48", "End across page (%)": "66", "End down page (%)": "52" })) await form.getByLabel(label, { exact: true }).fill(value);
+    for (const [label, value] of Object.entries({ "From pole": "Offline Pole 12301", "To pole": "Offline Pole 12312", "Reel / cable": "REEL-A", "Fiber type": "144ct", "Sequence start": "14826", "Sequence end": "14685", "Reported footage": "141", "Map page": "1", "Start across page (%)": "42", "Start down page (%)": "48", "End across page (%)": "66", "End down page (%)": "52" })) await form.getByLabel(label, { exact: true }).fill(value);
     await form.getByRole("button", { name: "Save Fiber Span" }).click();
   } else {
     const form = page.getByRole("form", { name: "Production entry" });
     await form.getByLabel("Quantity", { exact: true }).fill("1");
     if (kind === "asset") {
       await form.getByRole("combobox", { name: "Asset type", exact: true }).selectOption("pole");
-      for (const [label, value] of Object.entries({ "Asset identifier": "Pole 12301", "Map page": "1", "Across page (%)": "42", "Down page (%)": "48" })) await form.getByLabel(label, { exact: true }).fill(value);
+      for (const [label, value] of Object.entries({ "Asset identifier": "Offline Pole 12301", "Map page": "1", "Across page (%)": "42", "Down page (%)": "48" })) await form.getByLabel(label, { exact: true }).fill(value);
     }
     await form.getByLabel("Work notes", { exact: true }).fill("Observed pilot test work");
     await form.getByRole("button", { name: "Save production", exact: true }).click();

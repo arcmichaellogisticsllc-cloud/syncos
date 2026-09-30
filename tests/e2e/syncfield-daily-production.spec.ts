@@ -1,3 +1,4 @@
+import {reviewFixtureQuantity} from "./helpers/quantity-review";
 import { verifySafetyLifecycle } from "./helpers/safety-lifecycle";
 import { acknowledgeFixtureJsa, reviewFixtureSafetyScope, safetyActor } from "./helpers/individual-safety";
 import crypto from "node:crypto";
@@ -724,9 +725,16 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     await page.getByRole('button',{name:'Confirm completeness'}).click();await expect(page.getByRole('status')).toContainText('Completeness confirmed');
     await page.getByLabel('Customer source reference').fill('SYNTHETIC customer evidence decision');await page.getByRole('button',{name:'Open customer inspection cycle'}).click();await expect(page.getByRole('status')).toContainText('inspection cycle opened');
     const detail=await apiJson(request,reviewer,'GET',`/syncfield/customer-qc/reports/${report}`);
+    const quantityForm=page.getByRole('group',{name:'Quantity relationship',exact:true});
+    await page.getByText(/LABOR.*Quantity review required/).click();
+    await quantityForm.getByLabel('Stable work-item reference (primary or additional work)').fill(`synthetic-work-${record.id}`);
+    await quantityForm.getByLabel('Governing work or additional-work approval reference').fill('SYNTHETIC assigned work');
+    await quantityForm.getByLabel('Reconciliation findings').fill('Synthetic original unit counted once');
+    await quantityForm.getByRole('button',{name:'Save quantity review'}).click();
+    await expect(page.getByText(/LABOR.*primary work/)).toBeVisible();
     const noEvidence=await request.post(apiUrl(`/syncfield/customer-qc/cycles/${detail.cycles[0].id}/decisions`),{headers:auth(reviewer),data:{production_record_id:record.id,decision:'accepted',customer_accepted_quantity:1,client_mutation_id:crypto.randomUUID()}});expect(noEvidence.status()).toBe(400);
     await page.getByLabel('Production record',{exact:true}).selectOption(record.id);await page.getByLabel('Customer-accepted quantity').fill('1');
-    await page.getByLabel('replacement.png · after',{exact:true}).check();await page.getByRole('button',{name:'Record customer decision',exact:true}).click();await expect(page.getByRole('status')).toContainText('Customer decision recorded');
+    await page.getByLabel('replacement.png · after',{exact:true}).check();await page.getByRole('button',{name:'Record customer decision',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'Customer decision recorded'})).toBeVisible();
     const accepted=(await client.query('SELECT accepted_evidence_ids FROM customer_qc_decisions WHERE tenant_id=$1 AND production_record_id=$2',[seeded.tenantA,record.id])).rows[0];expect(accepted.accepted_evidence_ids).toEqual([replacement.id]);
     await approvePolicy({after:2});
     await client.query('BEGIN');try{const checked=await requireEvidenceReady(client,seeded.tenantA,report,true);expect(checked.policy.requirements).toEqual({after:1});}finally{await client.query('ROLLBACK');}
@@ -735,6 +743,48 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(snapshot.evidence.map((e:any)=>e.id)).toContain(replacement.id);
     expect(snapshot.evidence_policy_id).toBeTruthy();
   });
+  test('quantity reconciliation excludes rock subsets and overlapping summaries and protects stable work identities',async({request})=>{
+    if(!codes){const all=await apiJson(request,seeded.foremanToken,'GET','/syncfield/foreman/production/codes');codes=Object.fromEntries(all.map((c:any)=>[c.code,c.id]));}
+    let prototype=(await client.query("SELECT * FROM production_records WHERE tenant_id=$1 AND status='submitted' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1",[seeded.tenantA])).rows[0];
+    if(!prototype){
+      await createProduction(request,seeded,{work_date:today(),client_mutation_id:crypto.randomUUID(),production_code_id:codes.LABOR,location_type:'daily',reported_quantity:1,status:'complete',notes:'Synthetic reconciliation fixture'});
+      await apiJson(request,seeded.foremanToken,'POST','/syncfield/foreman/production/review-day/submit',{work_date:today(),end_time:'17:00',client_mutation_id:crypto.randomUUID()});
+      prototype=(await client.query("SELECT * FROM production_records WHERE tenant_id=$1 AND status='submitted' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1",[seeded.tenantA])).rows[0];
+    }
+    const reviewer=await safetyActor(seeded.tenantA,'qc_manager');
+    const reviewRole=(await client.query("SELECT id FROM roles WHERE tenant_id=$1 AND system_key='qc_manager'",[seeded.tenantA])).rows[0].id;
+    await grantPermissions(client,seeded.tenantA,reviewRole,['customer_qc.completeness_review','daily_production.completeness_read']);
+    const before=await apiJson(request,reviewer,'GET',`/syncfield/customer-qc/reports/${prototype.daily_production_report_id}`);
+    const base=before.totals.by_code.find((r:any)=>r.code==='FIBER')?.quantity??0;
+    const ids:string[]=[];
+    for(const quantity of [886,180,404,144,548,886]){
+      const id=crypto.randomUUID();ids.push(id);
+      await client.query(`INSERT INTO production_records SELECT (jsonb_populate_record(NULL::production_records,to_jsonb(p)||$3::jsonb)).* FROM production_records p WHERE p.tenant_id=$1 AND p.id=$2`,[seeded.tenantA,prototype.id,JSON.stringify({id,quantity_submitted:quantity,quantity,claimed_quantity:quantity,unit:'LF',unit_type:'LF',syncfield_production_code_id:codes.FIBER,quantity_review_id:null,asset_identifier:null,from_asset_identifier:`SYNTHETIC-${id}-A`,to_asset_identifier:`SYNTHETIC-${id}-B`,client_mutation_id:crypto.randomUUID()})]);
+    }
+    const [installed,rock,first,second,summary,duplicate]=ids;
+    const body=(disposition:string,id:string,refs:string[]=[])=>({disposition,canonical_reference:`synthetic-work-${id}`,related_record_ids:refs,source_reference:'SYNTHETIC reconciliation source',review_notes:'Synthetic quantity controls, not operational approval',client_mutation_id:crypto.randomUUID()});
+    const review=(id:string,data:any,bearer=reviewer)=>request.post(apiUrl(`/production-quantity/${id}/review`),{headers:auth(bearer),data});
+    expect((await review(installed,body('primary_work',installed),seeded.foremanToken)).status()).toBe(403);
+    for(const id of [installed,first,second])expect((await review(id,body('primary_work',id))).ok()).toBeTruthy();
+    const rockBody=body('included_subset',rock,[installed]);const originalReview=await review(rock,rockBody);expect(originalReview.ok(),await originalReview.text()).toBeTruthy();
+    const firstResult=await originalReview.json();expect(firstResult.id).toBeTruthy();const replay=await review(rock,rockBody);expect((await replay.json()).id).toBe(firstResult.id);
+    expect((await review(summary,body('summary',summary,[first,second]))).ok()).toBeTruthy();
+    expect((await review(duplicate,{...body('primary_work',duplicate),canonical_reference:`synthetic-work-${installed}`})).status()).toBe(400);
+    expect((await review(summary,body('summary',summary,[first,first]))).status()).toBe(400);
+    const after=await apiJson(request,reviewer,'GET',`/syncfield/customer-qc/reports/${prototype.daily_production_report_id}`);
+    const field=await apiJson(request,seeded.foremanToken,'GET',`/syncfield/foreman/production/today?work_date=${String(prototype.production_date instanceof Date?prototype.production_date.toISOString():prototype.production_date).slice(0,10)}`);
+    expect(JSON.stringify(field)).not.toContain('SYNTHETIC reconciliation source');
+    expect((await request.get(apiUrl(`/production-quantity/${rock}/candidates`),{headers:auth(seeded.foremanToken)})).status()).toBe(403);
+    const choices=await apiJson(request,reviewer,'GET',`/production-quantity/${rock}/candidates`);expect(choices.some((choice:any)=>choice.id===installed&&choice.label.includes('886'))).toBe(true);
+    // The unreviewed duplicate stays visible as reported work; reviewed references do not add quantity.
+    expect(after.totals.by_code.find((r:any)=>r.code==='FIBER').quantity-base).toBe(886+404+144+886);
+    expect(after.totals.excluded_reference_count).toBeGreaterThanOrEqual(2);
+    const {requireReviewedProductionQuantity}=require('../../apps/api/dist/routes/production-quantity-integrity');
+    await client.query('BEGIN');try{await expect(requireReviewedProductionQuantity(client,seeded.tenantA,rock)).rejects.toThrow(/not additional billable/);await expect(requireReviewedProductionQuantity(client,seeded.tenantA,duplicate)).rejects.toThrow(/Review the current/);}finally{await client.query('ROLLBACK');}
+    const originals=await client.query('SELECT id,quantity_submitted FROM production_records WHERE tenant_id=$1 AND id=ANY($2::uuid[])',[seeded.tenantA,ids]);
+    expect(Number(originals.rows.find(r=>r.id===installed).quantity_submitted)).toBe(886);expect(Number(originals.rows.find(r=>r.id===rock).quantity_submitted)).toBe(180);
+  });
+
 });
 
 async function seedSyncfieldFixture(client: Client, secret: string): Promise<Seeded> {
@@ -947,7 +997,8 @@ async function queuedFieldMutations(page: Page): Promise<Array<Record<string, an
 }
 
 async function installSession(page: Page, nextToken: string, nextPermissions: string[]) {
-  await page.addInitScript(({ tokenValue, permissionValue }) => {
+  if (!page.url().startsWith(process.env.WEB_BASE_URL!)) await page.goto("/login");
+  await page.evaluate(({ tokenValue, permissionValue }) => {
     window.localStorage.setItem("syncos.apiToken", tokenValue);
     window.localStorage.setItem("syncos.permissions", permissionValue.join(","));
   }, { tokenValue: nextToken, permissionValue: nextPermissions });
