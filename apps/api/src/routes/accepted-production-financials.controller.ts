@@ -1,5 +1,5 @@
 import { absoluteTime } from './prime-correction-deadlines';
-import { approvedCommercialTerms, rateFromTerms, invoiceCommercialTerms, invoiceTermsAmounts, contractualDueDate, allocateRetainage, partnerSettlementTerms } from './commercial-terms';
+import { fundingInstallments, unpaidInstallments, extendedContractAmount, approvedCommercialTerms, rateFromTerms, invoiceCommercialTerms, invoiceTermsAmounts, contractualDueDate, allocateRetainage, partnerSettlementTerms } from './commercial-terms';
 import { requirePartnerPayableLineage, requirePartnerWorkAgreement } from "./partner-financial-lineage";
 import { requireCustomerAcceptedBilling, requireLinkedBillableAcceptance, lockProductionBilling } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
@@ -311,7 +311,7 @@ export class AcceptedProductionFinancialsController {
         const governing=(await client.query('SELECT a.contract_id FROM production_records p JOIN partner_work_order_versions w ON w.tenant_id=p.tenant_id AND w.id=p.work_order_version_id JOIN partner_agreement_versions a ON a.tenant_id=w.tenant_id AND a.id=w.governing_agreement_version_id WHERE p.tenant_id=$1 AND p.id=$2',[request.auth.tenantId,source.production_record_id])).rows[0];
         if(governing?.contract_id!==terms.contract_id)throw new BadRequestException('Partner rate schedule must reference the governing executed agreement');
         const rate=rateFromTerms(terms,source.production_code,source.unit_of_measure);
-        const updated=(await client.query(`UPDATE accepted_production_financial_sources SET partner_terms_revision_id=$3,partner_rate_code_id=$4,partner_rate_schedule_id=$5,partner_rate=$6,partner_extended_amount=$7,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *`,[request.auth.tenantId,source.id,terms.id,rate.id,rate.rate_schedule_id,rate.rate,this.roundMoney(Number(source.accepted_quantity)*rate.rate)])).rows[0];
+        const updated=(await client.query(`UPDATE accepted_production_financial_sources SET partner_terms_revision_id=$3,partner_rate_code_id=$4,partner_rate_schedule_id=$5,partner_rate=$6,partner_extended_amount=$7,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *`,[request.auth.tenantId,source.id,terms.id,rate.id,rate.rate_schedule_id,rate.rate,extendedContractAmount(source.accepted_quantity,rate.rate)])).rows[0];
         Object.assign(source,updated);
       }
       if (sources.some((row) => !row.partner_rate_code_id || Number(row.partner_rate ?? 0) <= 0)) {
@@ -520,14 +520,28 @@ export class AcceptedProductionFinancialsController {
       );
       let eligible = 0;
       let allocatedCustomer = 0;
+      const installments:Row[]=[];
       for (const item of itemRows.rows) {
         const funded = Number(item.funded_customer_amount ?? 0);
         const source = await this.requireRecord(client, "accepted_production_financial_sources", request.auth.tenantId, String(item.accepted_production_source_id), "accepted production source not found");
-        const customerAmount = Number(source.customer_extended_amount ?? 0);
-        const partnerNet = Number(item.net_payable_amount ?? 0);
-        const ratio = customerAmount > 0 ? Math.min(1, funded / customerAmount) : 0;
-        const itemEligible = terms.payment_trigger==='customer_payment'?this.roundMoney(partnerNet * ratio):milestone?partnerNet:0;
-        if(terms.payment_trigger==='customer_payment'&&itemEligible>0&&item.first_funded_at){const timestamp=new Date(item.first_funded_at).toISOString();if(!triggerTime||timestamp<triggerTime)triggerTime=timestamp;}
+        const receipts=(await client.query(`SELECT paa.id,paa.payment_application_id,paa.allocated_customer_amount AS amount,
+          COALESCE(cr.cleared_at,pa.created_at) AS trigger_at
+          FROM payment_application_allocations paa JOIN payment_applications pa ON pa.tenant_id=paa.tenant_id AND pa.id=paa.payment_application_id
+          JOIN cash_receipts cr ON cr.tenant_id=pa.tenant_id AND cr.id=pa.cash_receipt_id
+          WHERE paa.tenant_id=$1 AND paa.accepted_production_source_id=$2 AND paa.deleted_at IS NULL
+          AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied')
+          AND cr.deleted_at IS NULL AND cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived')`,[request.auth.tenantId,source.id])).rows;
+        let customerAmount=Number(source.customer_extended_amount??0);
+        if(terms.funding_basis==='net_customer_invoice'){
+          const lines=(await client.query(`SELECT i.net_amount FROM invoice_items i JOIN invoices inv ON inv.tenant_id=i.tenant_id AND inv.id=i.invoice_id WHERE i.tenant_id=$1 AND i.accepted_production_source_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived') AND inv.deleted_at IS NULL AND inv.status NOT IN ('voided','archived')`,[request.auth.tenantId,source.id])).rows;
+          if(lines.length!==1)throw new BadRequestException('Net funding requires one current customer invoice line for the accepted work');
+          customerAmount=Number(lines[0].net_amount);
+        }
+        const partnerNet=Number(item.net_payable_amount??0);
+        const itemSchedule=terms.payment_trigger==='customer_payment'?fundingInstallments(terms,partnerNet,customerAmount,receipts.map(row=>({...row,trigger_at:new Date(row.trigger_at).toISOString()}))):milestone?[{allocation_id:item.id,amount:partnerNet,trigger_at:triggerTime,...contractualDueDate(terms,triggerTime)}]:[];
+        installments.push(...itemSchedule.map(row=>({...row,contractor_payable_item_id:item.id})));
+        const itemEligible=itemSchedule.reduce((sum,row)=>sum+row.amount,0);
+        for(const row of itemSchedule)if(row.trigger_at&&(!triggerTime||row.trigger_at<triggerTime))triggerTime=row.trigger_at;
         eligible += itemEligible;
         allocatedCustomer += funded;
         await client.query("UPDATE contractor_payable_items SET funded_customer_amount = $1, eligible_partner_amount = $2, updated_by = $3, updated_at = now() WHERE tenant_id = $4 AND id = $5", [funded, itemEligible, request.auth.userId, request.auth.tenantId, item.id]);
@@ -536,13 +550,24 @@ export class AcceptedProductionFinancialsController {
       const status = eligible <= 0 ? "awaiting_customer_funds" : eligible < Number(payable.net_payable_amount ?? 0) ? "partially_eligible" : "eligible";
       const version = Number((await client.query("SELECT COALESCE(max(calculation_version),0)::int + 1 AS version FROM contractor_payable_eligibility_snapshots WHERE tenant_id = $1 AND contractor_payable_id = $2", [request.auth.tenantId, id])).rows[0].version);
       const eligibleAt = eligible > 0 && triggerTime ? new Date(triggerTime) : null;
-      const due = contractualDueDate(terms,triggerTime).due_at;
+      const schedule=unpaidInstallments(installments,Number(payable.paid_amount??0));
+      const due=schedule.find(row=>row.outstanding_amount>0)?.due_date??null;
       await client.query(
-        "INSERT INTO contractor_payable_eligibility_snapshots (tenant_id,contractor_payable_id,calculation_version,cleared_customer_funds,allocated_customer_funds,eligible_partner_amount,status,eligible_at,payment_due_at,source_payment_application_ids,created_by_user_id) SELECT $1,$2,$3,$4,$4,$5,$6,$7,$8,COALESCE(array_agg(DISTINCT pa.id) FILTER (WHERE pa.id IS NOT NULL),'{}'::uuid[]),$9 FROM payment_applications pa JOIN cash_receipts cr ON cr.tenant_id=pa.tenant_id AND cr.id=pa.cash_receipt_id AND cr.deleted_at IS NULL AND cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived') WHERE pa.tenant_id=$1 AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied') AND EXISTS(SELECT 1 FROM payment_application_allocations x JOIN contractor_payable_items i ON i.tenant_id=x.tenant_id AND i.accepted_production_source_id=x.accepted_production_source_id WHERE x.tenant_id=pa.tenant_id AND x.payment_application_id=pa.id AND x.deleted_at IS NULL AND i.contractor_payable_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived'))",
-        [request.auth.tenantId, id, version, this.roundMoney(allocatedCustomer), eligible, status, eligibleAt, due, request.auth.userId],
+        "INSERT INTO contractor_payable_eligibility_snapshots (tenant_id,contractor_payable_id,calculation_version,cleared_customer_funds,allocated_customer_funds,eligible_partner_amount,status,eligible_at,payment_due_at,source_payment_application_ids,created_by_user_id,installments) SELECT $1,$2,$3,$4,$4,$5,$6,$7,$8,COALESCE(array_agg(DISTINCT pa.id) FILTER (WHERE pa.id IS NOT NULL),'{}'::uuid[]),$9,$10::jsonb FROM payment_applications pa JOIN cash_receipts cr ON cr.tenant_id=pa.tenant_id AND cr.id=pa.cash_receipt_id AND cr.deleted_at IS NULL AND cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived') WHERE pa.tenant_id=$1 AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied') AND EXISTS(SELECT 1 FROM payment_application_allocations x JOIN contractor_payable_items i ON i.tenant_id=x.tenant_id AND i.accepted_production_source_id=x.accepted_production_source_id WHERE x.tenant_id=pa.tenant_id AND x.payment_application_id=pa.id AND x.deleted_at IS NULL AND i.contractor_payable_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived'))",
+        [request.auth.tenantId, id, version, this.roundMoney(allocatedCustomer), eligible, status, eligibleAt, due, request.auth.userId,JSON.stringify(schedule)],
       );
       const after = await client.query("UPDATE contractor_payables SET eligible_amount = $1, ineligible_amount = GREATEST(net_payable_amount - $1, 0), pay_when_paid_status = $2, payment_readiness_status = $3, status = CASE WHEN $2 = 'eligible' THEN 'payment_ready' ELSE status END, eligible_at = COALESCE(eligible_at,$4), payment_due_at = $5, updated_by = $6, updated_at = now() WHERE tenant_id = $7 AND id = $8 RETURNING *", [eligible, status, status === "eligible" ? "ready_for_payment" : "ready_with_warning", eligibleAt, due, request.auth.userId, request.auth.tenantId, id]);
       return { entityType: "contractor_payable", entityId: id, beforeState: payable, afterState: this.safePayable(after.rows[0]) };
+    });
+  }
+
+  @Get("contractor-payables/:id/installments")
+  @RequirePermission("contractor_payable.read")
+  async installments(@Req() request:AuthenticatedRequest,@Param('id') id:string){
+    return this.withClient(async client=>{
+      const payable=await this.requireRecord(client,'contractor_payables',request.auth.tenantId,id,'Payable not found');
+      const snapshot=(await client.query('SELECT calculation_version,created_at,installments FROM contractor_payable_eligibility_snapshots WHERE tenant_id=$1 AND contractor_payable_id=$2 ORDER BY calculation_version DESC LIMIT 1',[request.auth.tenantId,id])).rows[0];
+      return {payable_number:payable.payable_number,snapshot:snapshot?{...snapshot,installments:unpaidInstallments(snapshot.installments,Number(payable.paid_amount??0))}:null};
     });
   }
 
@@ -746,11 +771,11 @@ export class AcceptedProductionFinancialsController {
         customerRate?.id ?? null,
         customerRate?.rate_schedule_id ?? null,
         customerRate?.rate ?? null,
-        customerRate ? this.roundMoney(acceptedQuantity * Number(customerRate.rate)) : null,
+        customerRate ? extendedContractAmount(acceptedQuantity,customerRate.rate) : null,
         partnerRate?.id ?? null,
         partnerRate?.rate_schedule_id ?? null,
         partnerRate?.rate ?? null,
-        partnerRate ? this.roundMoney(acceptedQuantity * Number(partnerRate.rate)) : null,
+        partnerRate ? extendedContractAmount(acceptedQuantity,partnerRate.rate) : null,
         fingerprint,
         userId,
         customerRate?.terms_revision_id,
@@ -939,7 +964,7 @@ export class AcceptedProductionFinancialsController {
       }
       const customerRateId = partyType === "customer" ? rate.id : null;
       const partnerRateId = partyType === "partner" ? rate.id : null;
-      const amount = this.roundMoney(quantity * Number(rate.rate));
+      const amount = extendedContractAmount(quantity,rate.rate);
       const fingerprint = this.sourceFingerprint([sourceKind, accepted.customer_qc_decision_id, coil.id, policy.id, policy.version, quantity]);
       await client.query(
         `

@@ -110,16 +110,18 @@ test.describe("Action-state full submit certification", () => {
 
   // ── Production ────────────────────────────────────────────────────────────────
 
-  test("[Production] prodDraft: Submit → status=submitted", async ({ page }) => {
+  test("[Production] legacy draft without reviewed safety cannot submit", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/production/${s.prodDraft}`, "production");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "bank_transactions", "accounting_export_batches"]);
     await openAction(page, /^Submit$/i);
     await expectModal(page, /Submit/i);
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('work_safety_scope_not_reviewed');
     const row = await withDb((c) => c.query(`SELECT status FROM production_records WHERE id = $1 AND tenant_id = $2`, [s.prodDraft, TENANT_ID]));
-    expect(row.rows[0].status, "production_records.status must be submitted").toBe("submitted");
+    expect(row.rows[0].status, "unreviewed legacy production stays draft").toBe("draft");
     await expectBoundaryUnchanged(TENANT_ID, before, "prodDraft-submit");
   });
 
@@ -153,7 +155,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "prodUnderReview-approve");
   });
 
-  test("[Production] prodCorrectionRequested: Mark Corrected → status=corrected", async ({ page }) => {
+  test("[Production] legacy correction without reviewed safety cannot advance", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/production/${s.prodCorrectionRequested}`, "production");
@@ -161,9 +163,11 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /Mark Corrected/i);
     await expectModal(page, /Corrected/i);
     await page.getByLabel(/Correction note/i).first().fill("E2E certification correction");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('work_safety_scope_not_reviewed');
     const row = await withDb((c) => c.query(`SELECT status FROM production_records WHERE id = $1 AND tenant_id = $2`, [s.prodCorrectionRequested, TENANT_ID]));
-    expect(row.rows[0].status, "production_records.status must be corrected").toBe("corrected");
+    expect(row.rows[0].status, "unreviewed correction remains pending").toBe("correction_requested");
     await expectBoundaryUnchanged(TENANT_ID, before, "prodCorrectionRequested-mark-corrected");
   });
 

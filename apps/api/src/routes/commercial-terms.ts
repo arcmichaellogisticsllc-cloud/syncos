@@ -13,7 +13,16 @@ export function commercialTermsInput(b:Row) {
   if(!IANAZone.isValidZone(time_zone))throw new BadRequestException('Provide the agreement time zone');
   const date=(v:unknown)=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&DateTime.fromISO(v).isValid;
   if(!date(b.effective_from)||b.effective_until!=null&&!date(b.effective_until)||b.effective_until&&b.effective_until<b.effective_from)throw new BadRequestException('Provide valid agreement effective dates');
-  return {party_type,payment_trigger,payment_days,time_zone,retainage_percent,effective_from:b.effective_from as string,effective_until:b.effective_until??null};
+  const payment_day_basis=String(b.payment_day_basis??'calendar_days');
+  if(!['calendar_days','business_days'].includes(payment_day_basis))throw new BadRequestException('Choose calendar days or business days');
+  const holidays=b.holidays??(payment_day_basis==='calendar_days'?[]:null);
+  if(!Array.isArray(holidays)||holidays.length>1000||holidays.some(day=>!date(day))||new Set(holidays).size!==holidays.length)throw new BadRequestException('Provide distinct approved holiday dates, or explicitly approve an empty calendar');
+  const holiday_calendar_through=b.holiday_calendar_through??null;
+  if(holiday_calendar_through!==null&&!date(holiday_calendar_through))throw new BadRequestException('Holiday calendar end must be a valid date');
+  if(payment_day_basis==='business_days'&&(!date(holiday_calendar_through)||holiday_calendar_through<b.effective_from))throw new BadRequestException('Provide the last date covered by the approved holiday calendar');
+  const funding_basis=String(b.funding_basis??'gross_customer_amount');
+  if(!['gross_customer_amount','net_customer_invoice'].includes(funding_basis)||party_type==='customer'&&funding_basis!=='gross_customer_amount')throw new BadRequestException('Choose the approved partner funding basis');
+  return {party_type,payment_trigger,payment_days,time_zone,retainage_percent,payment_day_basis,holidays:[...holidays].sort(),holiday_calendar_through,funding_basis,effective_from:b.effective_from as string,effective_until:b.effective_until??null};
 }
 export function canonicalRateUnit(unit:unknown) {const u=String(unit).trim().toUpperCase();return ({FEET:'LF',EACH:'EA',HOURS:'HR'} as Row)[u]??u;}
 export function approvedRateSnapshot(rows:Row[],party:string) {
@@ -22,7 +31,7 @@ export function approvedRateSnapshot(rows:Row[],party:string) {
   return rows.map(r=>{
     const unit=canonicalRateUnit(r.unit),key=String(r.code)+'|'+unit;
     const raw=party==='customer'?(r.customer_rate??r.amount):r.contractor_rate,rate=Number(raw);
-    if(raw==null||!Number.isFinite(rate)||rate<=0||Math.abs(rate*100-Math.round(rate*100))>1e-6)throw new BadRequestException('Every approved rate must be positive with at most two decimal places');
+    if(raw==null||!Number.isFinite(rate)||rate<=0||Math.abs(rate*10000-Math.round(rate*10000))>1e-6)throw new BadRequestException('Every approved rate must be positive with at most four decimal places');
     if(seen.has(key))throw new BadRequestException('Resolve duplicate production codes and units before approving rates');
     seen.add(key);return {id:String(r.id),code:String(r.code),unit,rate,description:String(r.description??r.code)};
   }).sort((a,b)=>(a.code+'|'+a.unit).localeCompare(b.code+'|'+b.unit));
@@ -53,7 +62,13 @@ export function invoiceTermsAmounts(subtotal:number,percent:number) {
 export function contractualDueDate(terms:Row,trigger:string|null) {
   if(!trigger)return {due_at:null,due_date:null};
   const start=DateTime.fromISO(absoluteTime(trigger,'Contract payment trigger')).setZone(terms.time_zone);
-  const due=start.plus({days:terms.payment_days});
+  let due=start;
+  if(terms.payment_day_basis==='business_days'){
+    if(!Array.isArray(terms.holidays)||!terms.holiday_calendar_through)throw new BadRequestException('An approved holiday calendar is required');
+    for(let remaining=Number(terms.payment_days);remaining>0;){due=due.plus({days:1});if(due.weekday<=5&&!terms.holidays.includes(due.toISODate()))remaining--;}
+    const through=typeof terms.holiday_calendar_through==='string'?terms.holiday_calendar_through:terms.holiday_calendar_through.toISOString().slice(0,10);
+    if(due.toISODate()>through)throw new BadRequestException('Payment due date exceeds the approved holiday calendar; review a new agreement revision');
+  }else due=start.plus({days:Number(terms.payment_days)});
   if(!due.isValid)throw new BadRequestException('Contract due date is invalid');
   return {due_at:due.toUTC().toISO() as string,due_date:due.toISODate() as string};
 }
@@ -97,4 +112,34 @@ export async function partnerSettlementTerms(c:PoolClient,tenant:string,settleme
  const rows=(await c.query(`SELECT DISTINCT t.* FROM settlement_items i JOIN accepted_production_financial_sources s ON s.tenant_id=i.tenant_id AND s.id=i.accepted_production_source_id LEFT JOIN commercial_terms_revisions t ON t.tenant_id=s.tenant_id AND t.id=s.partner_terms_revision_id WHERE i.tenant_id=$1 AND i.settlement_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived')`,[tenant,settlement])).rows;
  if(rows.length!==1||!rows[0]?.id||rows[0].party_type!=='partner')throw new BadRequestException('A partner payable must use one approved partner agreement revision; reconcile historical or mixed terms first');
  return rows[0];
+}
+
+// Rates and quantities retain four decimal places; only the final line rounds to cents.
+export function extendedContractAmount(quantity:unknown,rate:unknown):number {
+ const scaled=(value:unknown)=>{const text=String(value);if(!/^\d+(?:\.\d{1,4})?$/.test(text))throw new BadRequestException('Quantity and rate must be nonnegative decimals with at most four places');const [whole,fraction='']=text.split('.');return BigInt(whole)*10000n+BigInt(fraction.padEnd(4,'0'));};
+ const cents=(scaled(quantity)*scaled(rate)+500000n)/1000000n;
+ if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw new BadRequestException('Extended amount exceeds supported precision');
+ return Number(cents)/100;
+}
+
+export function fundingInstallments(terms:Row,partnerNet:number,customerBasis:number,receipts:Row[]) {
+ if(!Number.isFinite(customerBasis)||customerBasis<=0)throw new BadRequestException('Approved customer funding basis must be positive');
+ const net=Math.round(partnerNet*100),basis=Math.round(customerBasis*100);
+ if(!Number.isSafeInteger(net)||net<0||!Number.isSafeInteger(basis))throw new BadRequestException('Funding amount exceeds supported precision');
+ let funded=0n,allocated=0n;const seen=new Set<string>();
+ return [...receipts].sort((a,b)=>new Date(a.trigger_at).getTime()-new Date(b.trigger_at).getTime()||String(a.id).localeCompare(String(b.id))).map(receipt=>{
+  if(seen.has(receipt.id))throw new BadRequestException('Duplicate funding allocation');seen.add(receipt.id);
+  const amount=Math.round(Number(receipt.amount)*100);if(!Number.isSafeInteger(amount)||amount<0)throw new BadRequestException('Invalid funding allocation');
+  funded+=BigInt(amount);const capped=funded>BigInt(basis)?BigInt(basis):funded;
+  const cumulative=(BigInt(net)*capped+BigInt(Math.floor(basis/2)))/BigInt(basis);
+  const payable=cumulative-allocated;allocated=cumulative;
+  return {allocation_id:receipt.id,payment_application_id:receipt.payment_application_id,trigger_at:receipt.trigger_at,amount:Number(payable)/100,...contractualDueDate(terms,receipt.trigger_at)};
+ }).filter(item=>item.amount>0);
+}
+export function unpaidInstallments(installments:Row[],paid:number):Row[] {
+ let remaining=Math.round(paid*100);if(!Number.isSafeInteger(remaining)||remaining<0)throw new BadRequestException('Invalid paid amount');
+ return [...installments].sort((a,b)=>String(a.due_at).localeCompare(String(b.due_at))||String(a.allocation_id).localeCompare(String(b.allocation_id))).map(item=>{
+  const cents=Math.round(item.amount*100),used=Math.min(remaining,cents);remaining-=used;
+  return {...item,outstanding_amount:(cents-used)/100};
+ });
 }

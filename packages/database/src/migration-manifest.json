@@ -80,5 +80,7 @@
   "079_invoice_packages_delivery.sql",
   "080_partner_contract_payment_terms.sql",
   "081_legacy_correction_export_provenance.sql",
-  "082_invoice_event_order.sql"
+  "082_invoice_event_order.sql",
+  "083_commercial_precision_calendars.sql",
+  "084_payment_installment_schedule.sql"
 ]

@@ -22,4 +22,6 @@ test('package preserves original bytes, safe filenames and readable escaped invo
  assert.deepEqual(Buffer.from(files['evidence/evidence-.._.._original.pdf']),original);
  const html=strFromU8(files['invoice.html']);assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);assert.match(html,/14 calendar days from invoice acceptance/);
  assert.equal(packageHash(Buffer.from(files['evidence/evidence-.._.._original.pdf'])),packageHash(original));
+ facts.manifest.terms.payment_day_basis='business_days';
+ assert.match(strFromU8(unzipSync(buildInvoiceArchive(facts))['invoice.html']),/14 business days from invoice acceptance/);
 });

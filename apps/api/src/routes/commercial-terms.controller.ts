@@ -34,7 +34,7 @@ export class CommercialTermsController {
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[req.auth.tenantId+':commercial-terms']);
    const prior=(await c.query('SELECT * FROM commercial_terms_revisions WHERE tenant_id=$1 AND approved_by=$2 AND client_mutation_id=$3',[req.auth.tenantId,req.auth.userId,mutation])).rows[0];
    if(prior){
-    const comparable={...prior,effective_from:typeof prior.effective_from==='string'?prior.effective_from:prior.effective_from.toISOString().slice(0,10),effective_until:prior.effective_until?(typeof prior.effective_until==='string'?prior.effective_until:prior.effective_until.toISOString().slice(0,10)):null};
+    const comparable={...prior,effective_from:typeof prior.effective_from==='string'?prior.effective_from:prior.effective_from.toISOString().slice(0,10),holiday_calendar_through:prior.holiday_calendar_through?(typeof prior.holiday_calendar_through==='string'?prior.holiday_calendar_through:prior.holiday_calendar_through.toISOString().slice(0,10)):null,effective_until:prior.effective_until?(typeof prior.effective_until==='string'?prior.effective_until:prior.effective_until.toISOString().slice(0,10)):null};
     if(prior.rate_schedule_id!==id||prior.source_reference!==source||JSON.stringify(commercialTermsInput(comparable))!==JSON.stringify(terms))throw new BadRequestException('This request identifier belongs to a different approval');
     return {entityType:'commercial_terms_revision',entityId:prior.id,afterState:prior,skipEventAudit:true};
    }
@@ -42,8 +42,8 @@ export class CommercialTermsController {
    if(body.preview_fingerprint!==p.preview_fingerprint)throw new BadRequestException('The contract or rates changed. Refresh and review them before approval');
    const rates=approvedRateSnapshot(p.rates,terms.party_type);
    const revision=(await c.query('SELECT COALESCE(max(revision_number),0)+1 AS next FROM commercial_terms_revisions WHERE tenant_id=$1 AND rate_schedule_id=$2 AND party_type=$3',[req.auth.tenantId,id,terms.party_type])).rows[0].next;
-   const row=(await c.query(`INSERT INTO commercial_terms_revisions(tenant_id,contract_id,rate_schedule_id,counterparty_organization_id,party_type,revision_number,effective_from,effective_until,payment_trigger,payment_days,time_zone,retainage_percent,rate_snapshot,source_reference,approved_by,client_mutation_id)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16) RETURNING *`,[req.auth.tenantId,p.contract.id,id,p.contract.organization_id,terms.party_type,revision,terms.effective_from,terms.effective_until,terms.payment_trigger,terms.payment_days,terms.time_zone,terms.retainage_percent,JSON.stringify(rates),source,req.auth.userId,mutation])).rows[0];
+   const row=(await c.query(`INSERT INTO commercial_terms_revisions(tenant_id,contract_id,rate_schedule_id,counterparty_organization_id,party_type,revision_number,effective_from,effective_until,payment_trigger,payment_days,time_zone,retainage_percent,rate_snapshot,source_reference,approved_by,client_mutation_id,payment_day_basis,holidays,holiday_calendar_through,funding_basis)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20) RETURNING *`,[req.auth.tenantId,p.contract.id,id,p.contract.organization_id,terms.party_type,revision,terms.effective_from,terms.effective_until,terms.payment_trigger,terms.payment_days,terms.time_zone,terms.retainage_percent,JSON.stringify(rates),source,req.auth.userId,mutation,terms.payment_day_basis,JSON.stringify(terms.holidays),terms.holiday_calendar_through,terms.funding_basis])).rows[0];
    return {entityType:'commercial_terms_revision',entityId:row.id,afterState:row};
   }});}finally{c.release();}
  }

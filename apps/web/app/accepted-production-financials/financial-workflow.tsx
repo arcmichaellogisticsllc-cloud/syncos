@@ -62,6 +62,7 @@ export function FinancialWorkflow({ onChange }: { onChange: () => void }) {
       <FinanceAction permission="contractor_payable.create" title="7. Create partner payable" endpoint="contractor-payables/create" submitLabel="Create partner payable" onSaved={refresh}>
         <ChoiceSelect label="Partner settlement awaiting payable" name="settlement_id" rows={data.settlements} />
       </FinanceAction>
+      <Capability permission="contractor_payable.read"><InstallmentSchedule rows={data.payables} revision={revision}/></Capability>
       <FinanceAction permission="contractor_payable.calculate_eligibility" title="Record a partner invoice payment trigger" endpoint={f=>`contractor-payables/${f.contractor_payable_id}/contract-trigger`} submitLabel="Record partner invoice event" onSaved={refresh} transform={f=>({...f,verified:f.verified==='on'})}>
         <ChoiceSelect label="Partner payable for invoice event" name="contractor_payable_id" rows={data.payables}/>
         <label>Actual event time with UTC offset<input name="occurred_at" required placeholder="2026-09-30T14:30:00-04:00"/></label>
@@ -97,4 +98,10 @@ export function FinanceAction({ permission, title, endpoint, submitLabel, childr
     finally { gate.current = false; setBusy(false); }
   }
   return <Capability permission={permission}><details className="workspace-panel"><summary style={{ minHeight: 44, paddingBlock: 12, cursor: "pointer" }}>{title}</summary><form onSubmit={submit} onChange={() => { if (!busy) key.current = ""; }}><fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0 }}><div className="form-grid">{children}</div><button type="submit" style={{ minHeight: 44 }} disabled={busy}>{busy ? "Saving…" : submitLabel}</button></fieldset>{error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}</form></details></Capability>;
+}
+
+function InstallmentSchedule({rows,revision}:{rows:Choice[];revision:number}) {
+ const [id,setId]=useState(''),[state,setState]=useState<{snapshot:null|{created_at:string;installments:Array<{allocation_id:string;amount:number;outstanding_amount:number;due_date:string;trigger_at:string}>}}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+ useEffect(()=>{setState(null);setError('');if(!id)return;let active=true;setLoading(true);syncosFetch<NonNullable<typeof state>>(`accepted-production-financials/contractor-payables/${id}/installments`).then(v=>{if(active)setState(v);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[id,revision]);
+ return <section><h3>Partner payment installments</h3><ChoiceSelect label="Payable schedule" name="schedule_payable_id" rows={rows} value={id} onChange={setId}/>{loading&&<p role="status">Loading installments…</p>}{error&&<p role="alert">{error}</p>}{state&&(state.snapshot?<><p>Last calculation: {new Date(state.snapshot.created_at).toLocaleString()}. Recalculate eligibility after cash changes. Outstanding amounts apply recorded payments to the earliest due installment.</p><ul>{state.snapshot.installments.map((row,i)=><li key={row.allocation_id+String(i)}>${Number(row.amount).toFixed(2)} due {row.due_date}; ${Number(row.outstanding_amount).toFixed(2)} outstanding. Trigger: {new Date(row.trigger_at).toLocaleString()}.</li>)}</ul></>:<p>Calculate eligibility to produce the agreement’s installment schedule.</p>)}</section>;
 }

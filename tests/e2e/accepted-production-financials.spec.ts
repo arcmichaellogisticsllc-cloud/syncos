@@ -101,6 +101,17 @@ test.describe.serial("P12 accepted production financials", () => {
     expect(eligible.payment_due_at).toBeTruthy();
     const snapshots = await client.query("SELECT count(*)::int AS count FROM contractor_payable_eligibility_snapshots WHERE tenant_id = $1 AND contractor_payable_id = $2", [fixture.tenantA, payable.id]);
     expect(snapshots.rows[0].count).toBe(1);
+    const invoice=(await client.query('SELECT id FROM invoices WHERE tenant_id=$1 ORDER BY created_at LIMIT 1',[fixture.tenantA])).rows[0];
+    await client.query("UPDATE cash_receipts SET cleared_at='2026-08-01T12:00:00Z' WHERE tenant_id=$1",[fixture.tenantA]);
+    const second=await apiJson(request,fixture.internalToken,'POST','/accepted-production-financials/cash-receipts',{customer_organization_id:fixture.customerOrg,amount:66.27,payment_reference:'P12-CASH-2',idempotency_key:'p12-cash-2'});
+    await apiJson(request,fixture.internalToken,'POST',`/accepted-production-financials/cash-receipts/${second.id}/clear`);
+    await client.query("UPDATE cash_receipts SET cleared_at='2026-08-10T12:00:00Z' WHERE id=$1",[second.id]);
+    await apiJson(request,fixture.internalToken,'POST','/accepted-production-financials/payment-applications',{cash_receipt_id:second.id,invoice_id:invoice.id,amount:66.27});
+    await apiJson(request,fixture.internalToken,'POST',`/accepted-production-financials/contractor-payables/${payable.id}/calculate-eligibility`);
+    const schedule=await apiJson(request,fixture.internalToken,'GET',`/accepted-production-financials/contractor-payables/${payable.id}/installments`);
+    expect(schedule.snapshot.installments.map((row:any)=>[row.amount,row.due_date])).toEqual([[49.35,'2026-08-15'],[49.35,'2026-08-24']]);
+    expect((await request.get(apiUrl(`/accepted-production-financials/contractor-payables/${payable.id}/installments`),{headers:auth(fixture.foremanToken)})).status()).toBe(403);
+
   });
 
   test("Partner Admin sees own settlement without Customer rate or margin; Foreman and Partner B are denied", async ({ request }) => {
@@ -159,14 +170,14 @@ test.describe.serial("P12 accepted production financials", () => {
     expect(partnerCoilSource.rows[0].count).toBe(0);
   });
 
-  test("Missing Partner rate creates settlement exception but does not block Customer Billable", async ({ request }) => {
+  test("Editing a schedule cannot change an already approved partner rate", async ({ request }) => {
     await client.query("UPDATE rate_codes SET contractor_rate = NULL WHERE tenant_id = $1 AND code = 'FIBER'", [fixture.tenantA]);
     await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/billables/convert", { customer_qc_decision_id: fixture.extraDecision });
     const source = await client.query("SELECT id FROM accepted_production_financial_sources WHERE tenant_id = $1 AND customer_qc_decision_id = $2", [fixture.tenantA, fixture.extraDecision]);
     const response = await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/partner-settlements/create", { accepted_production_source_ids: [source.rows[0].id] });
-    expect(response.exception_type).toBe("missing_partner_rate");
-    const exceptions = await apiJson(request, fixture.internalToken, "GET", "/accepted-production-financials/exceptions");
-    expect(exceptions.some((row: Record<string, unknown>) => row.exception_type === "missing_partner_rate")).toBe(true);
+    expect(response.id).toBeTruthy();
+    const locked=await client.query("SELECT partner_rate FROM accepted_production_financial_sources WHERE id=$1",[source.rows[0].id]);
+    expect(Number(locked.rows[0].partner_rate)).toBe(0.70);
   });
 
   test("Post-billing Customer QC change creates exception without rewriting issued invoice or Billable", async ({ request }) => {
@@ -177,6 +188,7 @@ test.describe.serial("P12 accepted production financials", () => {
     await client.query("INSERT INTO customer_qc_decisions (id,tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,customer_reason_code,recorded_by_user_id,source_reference,current) VALUES ($1,$2,$3,$4,'partially_accepted',141,132,'feet','customer_revision',$5,'corrected-source',true)", [newDecision, fixture.tenantA, source.rows[0].customer_qc_cycle_id, source.rows[0].production_record_id, source.rows[0].created_by_user_id]);
     const exception = await apiJson(request, fixture.internalToken, "POST", "/accepted-production-financials/detect-qc-change", { accepted_production_source_id: source.rows[0].id });
     expect(exception.exception_type).toBe("post_billing_customer_qc_change");
+    await client.query('UPDATE customer_qc_decisions n SET accepted_quantity_review_id=o.accepted_quantity_review_id,accepted_quantity_fingerprint=o.accepted_quantity_fingerprint FROM customer_qc_decisions o WHERE n.id=$1 AND o.id=$2',[newDecision,fixture.fiberDecision]);
     const duplicate = await request.post(apiUrl('/accepted-production-financials/billables/convert'), { headers: auth(fixture.internalToken), data: { customer_qc_decision_id: newDecision } });
     expect(duplicate.status()).toBe(400);
     expect(await duplicate.text()).toContain('controlled financial adjustments');
@@ -238,7 +250,7 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
   const permissions = [
     "billable_item.read", "billable_item.mark_ready", "billing.read", "billing.create_billable", "billing.create_invoice", "billing.issue_invoice", "cash_receipt.record", "payment_application.create",
     "partner_settlement.read", "partner_settlement.create", "partner_contractor_payable.read", "partner_payment_eligibility.read", "contractor_payable.create",
-    "contractor_payable.calculate_eligibility", "financial_exception.read", "partner_context.read",
+    "contractor_payable.calculate_eligibility", "contractor_payable.read", "contract.read", "contract.update", "financial_exception.read", "partner_context.read",
   ];
   await client.query("BEGIN");
   try {
@@ -291,6 +303,7 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("ROLLBACK");
     throw error;
   }
+  await prepareSyntheticCommercialFixture(client,tenantA,internalUser);
   return { tenantA, tenantB, partnerOrg, customerOrg, fiberDecision, coilDecision, workOrder, pendingDecision, extraDecision, internalToken: token(internalUser, tenantA, secret), partnerToken: token(partnerUser, tenantA, secret), foremanToken: token(foremanUser, tenantA, secret), tenantBToken: token(tenantBUser, tenantB, secret) };
 }
 
@@ -395,6 +408,9 @@ test.describe('Financial handoff completion safeguards', () => {
   // A subsequent correction to another record must retain this record's accepted code lineage.
   const third=crypto.randomUUID();await client.query("INSERT INTO daily_production_report_revisions(id,tenant_id,daily_report_id,revision_number,snapshot_json,reason) VALUES($1,$2,$3,3,$4,'correction_submitted')",[third,f.tenantA,context.daily_report_id,JSON.stringify({original_production_record_id:crypto.randomUUID(),proposed_correction:{production_code_id:code}})]);
   await client.query('UPDATE customer_qc_cycles SET daily_report_revision_id=$1 WHERE tenant_id=$2 AND id=$3',[third,f.tenantA,context.qc_cycle_id]);
+  const unapproved=await request.post(apiUrl('/accepted-production-financials/billables/convert'),{headers:auth(f.internalToken),data:{customer_qc_decision_id:f.fiberDecision}});expect(unapproved.status()).toBe(400);
+  const actor=(await client.query('SELECT recorded_by_user_id FROM customer_qc_decisions WHERE id=$1',[f.fiberDecision])).rows[0].recorded_by_user_id;
+  await prepareSyntheticCommercialFixture(client,f.tenantA,actor);
   const billable=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:f.fiberDecision});expect(Number(billable.customer_rate_locked)).toBe(2);expect(Number(billable.net_billable_amount)).toBe(282);
   const original=(await client.query('SELECT syncfield_production_code_id FROM production_records WHERE id=$1',[context.production_record_id])).rows[0];expect(original.syncfield_production_code_id).not.toBe(code);
  });
@@ -417,4 +433,70 @@ test('targeted reinspection retains unrelated accepted production while unresolv
   const blocked=await request.post(apiUrl('/accepted-production-financials/billables/convert'),{headers:auth(f.internalToken),data:{customer_qc_decision_id:unsafeDecision}});expect(blocked.status()).toBe(404);
   const old=(await client.query('SELECT current FROM customer_qc_decisions WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.fiberDecision])).rows[0];expect(old.current).toBe(true);
  } finally {await client.end();}
+});
+
+async function prepareSyntheticCommercialFixture(db:Client,tenant:string,actor:string){
+ const u=new URL(process.env.DATABASE_URL!);if(!['localhost','127.0.0.1'].includes(u.hostname)||/staging|production/i.test(u.pathname))throw new Error('Synthetic fixture preparation is local-only');
+ const {productionQuantitySource,productionQuantityFingerprint}=require('../../apps/api/dist/routes/production-quantity-integrity');
+ const {approvedRateSnapshot}=require('../../apps/api/dist/routes/commercial-terms');
+ for(const row of (await db.query('SELECT id FROM production_records WHERE tenant_id=$1',[tenant])).rows){
+  const source=await productionQuantitySource(db,tenant,row.id),fingerprint=productionQuantityFingerprint(source),ref='synthetic-p12-'+row.id;
+  await db.query('INSERT INTO production_work_item_registry(tenant_id,work_order_id,canonical_reference,production_record_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[tenant,source.work_order_id,ref,row.id]);
+  const review=(await db.query("INSERT INTO production_quantity_reviews(tenant_id,production_record_id,disposition,canonical_reference,source_fingerprint,source_reference,review_notes,reviewed_by,client_mutation_id) VALUES($1,$2,'primary_work',$3,$4,'SYNTHETIC local fixture','Synthetic reviewed quantity',$5,$6) RETURNING id",[tenant,row.id,ref,fingerprint,actor,crypto.randomUUID()])).rows[0];
+  await db.query('UPDATE production_records SET quantity_review_id=$3 WHERE tenant_id=$1 AND id=$2',[tenant,row.id,review.id]);
+  await db.query('UPDATE customer_qc_decisions SET accepted_quantity_review_id=$3,accepted_quantity_fingerprint=$4 WHERE tenant_id=$1 AND production_record_id=$2',[tenant,row.id,review.id,fingerprint]);
+ }
+ for(const schedule of (await db.query('SELECT * FROM rate_schedules WHERE tenant_id=$1',[tenant])).rows){
+  let agreement=(await db.query('SELECT id FROM contracts WHERE tenant_id=$1 AND organization_id=$2 LIMIT 1',[tenant,schedule.organization_id])).rows[0]?.id;
+  const party=schedule.name==='P12 Partner Rates'?'partner':'customer';
+  if(!agreement)agreement=(await db.query("INSERT INTO contracts(tenant_id,organization_id,name,status) VALUES($1,$2,'SYNTHETIC P12 commercial agreement','active') RETURNING id",[tenant,schedule.organization_id])).rows[0].id;
+  await db.query('UPDATE rate_schedules SET contract_id=$3 WHERE tenant_id=$1 AND id=$2',[tenant,schedule.id,agreement]);
+  const rates=(await db.query("SELECT * FROM rate_codes WHERE tenant_id=$1 AND rate_schedule_id=$2 AND status='active' AND deleted_at IS NULL",[tenant,schedule.id])).rows;
+  const n=(await db.query('SELECT coalesce(max(revision_number),0)+1 AS n FROM commercial_terms_revisions WHERE tenant_id=$1 AND rate_schedule_id=$2 AND party_type=$3',[tenant,schedule.id,party])).rows[0].n;
+  await db.query("INSERT INTO commercial_terms_revisions(tenant_id,contract_id,rate_schedule_id,counterparty_organization_id,party_type,revision_number,effective_from,payment_trigger,payment_days,time_zone,retainage_percent,rate_snapshot,source_reference,approved_by,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,'2020-01-01',$7,14,'America/New_York',0,$8::jsonb,'SYNTHETIC approved pricing',$9,$10)",[tenant,agreement,schedule.id,schedule.organization_id,party,n,party==='partner'?'customer_payment':'invoice_acceptance',JSON.stringify(approvedRateSnapshot(rates,party)),actor,crypto.randomUUID()]);
+ }
+}
+
+
+test('four-decimal approved rates survive conversion and invoice storage without early rounding',async({request})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedP12Fixture(db,process.env.AUTH_JWT_SECRET!);
+  await db.query("UPDATE rate_codes SET customer_rate=0.6435,amount=0.6435 WHERE tenant_id=$1",[f.tenantA]);
+  const actor=(await db.query('SELECT recorded_by_user_id FROM customer_qc_decisions WHERE id=$1',[f.fiberDecision])).rows[0].recorded_by_user_id;
+  await prepareSyntheticCommercialFixture(db,f.tenantA,actor);
+  const billable=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:f.fiberDecision});
+  expect(Number(billable.customer_rate_locked)).toBe(0.6435);
+  expect(Number(billable.net_billable_amount)).toBe(90.73);
+  const invoice=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/invoices/create',{retainage_percent:0});
+  expect(Number(invoice.total_amount)).toBe(90.73);
+  const line=(await db.query('SELECT unit_rate,gross_amount FROM invoice_items WHERE invoice_id=$1',[invoice.id])).rows[0];
+  expect(Number(line.unit_rate)).toBe(0.6435);expect(Number(line.gross_amount)).toBe(90.73);
+ }finally{await db.end();}
+});
+
+
+test('agreement UI approves a reviewed business calendar and shows its history',async({page})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedP12Fixture(db,process.env.AUTH_JWT_SECRET!);
+  const schedule=(await db.query("SELECT id FROM rate_schedules WHERE tenant_id=$1 AND name='P12 Customer Rates'",[f.tenantA])).rows[0];
+  await page.addInitScript(token=>localStorage.setItem('syncos.apiToken',token),f.internalToken);
+  await page.goto('/accepted-production-financials');
+  await page.getByLabel('Agreement rate schedule').selectOption(schedule.id);
+  await page.getByLabel('Payment clock starts at').selectOption('invoice_acceptance');
+  await page.getByLabel('Days after trigger',{exact:true}).fill('2');
+  await page.getByLabel('Day calculation').selectOption('business_days');
+  await page.getByLabel('Approved holidays').fill('2026-10-12');
+  await page.getByLabel('Holiday calendar verified through').fill('2026-12-31');
+  await page.getByLabel('Retainage percent',{exact:true}).fill('10');
+  await page.getByLabel('Work effective from').fill('2026-01-01');
+  await page.getByLabel('Agreement time zone').fill('America/New_York');
+  await page.getByLabel('Executed agreement and pricing source').fill('SYNTHETIC reviewed UI agreement');
+  await page.getByLabel('I verified these terms and rates').check();
+  await page.getByRole('button',{name:'Approve agreement revision',exact:true}).click();
+  await expect(page.getByText('Agreement revision approved.',{exact:false})).toBeVisible();
+  const saved=(await db.query('SELECT payment_day_basis,holidays,holiday_calendar_through FROM commercial_terms_revisions WHERE tenant_id=$1 ORDER BY approved_at DESC LIMIT 1',[f.tenantA])).rows[0];
+  expect(saved.payment_day_basis).toBe('business_days');expect(saved.holidays).toEqual(['2026-10-12']);
+ }finally{await db.end();}
 });

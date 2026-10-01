@@ -44,3 +44,30 @@ test('invoice integrity rejects changed quantities, prices, duplicate work and m
  }
  items=[billable,billable];await assert.rejects(()=>requireInvoiceCommercialIntegrity(client,'tenant',invoice),/more than once/);
 });
+
+const {extendedContractAmount,fundingInstallments,unpaidInstallments}=require('../apps/api/dist/routes/commercial-terms');
+test('four-decimal source rates preserve the original line extension, rounding only final cents',()=>{
+ const rates=approvedRateSnapshot([{id:'four',code:'FIBER',unit:'LF',amount:'0.6435'}],'customer');
+ assert.equal(rates[0].rate,0.6435);
+ assert.equal(extendedContractAmount('9348','0.6435'),6015.44);
+ assert.equal(extendedContractAmount('1','1.0050'),1.01);
+ assert.throws(()=>extendedContractAmount('1','0.12345'),/four places/);
+ assert.throws(()=>approvedRateSnapshot([{id:'five',code:'F',unit:'LF',amount:'0.64351'}],'customer'),/four decimal/);
+});
+test('business-day terms skip weekends and approved holidays and refuse an exhausted calendar',()=>{
+ const terms=commercialTermsInput({...approved,payment_days:2,payment_day_basis:'business_days',holidays:['2026-10-12'],holiday_calendar_through:'2026-12-31'});
+ assert.equal(contractualDueDate(terms,'2026-10-09T10:00:00-04:00').due_date,'2026-10-14');
+ assert.throws(()=>commercialTermsInput({...approved,payment_day_basis:'business_days'}),/holiday/);
+ assert.throws(()=>contractualDueDate({...terms,holiday_calendar_through:'2026-10-13'},'2026-10-09T10:00:00-04:00'),/exceeds/);
+});
+test('separate receipts have separate maturity dates and cumulative rounding never creates extra pennies',()=>{
+ const terms={...approved,payment_days:14};const rows=[{id:'a',amount:50,trigger_at:'2026-09-01T12:00:00Z'},{id:'b',amount:50,trigger_at:'2026-09-10T12:00:00Z'}];
+ const schedule=fundingInstallments(terms,80,100,rows);
+ assert.deepEqual(schedule.map(r=>[r.amount,r.due_date]),[[40,'2026-09-15'],[40,'2026-09-24']]);
+ assert.deepEqual(unpaidInstallments(schedule,40).map(r=>r.outstanding_amount),[0,40]);
+ assert.equal(fundingInstallments(terms,80,90,[{...rows[0],amount:90}])[0].amount,80);
+ assert.equal(fundingInstallments(terms,80,100,[{...rows[0],amount:90}])[0].amount,72);
+ assert.equal(fundingInstallments(terms,0.01,3,[1,2,3].map(i=>({id:String(i),amount:1,trigger_at:'2026-09-01T12:00:00Z'}))).reduce((s,r)=>s+r.amount,0),0.01);
+ assert.throws(()=>fundingInstallments(terms,80,100,[rows[0],rows[0]]),/Duplicate/);
+ assert.equal(fundingInstallments(terms,80,100,[{...rows[0],amount:200}])[0].amount,80);
+});

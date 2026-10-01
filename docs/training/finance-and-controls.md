@@ -300,3 +300,17 @@ These controls are in the financial-completion candidate. Check the deployed rel
 4. Run **8. Calculate payment eligibility**. Review amounts, holds, source trace and timing before recording any externally completed payment.
 5. Keep Priority automation disabled pending sandbox and account/payee certification. Unmatched or conflicting external observations stay in review; they do not create payments.
 6. Historical demo transactions without the required lineage remain reference examples. Use the complete field-to-finance path for pilot transactions. Never fabricate customer acceptance or backdate an agreement to release a legacy payable.
+
+## Agreement calendars, precise rates and partial funding
+
+Candidate update: October 1, 2026 UTC. Use only after this candidate is activated in the designated environment.
+
+1. Open **Accepted Production Financials**, then **Approved agreement terms**. Choose the contract-linked schedule and compare every displayed rate with the executed pricing addendum. Rates display four decimal places; monetary totals round to cents after quantity extension.
+2. Choose the agreement party and actual payment trigger. Enter the approved number of days and choose **Calendar days** or **Business days (Monday–Friday)**. For business days, enter the applicable holiday dates and **Holiday calendar verified through**. An empty holiday list means no additional holidays; it is not a default national calendar. A due date beyond the verified horizon is blocked.
+3. For partner agreements, choose the **Customer funding basis** explicitly. Gross accepted customer amount leaves customer retainage unfunded; customer invoice net of retainage can fund the partner's net payable when that net customer invoice is cleared. Only select the rule supported by the executed agreement. This choice does not release the partner's own retainage.
+4. Confirm the effective work dates, time zone, retainage and source reference. Check the verification box only after reviewing the actual executed agreement and pricing. Click **Approve agreement revision** and confirm the saved revision in approval history. Existing invoices and payables keep their approved snapshots.
+5. Record actual customer receipts, clearance and invoice allocation. Click **8. Calculate payment eligibility** for the partner payable. In **Partner payment installments**, select that payable and inspect each funded amount and due date. Separate cleared allocations keep separate payment clocks.
+6. Recalculate after new receipts, reversals or allocations. The displayed schedule is a dated eligibility snapshot. Paid amounts are applied earliest-due-first for displaying outstanding installments; this is not a bank allocation instruction. Confirm the snapshot is current before payment review.
+7. If an older invoice/payable has no approved terms or accepted-work link, stop advancement and refer it for documented reconciliation. Preserve its original amount, dates and evidence. Do not invent acceptance, overwrite pricing or reuse a newer agreement to release it.
+
+The system supports Monday–Friday business days with an explicitly approved holiday list. Other week definitions, special payment cutoffs, bespoke grace periods and nonstandard rate precision require review before approval. Passport automation remains disabled pending sandbox acceptance.

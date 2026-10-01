@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ENV_FILE="${SYNCOS_STAGING_ENV_FILE:-/etc/syncos/staging/api.env}"
 BACKUP_ENV_FILE="${SYNCOS_BACKUP_ENV_FILE:-/etc/syncos/staging/backup.env}"
@@ -103,6 +104,7 @@ EOF
 
 if [[ "${MODE}" == "local_hostinger" ]]; then
   keep="${SYNCOS_BACKUP_RETENTION_KEEP:-7}"
+  [[ "$keep" =~ ^[1-9][0-9]*$ ]] || { echo "Retention must keep at least one backup" >&2; exit 1; }
   mapfile -t old_backups < <(find "${backup_dir}" -maxdepth 1 -type f -name "*.tar.gz" -printf "%T@ %p\n" | sort -rn | awk -v keep="${keep}" 'NR > keep { print $2 }')
   for old in "${old_backups[@]}"; do
     rm -f "${old}" "${old}.sha256" "${manifest_dir}/$(basename "${old}").manifest.json"
@@ -122,13 +124,13 @@ if [[ -n "${SYNCOS_BACKUP_SSE:-}" ]]; then
   manifest_args+=(--sse "${SYNCOS_BACKUP_SSE}")
 fi
 
-"${aws_args[@]}"
-"${manifest_args[@]}"
+aws "${aws_args[@]}"
+aws "${manifest_args[@]}"
 
 head_args=(s3api head-object --bucket "${SYNCOS_BACKUP_S3_BUCKET}" --key "${remote_key}")
 if [[ -n "${AWS_ENDPOINT_URL_S3:-}" ]]; then
   head_args+=(--endpoint-url "${AWS_ENDPOINT_URL_S3}")
 fi
-"${head_args[@]}" >/dev/null
+aws "${head_args[@]}" >/dev/null
 
 echo "private file backup uploaded and verified: ${remote_key}"
