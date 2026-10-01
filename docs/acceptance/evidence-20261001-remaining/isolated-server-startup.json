@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "environment": {
+    "ok": true,
+    "nodeEnv": "staging",
+    "errors": [],
+    "warnings": []
+  },
+  "database": {
+    "ok": true
+  },
+  "migrations": {
+    "ok": true,
+    "appliedCount": 88,
+    "missing": [],
+    "unexpected": [],
+    "currentCeiling": "088_passport_refresh_generations.sql",
+    "hasCurrentCeiling": true
+  },
+  "requiredTables": {
+    "ok": true,
+    "missing": []
+  },
+  "redis": {
+    "ok": true,
+    "configured": true,
+    "host": "127.0.0.1",
+    "port": 6379
+  },
+  "permissionSeed": {
+    "ok": true,
+    "missing": []
+  },
+  "requiredRoles": {
+    "ok": true,
+    "missing": []
+  }
+}

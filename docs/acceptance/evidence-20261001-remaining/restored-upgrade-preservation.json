@@ -1,0 +1,23 @@
+{
+  "preserved": true,
+  "changed": [],
+  "counts": {
+    "tenants": 2,
+    "users": 16,
+    "organizations": 17,
+    "projects": 1,
+    "work_orders": 1,
+    "production_records": 7,
+    "daily_production_reports": 0,
+    "customer_qc_decisions": 0,
+    "billable_items": 5,
+    "invoices": 6,
+    "invoice_items": 2,
+    "contractor_payables": 6,
+    "contractor_payable_items": 3,
+    "cash_receipts": 4,
+    "payment_applications": 3,
+    "accepted_production_financial_sources": 0,
+    "audit_logs": 26
+  }
+}

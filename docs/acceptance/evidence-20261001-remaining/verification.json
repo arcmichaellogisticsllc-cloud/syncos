@@ -1,0 +1,36 @@
+{
+  "candidate": "8100dcf",
+  "activeStaging": "f60c466",
+  "activated": false,
+  "regression": {
+    "passed": 234,
+    "failed": 0,
+    "skipped": 0
+  },
+  "passportAndTrainingUi": {
+    "passed": 6,
+    "failed": 0
+  },
+  "finalPaymentPaths": {
+    "passed": 8,
+    "failed": 0
+  },
+  "completeBrowserCertification": {
+    "passed": 705,
+    "failed": 0,
+    "skipped": 0,
+    "durationMinutes": 22.6,
+    "logSha256": "dfd60d01129d140e518ace61d608a8d63d9e3c666182f364e0f039a02e8cd046"
+  },
+  "isolatedUpgrade": {
+    "fromMigration": 84,
+    "toMigration": 88,
+    "applicationRole": true,
+    "preservedTables": 17
+  },
+  "independentRecovery": false,
+  "actualPhoneAcceptance": false,
+  "supervisedCrewAcceptance": false,
+  "passportAutomationEnabled": false,
+  "releaseHold": "Retained-fund payment terms/schedule incomplete; external acceptance inputs outstanding"
+}
