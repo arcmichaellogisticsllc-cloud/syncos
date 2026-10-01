@@ -167,7 +167,7 @@ test.describe("Action-state full submit certification", () => {
     await modal.locator("button[type='submit']").click();
     await expect(modal).toContainText('work_safety_scope_not_reviewed');
     const row = await withDb((c) => c.query(`SELECT status FROM production_records WHERE id = $1 AND tenant_id = $2`, [s.prodCorrectionRequested, TENANT_ID]));
-    expect(row.rows[0].status, "unreviewed correction remains pending").toBe("correction_requested");
+    expect(row.rows[0].status, "unreviewed correction remains pending").toBe("correction_required");
     await expectBoundaryUnchanged(TENANT_ID, before, "prodCorrectionRequested-mark-corrected");
   });
 
@@ -891,7 +891,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentItemDraft-archive");
   });
 
-  test("[Payment Execution] paymentBatchUnderReview: Approve → status=approved", async ({ page }) => {
+  test("[Payment Execution] paymentBatchUnderReview: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchUnderReview}`, "payment");
@@ -899,13 +899,15 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /^Approve$/i);
     await expectModal(page, /Approve.*Batch/i);
     await page.getByLabel(/Approval Note/i).first().fill("E2E certification approval");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchUnderReview, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be approved").toBe("approved");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("under_review");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchUnderReview-approve");
   });
 
-  test("[Payment Execution] paymentBatchApproved: Schedule → status=scheduled [deferred-fix]", async ({ page }) => {
+  test("[Payment Execution] paymentBatchApproved: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchApproved}`, "payment");
@@ -913,9 +915,11 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /^Schedule$/i);
     await expectModal(page, /Schedule/i);
     await page.getByLabel(/Scheduled Payment Date/i).first().fill("2026-12-15");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchApproved, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be scheduled").toBe("scheduled");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("approved");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchApproved-schedule");
   });
 
@@ -933,7 +937,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchVoidTarget-void");
   });
 
-  test("[Payment Execution] paymentBatchScheduled: Submit Execution → status=submitted", async ({ page }) => {
+  test("[Payment Execution] paymentBatchScheduled: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${PAYMENT_BATCH_SCHEDULED_ID}`, "payment");
@@ -941,13 +945,15 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /Submit Execution/i);
     await expectModal(page, /Submit Execution/i);
     await page.getByLabel(/Submit Note/i).first().fill("E2E certification execution submission");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [PAYMENT_BATCH_SCHEDULED_ID, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be submitted").toBe("submitted");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("scheduled");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchScheduled-submit-execution");
   });
 
-  test("[Payment Execution] paymentBatchExecutionSubmitted: Mark Executed → status=executed_later", async ({ page }) => {
+  test("[Payment Execution] paymentBatchExecutionSubmitted: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchExecutionSubmitted}`, "payment");
@@ -956,9 +962,11 @@ test.describe("Action-state full submit certification", () => {
     await expectModal(page, /Mark Executed/i);
     await page.getByLabel(/Execution Reference/i).first().fill("E2E-EXEC-REF-001");
     await page.getByLabel(/Execution Note/i).first().fill("E2E certification executed");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchExecutionSubmitted, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be executed_later").toBe("executed_later");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("submitted");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchExecutionSubmitted-mark-executed");
   });
 

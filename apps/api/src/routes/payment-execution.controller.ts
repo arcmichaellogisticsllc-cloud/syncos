@@ -307,8 +307,10 @@ export class PaymentExecutionController {
   @Post("payment-batches/:id/schedule")
   @RequirePermission("payment_batch.schedule")
   async scheduleBatch(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
-    return this.batchStateAction(request, id, "payment_batch.schedule", "payment_batch.scheduled", (batch) => {
+    return this.batchStateAction(request, id, "payment_batch.schedule", "payment_batch.scheduled", async (batch, client) => {
       if (batch.approval_status !== "approved") throw new BadRequestException("payment batch must be approved");
+      await this.requireActiveItemCount(client,request.auth.tenantId,id);
+      await this.validateAllItemsReady(client,request.auth.tenantId,id,false);
       return { status: "scheduled", scheduled_payment_date: this.requireText(body.scheduled_payment_date, "scheduled_payment_date is required"), notes: this.optionalString(body.schedule_note) ?? batch.notes };
     }, body.schedule_note);
   }
@@ -320,6 +322,8 @@ export class PaymentExecutionController {
       this.requireText(body.submit_note, "submit_note is required");
       if (!["approved", "scheduled"].includes(String(batch.status))) throw new BadRequestException("payment batch must be approved or scheduled");
       if (batch.execution_status !== "ready_for_execution") throw new BadRequestException("payment batch is not ready for execution");
+      await this.requireActiveItemCount(client,request.auth.tenantId,id);
+      await this.validateAllItemsReady(client,request.auth.tenantId,id,false);
       await client.query(
         "UPDATE payment_items SET status = 'submitted_later', execution_status = 'submitted_later', execution_reference = coalesce($3, execution_reference), updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')",
         [request.auth.tenantId, id, this.optionalString(body.external_reference), request.auth.userId],
@@ -343,6 +347,8 @@ export class PaymentExecutionController {
       this.requireText(body.execution_note, "execution_note is required");
       const hasOverride = this.hasOverride(body);
       if (!["submitted", "approved", "scheduled"].includes(String(batch.status)) || (batch.status !== "submitted" && !hasOverride)) throw new BadRequestException("payment batch must be submitted unless override supplied");
+      await this.requireActiveItemCount(client,request.auth.tenantId,id);
+      await this.validateAllItemsReady(client,request.auth.tenantId,id,false);
       await client.query(
         "UPDATE payment_items SET status = 'executed_later', execution_status = 'executed_later', execution_reference = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')",
         [request.auth.tenantId, id, reference, request.auth.userId],

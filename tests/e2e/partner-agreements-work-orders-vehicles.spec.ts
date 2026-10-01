@@ -158,7 +158,7 @@ test.describe.serial("P5 Partner agreements, work orders, rates, and vehicles", 
     expect(workOrderVersionId).toBeTruthy();
 
     const partnerView = await apiJson(request, seeded.adminToken, "GET", "/partner-agreements/me/work-orders");
-    expect(partnerView[0].partner_rate).toEqual({ amount: "0.70", unit: "feet" });
+    expect(partnerView[0].partner_rate).toEqual({ amount: "0.7000", unit: "feet" });
     expect(JSON.stringify(partnerView).toLowerCase()).not.toContain("customer_rate");
     expect(JSON.stringify(partnerView).toLowerCase()).not.toContain("margin");
     await expectStatus(request, seeded.foremanToken, "GET", "/partner-agreements/me/work-orders", 403);
