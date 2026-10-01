@@ -1,6 +1,6 @@
 # Pilot closure review — October 1, 2026 UTC
 
-Working candidate: `codex/financial-completion-20260930`, based on `e58f592`. This document is an evidence register, not a completed-pilot certificate. Staging activation and physical-device testing have not occurred in this review.
+Working candidate: `codex/financial-completion-20260930`, based on `e58f592`. This document is an evidence register, not a completed-pilot certificate. Staging was activated at application commit `f60c466008b42ff6a735129d53c3734c860dce63`. Physical-device testing and the supervised real-crew pilot have not occurred in this review.
 
 ## Implemented in this candidate
 
@@ -12,6 +12,9 @@ Working candidate: `codex/financial-completion-20260930`, based on `e58f592`. Th
 - Billing document requests now have a scoped body limit large enough for the advertised 20 MiB attachment after base64 encoding. Browser/API tests use a 256 KiB synthetic PDF to cross the former default parser limit.
 - Workflow reassignment validates the role in the current tenant and removes stale user assignments; escalation and reassignment cannot reopen completed/cancelled/archived tasks.
 - Remote database/file backup scripts invoke the AWS CLI correctly, protect locally created artifacts with restrictive permissions and reject invalid retention counts. Mocked remote upload tests verify failure propagation; they do not certify an actual remote provider.
+
+- Invoice **Mark Sent** now opens the complete package and delivery-receipt workflow instead of an obsolete note-only form. In-app training was updated.
+- Legacy payment batches revalidate active items, accepted-work lineage, source amounts, holds and readiness at scheduling, submission and execution; an old approval cannot bypass current controls.
 
 ## Agreement and prime source review
 
@@ -42,16 +45,30 @@ Preserve these legacy demo references and keep advancement blocked. Do not retro
 | Prime-specific packet | A complete packet checked against that prime's current requirements; actual submission/rejection/resubmission/acceptance proof kept separate. No customer email is sent by this review. |
 | Physical phone acceptance | Both crew types on each supported actual device; use `docs/pilot/actual-phone-acceptance-2026-09-25.md`. Record interruptions, original camera formats, background suspension, browser/device restart, offline replay, and stop-work rejection/release. Desktop emulation is not a pass. |
 | Total-server-loss recovery | Approved independent backup destination and recovery owner; retrieve backups without using the source VPS, provision a clean target, restore DB/files, verify private access/checksums/lineage, record measured RPO/RTO. |
-| Staging activation | Exact candidate built and verified under server Node version; fresh coordinated DB/files backup; migrations with services quiesced; health, permissions, audit and both crew workflows after activation. |
+| Supervised staging pilot | Activation is complete. Real Sync and partner crews still require current approved agreements, selected work and actual-phone execution through acceptance and finance. Synthetic local workflow tests are not that sign-off. |
 | Passport | Approved sandbox, account/payee mapping, replay/partial/adjustment/unmatched tests, then a separate enablement decision. Live automation stays disabled. |
 
 Read-only server inspection found daily local backups with retention set to seven, both backup timers active, and no configured remote destination. Those backups share the VPS failure domain. Provider snapshots and a local restore rehearsal do not establish the offsite total-loss gate.
 
-## Verification checkpoint
+## Final verification checkpoint
 
-- Regression suite: 230 passed, zero failed/skipped, including workflow role completion/ownership and both remote backup script branches.
-- Targeted financial E2E: 13 passed, including four-decimal invoice persistence, independent receipt due dates and denied foreman access. A separate browser agreement-form test passed.
-- Fresh migration verification: 001–084 passed. Restored staging upgrade preserved original values/counts across 17 checked tables. Rate-column textual scale changed from two to four places in two populated tables; casting only those columns to their original scale reproduced the original hashes. This is value preservation, not byte-identical numeric formatting.
-- Production dependency audit: zero reported vulnerabilities. Full audit and broad browser certification results will be recorded at final checkpoint.
-- Broad browser run is in progress. Two legacy demo production expectations were corrected to assert the safety-scope block; happy-path production remains covered by complete crew tests. Do not interpret this checkpoint as full browser certification.
-- Read-only live inspection: current release `1d51523f8adc60a3b8ea46b39fc93c250912c2af`, 72 migrations, startup healthy; API/web/worker active, legacy services inactive; API/web/database/Redis bind to loopback. Today's database and private-file backup checksums passed. No cutover has been performed.
+- Regression suite after the batch repair: **230 passed, zero failed/skipped**.
+- Financial E2E: **13 passed**; the additional business-calendar agreement UI test passed. Invoice package delivery UI/role checks: **6 passed**.
+- Broad certification was executed in segments. The first run had 398 passes and five failures; the remaining segment had 354 passes, three failures and three not run. Failures exposed the obsolete Mark Sent form, stale legacy advancement expectations and the expected numeric-scale change. Repairs and focused reruns covered those paths. The final action/partner-agreement run had 70 passes and three empty-batch message expectation failures; the corrected three tests then passed, checking both an empty batch and a populated batch without accepted-work lineage. These counts overlap and must not be summed or called one clean 702-test run.
+- Both synthetic Sync and partner field/QC/customer-acceptance/finance paths passed in the isolated browser runs, including offline replay and shutdown checks. These were desktop automation, not physical-device certification.
+- Fresh migrations 001–084 passed. An isolated restored staging upgrade under the application database role passed. Original values/counts across 17 checked tables were preserved. Two populated rate columns changed textual scale from two to four places; comparison normalized only those original columns to their prior scale.
+- Local production and full dependency audits: zero reported vulnerabilities. Hostinger's exact candidate production build passed under Node 20.20.2, and its production audit reported zero vulnerabilities.
+
+## Controlled staging activation
+
+Application commit: `f60c466008b42ff6a735129d53c3734c860dce63` in `/opt/syncos/staging/releases/f60c466`. Previous release: `1d51523f8adc60a3b8ea46b39fc93c250912c2af`.
+
+API, web and worker were stopped for a coordinated database/private-file backup. Both backup checksums passed before migrations. The old database/file pair and schema-plus-code recovery instructions are retained at `/opt/syncos/staging/shared/backups/cutover/20261001-f60c466`. No staging reseed occurred.
+
+After migration, all 17 monitored original tables retained their values/counts, including the 26 existing audit records. Startup confirmed the exact 84-entry migration manifest with no missing/unexpected entries. API/web/worker are active; HTTPS login responds; unauthenticated protected requests return 401. All 14 active seeded personas passed authenticated session checks. Foreman and partner customer-finance access, and auditor contract approval, return 403. Live payment automation remains explicitly false.
+
+The backup wrapper now uses the scripts from the active release; both post-deployment backup services completed with success/exit 0. The coordinated pre-cutover database was restored into `syncos_cutover_recovery_20261001`, where all 17 baseline table comparisons passed. The private-file archive matches the source files. This is a same-server restore rehearsal, **not** independent total-server-loss recovery.
+
+Authenticated deployed checks ran on the server. An attempted export of server credentials to a local test runner was rejected by automatic approval review; no credentials were exported, and server-side checks completed without that transfer.
+
+Sanitized evidence summaries are stored in `docs/acceptance/evidence-20261001-closure/`. Actual agreements, actual phones, an approved independent recovery destination/owner, and the Passport sandbox remain external gates. No customer delivery, real payment, or completed supervised pilot is claimed.

@@ -1,0 +1,25 @@
+{
+  "application_commit": "f60c466008b42ff6a735129d53c3734c860dce63",
+  "migrations": 84,
+  "regression": {
+    "passed": 230,
+    "failed": 0,
+    "skipped": 0
+  },
+  "financial_e2e_passed": 13,
+  "agreement_ui_passed": 1,
+  "invoice_delivery_ui_passed": 6,
+  "action_partner_rerun": {
+    "passed": 70,
+    "expectation_failures": 3,
+    "corrected_followup_passed": 3
+  },
+  "server_node": "20.20.2",
+  "server_build": "passed",
+  "production_audit_vulnerabilities": 0,
+  "coordinated_restore": "passed_same_server",
+  "physical_phone_acceptance": "not_performed",
+  "offsite_total_loss_recovery": "not_performed",
+  "real_crew_pilot": "not_performed",
+  "priority_automation_enabled": false
+}

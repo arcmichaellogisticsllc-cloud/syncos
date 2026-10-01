@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "check": "active_seeded_persona_sessions",
+      "passed": true,
+      "count": 14
+    },
+    {
+      "check": "foreman_finance_denied",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "check": "partner_customer_finance_denied",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "check": "auditor_contract_approval_denied",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "check": "live_payment_automation_disabled",
+      "passed": true
+    }
+  ]
+}

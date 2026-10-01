@@ -54,6 +54,25 @@ async function fillArchiveReason(page: Page): Promise<void> {
   }
 }
 
+async function verifyEmptyAndUnreconciledBatch(modal: ReturnType<Page["locator"]>, batchId: string) {
+  await expect(modal).toContainText("payment batch requires at least one active item");
+  // Isolated fixture: simulate an older approved batch with an unreconciled source.
+  const inserted = await withDb(c => c.query(`INSERT INTO payment_items
+    (id,tenant_id,payment_batch_id,source_type,contractor_payable_id,payee_type,capacity_provider_id,
+     payee_name,payment_method,payment_amount,currency,payment_date,execution_status,status,created_by,updated_by)
+    SELECT gen_random_uuid(),tenant_id,$2,source_type,contractor_payable_id,payee_type,capacity_provider_id,
+     payee_name,payment_method,payment_amount,currency,payment_date,execution_status,status,created_by,updated_by
+    FROM payment_items WHERE tenant_id=$1 AND payment_batch_id=$3 AND deleted_at IS NULL RETURNING id`,
+    [TENANT_ID,batchId,s.paymentBatchUnderReview]));
+  expect(inserted.rows).toHaveLength(1);
+  try {
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText("Partner payable requires an approved settlement with accepted-work lineage");
+  } finally {
+    await withDb(c => c.query("DELETE FROM payment_items WHERE tenant_id=$1 AND id=$2",[TENANT_ID,inserted.rows[0].id]));
+  }
+}
+
 test.describe("Action-state full submit certification", () => {
   test.use({ storageState: personas.systemAdmin.storageState });
 
@@ -917,7 +936,7 @@ test.describe("Action-state full submit certification", () => {
     await page.getByLabel(/Scheduled Payment Date/i).first().fill("2026-12-15");
     const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
     await modal.locator("button[type='submit']").click();
-    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
+    await verifyEmptyAndUnreconciledBatch(modal, s.paymentBatchApproved);
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchApproved, TENANT_ID]));
     expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("approved");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchApproved-schedule");
@@ -947,7 +966,7 @@ test.describe("Action-state full submit certification", () => {
     await page.getByLabel(/Submit Note/i).first().fill("E2E certification execution submission");
     const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
     await modal.locator("button[type='submit']").click();
-    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
+    await verifyEmptyAndUnreconciledBatch(modal, PAYMENT_BATCH_SCHEDULED_ID);
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [PAYMENT_BATCH_SCHEDULED_ID, TENANT_ID]));
     expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("scheduled");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchScheduled-submit-execution");
@@ -964,7 +983,7 @@ test.describe("Action-state full submit certification", () => {
     await page.getByLabel(/Execution Note/i).first().fill("E2E certification executed");
     const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
     await modal.locator("button[type='submit']").click();
-    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
+    await verifyEmptyAndUnreconciledBatch(modal, s.paymentBatchExecutionSubmitted);
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchExecutionSubmitted, TENANT_ID]));
     expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("submitted");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchExecutionSubmitted-mark-executed");
