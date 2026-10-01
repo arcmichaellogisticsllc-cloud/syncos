@@ -28,3 +28,7 @@ Training sources: `docs/training/field-and-partner.md`, `docs/training/finance-a
 ## Wider product backlog
 
 See `docs/product/remaining-capabilities-20261001.md`: self-service password recovery, customer/service inquiry intake, configurable form templates and full material/reel inventory reconciliation remain visible unfinished capabilities. SSO and magic-link login remain future enhancements. They are not collectively prerequisites for a controlled crew pilot, and they must not be represented as completed features.
+
+## Additional retained-fund boundary found during review
+
+Retainage authorization currently creates a separate payable without its own approved-term revision, payable-item funding schedule or eligibility snapshot. The new freshness gate therefore blocks payment of that release. Creating/authorizing a release and preserving the retained balance are tested; **paying the released funds under an approved contract clock is not complete**. This must be closed with explicit retained-fund trigger/due-date configuration and an end-to-end release-payment test. Do not bypass the gate or label a created release as a fully payable/certified installment.

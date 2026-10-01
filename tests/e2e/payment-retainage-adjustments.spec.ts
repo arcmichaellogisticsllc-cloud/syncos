@@ -58,6 +58,10 @@ test.describe.serial("P13 payment, retainage, and controlled financial adjustmen
     expect(Number(submittedPayable.rows[0].paid_amount)).toBe(0);
     expect(Number(submittedPayable.rows[0].in_flight_payment_amount)).toBe(49.35);
 
+    await client.query("UPDATE cash_receipts SET cleared_at=cleared_at+interval '1 day' WHERE tenant_id=$1",[fixture.tenantA]);
+    const stale=await request.post(apiUrl(`/payment-retainage-adjustments/payment-instructions/${created.id}/confirm`),{headers:auth(fixture.internalToken),data:{}});
+    expect(stale.status()).toBe(400);expect((await stale.json()).message).toContain('stale');
+    await apiJson(request,fixture.internalToken,'POST',`/accepted-production-financials/contractor-payables/${fixture.payableId}/calculate-eligibility`,{});
     const confirmed = await apiJson(request, fixture.internalToken, "POST", `/payment-retainage-adjustments/payment-instructions/${created.id}/confirm`, {});
     expect(confirmed.status).toBe("confirmed");
     const confirmedPayable = await client.query("SELECT paid_amount,in_flight_payment_amount,payment_status FROM contractor_payables WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.payableId]);
@@ -180,7 +184,7 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
   const retainagePayable = crypto.randomUUID();
   const retainageProduction=crypto.randomUUID(), retainageDecision=crypto.randomUUID(), retainageSettlement=crypto.randomUUID(), retainageSource=crypto.randomUUID();
   const permissions = [
-    "partner_payment.execute", "partner_payment.submit", "partner_payment.confirm", "partner_payment.read", "retainage.release", "financial_adjustment.create",
+    "contractor_payable.calculate_eligibility", "partner_payment.execute", "partner_payment.submit", "partner_payment.confirm", "partner_payment.read", "retainage.release", "financial_adjustment.create",
     "financial_exception.read", "partner_context.read",
   ];
   await client.query("BEGIN");

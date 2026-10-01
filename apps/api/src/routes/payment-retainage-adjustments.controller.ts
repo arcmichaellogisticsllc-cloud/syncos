@@ -248,6 +248,7 @@ export class PaymentRetainageAdjustmentsController {
       if (instruction.status !== "processing") throw new BadRequestException("payment instruction must be processing before confirmation");
       const attempt = await this.currentAttempt(client, request.auth.tenantId, id);
       const payable = await this.requirePayable(client, request.auth.tenantId, String(instruction.contractor_payable_id));
+      if(Number(instruction.amount)>await this.availableToPay(client,request.auth.tenantId,payable,id))throw new BadRequestException("Payment confirmation requires current eligible unpaid funds");
       const newPaid = this.roundMoney(Number(payable.paid_amount ?? 0) + Number(instruction.amount));
       if (newPaid > Number(payable.net_payable_amount ?? 0)) throw new BadRequestException("confirmed payment would exceed payable net amount");
       await client.query("UPDATE partner_payment_attempts SET status = 'confirmed', confirmed_at = now(), updated_at = now() WHERE tenant_id = $1 AND id = $2", [request.auth.tenantId, attempt.id]);
