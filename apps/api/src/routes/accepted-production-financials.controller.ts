@@ -1,3 +1,4 @@
+import { lockScheduleInputs, scheduleFingerprint } from './payable-schedule-freshness';
 import { absoluteTime } from './prime-correction-deadlines';
 import { fundingInstallments, unpaidInstallments, extendedContractAmount, approvedCommercialTerms, rateFromTerms, invoiceCommercialTerms, invoiceTermsAmounts, contractualDueDate, allocateRetainage, partnerSettlementTerms } from './commercial-terms';
 import { requirePartnerPayableLineage, requirePartnerWorkAgreement } from "./partner-financial-lineage";
@@ -498,6 +499,7 @@ export class AcceptedProductionFinancialsController {
   @RequirePermission("contractor_payable.calculate_eligibility")
   async calculateEligibility(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.write(request, "contractor_payable.eligibility_changed", "contractor_payable.eligibility_changed", "contractor_payable", async (client) => {
+      await lockScheduleInputs(client,request.auth.tenantId);
       const payable = await this.requireRecord(client, "contractor_payables", request.auth.tenantId, id, "contractor payable not found");
       await requirePartnerPayableLineage(client,request.auth.tenantId,payable);
       const terms=await partnerSettlementTerms(client,request.auth.tenantId,String(payable.settlement_id));
@@ -556,6 +558,8 @@ export class AcceptedProductionFinancialsController {
         "INSERT INTO contractor_payable_eligibility_snapshots (tenant_id,contractor_payable_id,calculation_version,cleared_customer_funds,allocated_customer_funds,eligible_partner_amount,status,eligible_at,payment_due_at,source_payment_application_ids,created_by_user_id,installments) SELECT $1,$2,$3,$4,$4,$5,$6,$7,$8,COALESCE(array_agg(DISTINCT pa.id) FILTER (WHERE pa.id IS NOT NULL),'{}'::uuid[]),$9,$10::jsonb FROM payment_applications pa JOIN cash_receipts cr ON cr.tenant_id=pa.tenant_id AND cr.id=pa.cash_receipt_id AND cr.deleted_at IS NULL AND cr.clearance_status='cleared' AND cr.receipt_status NOT IN ('voided','archived') WHERE pa.tenant_id=$1 AND pa.deleted_at IS NULL AND pa.application_status IN ('applied','partially_applied') AND EXISTS(SELECT 1 FROM payment_application_allocations x JOIN contractor_payable_items i ON i.tenant_id=x.tenant_id AND i.accepted_production_source_id=x.accepted_production_source_id WHERE x.tenant_id=pa.tenant_id AND x.payment_application_id=pa.id AND x.deleted_at IS NULL AND i.contractor_payable_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived'))",
         [request.auth.tenantId, id, version, this.roundMoney(allocatedCustomer), eligible, status, eligibleAt, due, request.auth.userId,JSON.stringify(schedule)],
       );
+      const fingerprint=await scheduleFingerprint(client,request.auth.tenantId,id);
+      await client.query('UPDATE contractor_payable_eligibility_snapshots SET source_fingerprint=$3 WHERE tenant_id=$1 AND contractor_payable_id=$2 AND calculation_version=$4',[request.auth.tenantId,id,fingerprint,version]);
       const after = await client.query("UPDATE contractor_payables SET eligible_amount = $1, ineligible_amount = GREATEST(net_payable_amount - $1, 0), pay_when_paid_status = $2, payment_readiness_status = $3, status = CASE WHEN $2 = 'eligible' THEN 'payment_ready' ELSE status END, eligible_at = COALESCE(eligible_at,$4), payment_due_at = $5, updated_by = $6, updated_at = now() WHERE tenant_id = $7 AND id = $8 RETURNING *", [eligible, status, status === "eligible" ? "ready_for_payment" : "ready_with_warning", eligibleAt, due, request.auth.userId, request.auth.tenantId, id]);
       return { entityType: "contractor_payable", entityId: id, beforeState: payable, afterState: this.safePayable(after.rows[0]) };
     });
@@ -566,8 +570,9 @@ export class AcceptedProductionFinancialsController {
   async installments(@Req() request:AuthenticatedRequest,@Param('id') id:string){
     return this.withClient(async client=>{
       const payable=await this.requireRecord(client,'contractor_payables',request.auth.tenantId,id,'Payable not found');
-      const snapshot=(await client.query('SELECT calculation_version,created_at,installments FROM contractor_payable_eligibility_snapshots WHERE tenant_id=$1 AND contractor_payable_id=$2 ORDER BY calculation_version DESC LIMIT 1',[request.auth.tenantId,id])).rows[0];
-      return {payable_number:payable.payable_number,snapshot:snapshot?{...snapshot,installments:unpaidInstallments(snapshot.installments,Number(payable.paid_amount??0))}:null};
+      const snapshot=(await client.query('SELECT calculation_version,created_at,installments,source_fingerprint FROM contractor_payable_eligibility_snapshots WHERE tenant_id=$1 AND contractor_payable_id=$2 ORDER BY calculation_version DESC LIMIT 1',[request.auth.tenantId,id])).rows[0];
+      const fresh=Boolean(snapshot?.source_fingerprint&&snapshot.source_fingerprint===await scheduleFingerprint(client,request.auth.tenantId,id));
+      return {payable_number:payable.payable_number,stale:!fresh,snapshot:snapshot?{calculation_version:snapshot.calculation_version,created_at:snapshot.created_at,installments:fresh?unpaidInstallments(snapshot.installments,Number(payable.paid_amount??0)):[]}:null};
     });
   }
 

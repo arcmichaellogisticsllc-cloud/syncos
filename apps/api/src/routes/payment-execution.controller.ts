@@ -1,3 +1,4 @@
+import { requireFreshSchedule } from './payable-schedule-freshness';
 import { requirePartnerPayableLineage } from "./partner-financial-lineage";
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -639,6 +640,7 @@ export class PaymentExecutionController {
       await this.validateItemAmount(client, tenantId, item, hasOverride);
       if (item.source_type === "contractor_payable") {
         const payable = await this.requireContractorPayable(client, tenantId, String(item.contractor_payable_id));
+        await requireFreshSchedule(client,tenantId,String(payable.id));
         if (payable.status !== "payment_ready" || payable.payment_readiness_status !== "ready_for_payment") throw new BadRequestException("all contractor payable sources must remain payment ready");
         if ((payable.hold_status === "hold" || payable.dispute_status === "open") && !hasOverride) throw new BadRequestException("source hold/dispute blocks payment approval without override");
       }

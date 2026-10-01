@@ -147,6 +147,31 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   });
 
+  test("incident device draft survives disconnect and lost response without duplicate records or audit",async({page,context})=>{
+    await installSession(page,seeded.foremanToken,seeded.foremanPermissions);
+    await page.goto('/syncfield/today');
+    const panel=page.locator('details').filter({has:page.locator('summary',{hasText:'Report an incident or near miss'})});
+    await panel.locator('summary').click();
+    await panel.getByLabel('When did it happen?').fill('2026-10-01T09:00');
+    await panel.getByLabel('Location',{exact:true}).fill('Synthetic practice site');
+    const description='Synthetic device-recovery incident '+crypto.randomUUID();
+    await panel.getByLabel('What happened?').fill(description);
+    await panel.getByLabel('Immediate action taken').fill('Training report only');
+    await context.setOffline(true);
+    await panel.getByRole('button',{name:'Record incident',exact:true}).click();
+    await expect(panel.getByText(/Saved on this device; not received/)).toBeVisible();
+    await context.setOffline(false);await page.reload();await panel.locator('summary').click();
+    await expect(panel.getByText(description,{exact:true})).toBeVisible();
+    let lost=false;
+    await page.route('**/syncfield/foreman/incidents',async route=>{if(!lost&&route.request().method()==='POST'){lost=true;const response=await route.fetch();expect(response.ok()).toBeTruthy();await route.abort('failed');}else await route.continue();});
+    await panel.getByRole('button',{name:'Retry incident'}).click();
+    await expect(panel.getByRole('button',{name:'Retry incident'})).toBeEnabled();
+    await page.reload();await panel.locator('summary').click();await panel.getByRole('button',{name:'Retry incident'}).click();
+    await expect(panel.getByText('Incident recorded. Follow your supervisor’s reporting procedure.')).toBeVisible();
+    const rows=(await client.query('SELECT id FROM syncfield_field_incidents WHERE tenant_id=$1 AND description=$2',[seeded.tenantA,description])).rows;expect(rows).toHaveLength(1);
+    expect((await client.query('SELECT count(*)::int n FROM audit_logs WHERE tenant_id=$1 AND entity_id=$2',[seeded.tenantA,rows[0].id])).rows[0].n).toBe(1);
+  });
+
   test("browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once", async ({ page, context, request }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });

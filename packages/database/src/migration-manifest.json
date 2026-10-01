@@ -82,5 +82,9 @@
   "081_legacy_correction_export_provenance.sql",
   "082_invoice_event_order.sql",
   "083_commercial_precision_calendars.sql",
-  "084_payment_installment_schedule.sql"
+  "084_payment_installment_schedule.sql",
+  "085_payable_schedule_freshness.sql",
+  "086_passport_durable_intake.sql",
+  "087_installment_paid_balance_due.sql",
+  "088_passport_refresh_generations.sql"
 ]

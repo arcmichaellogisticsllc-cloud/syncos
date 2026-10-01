@@ -1,7 +1,8 @@
 import {pinSyntheticPaymentProvenance} from './helpers/financial-fixture-provenance';
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { Client } from "pg";
+import { Client, Pool } from "pg";
+const {AcceptedProductionFinancialsController}=require("../../apps/api/dist/routes/accepted-production-financials.controller");
 
 type Fixture = {
   tenantA: string;
@@ -231,11 +232,18 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("INSERT INTO settlement_items (tenant_id,settlement_id,accepted_production_source_id,production_record_id,partner_organization_id,capacity_provider_id,item_type,status,quantity,unit,unit_rate,gross_amount,amount,net_amount,contractor_payable_amount) VALUES ($1,$2,$6,$3,$4,$5,'contractor_payable','payable_ready',1900,'feet',0.70,1330,1330,1330,1330)",[tenantA,retainageSettlement,retainageProduction,partnerOrg,provider,retainageSource]);
     await client.query("INSERT INTO contractor_payables (id,tenant_id,payable_number,payable_type,payable_party_type,status,approval_status,payment_readiness_status,payment_status,capacity_provider_id,partner_organization_id,project_id,settlement_id,pay_cycle_start,pay_cycle_end,gross_payable_amount,retainage_amount,retained_balance_amount,deduction_amount,chargeback_amount,net_payable_amount,eligible_amount,ineligible_amount,pay_when_paid_status,payment_execution_status,compliance_status,tax_document_status) VALUES ($1,$2,'CP-P13-1','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$6,'2026-08-24','2026-08-30',98.70,0,0,0,0,98.70,98.70,0,'eligible','not_started','ready','ready'),($7,$2,'CP-P13-RET','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$8,'2026-08-24','2026-08-30',1330,700,700,0,0,630,630,0,'eligible','not_started','ready','ready')", [payable, tenantA, provider, partnerOrg, project, settlement, retainagePayable, retainageSettlement]);
     await pinSyntheticPaymentProvenance(client,tenantA,internalUser,contract,partnerSchedule,partnerOrg);
+    // Payment tests use actual source-linked cleared funding and the real calculation path.
+    await client.query("INSERT INTO contractor_payable_items(tenant_id,contractor_payable_id,settlement_id,settlement_item_id,accepted_production_source_id,production_record_id,item_type,status,net_payable_amount) SELECT $1,$2,$3,id,$4,$5,'subcontractor_production','ready',98.70 FROM settlement_items WHERE tenant_id=$1 AND settlement_id=$3",[tenantA,payable,settlement,source,production]);
+    const receipt=(await client.query("INSERT INTO cash_receipts(tenant_id,receipt_number,customer_organization_id,payment_date,payment_method,gross_received_amount,applied_amount,receipt_status,clearance_status,cleared_at) VALUES($1,'SYNTHETIC-P13-FUNDING',$2,'2026-08-26','ach',132.54,132.54,'fully_applied','cleared','2026-08-26') RETURNING id",[tenantA,customerOrg])).rows[0];
+    const application=(await client.query("INSERT INTO payment_applications(tenant_id,cash_receipt_id,invoice_id,customer_organization_id,applied_amount,application_date) VALUES($1,$2,$3,$4,132.54,'2026-08-26') RETURNING id",[tenantA,receipt.id,invoice,customerOrg])).rows[0];
+    await client.query("INSERT INTO payment_application_allocations(tenant_id,payment_application_id,invoice_item_id,accepted_production_source_id,allocated_customer_amount) VALUES($1,$2,$3,$4,132.54)",[tenantA,application.id,invoiceItem,source]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   }
+  const pool=new Pool({connectionString:process.env.DATABASE_URL});
+  try {await new AcceptedProductionFinancialsController(pool).calculateEligibility({auth:{tenantId:tenantA,userId:internalUser}},payable);}finally{await pool.end();}
   return { tenantA, tenantB, partnerOrg, payableId: payable, retainagePayableId: retainagePayable, acceptedSourceId: source, invoiceId: invoice, internalToken: token(internalUser, tenantA, secret), partnerToken: token(partnerUser, tenantA, secret), foremanToken: token(foremanUser, tenantA, secret), tenantBToken: token(tenantBUser, tenantB, secret) };
 }
 

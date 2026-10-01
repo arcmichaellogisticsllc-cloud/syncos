@@ -103,12 +103,15 @@ test.describe.serial("P12 accepted production financials", () => {
     expect(snapshots.rows[0].count).toBe(1);
     const invoice=(await client.query('SELECT id FROM invoices WHERE tenant_id=$1 ORDER BY created_at LIMIT 1',[fixture.tenantA])).rows[0];
     await client.query("UPDATE cash_receipts SET cleared_at='2026-08-01T12:00:00Z' WHERE tenant_id=$1",[fixture.tenantA]);
+    const stale=await apiJson(request,fixture.internalToken,'GET',`/accepted-production-financials/contractor-payables/${payable.id}/installments`);
+    expect(stale.stale).toBe(true);expect(stale.snapshot.installments).toEqual([]);
     const second=await apiJson(request,fixture.internalToken,'POST','/accepted-production-financials/cash-receipts',{customer_organization_id:fixture.customerOrg,amount:66.27,payment_reference:'P12-CASH-2',idempotency_key:'p12-cash-2'});
     await apiJson(request,fixture.internalToken,'POST',`/accepted-production-financials/cash-receipts/${second.id}/clear`);
     await client.query("UPDATE cash_receipts SET cleared_at='2026-08-10T12:00:00Z' WHERE id=$1",[second.id]);
     await apiJson(request,fixture.internalToken,'POST','/accepted-production-financials/payment-applications',{cash_receipt_id:second.id,invoice_id:invoice.id,amount:66.27});
     await apiJson(request,fixture.internalToken,'POST',`/accepted-production-financials/contractor-payables/${payable.id}/calculate-eligibility`);
     const schedule=await apiJson(request,fixture.internalToken,'GET',`/accepted-production-financials/contractor-payables/${payable.id}/installments`);
+    expect(schedule.stale).toBe(false);
     expect(schedule.snapshot.installments.map((row:any)=>[row.amount,row.due_date])).toEqual([[49.35,'2026-08-15'],[49.35,'2026-08-24']]);
     expect((await request.get(apiUrl(`/accepted-production-financials/contractor-payables/${payable.id}/installments`),{headers:auth(fixture.foremanToken)})).status()).toBe(403);
 

@@ -207,7 +207,7 @@ These paths are implemented in the current local candidate. Execute the matching
 ### Report an incident or near miss
 1. From **Today**, confirm the intended assignment and expand **Report an incident or near miss**.
 2. Choose the incident type; enter its time, location, description, and immediate action taken.
-3. Select **Record incident**. Wait for the saved confirmation. Failed submissions keep the entered values for retry.
+3. Select **Record incident**. The app first saves a draft on this device. A pending-device message does not mean Sync received it. If disconnected or the response is lost, reconnect as the same user, reopen this assignment and select **Retry incident**. The same request is reused to prevent duplicate records and audit entries. Wait for the server confirmation. Device storage failure is shown explicitly; keep the information and contact the supervisor.
 4. Follow the company’s incident-response procedure. For emergencies, contact emergency services and the supervisor immediately; this form does not call or message them.
 5. Authorized internal reviewers open **QC → Daily report customer QC and reinspection**. The **Incident queue** includes recent incidents even before a daily report is submitted.
 

@@ -15,6 +15,8 @@ function quantityRows(sql){
 }
 const eligible = { id: 'payable', settlement_id: 'settlement', partner_organization_id: 'partner', capacity_provider_id: 'provider', pay_when_paid_status: 'eligible', status: 'payment_ready', hold_status: 'none', dispute_status: 'none', eligible_amount: 100, paid_amount: 10 };
 const emptyInstructions = { query: async sql => {
+  if(sql.includes('WITH items AS'))return {rows:[{fingerprint:'reviewed-inputs'}]};
+  if(sql.includes('FROM contractor_payable_eligibility_snapshots'))return {rows:[{source_fingerprint:'reviewed-inputs'}]};
   if(sql.includes('FROM administrative_production_corrections'))return {rows:[]};
   if(sql.includes('FROM commercial_terms_revisions'))return {rows:[{id:'terms',rate_snapshot:[{code:'BORE',unit:'LF',rate:100}]}]};
   if(sql.includes('AS accepted_budget')) return {rows:[{accepted_budget:100,committed_amount:100}]};

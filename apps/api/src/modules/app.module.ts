@@ -1,3 +1,4 @@
+import { PassportIntakeController } from '../routes/passport-intake.controller';
 import { InvoicePackagesController } from '../routes/invoice-packages.controller';
 import { CommercialTermsController } from '../routes/commercial-terms.controller';
 import { PrimeCorrectionPolicyController } from "../routes/prime-correction-policy.controller";
@@ -61,7 +62,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
+  controllers: [PassportIntakeController,InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,

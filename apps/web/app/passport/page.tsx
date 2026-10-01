@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { syncosFetch } from "../intelligence/api";
 import { CommandShell } from "../dashboard-components";
+import {PassportIntake} from "./intake";
 import styles from "./passport.module.css";
 
 type Row = {id:string;partner:string;reference:string;amount:string;currency:string;outcome:string;reason:string|null;guidance:string;completedDate:string|null};
@@ -18,8 +19,9 @@ export default function PassportPage(){
  },[revision]);
  const rows=(data?.rows||[]).filter(row=>(filter==="all"||row.outcome===filter)&&`${row.partner} ${row.reference}`.toLowerCase().includes(search.toLowerCase()));
  return <CommandShell title="Passport reconciliation" purpose="Review how external payment confirmations will match your partner payables."><div className={styles.page}>
-  <section className={styles.notice} aria-label="Simulation notice"><strong>Simulation preview · Live connection disabled</strong><p>All names, payments and balances below are invented examples. Reviewing them does not change your records or move money.</p></section>
+  <section className={styles.notice} aria-label="Simulation notice"><strong>Simulation preview · Live connection disabled</strong><p>The payment preview uses invented examples. Saved integration preparation is labeled separately. Reviewing them does not change your records or move money.</p></section>
   <section className="workspace-panel" aria-labelledby="connection-title"><h2 id="connection-title">Connection status</h2><dl className={styles.metrics}><div><dt>Passport sandbox</dt><dd>Awaiting approval and setup</dd></div><div><dt>Automatic recording</dt><dd>Disabled</dd></div><div><dt>Last successful sync</dt><dd>Never connected</dd></div><div><dt>Payment sending</dt><dd>Disabled</dd></div></dl><p>Continue recording completed external payments through the existing payment workspace until the connection is verified.</p></section>
+  <PassportIntake/>
   {loading?<p role="status">Loading payment preview…</p>:null}
   {error?<section className="workspace-panel"><p role="alert">{error}</p><button type="button" onClick={()=>setRevision(x=>x+1)}>Retry preview</button></section>:null}
   {data?<section className="workspace-panel" aria-labelledby="payments-title"><h2 id="payments-title">Payment review</h2><p>Example confirmations and exceptions, with guidance for finance review.</p>

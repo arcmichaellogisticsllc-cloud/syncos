@@ -1306,6 +1306,13 @@ export class SyncfieldController {
       const kind=requireString(body.incident_type,"incident_type is required"); if (!["injury","near_miss","property_damage","environmental","other"].includes(kind)) throw new BadRequestException("incident type is invalid");
       const occurred=requireString(body.occurred_at,"occurred_at is required"); if (!Number.isFinite(Date.parse(occurred))) throw new BadRequestException("incident time is invalid");
       return this.writeWithClient(client,request,"field_incident.create","field_incident.created","field_incident",async writeClient=>{
+        const mutation=requireString(body.client_mutation_id,"client_mutation_id is required");
+        await writeClient.query('SELECT pg_advisory_xact_lock(hashtextextended($1,88))',[context.tenant_id+':'+request.auth.userId+':'+mutation]);
+        const prior=(await writeClient.query('SELECT * FROM syncfield_field_incidents WHERE tenant_id=$1 AND reported_by_user_id=$2 AND client_mutation_id=$3',[context.tenant_id,request.auth.userId,mutation])).rows[0];
+        if(prior){
+          if(prior.crew_id!==assignment.crew_id||prior.work_order_id!==assignment.work_order_id||prior.incident_type!==kind||new Date(prior.occurred_at).toISOString()!==new Date(occurred).toISOString()||prior.location!==body.location||prior.description!==body.description||prior.immediate_action!==body.immediate_action)throw new BadRequestException('This request identifier belongs to a different incident');
+          return {entityType:'field_incident',entityId:prior.id,afterState:prior,skipEventAudit:true};
+        }
         const result=await writeClient.query(`INSERT INTO syncfield_field_incidents(tenant_id,crew_id,organization_id,work_order_id,occurred_at,incident_type,location,description,immediate_action,reported_by_user_id,client_mutation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,reported_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id=EXCLUDED.client_mutation_id RETURNING *`,[context.tenant_id,assignment.crew_id,context.organization.id,assignment.work_order_id,occurred,kind,requireString(body.location,"location is required"),requireString(body.description,"description is required"),requireString(body.immediate_action,"immediate_action is required"),request.auth.userId,requireString(body.client_mutation_id,"client_mutation_id is required")]);
         if(result.rows[0].crew_id!==assignment.crew_id || result.rows[0].work_order_id!==assignment.work_order_id) throw new BadRequestException("mutation belongs to another incident");
         return {entityType:"field_incident",entityId:result.rows[0].id,afterState:result.rows[0]};

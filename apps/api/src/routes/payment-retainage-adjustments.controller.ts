@@ -1,3 +1,4 @@
+import { requireFreshSchedule, lockScheduleInputs } from './payable-schedule-freshness';
 import { normalizePaymentObservation } from "./external-payment-observation";
 import { requirePartnerPayableLineage } from "./partner-financial-lineage";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Req } from "@nestjs/common";
@@ -443,6 +444,7 @@ export class PaymentRetainageAdjustmentsController {
   }
 
   private async requirePayable(client: PoolClient, tenantId: string, id: string) {
+    await lockScheduleInputs(client,tenantId);
     const result = await client.query("SELECT * FROM contractor_payables WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE", [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException("contractor payable not found");
     return result.rows[0] as Row;
@@ -469,6 +471,7 @@ export class PaymentRetainageAdjustmentsController {
     if (["open", "under_review"].includes(String(payable.dispute_status))) throw new BadRequestException("disputed payable amount unavailable");
     if (payable.hold_status === "hold") throw new BadRequestException("held payable amount unavailable");
     await requirePartnerPayableLineage(client, tenantId, payable);
+    await requireFreshSchedule(client,tenantId,String(payable.id));
     const active = await client.query(
       `
       SELECT COALESCE(sum(amount),0)::numeric AS amount
