@@ -96,7 +96,7 @@ The forms retain inputs on failure, show results, and block repeated clicks whil
 3. Click **Add Invoice Item** (`invoice.add_item`). Choose the correct **Settlement Item**; verify quantity, rate, description and any approved adjustment, tax or fee. Click **Submit**.
 4. Click **Recalculate Totals** → **Submit**. Confirm amount, balance and source lineage.
 5. Click **Submit Review** → **Submit**. An approver uses **Approve**, **Approval Note**, **Submit**, or **Reject** with reason/note.
-6. After the invoice was sent through the approved external channel, click **Mark Sent**, enter **Sent Note**, then **Submit**. This button records the state; it does not send an email.
+6. Click **Mark Sent** to open **Invoice packages and customer responses** with this invoice selected. Prepare and download the complete package. After actual external delivery, choose its package revision and record the event time with UTC offset, customer recipient, receipt reference and notes; verify the receipt and submit the delivery event. A note alone cannot mark an invoice sent. No email is sent by these controls.
 7. Use **Mark Ready For Cash Application**, enter **Ready Note**, then **Submit** when the workflow allows it.
 8. Reopen and verify status, delivery state and balance.
 
@@ -269,7 +269,7 @@ These controls are in the financial-completion candidate. Check the deployed rel
 1. Sign in with contract review and update authority. Open **Accepted Production Financials**.
 2. In **Approved agreement terms**, choose the customer's or partner's **Agreement rate schedule**. If none is listed, link an active rate schedule to its executed contract first.
 3. Compare the displayed rates with the signed agreement and approved pricing addendum. Choose **Customer** or **Partner contractor**.
-4. Select the actual **Payment clock starts at** event. Enter calendar days, retainage, effective work dates and the agreement time zone. For an agreement requiring Net 14 from invoice acceptance, choose **Invoice acceptance** and enter **14**. Do not choose invoice issue as a substitute.
+4. Select the actual **Payment clock starts at** event. Choose calendar or business days and enter the day count, retainage, effective work dates and the agreement time zone. For an agreement requiring Net 14 from invoice acceptance, choose **Invoice acceptance** and enter **14**. Do not choose invoice issue as a substitute.
 5. Enter a reference to the executed source. Check the verification box only after checking it, then click **Approve agreement revision**.
 6. Confirm the revision appears in **Approval history**. Existing invoices retain their original terms. Changed terms require another reviewed revision; approval does not rewrite history. Business-day clauses, unusual exceptions and partial-payment timing arrangements require finance review before use; do not approximate them with a different trigger.
 

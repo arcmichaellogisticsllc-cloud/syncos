@@ -1,4 +1,5 @@
 "use client";
+import { InvoicePackages } from "../accepted-production-financials/invoice-packages";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -571,6 +572,8 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
     }
   }
 
+  if(type==='mark_sent')return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Mark Sent"><div className="modal-card"><div className="section-toolbar"><h2>Mark Sent</h2><button type="button" onClick={()=>{void onSaved();onClose();}}>Close</button></div><p>Prepare the complete package, then record its actual delivery receipt. A note alone does not establish delivery.</p><InvoicePackages initialInvoiceId={invoiceId}/></div></div>;
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
@@ -583,7 +586,7 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
         {type === "add_item" ? <AddInvoiceItemFields form={form} setForm={setForm} settlementItems={related.settlementItems} /> : null}
         {type === "approve" ? <><label>Approval Note<textarea value={form.approval_note ?? ""} onChange={(event) => setForm({ ...form, approval_note: event.target.value })} required /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label><WarningList title="Backend Warnings" rows={arrayValue(invoice.warnings)} empty="No warnings returned." /><WarningList title="Backend Blockers" rows={blockers} empty="No blockers returned." /></> : null}
         {type === "reject" ? <><label>Rejection Reason<textarea value={form.rejection_reason ?? ""} onChange={(event) => setForm({ ...form, rejection_reason: event.target.value })} required /></label><label>Rejection Note<textarea value={form.rejection_note ?? ""} onChange={(event) => setForm({ ...form, rejection_note: event.target.value })} /></label></> : null}
-        {type === "mark_sent" ? <><label>Sent Note<textarea value={form.sent_note ?? ""} onChange={(event) => setForm({ ...form, sent_note: event.target.value })} required /></label><Select label="Delivery Status" value={form.delivery_status ?? ""} options={["", ...deliveryStatuses]} onChange={(delivery_status) => setForm({ ...form, delivery_status })} /><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label><div className="warning-box">Mark Sent does not create cash, payment, bank, payroll, tax, ACH, card payout, or accounting export records.</div></> : null}
+
         {type === "cash_ready" ? <><label>Ready Note<textarea value={form.ready_note ?? ""} onChange={(event) => setForm({ ...form, ready_note: event.target.value })} required /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label><div className="warning-box">Mark Ready For Cash Application does not create cash receipt, payment, bank transaction, ACH, card payout, payroll, tax, or accounting export records.</div></> : null}
         {type === "dispute" ? <><label>Dispute Reason<textarea value={form.dispute_reason ?? ""} onChange={(event) => setForm({ ...form, dispute_reason: event.target.value })} required /></label><label>Dispute Note<textarea value={form.dispute_note ?? ""} onChange={(event) => setForm({ ...form, dispute_note: event.target.value })} /></label></> : null}
         {type === "resolve" ? <><label>Resolution Note<textarea value={form.resolution_note ?? ""} onChange={(event) => setForm({ ...form, resolution_note: event.target.value })} required /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label></> : null}

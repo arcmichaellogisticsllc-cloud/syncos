@@ -538,17 +538,18 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "invoiceUnderReview-reject");
   });
 
-  test("[Invoice] invoiceApproved: Mark Sent → status=sent", async ({ page }) => {
+  test("[Invoice] legacy Mark Sent opens package review and blocks missing approved terms", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/invoices/${s.invoiceApproved}`, "invoice");
     const before = await captureBoundaryCounts(TENANT_ID, ["cash_receipts", "payment_batches", "bank_transactions", "payroll_runs", "accounting_export_batches"]);
     await openAction(page, /Mark Sent/i);
     await expectModal(page, /Mark Sent/i);
-    await page.getByLabel(/Sent Note/i).first().fill("E2E certification invoice sent");
-    await submitModal(page);
+    await expect(page.getByLabel('Invoice package selection')).toHaveValue(s.invoiceApproved);
+    await expect(page.getByText('Reconcile this invoice with approved agreement pricing before preparing its package.')).toBeVisible();
+    await expect(page.getByText('Record customer delivery',{exact:true})).toHaveCount(0);
     const row = await withDb((c) => c.query(`SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2`, [s.invoiceApproved, TENANT_ID]));
-    expect(row.rows[0].status, "invoices.status must be sent").toBe("sent");
+    expect(row.rows[0].status, "legacy invoice remains approved without fabricated delivery").toBe("approved");
     await expectBoundaryUnchanged(TENANT_ID, before, "invoiceApproved-mark-sent");
   });
 
@@ -727,7 +728,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "cpayDraft-submit-review");
   });
 
-  test("[Contractor Payable] cpayUnderReview: Approve → status=approved", async ({ page }) => {
+  test("[Contractor Payable] cpayUnderReview: missing accepted-work lineage blocks Approve", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/contractor-payables/${s.cpayUnderReview}`, "contractor");
@@ -735,13 +736,15 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /^Approve$/i);
     await expectModal(page, /Approve.*Payable/i);
     await page.getByLabel(/Approval Note/i).first().fill("E2E certification approval");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM contractor_payables WHERE id = $1 AND tenant_id = $2`, [s.cpayUnderReview, TENANT_ID]));
-    expect(row.rows[0].status, "contractor_payables.status must be approved").toBe("approved");
+    expect(row.rows[0].status, "unreconciled payable stays blocked").toBe("under_review");
     await expectBoundaryUnchanged(TENANT_ID, before, "cpayUnderReview-approve");
   });
 
-  test("[Contractor Payable] cpayApproved: Mark Payment Ready → payment_readiness_status=ready_for_payment", async ({ page }) => {
+  test("[Contractor Payable] cpayApproved: missing accepted-work lineage blocks Mark Payment Ready", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/contractor-payables/${s.cpayApproved}`, "contractor");
@@ -749,9 +752,11 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /Mark Payment Ready/i);
     await expectModal(page, /Mark Payment Ready/i);
     await page.getByLabel(/Ready Note/i).first().fill("E2E certification payment ready");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT payment_readiness_status FROM contractor_payables WHERE id = $1 AND tenant_id = $2`, [s.cpayApproved, TENANT_ID]));
-    expect(row.rows[0].payment_readiness_status, "contractor_payables.payment_readiness_status must be ready_for_payment").toBe("ready_for_payment");
+    expect(row.rows[0].payment_readiness_status, "unreconciled payable stays blocked").toBe("not_ready");
     await expectBoundaryUnchanged(TENANT_ID, before, "cpayApproved-mark-payment-ready");
   });
 

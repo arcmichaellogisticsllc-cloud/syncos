@@ -401,7 +401,7 @@ export const actionStates: ActionState[] = [
     expectedActionLabel: /Mark Sent/i,
     expectedModalTitle: /Mark Sent/i,
     persona: "finance-user",
-    requiredFields: [/Sent Note|Delivery Note/i],
+    requiredFields: [/Invoice package selection/i],
     forbiddenTables: INVOICE_FORBIDDEN,
     submitCertificationStatus: "certified",
   },
