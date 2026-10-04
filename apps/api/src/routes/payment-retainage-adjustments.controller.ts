@@ -1,3 +1,4 @@
+import { allocateRetainedRelease, calculateRetainedSchedule, retainedTermsInput } from './retained-fund-schedule';
 import { requireFreshSchedule, lockScheduleInputs } from './payable-schedule-freshness';
 import { normalizePaymentObservation } from "./external-payment-observation";
 import { requirePartnerPayableLineage } from "./partner-financial-lineage";
@@ -292,9 +293,16 @@ export class PaymentRetainageAdjustmentsController {
   async retainageChoices(@Req() request: AuthenticatedRequest) {
     return this.withClient(async client => {
       const payables = await client.query(`SELECT cp.id, cp.retained_balance_amount, concat(cp.payable_number,' · ',o.name,' · retained $',cp.retained_balance_amount) AS label FROM contractor_payables cp LEFT JOIN organizations o ON o.tenant_id=cp.tenant_id AND o.id=cp.partner_organization_id WHERE cp.tenant_id=$1 AND cp.deleted_at IS NULL AND cp.status NOT IN ('voided','archived') AND cp.retained_balance_amount>0`, [request.auth.tenantId]);
-      const releases = await client.query(`SELECT r.id, r.status, r.release_amount, concat(cp.payable_number,' · $',r.release_amount,' · ',r.release_reason) AS label FROM retainage_releases r JOIN contractor_payables cp ON cp.tenant_id=r.tenant_id AND cp.id=r.contractor_payable_id WHERE r.tenant_id=$1 AND r.deleted_at IS NULL ORDER BY r.created_at DESC`, [request.auth.tenantId]);
+      const releases = await client.query(`SELECT r.id, r.status, r.release_amount, (SELECT row_to_json(t) FROM retained_fund_release_terms t WHERE t.tenant_id=r.tenant_id AND t.retainage_release_id=r.id) AS approved_terms, concat(cp.payable_number,' · $',r.release_amount,' · ',r.release_reason) AS label FROM retainage_releases r JOIN contractor_payables cp ON cp.tenant_id=r.tenant_id AND cp.id=r.contractor_payable_id WHERE r.tenant_id=$1 AND r.deleted_at IS NULL ORDER BY r.created_at DESC`, [request.auth.tenantId]);
       return { payables: payables.rows, releases: releases.rows };
     });
+  }
+
+  @Get("retainage-term-choices")
+  @RequirePermission("contract.update")
+  async retainageTermChoices(@Req() request: AuthenticatedRequest) {
+    const choices = await this.retainageChoices(request);
+    return { payables: [], releases: choices.releases };
   }
 
   @Get("adjustment-choices")
@@ -325,6 +333,7 @@ export class PaymentRetainageAdjustmentsController {
       if (existing) return { entityType: "retainage_release", entityId: existing.id, afterState: existing };
       const payable = await this.requirePayable(client, request.auth.tenantId, requireString(body.contractor_payable_id, "contractor_payable_id is required"));
       const amount = this.positive(body.release_amount, "release_amount");
+      if(Math.abs(amount*100-Math.round(amount*100))>1e-6)throw new BadRequestException("Release amount must use exact cents");
       const retained = Number(payable.retained_balance_amount ?? payable.retainage_amount ?? 0);
       if (amount > this.roundMoney(retained)) throw new BadRequestException("retainage release exceeds retained balance");
       const release = await client.query(
@@ -335,16 +344,40 @@ export class PaymentRetainageAdjustmentsController {
     });
   }
 
+  @Post("retainage-releases/:id/terms")
+  @RequirePermission("contract.update")
+  async approveRetainedTerms(@Req() request: AuthenticatedRequest, @Param("id") id:string, @Body() body:Row) {
+    const terms=retainedTermsInput(body);
+    return this.write(request,"retainage.terms_approved","retainage.terms_approved","retained_fund_release_terms",async client=>{
+      await lockScheduleInputs(client,request.auth.tenantId);
+      const release=await this.requireRecord(client,"retainage_releases",request.auth.tenantId,id,"Retainage release not found");
+      const payable=await this.requirePayable(client,request.auth.tenantId,String(release.contractor_payable_id));
+      if(!payable.commercial_terms_revision_id)throw new BadRequestException('Reconcile the source payable to its approved agreement first');
+      if(release.status!=='pending')throw new BadRequestException('Approve terms while the release is pending');
+      const existing=(await client.query('SELECT id FROM retained_fund_release_terms WHERE tenant_id=$1 AND retainage_release_id=$2',[request.auth.tenantId,id])).rows[0];
+      if(existing)throw new BadRequestException('Terms already approved. Refresh the release; approved terms cannot be overwritten');
+      await requirePartnerPayableLineage(client,request.auth.tenantId,payable);
+      const row=(await client.query(`INSERT INTO retained_fund_release_terms(tenant_id,retainage_release_id,commercial_terms_revision_id,payment_trigger,payment_days,payment_day_basis,time_zone,holidays,holiday_calendar_through,trigger_occurred_at,trigger_proof_reference,source_reference,approved_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13) RETURNING *`,[request.auth.tenantId,id,payable.commercial_terms_revision_id,terms.payment_trigger,terms.payment_days,terms.payment_day_basis,terms.time_zone,JSON.stringify(terms.holidays),terms.holiday_calendar_through,terms.trigger_occurred_at,terms.trigger_proof_reference,terms.source_reference,request.auth.userId])).rows[0];
+      return {entityType:'retained_fund_release_terms',entityId:row.id,afterState:row};
+    });
+  }
+
   @Post("retainage-releases/:id/authorize")
   @RequirePermission("retainage.release")
   async authorizeRetainageRelease(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.write(request, "retainage.release_authorized", "retainage.release_authorized", "retainage_release", async (client) => {
+      await lockScheduleInputs(client,request.auth.tenantId);
       const release = await this.requireRecord(client, "retainage_releases", request.auth.tenantId, id, "retainage release not found");
-      if (release.status === "released_to_payable") return { entityType: "retainage_release", entityId: id, afterState: release };
+      if (release.status === "released_to_payable") return { entityType: "retainage_release", entityId: id, afterState: release, skipEventAudit: true };
       if (release.status !== "pending") throw new BadRequestException("retainage release must be pending");
       const sourcePayable = await this.requirePayable(client, request.auth.tenantId, String(release.contractor_payable_id));
       if (["voided", "archived", "rejected", "held", "disputed"].includes(String(sourcePayable.status)) || sourcePayable.hold_status === "hold" || ["open", "under_review"].includes(String(sourcePayable.dispute_status))) throw new BadRequestException("Resolve the payable hold or dispute before releasing retainage");
       if (Number(release.release_amount) > Number(sourcePayable.retained_balance_amount ?? sourcePayable.retainage_amount ?? 0)) throw new BadRequestException("Retained balance changed; this release exceeds the remaining amount");
+      const policy=(await client.query('SELECT * FROM retained_fund_release_terms WHERE tenant_id=$1 AND retainage_release_id=$2',[request.auth.tenantId,id])).rows[0];
+      if(!policy||policy.commercial_terms_revision_id!==sourcePayable.commercial_terms_revision_id)throw new BadRequestException('Approve the retained-fund contract trigger and due-date terms first');
+      await requirePartnerPayableLineage(client,request.auth.tenantId,sourcePayable);
+      const sourceItems=(await client.query(`SELECT i.*,COALESCE((SELECT sum(x.net_payable_amount) FROM contractor_payable_items x WHERE x.tenant_id=i.tenant_id AND x.source_retainage_item_id=i.id),0) AS released_amount FROM contractor_payable_items i WHERE i.tenant_id=$1 AND i.contractor_payable_id=$2 AND i.deleted_at IS NULL AND i.status NOT IN ('voided','archived') AND ($3::uuid IS NULL OR i.settlement_item_id=$3) ORDER BY i.id FOR UPDATE`,[request.auth.tenantId,sourcePayable.id,release.settlement_item_id])).rows;
+      const allocations=allocateRetainedRelease(sourceItems,Number(release.release_amount));
       const number = await this.nextNumber(client, request.auth.tenantId, "contractor_payables", "payable_number", "CP-RET-P13");
       const payable = await client.query(
         `
@@ -360,11 +393,17 @@ export class PaymentRetainageAdjustmentsController {
         `,
         [request.auth.tenantId, number, sourcePayable.capacity_provider_id, sourcePayable.partner_organization_id, sourcePayable.project_id, sourcePayable.settlement_id, sourcePayable.pay_cycle_start, sourcePayable.pay_cycle_end, release.release_amount, request.auth.userId],
       );
+      await client.query('UPDATE contractor_payables SET commercial_terms_revision_id=$3 WHERE tenant_id=$1 AND id=$2',[request.auth.tenantId,payable.rows[0].id,sourcePayable.commercial_terms_revision_id]);
+      payable.rows[0].commercial_terms_revision_id=sourcePayable.commercial_terms_revision_id;
+      for(const {item,amount} of allocations) {
+        await client.query(`INSERT INTO contractor_payable_items(tenant_id,contractor_payable_id,settlement_id,settlement_item_id,accepted_production_source_id,billable_item_id,production_record_id,work_order_id,project_id,capacity_provider_id,crew_id,item_type,status,description,quantity,unit,contractor_rate,gross_payable_amount,retainage_amount,net_payable_amount,compliance_status,tax_document_status,created_by,updated_by,source_retainage_item_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'subcontractor_production','ready',$12,$13,$14,$15,$16,0,$16,'ready','ready',$17,$17,$18)`,[request.auth.tenantId,payable.rows[0].id,item.settlement_id,item.settlement_item_id,item.accepted_production_source_id,item.billable_item_id,item.production_record_id,item.work_order_id,item.project_id,item.capacity_provider_id,item.crew_id,'Retained funds: '+item.description,item.quantity,item.unit,item.contractor_rate,amount,request.auth.userId,item.id]);
+      }
       const after = await client.query(
         "UPDATE retainage_releases SET status = 'released_to_payable', authorized_by_user_id = $1, authorized_at = now(), release_payable_id = $2, updated_at = now() WHERE tenant_id = $3 AND id = $4 RETURNING *",
         [request.auth.userId, payable.rows[0].id, request.auth.tenantId, id],
       );
       await client.query("UPDATE contractor_payables SET retained_balance_amount = GREATEST(COALESCE(retained_balance_amount, retainage_amount) - $1, 0), updated_by = $2, updated_at = now() WHERE tenant_id = $3 AND id = $4", [release.release_amount, request.auth.userId, request.auth.tenantId, sourcePayable.id]);
+      await calculateRetainedSchedule(client,request.auth.tenantId,payable.rows[0],request.auth.userId);
       return {
         entityType: "retainage_release",
         entityId: id,

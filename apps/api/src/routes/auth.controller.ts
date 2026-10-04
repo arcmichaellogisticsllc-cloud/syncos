@@ -32,6 +32,7 @@ export class AuthController {
       email: string;
       display_name: string;
       password_hash: string | null;
+      auth_version: number;
     }>(
       `
       SELECT
@@ -40,7 +41,7 @@ export class AuthController {
         t.slug AS tenant_slug,
         u.email,
         u.display_name,
-        u.password_hash
+        u.password_hash, u.auth_version
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
@@ -69,7 +70,7 @@ export class AuthController {
     }
     this.clearFailedLogin(email);
 
-    const token = this.createSessionToken(user.tenant_id, user.user_id, user.email);
+    const token = this.createSessionToken(user.tenant_id, user.user_id, user.email, user.auth_version);
     const context = await this.identityContextFor(user.tenant_id, user.user_id);
     return {
       token,
@@ -254,11 +255,11 @@ export class AuthController {
     return linkedWorker ? "/work-safety" : "/";
   }
 
-  private createSessionToken(tenantId: string, userId: string, email: string) {
+  private createSessionToken(tenantId: string, userId: string, email: string, auth_version:number) {
     const secret = process.env.AUTH_JWT_SECRET;
     if (!secret) throw new UnauthorizedException("AUTH_JWT_SECRET is required");
     if (secret.length < AUTH_JWT_SECRET_MIN_LENGTH) throw new UnauthorizedException("AUTH_JWT_SECRET is too short");
-    return createAuthToken({ tenant_id: tenantId, sub: userId, email, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 }, secret);
+    return createAuthToken({ tenant_id: tenantId, sub: userId, email, auth_version, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 }, secret);
   }
 
   private assertLoginNotThrottled(email: string) {

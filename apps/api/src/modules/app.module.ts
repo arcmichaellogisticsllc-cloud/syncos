@@ -1,3 +1,6 @@
+import { CustomerInquiriesController } from '../routes/customer-inquiries.controller';
+import { MaterialInventoryController } from '../routes/material-inventory.controller';
+import { SupplementalFormsController } from '../routes/supplemental-forms.controller';
 import { PassportIntakeController } from '../routes/passport-intake.controller';
 import { InvoicePackagesController } from '../routes/invoice-packages.controller';
 import { CommercialTermsController } from '../routes/commercial-terms.controller';
@@ -9,6 +12,7 @@ import { InternalWorkforceController } from "../routes/internal-workforce.contro
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
+import { PasswordRecoveryController } from "../routes/password-recovery.controller";
 import { AuthController } from "../routes/auth.controller";
 import { AccountingExportController } from "../routes/accounting-export.controller";
 import { AccountOnboardingController } from "../routes/account-onboarding.controller";
@@ -62,7 +66,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [PassportIntakeController,InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
+  controllers: [CustomerInquiriesController,MaterialInventoryController,SupplementalFormsController,PassportIntakeController,InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,
@@ -70,6 +74,7 @@ import { DatabaseModule } from "./database.module";
     AccountingExportController,
     AccountOnboardingController,
     AuthController,
+    PasswordRecoveryController,
     BankReconciliationController,
     SecurityTestController,
     TestObjectsController,

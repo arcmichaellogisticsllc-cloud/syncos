@@ -540,7 +540,7 @@ export class PartnerInvitationsController {
           metadata: { organization_id: invitation.organization_id, intended_role_key: invitation.intended_role_key, invitation_type: invitation.invitation_type },
         });
         await client.query("COMMIT");
-        const sessionToken = this.createSessionToken(invitation.tenant_id, user.id, invitation.email);
+        const sessionToken = this.createSessionToken(invitation.tenant_id, user.id, invitation.email, user.auth_version);
         return {
           invitation: this.safeInvitation(accepted.rows[0], invitation.organization_name),
           user: { id: user.id, email: invitation.email, display_name: user.display_name },
@@ -935,7 +935,7 @@ export class PartnerInvitationsController {
     if (existing.rows[0] && !["active", "invited"].includes(existing.rows[0].status)) throw new ForbiddenException("Existing user is not eligible for invitation acceptance");
     const passwordHash = hashPassword(password);
     const shouldSetPassword = !existing.rows[0]?.password_hash;
-    const result = await client.query<{ id: string; display_name: string | null }>(
+    const result = await client.query<{ id: string; display_name: string | null; auth_version:number }>(
       `
       INSERT INTO users (email, display_name, password_hash, status)
       VALUES ($1, $2, $3, 'active')
@@ -944,11 +944,11 @@ export class PartnerInvitationsController {
           password_hash = CASE WHEN $4::boolean THEN EXCLUDED.password_hash ELSE users.password_hash END,
           status = CASE WHEN users.status = 'invited' THEN 'active' ELSE users.status END,
           updated_at = now()
-      RETURNING id, display_name
+      RETURNING id, display_name, auth_version
       `,
       [invitation.email, displayName ?? invitation.primary_contact_name, passwordHash, shouldSetPassword],
     );
-    return { id: result.rows[0].id, display_name: result.rows[0].display_name ?? invitation.primary_contact_name };
+    return { id: result.rows[0].id, auth_version:result.rows[0].auth_version, display_name: result.rows[0].display_name ?? invitation.primary_contact_name };
   }
 
   private async ensureTenantUser(client: PoolClient, tenantId: string, userId: string) {
@@ -1195,10 +1195,10 @@ export class PartnerInvitationsController {
     if (new Date(row.expires_at).getTime() <= Date.now()) throw new BadRequestException("Invitation has expired");
   }
 
-  private createSessionToken(tenantId: string, userId: string, email: string) {
+  private createSessionToken(tenantId: string, userId: string, email: string, version:number) {
     const secret = process.env.AUTH_JWT_SECRET;
     if (!secret) throw new InternalServerErrorException("AUTH_JWT_SECRET is required to complete invitation acceptance");
-    return createAuthToken({ tenant_id: tenantId, sub: userId, email, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 }, secret);
+    return createAuthToken({ tenant_id: tenantId, sub: userId, email, auth_version:version, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 }, secret);
   }
 
   private safeInvitation(row: InvitationRow, organizationName?: string) {

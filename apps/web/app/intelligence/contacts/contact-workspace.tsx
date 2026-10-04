@@ -1,4 +1,5 @@
 "use client";
+import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
 import { permittedRecordTabs } from "../api";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -373,7 +374,7 @@ export function ContactDetail({ contactId }: { contactId: string }) {
                 {hasPermission(session.permissions, "contact.mark_relationship_active") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_relationship_active") || contact.status === "archived"} onClick={() => setModal("active")}>Relationship Active</button> : null}
                 {hasPermission(session.permissions, "contact.update") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("dormant")}>Mark Dormant</button> : null}
                 {hasPermission(session.permissions, "contact.mark_invalid") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_invalid") || contact.status === "archived"} onClick={() => setModal("invalid")}>Mark Invalid</button> : null}
-                <button type="button" disabled onClick={() => undefined}>Add to Relationship Map</button>
+                <AddContactToRelationship contactId={contact.id}/>
                 {hasPermission(session.permissions, "contact.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.archive") || contact.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
               </div>
             </div>
@@ -464,7 +465,7 @@ function ContactTab({ tab, contact, related, permissions }: { tab: string; conta
   if (tab === "opportunities") return <ObjectSlice title="Related Opportunities" rows={related.opportunities} columns={["name", "status", "estimated_value", "pursuit_score", "owner_name", "decision_date"]} empty="Contact-specific opportunity linkage is not exposed yet." />;
   if (tab === "projects") return <ObjectSlice title="Related Projects" rows={related.projects} columns={["name", "status", "customer_organization_id", "created_at"]} empty="Project-contact linkage is not exposed yet." />;
   if (tab === "finance") return <FinanceSlice related={related} />;
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={related.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this contact." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={related.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this contact." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="contact" objectId={contact.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={related.recommendations} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this contact." />;
   if (tab === "events") return <ObjectSlice title="Events" rows={related.events} columns={["event_type", "actor_name", "timestamp", "object_type", "summary"]} empty="No contact timeline events are available or you do not have timeline permission." />;
   if (tab === "audit") return <ObjectSlice title="Audit" rows={related.audit} columns={["actor_name", "action", "object_type", "reason", "created_at", "correlation_id"]} empty="Audit summary is unavailable or you do not have audit permission." />;

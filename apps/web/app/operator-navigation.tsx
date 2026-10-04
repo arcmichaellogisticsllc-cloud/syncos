@@ -27,13 +27,16 @@ export type WorkspaceDefinition = {
 };
 
 export const workspaces: WorkspaceDefinition[] = [
+  {label:"Materials",href:"/material-inventory",scope:"Stock and custody",description:"Material and reel reconciliation",permissions:["inventory.read"],items:[{label:"Material Inventory",href:"/material-inventory",workspace:"Materials",description:"Receive, transfer and reconcile physical stock.",permission:"inventory.read"}]},
+  {label:"Forms",href:"/forms",scope:"Supplemental records",description:"Approved form versions and responses",permissions:["form.read"],items:[{label:"Supplemental Forms",href:"/forms",workspace:"Forms",description:"Create approved versions and preserve submitted records.",permission:"form.read"}]},
   {
     label: "Demand",
     href: "/growth",
     scope: "Customer demand",
     description: "Signals, opportunity candidates, and active pursuit pipeline",
-    permissions: ["dashboard.growth.read", "signal.read", "opportunity_candidate.read", "opportunity.read"],
+    permissions: ["customer_inquiry.read", "dashboard.growth.read", "signal.read", "opportunity_candidate.read", "opportunity.read"],
     items: [
+      { label: "Customer Inquiries", href: "/customer-inquiries", workspace: "Demand", description: "Capture requests and track follow-up.", permission: "customer_inquiry.read" },
       { label: "Demand Overview", href: "/growth", workspace: "Demand", description: "Demand and opportunity summary.", permission: "dashboard.growth.read" },
       { label: "Signal Feed", href: "/intelligence/signals", workspace: "Demand", description: "Review market intelligence and signal queues.", permission: "signal.read" },
       { label: "Opportunity Candidates", href: "/opportunities/candidates", workspace: "Demand", description: "Qualified signals before active pursuit.", permission: "opportunity_candidate.read" },

@@ -316,7 +316,7 @@ export function clearAuthContext() {
   window.localStorage.removeItem(permissionKey);
   for (const key of partnerSensitiveStorageKeys) window.localStorage.removeItem(key);
   if ("indexedDB" in window) {
-    for (const database of ["syncos-field-production", "syncos-field-evidence"]) {
+    for (const database of ["syncos-field-production", "syncos-field-evidence", "syncos-field-incidents"]) {
       const request = window.indexedDB.deleteDatabase(database);
       request.onerror = () => undefined;
       request.onblocked = () => undefined;

@@ -1,5 +1,6 @@
 # Wider SyncOS product backlog
 
+Latest status: `docs/acceptance/product-workspaces-20261004.md` and `docs/product/deferred-work-20261004.md` supersede the remaining-work status below. This document preserves the earlier checkpoint.
 This backlog remains separate from controlled crew-pilot acceptance. It does not narrow the operating scope: both Sync employee and partner crews, safety, field evidence, customer acceptance, customer receivables and partner payables remain required. Password recovery, intake, templates and inventory are product work still to complete; SSO and magic links are future enhancements.
 
 | Capability | Engineering work | Completion evidence | Pilot relationship |

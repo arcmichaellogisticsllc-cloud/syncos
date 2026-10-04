@@ -31,6 +31,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     status: response.status,
     headers: {
       "content-type": response.headers.get("content-type") ?? "application/json",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
       ...(disposition ? { "content-disposition": disposition } : {}),
     },
   });

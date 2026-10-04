@@ -1,0 +1,26 @@
+TAP version 13
+# {"timestamp":"2026-10-04T21:47:50.448Z","category":"Event","message":"event_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","eventId":"f6c02075-2d10-4bbe-ade2-bd855e51ff03","eventType":"customer_inquiry.created","aggregateType":"customer_inquiry","aggregateId":"0333d5d4-c1eb-4afd-8819-f0c05991e5c6"}
+# {"timestamp":"2026-10-04T21:47:50.450Z","category":"Audit","message":"audit_log_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","action":"customer_inquiry.created","entityType":"customer_inquiry","entityId":"0333d5d4-c1eb-4afd-8819-f0c05991e5c6"}
+# {"timestamp":"2026-10-04T21:47:50.463Z","category":"Event","message":"event_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","eventId":"e20f771e-fa2c-46ab-a849-40e64596dc23","eventType":"customer_inquiry.reviewed","aggregateType":"customer_inquiry","aggregateId":"0333d5d4-c1eb-4afd-8819-f0c05991e5c6"}
+# {"timestamp":"2026-10-04T21:47:50.464Z","category":"Audit","message":"audit_log_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","action":"customer_inquiry.reviewed","entityType":"customer_inquiry","entityId":"0333d5d4-c1eb-4afd-8819-f0c05991e5c6"}
+# {"timestamp":"2026-10-04T21:47:50.472Z","category":"Event","message":"event_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","eventId":"314e93a2-5683-457b-9c0d-ff54196f593a","eventType":"customer_inquiry.reviewed","aggregateType":"customer_inquiry","aggregateId":"0333d5d4-c1eb-4afd-8819-f0c05991e5c6"}
+# {"timestamp":"2026-10-04T21:47:50.473Z","category":"Audit","message":"audit_log_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","action":"customer_inquiry.reviewed","entityType":"customer_inquiry","entityId":"0333d5d4-c1eb-4afd-8819-f0c05991e5c6"}
+# {"timestamp":"2026-10-04T21:47:50.477Z","category":"Event","message":"event_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","eventId":"d3c36d6f-e7d5-4396-b530-38878843f942","eventType":"customer_inquiry.file_attached","aggregateType":"customer_inquiry","aggregateId":"62884c84-f280-4d8d-a69d-19d0ca03b923"}
+# {"timestamp":"2026-10-04T21:47:50.478Z","category":"Audit","message":"audit_log_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","action":"customer_inquiry.file_attached","entityType":"customer_inquiry_file","entityId":"62884c84-f280-4d8d-a69d-19d0ca03b923"}
+# {"timestamp":"2026-10-04T21:47:50.483Z","category":"Event","message":"event_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","eventId":"cda0dcf8-2a24-4686-ada7-6f9ce4327d5a","eventType":"customer_inquiry.created","aggregateType":"customer_inquiry","aggregateId":"62bfbc8a-6ef2-46b9-a955-3457b5fda2ce"}
+# {"timestamp":"2026-10-04T21:47:50.483Z","category":"Audit","message":"audit_log_created","tenantId":"5f9fac41-d805-4c10-be66-56f0cfee4241","actorUserId":"79dbdb48-8104-4ea4-8b94-ab3c3779e741","action":"customer_inquiry.created","entityType":"customer_inquiry","entityId":"62bfbc8a-6ef2-46b9-a955-3457b5fda2ce"}
+# Subtest: inquiries preserve request history, attachments and tenant-scoped follow-up
+ok 1 - inquiries preserve request history, attachments and tenant-scoped follow-up
+  ---
+  duration_ms: 77.902714
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 436.148687

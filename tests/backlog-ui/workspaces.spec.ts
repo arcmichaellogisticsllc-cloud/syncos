@@ -1,0 +1,27 @@
+import {test,expect,type Page} from '@playwright/test';
+async function identity(page:Page,permissions:string[]){await page.addInitScript(()=>localStorage.setItem('syncos.apiToken','synthetic-browser-test'));await page.route('**/api/syncos/auth/me',r=>r.fulfill({json:{user_id:'synthetic',tenant_id:'synthetic',roles:['system_admin'],role_names:['System Admin'],permissions}}));}
+const inventory={lots:[],locations:[],crews:[],work_orders:[],balances:[],movements:[]};
+const inquiries={inquiries:[],owners:[],opportunities:[],projects:[]};
+test('read-only roles see records without form, stock or inquiry mutation controls',async({page})=>{
+ await identity(page,['form.read','inventory.read','customer_inquiry.read']);
+ await page.route('**/api/syncos/supplemental-forms**',r=>r.fulfill({json:[]}));await page.route('**/api/syncos/material-inventory',r=>r.fulfill({json:inventory}));await page.route('**/api/syncos/customer-inquiries',r=>r.fulfill({json:inquiries}));
+ for(const path of ['/forms','/material-inventory','/customer-inquiries']){await page.goto(path);await expect(page.locator('h1')).toBeVisible();await expect(page.locator('form')).toHaveCount(0);}
+});
+test('form designer publishes a revision and records a rendered answer',async({page})=>{
+ await identity(page,['form.read','form.manage','form.submit']);let versions:any[]=[],records:any[]=[];
+ await page.route('**/api/syncos/supplemental-forms**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;
+ if(req.method()==='GET')return route.fulfill({json:path.endsWith('/records')?records:versions});
+ const b=req.postDataJSON();if(path.endsWith('/versions')){versions=[{id:'v1',family_id:'f1',version:1,status:'draft',schema:b.schema}];return route.fulfill({json:versions[0]});}
+ if(path.endsWith('/publish')){versions[0].status='published';return route.fulfill({json:versions[0]});}
+ records=[{id:'r1',version_id:'v1',schema_snapshot:versions[0].schema,answers:b.answers,created_at:new Date().toISOString()}];return route.fulfill({json:records[0]});});
+ await page.goto('/forms');await page.getByLabel('Form name',{exact:true}).fill('Site observations');await page.getByRole('button',{name:'Add field',exact:true}).click();await page.getByLabel('Label',{exact:true}).fill('Notes');await page.getByLabel('Required answer').check();await page.getByRole('button',{name:'Save draft version',exact:true}).click();await expect(page.getByText('Draft version saved. Review it before publication.')).toBeVisible();
+ await page.getByLabel('I reviewed and approve these fields as supplemental information.').check();await page.getByRole('button',{name:'Publish version 1'}).click();await page.getByRole('combobox',{name:'Form version',exact:true}).selectOption('v1');await page.getByLabel('Notes (required)').fill('Synthetic observation');await page.getByRole('button',{name:'Submit form',exact:true}).click();await expect(page.getByText('Form submitted. Its approved version and answers are preserved.')).toBeVisible();expect(records[0].answers).toEqual({[versions[0].schema.fields[0].key]:'Synthetic observation'});
+});
+test('inquiry failure preserves entries and retries the same request',async({page})=>{
+ await identity(page,['customer_inquiry.read','customer_inquiry.manage']);let writes:any[]=[];
+ await page.route('**/api/syncos/customer-inquiries',r=>{if(r.request().method()==='GET')return r.fulfill({json:inquiries});writes.push(r.request().postDataJSON());return r.fulfill({status:writes.length===1?503:201,json:writes.length===1?{message:'Try again'}:{id:'i1'}});});
+ await page.goto('/customer-inquiries');await page.getByLabel('Customer name').fill('Synthetic customer');await page.getByLabel('Contact email').fill('customer@synthetic.test');await page.getByLabel('Subject',{exact:true}).fill('Service inquiry');await page.getByLabel('Request details').fill('Synthetic work');await page.getByLabel('Source and permission to process').fill('Customer request');await page.getByLabel('This request is authorized for processing by Sync.').check();await page.getByRole('button',{name:'Record inquiry',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'Your entries are preserved'})).toBeVisible();await expect(page.getByLabel('Subject',{exact:true})).toHaveValue('Service inquiry');await page.getByRole('button',{name:'Record inquiry',exact:true}).click();await expect(page.getByText('Inquiry recorded. Assign an owner and review possible duplicates.')).toBeVisible();expect(writes[0].request_key).toBe(writes[1].request_key);
+});
+test('inventory separates ordinary movements from approved count adjustments on a phone-sized viewport',async({page})=>{
+ await page.setViewportSize({width:390,height:844});await identity(page,['inventory.read','inventory.manage']);await page.route('**/api/syncos/material-inventory',r=>r.fulfill({json:inventory}));await page.goto('/material-inventory');await expect(page.getByRole('button',{name:'Record movement',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Approve adjustment',exact:true})).toHaveCount(0);await page.getByRole('combobox',{name:'Movement',exact:true}).selectOption('installed');await expect(page.getByRole('combobox',{name:'Work order',exact:true})).toHaveAttribute('required','');await expect(page.getByRole('combobox',{name:'Destination location',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

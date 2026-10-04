@@ -271,6 +271,13 @@ export class RelationshipMapsController {
       return await this.write(request, "relationship_path.create", "relationship_path.created", "relationship_path", async (client) => {
         await this.requireMap(client, request.auth.tenantId, id);
         await this.validatePathValues(client, request.auth.tenantId, values);
+        if(body.client_mutation_id){
+          if(typeof body.client_mutation_id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.client_mutation_id))throw new BadRequestException('Invalid request identifier');
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,91))',[request.auth.tenantId+':path:'+body.client_mutation_id]);
+          const existing=(await client.query('SELECT * FROM relationship_paths WHERE tenant_id=$1 AND client_mutation_id=$2',[request.auth.tenantId,body.client_mutation_id])).rows[0];
+          if(existing){if(existing.relationship_map_id!==id||Object.entries(values).some(([k,v])=>v!==undefined&&JSON.stringify(existing[k])!==JSON.stringify(v)))throw new BadRequestException('Request identifier already used for different relationship details');return {entityType:'relationship_path',entityId:existing.id,afterState:existing,skipEventAudit:true};}
+          values.client_mutation_id=body.client_mutation_id;
+        }
         const path = await insertTenantRecord(client, "relationship_paths", request.auth.tenantId, { ...values, relationship_map_id: id, score: values.confidence_score ?? values.strength_score });
         await this.refreshMapDerived(client, request.auth.tenantId, id);
         const after = (await this.listEnrichedPaths(client, request.auth.tenantId, id, false)).find((row) => row.id === path.id) ?? path;

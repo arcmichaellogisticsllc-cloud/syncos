@@ -1,0 +1,22 @@
+
+Running 7 tests using 1 worker
+
+(node:7361) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"timestamp":"2026-10-04T18:43:19.299Z","category":"Event","message":"event_created","tenantId":"c00ba154-7c6e-4727-8992-6631de3276b1","actorUserId":"6595f344-6d72-417d-99cf-fd44a56538d8","eventId":"af27f735-d356-4e97-9325-1bebb419c3a3","eventType":"contractor_payable.eligibility_changed","aggregateType":"contractor_payable","aggregateId":"da0f5dde-d5ad-41de-873e-d853e0872498"}
+{"timestamp":"2026-10-04T18:43:19.311Z","category":"Audit","message":"audit_log_created","tenantId":"c00ba154-7c6e-4727-8992-6631de3276b1","actorUserId":"6595f344-6d72-417d-99cf-fd44a56538d8","action":"contractor_payable.eligibility_changed","entityType":"contractor_payable","entityId":"da0f5dde-d5ad-41de-873e-d853e0872498"}
+  ✓  1 tests/e2e/payment-retainage-adjustments.spec.ts:39:7 › P13 payment, retainage, and controlled financial adjustments › eligible Contractor Payable creates, submits, and confirms one Partner payment instruction (2.3s)
+  ✓  2 tests/e2e/payment-retainage-adjustments.spec.ts:79:7 › P13 payment, retainage, and controlled financial adjustments › failed provider attempt preserves history and releases in-flight amount for retry (476ms)
+  ✓  3 tests/e2e/payment-retainage-adjustments.spec.ts:97:7 › P13 payment, retainage, and controlled financial adjustments › retainage release creates separate payable and preserves original retained history (1.4s)
+  ✓  4 tests/e2e/payment-retainage-adjustments.spec.ts:143:7 › P13 payment, retainage, and controlled financial adjustments › controlled adjustment preserves issued invoice and Partner payment view remains scoped and redacted (242ms)
+{"timestamp":"2026-10-04T18:43:25.397Z","category":"Event","message":"event_created","tenantId":"44fe639c-97d4-43e6-8c14-f5ced2ee6334","actorUserId":"64f71a23-787a-421c-b5f8-305ce9696225","eventId":"6040ab41-e839-40c3-8698-8461f6e8197d","eventType":"contractor_payable.eligibility_changed","aggregateType":"contractor_payable","aggregateId":"2ebd9647-8f87-4376-b796-ff890c9bf0b9"}
+{"timestamp":"2026-10-04T18:43:25.408Z","category":"Audit","message":"audit_log_created","tenantId":"44fe639c-97d4-43e6-8c14-f5ced2ee6334","actorUserId":"64f71a23-787a-421c-b5f8-305ce9696225","action":"contractor_payable.eligibility_changed","entityType":"contractor_payable","entityId":"2ebd9647-8f87-4376-b796-ff890c9bf0b9"}
+  ✓  5 tests/e2e/payment-retainage-adjustments.spec.ts:307:5 › external payment records are idempotent, evidence-backed, and serialized against concurrent overpayment (1.9s)
+{"timestamp":"2026-10-04T18:43:27.349Z","category":"Event","message":"event_created","tenantId":"84aa5791-2e00-4145-b623-6117ccc1fed0","actorUserId":"891e7b5e-0a02-444c-962e-ec60a4b72e06","eventId":"c9002313-4b61-4dc9-a44a-edf14eee0978","eventType":"contractor_payable.eligibility_changed","aggregateType":"contractor_payable","aggregateId":"6d6cf412-4375-4e04-9d59-0624b0fefa35"}
+{"timestamp":"2026-10-04T18:43:27.357Z","category":"Audit","message":"audit_log_created","tenantId":"84aa5791-2e00-4145-b623-6117ccc1fed0","actorUserId":"891e7b5e-0a02-444c-962e-ec60a4b72e06","action":"contractor_payable.eligibility_changed","entityType":"contractor_payable","entityId":"6d6cf412-4375-4e04-9d59-0624b0fefa35"}
+  ✓  6 tests/e2e/payment-retainage-adjustments.spec.ts:345:5 › competing pending retainage authorizations cannot exceed the remaining balance (1.9s)
+{"timestamp":"2026-10-04T18:43:29.200Z","category":"Event","message":"event_created","tenantId":"976cc73a-1551-4f81-b081-69da93551314","actorUserId":"d9dd14ef-e3c8-4547-8b4b-5a95cf845705","eventId":"676550d2-9b24-4e95-9f5e-eb459de50623","eventType":"contractor_payable.eligibility_changed","aggregateType":"contractor_payable","aggregateId":"835efa48-52a6-46ca-89a7-8af657250db3"}
+{"timestamp":"2026-10-04T18:43:29.216Z","category":"Audit","message":"audit_log_created","tenantId":"976cc73a-1551-4f81-b081-69da93551314","actorUserId":"d9dd14ef-e3c8-4547-8b4b-5a95cf845705","action":"contractor_payable.eligibility_changed","entityType":"contractor_payable","entityId":"835efa48-52a6-46ca-89a7-8af657250db3"}
+  ✓  7 tests/e2e/payment-retainage-adjustments.spec.ts:366:5 › payment advancement rejects unverified agreements and duplicate payable exposure (1.1s)
+
+  7 passed (38.9s)

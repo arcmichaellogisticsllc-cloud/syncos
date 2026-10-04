@@ -1,0 +1,32 @@
+TAP version 13
+# {"timestamp":"2026-10-04T21:44:40.776Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"3f148606-0bd6-4281-8877-2762b6bcf619","eventType":"inventory.lot_created","aggregateType":"material_inventory","aggregateId":"3b4da78e-90f7-49a1-b6d3-5e6b0ae7937e"}
+# {"timestamp":"2026-10-04T21:44:40.779Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.lot_created","entityType":"material_lot","entityId":"3b4da78e-90f7-49a1-b6d3-5e6b0ae7937e"}
+# {"timestamp":"2026-10-04T21:44:40.783Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"b948feb5-1bba-42c1-a3eb-3590792b9d1c","eventType":"inventory.location_created","aggregateType":"material_inventory","aggregateId":"ecb01029-31da-4a47-925a-c365a2c1448a"}
+# {"timestamp":"2026-10-04T21:44:40.784Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.location_created","entityType":"material_location","entityId":"ecb01029-31da-4a47-925a-c365a2c1448a"}
+# {"timestamp":"2026-10-04T21:44:40.786Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"d41b6a66-8b41-4f1d-a487-79c5f340c90e","eventType":"inventory.location_created","aggregateType":"material_inventory","aggregateId":"a9ce2b20-600f-4c1f-a808-f644ba167dc0"}
+# {"timestamp":"2026-10-04T21:44:40.786Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.location_created","entityType":"material_location","entityId":"a9ce2b20-600f-4c1f-a808-f644ba167dc0"}
+# {"timestamp":"2026-10-04T21:44:40.792Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"feb1b792-52b0-4de4-a4e8-22d7bb32d45c","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"d1b32e7d-541c-4100-a42b-440a80db77e5"}
+# {"timestamp":"2026-10-04T21:44:40.793Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"d1b32e7d-541c-4100-a42b-440a80db77e5"}
+# {"timestamp":"2026-10-04T21:44:40.805Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"af6397bc-a5bd-43f4-a908-852daf3ba46b","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"a3bb6f8f-6088-4552-9701-9e2f439431ae"}
+# {"timestamp":"2026-10-04T21:44:40.807Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"a3bb6f8f-6088-4552-9701-9e2f439431ae"}
+# {"timestamp":"2026-10-04T21:44:40.812Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"2fe12113-8ac4-4c06-b009-58b4c175fef7","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"4e7bd9b8-8119-4612-a978-a61ede486cd5"}
+# {"timestamp":"2026-10-04T21:44:40.812Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"4e7bd9b8-8119-4612-a978-a61ede486cd5"}
+# {"timestamp":"2026-10-04T21:44:40.816Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"ac891384-de11-4c04-af68-498bd6c1b70f","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"2b1b8fb5-212c-4f1b-b836-5f99ad996150"}
+# {"timestamp":"2026-10-04T21:44:40.817Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"2b1b8fb5-212c-4f1b-b836-5f99ad996150"}
+# {"timestamp":"2026-10-04T21:44:40.854Z","category":"Event","message":"event_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","eventId":"490ccb48-2550-496d-ab16-80e98283a198","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"14f6e0ac-c26c-412d-bb1e-d2240f22f446"}
+# {"timestamp":"2026-10-04T21:44:40.855Z","category":"Audit","message":"audit_log_created","tenantId":"1fbdda59-d331-4170-97c3-4793914ab022","actorUserId":"ae5c02d2-b1e8-4a4f-8aa2-8a2b086a3641","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"14f6e0ac-c26c-412d-bb1e-d2240f22f446"}
+# Subtest: material ledger conserves stock through retries, concurrent transfers, scrap and approved count reconciliation
+ok 1 - material ledger conserves stock through retries, concurrent transfers, scrap and approved count reconciliation
+  ---
+  duration_ms: 123.441811
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 573.182654

@@ -86,5 +86,13 @@
   "085_payable_schedule_freshness.sql",
   "086_passport_durable_intake.sql",
   "087_installment_paid_balance_due.sql",
-  "088_passport_refresh_generations.sql"
+  "088_passport_refresh_generations.sql",
+  "089_retained_fund_release_terms.sql",
+  "090_retained_fund_source_links.sql",
+  "091_workflow_action_retry_keys.sql",
+  "092_password_recovery.sql",
+  "093_supplemental_forms.sql",
+  "094_material_inventory.sql",
+  "095_customer_service_inquiries.sql",
+  "096_product_workspace_admin_grants.sql"
 ]

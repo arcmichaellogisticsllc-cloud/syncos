@@ -102,7 +102,12 @@ test.describe.serial("P13 payment, retainage, and controlled financial adjustmen
       source_reference: "customer-retainage-release-1",
       idempotency_key: "p13-retainage-release-1",
     });
+    const blocked=await request.post(apiUrl(`/payment-retainage-adjustments/retainage-releases/${release.id}/authorize`),{headers:auth(fixture.internalToken),data:{}});
+    expect(blocked.status()).toBe(400);
+    await apiJson(request,fixture.internalToken,'POST',`/payment-retainage-adjustments/retainage-releases/${release.id}/terms`,{payment_trigger:'release_approval',payment_days:14,payment_day_basis:'calendar_days',time_zone:'America/New_York',verified:true,source_reference:'SYNTHETIC executed retained-fund clause'});
     const authorized = await apiJson(request, fixture.internalToken, "POST", `/payment-retainage-adjustments/retainage-releases/${release.id}/authorize`, {});
+    const retry=await apiJson(request, fixture.internalToken, "POST", `/payment-retainage-adjustments/retainage-releases/${release.id}/authorize`, {});
+    expect(retry.release_payable_id).toBe(authorized.release_payable_id);
     expect(authorized.status).toBe("released_to_payable");
     expect(authorized.release_payable_id).toBeTruthy();
 
@@ -113,6 +118,26 @@ test.describe.serial("P13 payment, retainage, and controlled financial adjustmen
     expect(releasePayable.rows[0].payable_type).toBe("retainage_release");
     expect(Number(releasePayable.rows[0].net_payable_amount)).toBe(350);
     expect(releasePayable.rows[0].pay_when_paid_status).toBe("eligible");
+    const schedule=await apiJson(request,fixture.internalToken,'GET',`/accepted-production-financials/contractor-payables/${authorized.release_payable_id}/installments`);
+    expect(schedule.stale).toBe(false);expect(schedule.snapshot.installments).toHaveLength(1);
+    const completed={contractor_payable_id:authorized.release_payable_id,amount:100,payment_date:new Date().toISOString().slice(0,10),method:'check',reference:'SYNTHETIC-retained-check',evidence_reference:'SYNTHETIC cleared-check proof',confirmed_completed:true,idempotency_key:'p13-retained-paid'};
+    const recorded=await apiJson(request,fixture.internalToken,'POST','/payment-retainage-adjustments/external-payments',completed);
+    const repeated=await apiJson(request,fixture.internalToken,'POST','/payment-retainage-adjustments/external-payments',completed);
+    expect(repeated.id).toBe(recorded.id);
+    expect(Number((await client.query('SELECT paid_amount FROM contractor_payables WHERE id=$1',[authorized.release_payable_id])).rows[0].paid_amount)).toBe(100);
+    await client.query("UPDATE contractor_payables SET hold_status='hold' WHERE id=$1",[fixture.retainagePayableId]);
+    const held=await request.post(apiUrl('/payment-retainage-adjustments/external-payments'),{headers:auth(fixture.internalToken),data:{...completed,reference:'SYNTHETIC-second',idempotency_key:'p13-retained-held'}});
+    expect(held.status()).toBe(400);
+    await client.query("UPDATE contractor_payables SET hold_status='none' WHERE id=$1",[fixture.retainagePayableId]);
+    await apiJson(request,fixture.internalToken,'POST',`/accepted-production-financials/contractor-payables/${authorized.release_payable_id}/calculate-eligibility`,{});
+    const finalPayment={...completed,amount:250,reference:'SYNTHETIC-retained-final',idempotency_key:'p13-retained-final'};
+    await apiJson(request,fixture.internalToken,'POST','/payment-retainage-adjustments/external-payments',finalPayment);
+    const finalBalance=(await client.query('SELECT paid_amount FROM contractor_payables WHERE id=$1',[authorized.release_payable_id])).rows[0];
+    expect(Number(finalBalance.paid_amount)).toBe(350);
+    const overpayment=await request.post(apiUrl('/payment-retainage-adjustments/external-payments'),{headers:auth(fixture.internalToken),data:{...completed,amount:0.01,reference:'SYNTHETIC-overpayment',idempotency_key:'p13-retained-overpayment'}});
+    expect(overpayment.status()).toBe(400);
+
+
   });
 
   test("controlled adjustment preserves issued invoice and Partner payment view remains scoped and redacted", async ({ request }) => {
@@ -184,7 +209,7 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
   const retainagePayable = crypto.randomUUID();
   const retainageProduction=crypto.randomUUID(), retainageDecision=crypto.randomUUID(), retainageSettlement=crypto.randomUUID(), retainageSource=crypto.randomUUID();
   const permissions = [
-    "contractor_payable.calculate_eligibility", "partner_payment.execute", "partner_payment.submit", "partner_payment.confirm", "partner_payment.read", "retainage.release", "financial_adjustment.create",
+    "contractor_payable.calculate_eligibility", "partner_payment.execute", "partner_payment.submit", "partner_payment.confirm", "partner_payment.read", "retainage.release", "contract.update", "contractor_payable.read", "financial_adjustment.create",
     "financial_exception.read", "partner_context.read",
   ];
   await client.query("BEGIN");
@@ -236,6 +261,7 @@ async function seedP13Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("INSERT INTO settlement_items (tenant_id,settlement_id,accepted_production_source_id,production_record_id,partner_organization_id,capacity_provider_id,item_type,status,quantity,unit,unit_rate,gross_amount,amount,net_amount,contractor_payable_amount) VALUES ($1,$2,$6,$3,$4,$5,'contractor_payable','payable_ready',1900,'feet',0.70,1330,1330,1330,1330)",[tenantA,retainageSettlement,retainageProduction,partnerOrg,provider,retainageSource]);
     await client.query("INSERT INTO contractor_payables (id,tenant_id,payable_number,payable_type,payable_party_type,status,approval_status,payment_readiness_status,payment_status,capacity_provider_id,partner_organization_id,project_id,settlement_id,pay_cycle_start,pay_cycle_end,gross_payable_amount,retainage_amount,retained_balance_amount,deduction_amount,chargeback_amount,net_payable_amount,eligible_amount,ineligible_amount,pay_when_paid_status,payment_execution_status,compliance_status,tax_document_status) VALUES ($1,$2,'CP-P13-1','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$6,'2026-08-24','2026-08-30',98.70,0,0,0,0,98.70,98.70,0,'eligible','not_started','ready','ready'),($7,$2,'CP-P13-RET','subcontractor','capacity_provider','payment_ready','approved','ready_for_payment','not_paid',$3,$4,$5,$8,'2026-08-24','2026-08-30',1330,700,700,0,0,630,630,0,'eligible','not_started','ready','ready')", [payable, tenantA, provider, partnerOrg, project, settlement, retainagePayable, retainageSettlement]);
     await pinSyntheticPaymentProvenance(client,tenantA,internalUser,contract,partnerSchedule,partnerOrg);
+    await client.query("INSERT INTO contractor_payable_items(tenant_id,contractor_payable_id,settlement_id,settlement_item_id,accepted_production_source_id,production_record_id,capacity_provider_id,description,quantity,unit,contractor_rate,item_type,status,gross_payable_amount,retainage_amount,net_payable_amount) SELECT $1,$2,$3,id,$4,$5,$6,'SYNTHETIC retained work',1900,'feet',0.70,'subcontractor_production','ready',1330,700,630 FROM settlement_items WHERE tenant_id=$1 AND settlement_id=$3",[tenantA,retainagePayable,retainageSettlement,retainageSource,retainageProduction,provider]);
     // Payment tests use actual source-linked cleared funding and the real calculation path.
     await client.query("INSERT INTO contractor_payable_items(tenant_id,contractor_payable_id,settlement_id,settlement_item_id,accepted_production_source_id,production_record_id,item_type,status,net_payable_amount) SELECT $1,$2,$3,id,$4,$5,'subcontractor_production','ready',98.70 FROM settlement_items WHERE tenant_id=$1 AND settlement_id=$3",[tenantA,payable,settlement,source,production]);
     const receipt=(await client.query("INSERT INTO cash_receipts(tenant_id,receipt_number,customer_organization_id,payment_date,payment_method,gross_received_amount,applied_amount,receipt_status,clearance_status,cleared_at) VALUES($1,'SYNTHETIC-P13-FUNDING',$2,'2026-08-26','ach',132.54,132.54,'fully_applied','cleared','2026-08-26') RETURNING id",[tenantA,customerOrg])).rows[0];
@@ -326,10 +352,12 @@ test('competing pending retainage authorizations cannot exceed the remaining bal
   for(const bearer of [f.partnerToken,f.foremanToken,f.tenantBToken])expect((await request.get(apiUrl('/payment-retainage-adjustments/retainage-choices'),{headers:auth(bearer)})).status()).toBe(403);
   const releases=[];
   for(let i=0;i<2;i++)releases.push(await apiJson(request,f.internalToken,'POST','/payment-retainage-adjustments/retainage-releases',{contractor_payable_id:f.retainagePayableId,release_amount:500,release_reason:'Synthetic competing release',source_reference:'Synthetic closeout',idempotency_key:crypto.randomUUID()}));
+  for(const r of releases)await approveReleaseTerms(request,f.internalToken,r.id);
   const results=await Promise.all(releases.map(r=>request.post(apiUrl(`/payment-retainage-adjustments/retainage-releases/${r.id}/authorize`),{headers:auth(f.internalToken),data:{}})));
   expect(results.map(r=>r.status()).sort()).toEqual([201,400]);
   const balance=await client.query('SELECT retained_balance_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.retainagePayableId]);expect(Number(balance.rows[0].retained_balance_amount)).toBe(200);
   const remainder=await apiJson(request,f.internalToken,'POST','/payment-retainage-adjustments/retainage-releases',{contractor_payable_id:f.retainagePayableId,release_amount:200,release_reason:'Remaining balance',source_reference:'Synthetic final closeout',idempotency_key:crypto.randomUUID()});
+  await approveReleaseTerms(request,f.internalToken,remainder.id);
   await apiJson(request,f.internalToken,'POST',`/payment-retainage-adjustments/retainage-releases/${remainder.id}/authorize`,{});
   const after=await client.query('SELECT retained_balance_amount,retainage_amount FROM contractor_payables WHERE tenant_id=$1 AND id=$2',[f.tenantA,f.retainagePayableId]);expect(Number(after.rows[0].retained_balance_amount)).toBe(0);expect(Number(after.rows[0].retainage_amount)).toBe(700);
  } finally {await client.end();}
@@ -375,3 +403,5 @@ test('finance review UI retains unmatched observations without posting payments 
   expect((await request.get(apiUrl('/payment-retainage-adjustments/external-payment-observations'),{headers:auth(f.foremanToken)})).status()).toBe(403);
  }finally{await db.end();}
 });
+
+async function approveReleaseTerms(request:APIRequestContext,bearer:string,id:string){return apiJson(request,bearer,'POST',`/payment-retainage-adjustments/retainage-releases/${id}/terms`,{payment_trigger:'release_approval',payment_days:14,payment_day_basis:'calendar_days',time_zone:'America/New_York',verified:true,source_reference:'SYNTHETIC executed retained-fund clause'});}

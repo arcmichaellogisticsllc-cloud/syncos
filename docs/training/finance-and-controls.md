@@ -322,3 +322,16 @@ The system supports Monday–Friday business days with an explicitly approved ho
 3. Under **Approve a transaction mapping**, select the prepared account and partner payable. Enter the verified transaction/payee references, exact two-decimal USD amount and verification evidence. Confirm the verification checkbox, then click **Approve mapping**. The server checks accepted-work lineage and rejects conflicts. Review the saved **Approved transaction mappings**. This saves an immutable mapping; it does not post money or certify a live provider connection.
 4. Under **Review exceptions**, inspect the reference and reason, enter **Review findings**, then click **Record review**. This records an audit-backed finding; it does not post or reverse money.
 5. **Refresh jobs** shows persistent preparation work. No provider scheduler, verified webhook adapter or automatic financial posting is enabled. Real provider acceptance requires the approved sandbox.
+
+## Retained-fund releases — candidate added October 4, 2026
+
+These steps describe the local candidate. They do not authorize an actual payment or certify an executed agreement.
+
+1. Open **Payment Retainage Adjustments** with release permission. Under **Request retainage release**, select the original payable, enter the retained amount, reason, and closeout evidence reference, then submit.
+2. An authorized contract reviewer opens the same page and selects the request under **Approve retained-fund payment terms**. Choose the retained-fund trigger and day calculation from the executed agreement, enter the days and time zone, and cite the clause. For business days, supply the verified holiday calendar and its coverage date. For a trigger other than release approval, enter the completed event time with its UTC offset and evidence reference.
+3. Check the verification acknowledgment and select **Approve retained-fund terms**. Approval is recorded separately from authorization. Do not use ordinary invoice terms as a substitute for missing retained-fund terms.
+4. A release-authorized user selects the approved request under **Authorize pending retainage release**, acknowledges review, and submits. The server checks remaining retained funds and accepted-work provenance, then creates a separate payable and payment schedule. The original retained amount and history remain visible.
+5. After a payment has actually completed outside SyncOS, use **Record a completed payment**, selecting the separate release payable. Enter amount, completed date, method, reference, and proof, then acknowledge verification. This records the payment; it sends no money.
+6. Refresh and inspect the recorded payment before attempting another entry. The same submission may be retried after a lost response. Remaining installments must use their own actual payment references. A source hold, changed source, or excess amount blocks advancement and requires review.
+
+Local API checks cover partial and full payment, duplicate retry, source holds, competing release authorizations and overpayment rejection. Physical-device acceptance and deployment of these changes remain outstanding.

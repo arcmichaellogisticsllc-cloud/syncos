@@ -294,3 +294,52 @@ This is measured-coordinate entry, not a drag-to-trace PDF editor or surveyed/GP
 10. Select **Open created planning project**. The project starts in planning. Work orders, crew mobilization, production authorization, and financial records are separate workflows.
 
 The source coverage and opportunity are linked by the server. The UI does not require raw IDs. Saved states and errors appear in their forms; errors retain entered values. These instructions describe the local candidate, pending release and real-device verification.
+
+## Record constraints and relationship paths — local candidate
+
+1. Open the authorized contact, relationship map, opportunity, or candidate. Select **Create constraint** where available.
+2. Enter its category, severity, title and details; review whether it is a hard constraint, then save. The constraint is linked to the record you opened. A constraint does not substitute for a field safety shutdown.
+3. If a network error appears, keep the form contents and retry. The same request is protected against duplicate creation. Review success before starting a different constraint.
+4. On a contact, select **Add to Relationship Map**, select the existing map and the other contact, and enter the path name/context. Save the proposed path and follow its map link. This does not approve a commercial relationship or award work.
+
+## Recover access — local candidate, email activation required
+
+1. On **Sign in**, select the password-recovery link and enter your own account email.
+2. Submit once. The response is deliberately the same whether an account exists. Email recovery must be configured by the deployment owner before it can deliver a link.
+3. Open the latest recovery email within 15 minutes. Enter and confirm a new password, then submit. If the link expired or was already used, request another.
+4. Sign in again on each device. A successful reset invalidates prior sessions and outstanding recovery links. Users without active organization access cannot use recovery to restore that access.
+
+Delivery retries are bounded. If the email does not arrive, contact the administrator; repeatedly requesting links is rate-limited. These steps do not enable SSO or magic-link login.
+
+## Customer request queue — local candidate
+
+1. Open **Demand → Customer Inquiries** with the assigned inquiry permissions.
+2. Under **Record a customer request**, enter the customer, contact email, subject, request details and the source/permission reference. Confirm authorization and select **Record inquiry**.
+3. Open the inquiry in **Follow-up queue**. Check possible duplicate matches before creating downstream work.
+4. Select the follow-up owner and status. Link an already reviewed opportunity or project when appropriate; qualification requires one of these links. Enter the follow-up, acknowledgment evidence or closure note, then select **Save follow-up**. This records the communication; it sends no email.
+5. Use **Attach original** for PDF, JPEG, PNG or WebP originals, up to 5 MiB each and ten per inquiry. **View attachments** lists downloads. Retrying identical file contents does not create a duplicate attachment.
+6. If another reviewer changed the inquiry, refresh and reconcile the current version before submitting again. The original request remains preserved.
+
+This is authorized internal intake. Public website submission and automatic acknowledgment delivery are separate activation work.
+
+## Supplemental form templates — local candidate
+
+1. Open **Forms → Supplemental Forms**. Template management, submission and reading are separate permissions.
+2. Enter the form name and instructions. Select **Add field**, enter a label, choose the answer type and whether it is required. Choice fields need one choice per line.
+3. To show a field conditionally, choose an earlier choice or yes/no field under **When to show this field**, then its matching answer. Save the draft.
+4. Review the version's fields, acknowledge approval, and select **Publish version**. A published version cannot be changed. Use **Create revised version** for later changes.
+5. Under **Complete a published form**, choose the exact approved version, enter responses and submit. Hidden fields are not submitted; required visible fields must be answered.
+6. Open the response under **Submitted records** and select **Download record** to export its original schema and answers.
+
+Supplemental forms do not replace JSA, shutdown, QC, customer acceptance, contract or payment controls. Persisted offline answer drafts and broader field-assignment integration are not yet certified.
+
+## Material and reel reconciliation — local candidate
+
+1. Open **Materials → Material Inventory**. Register the material with its unique reel/lot identifier and fixed unit: feet or each.
+2. Register a warehouse or crew custody location. Choose the actual crew for crew locations; both Sync and partner crews can be represented.
+3. Record the initial **Receive from supplier** movement with quantity, destination and supplier/document reference.
+4. Use **Transfer or return** to move material between custody locations. A transfer cannot exceed the source balance.
+5. Record **Installed use** against the work order, or record scrap/unusable offcuts with supporting references. Reusable offcuts remain stock and should be transferred, not written off.
+6. Compare **Current stock** with the physical count and review **Work-order material reconciliation**. Physical material usage does not establish accepted production or billing quantities.
+7. Only an adjustment-authorized reviewer can use **Approve a count adjustment**. Enter the signed difference from the recorded balance, the count sheet reference and discrepancy explanation. A negative adjustment cannot create negative stock.
+8. Review the immutable movement history. Correct discrepancies with a documented new adjustment; do not replace past entries.

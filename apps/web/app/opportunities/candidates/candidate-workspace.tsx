@@ -1,4 +1,5 @@
 "use client";
+import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
 import { permittedRecordTabs } from "../../intelligence/api";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -579,7 +580,7 @@ function CandidateTab({ tab, candidate, data, scoreSummary, permissions, onAttac
       </div>
     );
   }
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(candidate, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this candidate." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(candidate, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this candidate." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="opportunity_candidate" objectId={candidate.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={relatedRecommendations(candidate, data)} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this candidate." />;
   if (tab === "timeline") return <ObjectSlice title="Candidate Timeline" rows={candidate.timeline} columns={["event_type", "actor_name", "timestamp", "object_type", "object_id", "summary"]} empty="Candidate timeline endpoint is not available yet." />;
   if (tab === "audit") return <ObjectSlice title="Candidate Audit" rows={candidate.audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} empty="Candidate audit summary is not available or you do not have permission." />;

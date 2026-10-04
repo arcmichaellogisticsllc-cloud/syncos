@@ -16,6 +16,7 @@ export type AuthTokenClaims = {
   email?: string;
   exp?: number;
   iat?: number;
+  auth_version?: number;
 };
 
 function base64UrlEncode(value: Buffer | string): string {

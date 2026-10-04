@@ -16,6 +16,7 @@ async function bootstrap() {
   app.use(/^\/partner-workforce\/me\/workers\/[^/]+\/credentials\/?$/, json({ limit: "7mb" }));
   app.use(/^\/partner-workforce\/me\/workers\/[^/]+\/headshots\/?$/, json({ limit: "3mb" }));
   app.use(/^\/invoice-packages\/invoices\/[^/]+\/documents\/?$/, json({ limit: "28mb" }));
+  app.use(/^\/customer-inquiries\/[^/]+\/files\/?$/, json({ limit: "7mb" }));
   // Nest detects a registered jsonParser by name, even when scoped. Keep the
   // ordinary JSON parser explicit after the bounded upload exceptions.
   app.use(json({ limit: "100kb" }));

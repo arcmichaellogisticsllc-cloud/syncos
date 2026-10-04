@@ -1,3 +1,4 @@
+import { calculateRetainedSchedule } from './retained-fund-schedule';
 import { lockScheduleInputs, scheduleFingerprint } from './payable-schedule-freshness';
 import { absoluteTime } from './prime-correction-deadlines';
 import { fundingInstallments, unpaidInstallments, extendedContractAmount, approvedCommercialTerms, rateFromTerms, invoiceCommercialTerms, invoiceTermsAmounts, contractualDueDate, allocateRetainage, partnerSettlementTerms } from './commercial-terms';
@@ -502,6 +503,7 @@ export class AcceptedProductionFinancialsController {
       await lockScheduleInputs(client,request.auth.tenantId);
       const payable = await this.requireRecord(client, "contractor_payables", request.auth.tenantId, id, "contractor payable not found");
       await requirePartnerPayableLineage(client,request.auth.tenantId,payable);
+      if(payable.payable_type==='retainage_release') { const after=await calculateRetainedSchedule(client,request.auth.tenantId,payable,request.auth.userId); return {entityType:'contractor_payable',entityId:id,beforeState:payable,afterState:this.safePayable(after)}; }
       const terms=await partnerSettlementTerms(client,request.auth.tenantId,String(payable.settlement_id));
       if(payable.commercial_terms_revision_id!==terms.id)throw new BadRequestException('Review historical payable terms before calculating eligibility');
       const milestone=terms.payment_trigger==='customer_payment'?null:(await client.query('SELECT occurred_at FROM partner_payment_trigger_events WHERE tenant_id=$1 AND contractor_payable_id=$2 AND trigger_type=$3',[request.auth.tenantId,id,terms.payment_trigger])).rows[0];
@@ -584,6 +586,7 @@ export class AcceptedProductionFinancialsController {
     const proof=requireString(body.proof_reference,'Partner invoice event proof is required');
     return this.write(request,'partner_contract.trigger_recorded','partner_contract.trigger_recorded','contractor_payable',async client=>{
       const payable=await this.requireRecord(client,'contractor_payables',request.auth.tenantId,id,'Payable not found');
+      if(payable.payable_type==='retainage_release') { const after=await calculateRetainedSchedule(client,request.auth.tenantId,payable,request.auth.userId); return {entityType:'contractor_payable',entityId:id,beforeState:payable,afterState:this.safePayable(after)}; }
       const terms=await partnerSettlementTerms(client,request.auth.tenantId,String(payable.settlement_id));
       if(terms.payment_trigger==='customer_payment')throw new BadRequestException('Customer-payment triggers come from cleared allocated receipts');
       const prior=(await client.query('SELECT * FROM partner_payment_trigger_events WHERE tenant_id=$1 AND contractor_payable_id=$2 AND trigger_type=$3',[request.auth.tenantId,id,terms.payment_trigger])).rows[0];

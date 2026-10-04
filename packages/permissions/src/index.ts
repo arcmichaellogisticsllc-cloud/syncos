@@ -1,4 +1,12 @@
 export type PermissionKey =
+  | "customer_inquiry.read"
+  | "customer_inquiry.manage"
+  | "inventory.read"
+  | "inventory.manage"
+  | "inventory.adjust"
+  | "form.read"
+  | "form.manage"
+  | "form.submit"
   | "territory.read"
   | "territory.create"
   | "territory.update"

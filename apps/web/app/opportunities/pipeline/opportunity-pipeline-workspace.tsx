@@ -1,4 +1,5 @@
 "use client";
+import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
 import { permittedRecordTabs } from "../../intelligence/api";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -606,7 +607,7 @@ function OpportunityTab({ tab, opportunity, scoreSummary, permissions, onCapacit
     );
   }
   if (tab === "capacity") return <ObjectSlice title="Capacity Requirements" rows={opportunity.capacityRequirements} columns={["capacity_type", "quantity", "unit", "territory_id", "start_date", "end_date", "status"]} empty="No capacity requirements are connected yet. Capacity is planning only in this sprint." action={hasPermission(permissions, "capacity_requirement.create") ? <button type="button" onClick={onCapacity}>Add Capacity Requirement</button> : undefined} />;
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={opportunity.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this opportunity." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={opportunity.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this opportunity." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="opportunity" objectId={opportunity.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={opportunity.recommendations} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this opportunity." />;
   if (tab === "timeline") return <ObjectSlice title="Timeline" rows={arrayRecords(opportunity._timeline) ?? []} columns={["event_type", "actor_name", "timestamp", "object_type", "object_id", "summary"]} empty="Opportunity timeline endpoint is not available yet." />;
   if (tab === "audit") return <ObjectSlice title="Audit" rows={arrayRecords(opportunity._audit) ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} empty="Opportunity audit summary is not available yet or you do not have permission." />;

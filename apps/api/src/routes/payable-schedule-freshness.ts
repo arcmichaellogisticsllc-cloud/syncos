@@ -17,6 +17,10 @@ export async function scheduleFingerprint(client:PoolClient,tenantId:string,paya
  ), lines AS (
  SELECT i.* FROM invoice_items i WHERE i.tenant_id=$1 AND i.accepted_production_source_id IN(SELECT id FROM sources)
  ) SELECT md5(jsonb_build_object(
+ 'retained_items',(SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id) FROM contractor_payable_items i WHERE i.tenant_id=$1 AND i.id IN(SELECT source_retainage_item_id FROM items)),
+ 'retained_release',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM retainage_releases r WHERE r.tenant_id=$1 AND r.release_payable_id=$2),
+ 'retained_terms',(SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM retained_fund_release_terms t JOIN retainage_releases r ON r.tenant_id=t.tenant_id AND r.id=t.retainage_release_id WHERE r.tenant_id=$1 AND r.release_payable_id=$2),
+ 'retained_source',(SELECT jsonb_agg(jsonb_build_array(p.id,p.status,p.hold_status,p.dispute_status,p.deleted_at,p.commercial_terms_revision_id)) FROM contractor_payables p JOIN retainage_releases r ON r.tenant_id=p.tenant_id AND r.contractor_payable_id=p.id WHERE r.tenant_id=$1 AND r.release_payable_id=$2),
  'payable',(SELECT jsonb_build_array(commercial_terms_revision_id,settlement_id,net_payable_amount) FROM contractor_payables WHERE tenant_id=$1 AND id=$2),
  'items',(SELECT jsonb_agg(to_jsonb(i)-ARRAY['funded_customer_amount','eligible_partner_amount','updated_at','updated_by'] ORDER BY id) FROM items i),
  'sources',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM sources s),

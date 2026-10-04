@@ -1,0 +1,36 @@
+TAP version 13
+# {"timestamp":"2026-10-04T19:08:03.170Z","category":"Event","message":"event_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","eventId":"1ac7ad3f-4a9f-4225-a469-9a5c87a80bae","eventType":"form.version_created","aggregateType":"supplemental_form","aggregateId":"1c144dfc-6a24-4854-89a3-2a7a027a500f"}
+# {"timestamp":"2026-10-04T19:08:03.176Z","category":"Audit","message":"audit_log_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","action":"form.version_created","entityType":"supplemental_form_version","entityId":"1c144dfc-6a24-4854-89a3-2a7a027a500f"}
+# {"timestamp":"2026-10-04T19:08:03.197Z","category":"Event","message":"event_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","eventId":"d7970d94-ea27-441a-8e16-ba2ce289d08f","eventType":"form.published","aggregateType":"supplemental_form","aggregateId":"1c144dfc-6a24-4854-89a3-2a7a027a500f"}
+# {"timestamp":"2026-10-04T19:08:03.200Z","category":"Audit","message":"audit_log_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","action":"form.published","entityType":"supplemental_form_version","entityId":"1c144dfc-6a24-4854-89a3-2a7a027a500f"}
+# {"timestamp":"2026-10-04T19:08:03.208Z","category":"Event","message":"event_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","eventId":"ab9cefa3-acc8-4495-bcc1-0f58c2629c2c","eventType":"form.submitted","aggregateType":"supplemental_form","aggregateId":"3b6f3142-d0f9-40c0-9339-4c07fb6d92a8"}
+# {"timestamp":"2026-10-04T19:08:03.209Z","category":"Audit","message":"audit_log_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","action":"form.submitted","entityType":"supplemental_form_record","entityId":"3b6f3142-d0f9-40c0-9339-4c07fb6d92a8"}
+# {"timestamp":"2026-10-04T19:08:03.217Z","category":"Event","message":"event_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","eventId":"d4aedff1-9cfe-4892-9fa4-80b2d4942b27","eventType":"form.version_created","aggregateType":"supplemental_form","aggregateId":"afb2f3d8-be21-480e-8e66-8c05373b1a25"}
+# {"timestamp":"2026-10-04T19:08:03.218Z","category":"Audit","message":"audit_log_created","tenantId":"cbbe426b-10e8-4006-96fc-1d4fffc5659a","actorUserId":"eeb8dced-13d4-4679-8a29-088e44c370cb","action":"form.version_created","entityType":"supplemental_form_version","entityId":"afb2f3d8-be21-480e-8e66-8c05373b1a25"}
+# Subtest: form publication preserves versions, tenant boundaries, immutable responses and one audit per retry
+ok 1 - form publication preserves versions, tenant boundaries, immutable responses and one audit per retry
+  ---
+  duration_ms: 105.098492
+  type: 'test'
+  ...
+# Subtest: shared forms enforce conditional required fields and reject hidden or unknown values
+ok 2 - shared forms enforce conditional required fields and reject hidden or unknown values
+  ---
+  duration_ms: 3.75094
+  type: 'test'
+  ...
+# Subtest: shared forms reject invalid dates, types, conditions and duplicate keys
+ok 3 - shared forms reject invalid dates, types, conditions and duplicate keys
+  ---
+  duration_ms: 2.282083
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 663.36134

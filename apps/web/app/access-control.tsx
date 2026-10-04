@@ -19,6 +19,9 @@ const resources: Record<string, string> = {
   "/opportunities/candidates": "opportunity_candidate", "/opportunities/coverage": "coverage_plan", "/opportunities": "opportunity",
 };
 const pages: Record<string, string[]> = {
+  "/customer-inquiries": ["customer_inquiry.read"],
+  "/material-inventory": ["inventory.read"],
+  "/forms": ["form.read"],
   "/project-handoffs": ["project_handoff.read"],
   "/customer-qc": ["daily_production.completeness_read"],
   "/passport": ["partner_payment.confirm"],
@@ -30,11 +33,11 @@ const pages: Record<string, string[]> = {
   "/opportunities/capacity-matching": ["opportunity_coverage.read"], "/opportunities/pipeline": ["opportunity.read"],
   "/field-setup": ["syncfield_map.create"], "/internal-workforce": ["crew.read"],
   "/accepted-production-financials": ["billing.read"], "/production-dashboard": ["production_dashboard.read"],
-  "/payment-retainage-adjustments": ["partner_payment.execute", "retainage.release", "financial_adjustment.create"], "/constraints-center": ["dashboard.constraints.read"],
+  "/payment-retainage-adjustments": ["partner_payment.execute", "retainage.release", "financial_adjustment.create", "contract.update"], "/constraints-center": ["dashboard.constraints.read"],
   "/recommendations-center": ["dashboard.recommendations.read"], "/kpis-center": ["dashboard.kpis.read"], "/workflows-center": ["dashboard.workflows.read"],
   "/intelligence": ["signal.read", "organization.read"],
 };
-function publicRoute(path: string) { return path === "/login" || path === "/activate-employee" || path.startsWith("/partner/invite/"); }
+function publicRoute(path: string) { return path === "/login" || path === "/forgot-password" || path === "/reset-password" || path === "/activate-employee" || path.startsWith("/partner/invite/"); }
 export function routeAllowed(path: string, context: AuthContext | null): boolean {
   const route = path.split(/[?#]/)[0];
   if (publicRoute(route)) return true;

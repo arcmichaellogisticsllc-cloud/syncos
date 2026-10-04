@@ -77,6 +77,7 @@ export default function LoginPage() {
             <button className="primary-button login-submit" type="submit" disabled={loading}>{loading ? "Signing In..." : "Sign In"}</button>
           </div>
           </form>
+          <p><Link href="/forgot-password">Forgot your password?</Link></p>
           <div className="new-partner-cta">
             <span>New Partner?</span>
             <Link className="operator-link login-secondary" href="https://synccommsystems.com/partner.html">Become a Sync Partner</Link>

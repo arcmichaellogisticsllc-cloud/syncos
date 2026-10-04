@@ -3917,3 +3917,16 @@ th {
   .operator-form-grid input, .operator-form-grid select, .operator-form-grid textarea,
   .stacked-form input, .stacked-form select, .stacked-form textarea { font-size: 16px; }
 }
+
+/* Supplemental workspaces use the existing palette with touch-sized, wrapping forms. */
+.completion-workspace form { margin: 16px 0; }
+.completion-workspace fieldset { display: grid; gap: 12px; min-width: 0; max-width: 100%; border: 1px solid var(--border); padding: 16px; }
+.completion-workspace label { display: grid; gap: 6px; min-width: 0; }
+.completion-workspace label:has(input[type="checkbox"]) { display: flex; align-items: center; min-height: 44px; }
+.completion-workspace input:not([type="checkbox"]), .completion-workspace select, .completion-workspace textarea { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; min-height: 44px; }
+.completion-workspace button { min-height: 44px; margin: 4px; }
+.completion-workspace summary { min-height: 44px; padding: 12px 0; cursor: pointer; overflow-wrap: anywhere; }
+.completion-workspace details { border-bottom: 1px solid var(--border); }
+.completion-workspace article { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.completion-workspace p, .completion-workspace dd { overflow-wrap: anywhere; }
+@media(max-width:600px) { .completion-workspace input,.completion-workspace select,.completion-workspace textarea { font-size:16px; } }

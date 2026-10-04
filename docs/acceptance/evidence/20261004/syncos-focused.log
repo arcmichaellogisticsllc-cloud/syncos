@@ -1,0 +1,44 @@
+TAP version 13
+# Subtest: recovery protects tokens, resets once and revokes all old sessions
+ok 1 - recovery protects tokens, resets once and revokes all old sessions
+  ---
+  duration_ms: 394.475675
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-04T18:38:02.954Z","category":"Event","message":"event_created","tenantId":"e838876b-b8e3-4265-9af2-1a1dce7ccc68","actorUserId":"b166e1d9-95ba-48d5-801d-22f562365dd3","eventId":"ecb374ef-948e-426e-a505-1d2656bb2676","eventType":"constraint.created","aggregateType":"constraint","aggregateId":"36e2d56c-7e5e-4861-9dd8-5c99db996657"}
+# {"timestamp":"2026-10-04T18:38:02.960Z","category":"Audit","message":"audit_log_created","tenantId":"e838876b-b8e3-4265-9af2-1a1dce7ccc68","actorUserId":"b166e1d9-95ba-48d5-801d-22f562365dd3","action":"constraint.create","entityType":"constraint","entityId":"36e2d56c-7e5e-4861-9dd8-5c99db996657"}
+# {"timestamp":"2026-10-04T18:38:03.036Z","category":"Event","message":"event_created","tenantId":"e838876b-b8e3-4265-9af2-1a1dce7ccc68","actorUserId":"b166e1d9-95ba-48d5-801d-22f562365dd3","eventId":"fadd54af-5a64-491a-b55d-89429f94645b","eventType":"relationship_path.created","aggregateType":"relationship_path","aggregateId":"a7b4ace9-92c6-4bfb-971e-58f5a138c578"}
+# {"timestamp":"2026-10-04T18:38:03.039Z","category":"Audit","message":"audit_log_created","tenantId":"e838876b-b8e3-4265-9af2-1a1dce7ccc68","actorUserId":"b166e1d9-95ba-48d5-801d-22f562365dd3","action":"relationship_path.create","entityType":"relationship_path","entityId":"a7b4ace9-92c6-4bfb-971e-58f5a138c578"}
+# Subtest: record actions preserve tenant boundaries, audit once and reject changed retry payloads
+ok 2 - record actions preserve tenant boundaries, audit once and reject changed retry payloads
+  ---
+  duration_ms: 260.617386
+  type: 'test'
+  ...
+# Subtest: retained-fund terms never assume the regular payable clock
+ok 3 - retained-fund terms never assume the regular payable clock
+  ---
+  duration_ms: 60.045182
+  type: 'test'
+  ...
+# Subtest: nonapproval retained-fund triggers require a completed, timezone-qualified event and proof
+ok 4 - nonapproval retained-fund triggers require a completed, timezone-qualified event and proof
+  ---
+  duration_ms: 15.038989
+  type: 'test'
+  ...
+# Subtest: partial retained releases conserve exact cents and cannot reuse previous releases
+ok 5 - partial retained releases conserve exact cents and cannot reuse previous releases
+  ---
+  duration_ms: 3.274093
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1703.129056

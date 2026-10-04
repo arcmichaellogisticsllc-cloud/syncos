@@ -1,4 +1,5 @@
 "use client";
+import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
 import { permittedRecordTabs } from "../api";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -473,12 +474,12 @@ function RelationshipTab({ tab, map, data, permissions, onRank, onEditPath }: { 
     );
   }
   if (tab === "paths") return <PathList map={map} data={data} permissions={permissions} onRank={onRank} onEditPath={onEditPath} />;
-  if (tab === "gaps") return <GapList gaps={map.gaps} permissions={permissions} />;
+  if (tab === "gaps") return <GapList gaps={map.gaps} permissions={permissions} map={map} />;
   if (tab === "organization") return <ObjectSlice title="Target Organization" rows={map.targetOrganization ? [map.targetOrganization] : []} columns={["name", "organization_type", "actor_roles", "status", "territory_name", "relationship_owner_name", "strategic_flag", "influence_score", "work_relevance_score", "capacity_relevance_score", "payment_relevance_score"]} empty="No target organization is attached. Attach a target organization before building paths." />;
   if (tab === "contact") return <ObjectSlice title="Target Contact" rows={map.targetContact ? [map.targetContact] : []} columns={["full_name", "title", "organization_name", "contact_role", "verification_status", "email", "phone", "mobile", "influence_score", "decision_authority_score", "relationship_strength_score", "last_contacted_at", "last_verified_at"]} empty="No target contact identified. Add or research the person who controls, influences, validates, or pays for the work." />;
   if (tab === "candidate") return <ObjectSlice title="Related Candidate" rows={map.candidate ? [map.candidate] : []} columns={["name", "status", "confidence_score", "estimated_value", "work_type", "owner_name"]} empty="No candidate or opportunity is linked to this relationship map." />;
   if (tab === "opportunity") return <ObjectSlice title="Related Opportunity" rows={map.opportunity ? [map.opportunity] : []} columns={["name", "status", "estimated_value", "pursuit_score", "capacity_coverage", "relationship_access_score", "owner_name", "decision_date"]} empty="No opportunity is linked to this relationship map." />;
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(map, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this relationship map." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(map, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this relationship map." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="relationship_map" objectId={map.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={relatedRecommendations(map, data)} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this relationship map." />;
   if (tab === "workflow") return <ObjectSlice title="Workflow Tasks" rows={data.workflowTasks.filter((task) => task.source_object_type === "relationship_map" && task.source_object_id === map.id)} columns={["task_name", "title", "assigned_to", "due_at", "status"]} empty="Workflow task linkage for relationship maps is not available yet." />;
   if (tab === "timeline") return <ObjectSlice title="Timeline" rows={data.timelineByMap[map.id] ?? []} columns={["event_type", "actor_name", "timestamp", "summary"]} empty="No relationship timeline entries are available yet." />;
@@ -905,7 +906,7 @@ function relatedRecommendations(map: MapView, data: RelationshipData) {
   );
 }
 
-function GapList({ gaps, permissions }: { gaps: RelationshipGap[]; permissions: string[] }) {
+function GapList({ gaps, permissions, map }: { gaps: RelationshipGap[]; permissions: string[]; map:MapView }) {
   if (!gaps.length) return <div className="empty-state">No deterministic relationship gaps are visible from the current backend data.</div>;
   return (
     <div className="workspace-panel">
@@ -914,7 +915,7 @@ function GapList({ gaps, permissions }: { gaps: RelationshipGap[]; permissions: 
           <strong>{formatAction(gap.type)}</strong>
           <span>{formatAction(gap.severity)} severity</span>
           <p>{gap.suggestedAction}</p>
-          {hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : null}
+          {hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="relationship_map" objectId={map.id}/> : null}
         </div>
       ))}
     </div>

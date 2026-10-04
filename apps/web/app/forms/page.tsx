@@ -1,0 +1,54 @@
+"use client";
+import {useEffect,useRef,useState,type FormEvent} from 'react';
+import {validateFormTemplate,validateFormAnswers,visibleFormFields,type FormSchema,type FormField} from '@syncos/shared/form-schema';
+import {CommandShell,Panel} from '../dashboard-components';
+import {useCapability} from '../access-control';
+import {syncosFetch} from '../intelligence/api';
+type Version={id:string;family_id:string;version:number;status:string;schema:FormSchema};
+type RecordRow={id:string;version_id:string;schema_snapshot:FormSchema;answers:Record<string,unknown>;created_at:string};
+const empty:FormSchema={name:'',description:'',fields:[]};
+export default function FormsPage(){
+ const manage=useCapability('form.manage'),submit=useCapability('form.submit');
+ const [versions,setVersions]=useState<Version[]>([]),[records,setRecords]=useState<RecordRow[]>([]),[schema,setSchema]=useState<FormSchema>(empty),[family,setFamily]=useState('');
+ const [selected,setSelected]=useState(''),[answers,setAnswers]=useState<Record<string,unknown>>({}),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[loaded,setLoaded]=useState(false);
+ const errorRef=useRef<HTMLDivElement>(null),gate=useRef(false),request=useRef('');
+ const active=versions.find(v=>v.id===selected);
+ async function load(){const [v,r]=await Promise.all([syncosFetch<Version[]>('supplemental-forms'),syncosFetch<RecordRow[]>('supplemental-forms/records')]);setVersions(v);setRecords(r);setLoaded(true);}
+ useEffect(()=>{load().catch(e=>setError(e.message));},[]);
+ useEffect(()=>{if(error)errorRef.current?.focus();},[error]);
+ async function action(fn:()=>Promise<unknown>,success:string){if(gate.current)return;gate.current=true;setBusy(true);setError('');setMessage('');try{await fn();request.current='';setMessage(success);await load();}catch(e){setError((e as Error).message+' Your entries are preserved.');}finally{gate.current=false;setBusy(false);}}
+ const key=()=>request.current||(request.current=crypto.randomUUID());
+ function updateField(i:number,patch:Partial<FormField>){request.current='';setSchema(s=>({...s,fields:s.fields.map((f,n)=>n===i?{...f,...patch}:f)}));}
+ function save(e:FormEvent){e.preventDefault();void action(async()=>{await syncosFetch('supplemental-forms/versions',{method:'POST',body:{schema:validateFormTemplate(schema),family_id:family||undefined,request_key:key()}});},'Draft version saved. Review it before publication.');}
+ function record(e:FormEvent){e.preventDefault();if(!active)return;void action(async()=>{await syncosFetch('supplemental-forms/records',{method:'POST',body:{version_id:active.id,answers:validateFormAnswers(active.schema,answers),request_key:key()}});setAnswers({});},'Form submitted. Its approved version and answers are preserved.');}
+ function answer(k:string,value:unknown){request.current='';setAnswers(old=>{const next={...old,[k]:value};if(!active)return next;const visible=new Set(visibleFormFields(active.schema,next).map(f=>f.key));return Object.fromEntries(Object.entries(next).filter(([key])=>visible.has(key)));});}
+ function exportRecord(row:RecordRow){const blob=new Blob([JSON.stringify(row,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`syncos-form-${row.id}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ return <div className="completion-workspace"><CommandShell title="Supplemental forms" purpose="Create approved forms and preserve the version used for every response. These records do not replace safety, QC, customer acceptance or financial approvals.">
+  {error&&<div role="alert" tabIndex={-1} ref={errorRef}><p>{error}</p><button onClick={()=>void action(load,'Records refreshed.')} disabled={busy}>Retry loading records</button></div>}{message&&<p role="status">{message}</p>}{!loaded&&!error&&<p role="status">Loading forms…</p>}
+  {manage&&<Panel title="Create a form version"><form onSubmit={save} onChange={()=>{request.current='';}}><fieldset disabled={busy} style={{border:0,minWidth:0}}>
+   {family&&<p>Saving a revision of an existing form. Published versions stay unchanged. <button type="button" onClick={()=>{setFamily('');setSchema(empty);}}>Start a separate form</button></p>}
+   <label>Form name<input required maxLength={160} value={schema.name} onChange={e=>setSchema({...schema,name:e.target.value})}/></label>
+   <label>Instructions<textarea maxLength={2000} value={schema.description} onChange={e=>setSchema({...schema,description:e.target.value})}/></label>
+   {schema.fields.map((f,i)=><fieldset key={i}><legend>Field {i+1}</legend><label>Label<input required value={f.label} maxLength={160} onChange={e=>updateField(i,{label:e.target.value})}/></label>
+    <label>Answer type<select value={f.type} onChange={e=>updateField(i,{type:e.target.value as FormField['type'],options:e.target.value==='select'?['']:undefined})}>{[['text','Short text'],['textarea','Long text'],['number','Number'],['date','Date'],['checkbox','Yes or no'],['select','Choose one']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+    <label><input type="checkbox" checked={f.required} onChange={e=>updateField(i,{required:e.target.checked})}/> Required answer</label>
+    {f.type==='select'&&<label>Choices, one per line<textarea required value={(f.options??[]).join('\n')} onChange={e=>updateField(i,{options:e.target.value.split('\n')})}/></label>}
+    <label>When to show this field<select value={f.showWhen?.key??''} onChange={e=>{const p=schema.fields.find(p=>p.key===e.target.value);updateField(i,{showWhen:p?{key:p.key,equals:p.type==='checkbox'?true:p.options?.[0]??''}:undefined});}}><option value="">Always</option>{schema.fields.slice(0,i).filter(p=>['select','checkbox'].includes(p.type)).map(p=><option key={p.key} value={p.key}>When {p.label||'earlier field'} matches</option>)}</select></label>
+    {f.showWhen&&<label>Matching answer<select value={String(f.showWhen.equals)} onChange={e=>{const p=schema.fields.find(p=>p.key===f.showWhen!.key);updateField(i,{showWhen:{key:f.showWhen!.key,equals:p?.type==='checkbox'?e.target.value==='true':e.target.value}});}}>{(schema.fields.find(p=>p.key===f.showWhen!.key)?.type==='checkbox'?['true','false']:schema.fields.find(p=>p.key===f.showWhen!.key)?.options??[]).map(v=><option key={v} value={v}>{v==='true'?'Yes':v==='false'?'No':v}</option>)}</select></label>}
+    <button type="button" onClick={()=>setSchema({...schema,fields:schema.fields.filter((_,n)=>n!==i).map(p=>p.showWhen?.key===f.key?{...p,showWhen:undefined}:p)})}>Remove field {i+1}</button>
+   </fieldset>)}
+   <button type="button" disabled={schema.fields.length>=50} onClick={()=>setSchema({...schema,fields:[...schema.fields,{key:'f_'+crypto.randomUUID().replaceAll('-',''),label:'',type:'text',required:false}]})}>Add field</button>
+   <button type="submit" disabled={!schema.fields.length}>{busy?'Saving…':'Save draft version'}</button>
+  </fieldset></form></Panel>}
+  <Panel title="Form versions"><p>Most recent 200 versions. Review the fields before publishing. Existing responses keep their original version.</p>{versions.map(v=><article key={v.id}><h3>{v.schema.name} — version {v.version} ({v.status})</h3><p>{v.schema.description}</p><ul>{v.schema.fields.map(f=><li key={f.key}>{f.label} · {f.type}{f.required?' · required':''}{f.showWhen?' · conditional':''}</li>)}</ul>
+   {manage&&<button disabled={busy} onClick={()=>{request.current='';setFamily(v.family_id);setSchema(v.schema);setMessage('Version loaded into the editor. Save changes as a new draft.');}}>Create revised version</button>}
+   {manage&&v.status==='draft'&&<form onSubmit={e=>{e.preventDefault();void action(()=>syncosFetch(`supplemental-forms/versions/${v.id}/publish`,{method:'POST',body:{approved:true}}),'Version published.');}}><label><input type="checkbox" required disabled={busy}/> I reviewed and approve these fields as supplemental information.</label><button disabled={busy}>Publish version {v.version}</button></form>}
+  </article>)}</Panel>
+  {submit&&<Panel title="Complete a published form"><label>Form version<select disabled={busy} value={selected} onChange={e=>{request.current='';setSelected(e.target.value);setAnswers({});}}><option value="">Select a published version</option>{versions.filter(v=>v.status==='published').map(v=><option key={v.id} value={v.id}>{v.schema.name} — version {v.version}</option>)}</select></label>
+   {active&&<form onSubmit={record}><fieldset disabled={busy} style={{border:0,minWidth:0}}><legend>{active.schema.name}</legend><p>{active.schema.description}</p>{visibleFormFields(active.schema,answers).map(f=><label key={f.key}>{f.label}{f.required?' (required)':''}
+    {f.type==='select'||f.type==='checkbox'?<select required={f.required} value={String(answers[f.key]??'')} onChange={e=>answer(f.key,e.target.value===''?'':f.type==='checkbox'?e.target.value==='true':e.target.value)}><option value="">Choose an answer</option>{(f.type==='checkbox'?['true','false']:f.options??[]).map(v=><option key={v} value={v}>{f.type==='checkbox'?(v==='true'?'Yes':'No'):v}</option>)}</select>:f.type==='textarea'?<textarea required={f.required} maxLength={4000} value={String(answers[f.key]??'')} onChange={e=>answer(f.key,e.target.value)}/>:<input required={f.required} type={f.type} step={f.type==='number'?'any':undefined} maxLength={1000} value={String(answers[f.key]??'')} onChange={e=>answer(f.key,f.type==='number'&&e.target.value!==''?Number(e.target.value):e.target.value)}/>}
+   </label>)}<button>{busy?'Submitting…':'Submit form'}</button></fieldset></form>}
+  </Panel>}
+  <Panel title="Submitted records"><p>Most recent 200 records. Downloads contain the saved form version and answers.</p>{records.map(r=><details key={r.id}><summary>{r.schema_snapshot.name} — {new Date(r.created_at).toLocaleString()}</summary><dl>{r.schema_snapshot.fields.filter(f=>r.answers[f.key]!==undefined).map(f=><div key={f.key}><dt>{f.label}</dt><dd>{typeof r.answers[f.key]==='boolean'?(r.answers[f.key]?'Yes':'No'):String(r.answers[f.key])}</dd></div>)}</dl><button onClick={()=>exportRecord(r)}>Download record</button></details>)}</Panel>
+ </CommandShell></div>;
+}

@@ -22,9 +22,9 @@ export class AuthenticatedGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { auth?: unknown }>();
     const claims = this.getClaims(request);
 
-    const membership = await this.pool.query<{ user_id: string; tenant_id: string; email: string }>(
+    const membership = await this.pool.query<{ user_id: string; tenant_id: string; email: string; auth_version:number }>(
       `
-      SELECT u.id AS user_id, tu.tenant_id, u.email
+      SELECT u.id AS user_id, tu.tenant_id, u.email, u.auth_version
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
@@ -45,6 +45,7 @@ export class AuthenticatedGuard implements CanActivate {
       throw new UnauthorizedException("Authenticated user is not active in tenant");
     }
 
+    if((claims.auth_version??0)!==membership.rows[0].auth_version)throw new UnauthorizedException('Session expired. Sign in again.');
     request.auth = {
       tenantId: membership.rows[0].tenant_id,
       userId: membership.rows[0].user_id,
@@ -76,7 +77,7 @@ export class AuthenticatedGuard implements CanActivate {
       const tenantId = request.header("x-tenant-id");
       const userId = request.header("x-user-id");
       if (tenantId && userId) {
-        return { sub: userId, tenant_id: tenantId };
+        return { sub: userId, tenant_id: tenantId, auth_version:0 };
       }
     }
 
