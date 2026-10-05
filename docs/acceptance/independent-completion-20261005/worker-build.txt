@@ -9,4 +9,3 @@
 
 > @syncos/shared@0.1.0 build
 > tsc
-

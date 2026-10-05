@@ -828,7 +828,7 @@ Running 712 tests using 1 worker
   ✓  712 [chromium] › tests/e2e/workflows/revenue-cycle.spec.ts:12:7 › Critical skeleton: Revenue cycle › opens Cedar Ridge revenue records (3.2s)
 
 
-  1) [chromium] › tests/e2e/internal-workforce.spec.ts:10:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries 
+  1) [chromium] › tests/e2e/internal-workforce.spec.ts:10:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries
 
     Error: locator.selectOption: Error: strict mode violation: getByLabel('Work assignment') resolved to 2 elements:
         1) <input value="" maxlength="200"/> aka getByRole('textbox', { name: 'Find work assignments' })
@@ -857,7 +857,7 @@ Running 712 tests using 1 worker
 
     Error Context: test-results/internal-workforce-Sync-ma-c8d46-iness-and-access-boundaries-chromium/error-context.md
 
-  2) [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:95:7 › P11 accepted production exports, dashboard, and operational closeout › annotated and daily PDFs preserve original map file and include coordinate/report proof 
+  2) [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:95:7 › P11 accepted production exports, dashboard, and operational closeout › annotated and daily PDFs preserve original map file and include coordinate/report proof
 
     Error: expect(received).toContain(expected) // indexOf
 
@@ -922,7 +922,7 @@ Running 712 tests using 1 worker
     Error Context: test-results/syncfield-production-expor-6414f-ude-coordinate-report-proof-chromium/error-context.md
 
   2 failed
-    [chromium] › tests/e2e/internal-workforce.spec.ts:10:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries 
-    [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:95:7 › P11 accepted production exports, dashboard, and operational closeout › annotated and daily PDFs preserve original map file and include coordinate/report proof 
+    [chromium] › tests/e2e/internal-workforce.spec.ts:10:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries
+    [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:95:7 › P11 accepted production exports, dashboard, and operational closeout › annotated and daily PDFs preserve original map file and include coordinate/report proof
   1 did not run
   709 passed (16.2m)

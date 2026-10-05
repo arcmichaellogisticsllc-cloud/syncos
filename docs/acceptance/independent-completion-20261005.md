@@ -17,7 +17,7 @@ This report covers the eight independently executable areas in the user's approv
 
 ## Evidence and limits
 
-Raw results, including original failures and their superseding passing reruns, and candidate source hashes are collected in `independent-completion-20261005/`. Earlier interrupted runs are diagnostic history, not certification. All identified failures have passing whole-workflow reruns. This was not one uninterrupted green run: the original main run had 709 passes, two failures and one serial test not run; the supplemental run had 139 passes, four fixture failures and three serial tests not run. The final 18-test rerun passed every repaired workflow, including the previously blocked tests and a new production error-message assertion. Original logs remain available.
+Raw results, including original failures and their superseding passing reruns, and candidate source hashes are collected in `independent-completion-20261005/`. Earlier interrupted runs are diagnostic history, not certification. All identified failures have passing whole-workflow reruns. This was not one uninterrupted green run: the original main run had 709 passes, two failures and one serial test not run; the supplemental run had 139 passes, four fixture failures and three serial tests not run. The final 18-test rerun passed every repaired workflow, including the previously blocked tests and a new production error-message assertion. Original failure details remain available. Repository log copies normalize trailing whitespace and terminal line endings; test outcomes and assertions are unchanged.
 
 | Verification | Final disposition |
 | --- | --- |

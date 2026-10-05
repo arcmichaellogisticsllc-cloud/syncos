@@ -159,7 +159,7 @@ Running 146 tests using 1 worker
   ✓  146 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:71:5 › finance staff without approval authority cannot see invoice submission or approval (934ms)
 
 
-  1) [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review 
+  1) [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review
 
     Error: QC capability fixtures require a disposable local test database
 
@@ -174,7 +174,7 @@ Running 146 tests using 1 worker
 
     Error Context: test-results/qc-create-capabilities-QC--cc9d0-ithout-approving-the-review-chromium/error-context.md
 
-  2) [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment 
+  2) [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment
 
     Error: Scope tests require an explicitly disposable local test database
 
@@ -191,7 +191,7 @@ Running 146 tests using 1 worker
 
     Error Context: test-results/scope-financial-handoffs-S-88237-nce-backed-external-payment-chromium/error-context.md
 
-  3) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden 
+  3) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden
 
     Error: Scope tests require an explicitly disposable local test database
 
@@ -210,7 +210,7 @@ Running 146 tests using 1 worker
 
     Error Context: test-results/scope-production-roles-ops-088d6--and-money-remain-forbidden-chromium/error-context.md
 
-  4) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden 
+  4) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden
 
     Error: Scope tests require an explicitly disposable local test database
 
@@ -230,9 +230,9 @@ Running 146 tests using 1 worker
     Error Context: test-results/scope-production-roles-fie-9d517--and-money-remain-forbidden-chromium/error-context.md
 
   4 failed
-    [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review 
-    [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment 
-    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden 
-    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden 
+    [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review
+    [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment
+    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden
+    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden
   3 did not run
   139 passed (3.5m)
