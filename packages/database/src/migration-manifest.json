@@ -95,5 +95,6 @@
   "094_material_inventory.sql",
   "095_customer_service_inquiries.sql",
   "096_product_workspace_admin_grants.sql",
-  "097_resumable_field_evidence.sql"
+  "097_resumable_field_evidence.sql",
+  "098_resumable_evidence_original_limit.sql"
 ]

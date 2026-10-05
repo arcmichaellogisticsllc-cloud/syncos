@@ -1,0 +1,98 @@
+
+> syncos@0.1.0 e2e:certification
+> playwright test tests/e2e/internal-workforce.spec.ts tests/e2e/partner-admin-invitations.spec.ts tests/e2e/production-readiness.spec.ts tests/e2e/executive-command-throughput.spec.ts tests/e2e/opportunity-capacity-matching.spec.ts tests/e2e/partner-performance-capacity.spec.ts tests/e2e/payment-retainage-adjustments.spec.ts tests/e2e/accepted-production-financials.spec.ts tests/e2e/syncfield-production-exports-dashboard.spec.ts tests/e2e/syncfield-customer-qc.spec.ts tests/e2e/syncfield-daily-production.spec.ts tests/e2e/syncfield-map-jsa.spec.ts tests/e2e/partner-portal-shell.spec.ts tests/e2e/partner-mobilization-readiness.spec.ts tests/e2e/partner-agreements-work-orders-vehicles.spec.ts tests/e2e/partner-workforce-credentials.spec.ts tests/e2e/partner-compliance-onboarding.spec.ts tests/e2e/route-matrix.spec.ts tests/e2e/workflows tests/e2e/lifecycle tests/e2e/personas tests/e2e/detail-hydration tests/e2e/boundaries tests/e2e/timeline-audit tests/e2e/action-states
+
+
+Running 706 tests using 1 worker
+
+(node:28501) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    1 [chromium] › tests/e2e/accepted-production-financials.spec.ts:39:7 › P12 accepted production financials › production item choices stay tenant-scoped and exclude unauthorized partners (48ms)
+  ✓    2 [chromium] › tests/e2e/accepted-production-financials.spec.ts:50:7 › P12 accepted production financials › Customer-accepted production converts to one Billable using Customer rate only (133ms)
+  ✓    3 [chromium] › tests/e2e/accepted-production-financials.spec.ts:66:7 › P12 accepted production financials › Invoice, cash, payment application, and invoice balance stay in Customer revenue chain (93ms)
+  ✓    4 [chromium] › tests/e2e/accepted-production-financials.spec.ts:90:7 › P12 accepted production financials › Partner settlement, Contractor Payable, and pay-when-paid eligibility use Partner rate (248ms)
+  ✓    5 [chromium] › tests/e2e/accepted-production-financials.spec.ts:120:7 › P12 accepted production financials › Partner Admin sees own settlement without Customer rate or margin; Foreman and Partner B are denied (21ms)
+  ✓    6 [chromium] › tests/e2e/accepted-production-financials.spec.ts:131:7 › P12 accepted production financials › Customer and Partner coil commercial policies are independent and preserve base accepted quantity (105ms)
+  ✓    7 [chromium] › tests/e2e/accepted-production-financials.spec.ts:176:7 › P12 accepted production financials › Editing a schedule cannot change an already approved partner rate (57ms)
+  ✓    8 [chromium] › tests/e2e/accepted-production-financials.spec.ts:186:7 › P12 accepted production financials › Post-billing Customer QC change creates exception without rewriting issued invoice or Billable (44ms)
+  ✓    9 [chromium] › tests/e2e/accepted-production-financials.spec.ts:347:5 › a newer pending customer QC cycle blocks readiness using an older accepted decision (320ms)
+  ✓   10 [chromium] › tests/e2e/accepted-production-financials.spec.ts:384:6 › Financial handoff completion safeguards › workflow choices are tenant-scoped; cash retry and duplicate settlement cannot double financial facts (302ms)
+  ✓   11 [chromium] › tests/e2e/accepted-production-financials.spec.ts:404:6 › Financial handoff completion safeguards › accepted correction production code controls locked customer rate, preserving original record (183ms)
+  ✓   12 [chromium] › tests/e2e/accepted-production-financials.spec.ts:422:5 › targeted reinspection retains unrelated accepted production while unresolved corrected work stays blocked (320ms)
+  ✓   13 [chromium] › tests/e2e/accepted-production-financials.spec.ts:464:5 › four-decimal approved rates survive conversion and invoice storage without early rounding (266ms)
+  ✓   14 [chromium] › tests/e2e/accepted-production-financials.spec.ts:482:5 › agreement UI approves a reviewed business calendar and shows its history (31.4s)
+  ✘   15 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodDraft: cancel does not mutate forbidden tables (1.3m)
+(node:28637) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   16 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodSubmitted: cancel does not mutate forbidden tables (36.0s)
+  ✓   17 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodUnderReview: cancel does not mutate forbidden tables (41.5s)
+  ✓   18 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodCorrectionRequested: cancel does not mutate forbidden tables (22.0s)
+  ✓   19 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodApprovedNotMarked: cancel does not mutate forbidden tables (19.5s)
+  ✓   20 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodVoid: cancel does not mutate forbidden tables (52.6s)
+  ✘   21 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcPending: cancel does not mutate forbidden tables (1.4m)
+
+
+  1) [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodDraft: cancel does not mutate forbidden tables
+
+    Tearing down "context" exceeded the test timeout of 45000ms.
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/action-states-action-state-6a4da-not-mutate-forbidden-tables-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/action-states-action-state-6a4da-not-mutate-forbidden-tables-chromium/error-context.md
+
+  2) [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcPending: cancel does not mutate forbidden tables
+
+    Test timeout of 45000ms exceeded.
+
+    Error: browserContext.close: Test timeout of 45000ms exceeded.
+    Browser logs:
+
+    <launching> /Users/User/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-x64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/playwright_chromiumdev_profile-W5LETv --remote-debugging-pipe --no-startup-window
+    <launched> pid=28655
+    [pid=28655][err] [1004/194008.078266:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194008.121049:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194008.475674:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194009.842588:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194011.312322:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194018.393512:INFO:CONSOLE:0] "The resource http://127.0.0.1:3448/_next/static/css/059ddb4a4b02087b.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source: http://127.0.0.1:3448/production/2249f098-1223-5911-8968-c6b0b4290c53 (0)
+    [pid=28655][err] [1004/194043.943214:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194047.861721:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194048.714750:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194053.848939:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194058.648402:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194106.934702:INFO:CONSOLE:0] "The resource http://127.0.0.1:3448/_next/static/css/059ddb4a4b02087b.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source: http://127.0.0.1:3448/production/6873a325-37e0-5ca5-9a9c-627d7eece889 (0)
+    [pid=28655][err] [1004/194125.844494:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194128.649077:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194128.868367:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194130.074099:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194131.457667:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194138.915860:INFO:CONSOLE:0] "The resource http://127.0.0.1:3448/_next/static/css/059ddb4a4b02087b.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source: http://127.0.0.1:3448/production/776c1310-cf3a-564d-b06c-08de04518388 (0)
+    [pid=28655][err] [1004/194150.096568:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194154.610522:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194155.250374:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194157.875044:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194159.434213:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194205.935334:INFO:CONSOLE:0] "The resource http://127.0.0.1:3448/_next/static/css/059ddb4a4b02087b.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source: http://127.0.0.1:3448/production/b2efe567-a41a-513a-9f4c-47ea98f76eec (0)
+    [pid=28655][err] [1004/194208.988585:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194210.103571:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194210.502621:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194216.726464:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194222.064672:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194233.004551:INFO:CONSOLE:0] "The resource http://127.0.0.1:3448/_next/static/css/059ddb4a4b02087b.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source: http://127.0.0.1:3448/production/215c5afa-6517-5e66-a017-ae12f96d17a7 (0)
+    [pid=28655][err] [1004/194301.601399:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194302.326091:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194302.482602:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194303.635317:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194305.088258:ERROR:ui/display/mac/cv_display_link_mac.mm:195] CVDisplayLinkCreateWithCGDisplay failed. CVReturn: -6670
+    [pid=28655][err] [1004/194359.544422:INFO:CONSOLE:0] "The resource http://127.0.0.1:3448/_next/static/css/059ddb4a4b02087b.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.", source: http://127.0.0.1:3448/qc/0fad321d-e168-5bd5-9df3-7b0c6cdd3b97 (0)
+    [pid=28655] <gracefully close start>
+
+    Error Context: test-results/action-states-action-state-4506d-not-mutate-forbidden-tables-chromium/error-context.md
+
+  2 failed
+    [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodDraft: cancel does not mutate forbidden tables
+    [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcPending: cancel does not mutate forbidden tables
+  685 did not run
+  19 passed (7.2m)

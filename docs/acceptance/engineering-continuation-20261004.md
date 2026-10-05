@@ -1,6 +1,6 @@
-# Engineering continuation — local candidate, October 4, 2026
+# Engineering continuation — local candidate, October 4–5, 2026
 
-This continuation is not full completion of the eighteen-area backlog and is not deployed. Database mutations target only localhost `syncos_remaining_test` and the newly created, isolated `syncos_certification_20261004_continuation`. The latter was migrated and seeded solely for certification; staging and existing operational/demo records are preserved. Migration 097 adds temporary upload storage and history indexes. No external email or payment is sent.
+This continuation is not full completion of the eighteen-area backlog and is not deployed. Database mutations target isolated localhost databases: `syncos_remaining_test`, `syncos_certification_20261004_continuation`, `syncos_migration_test_20261004_097` `syncos_restore_test_20261004_097` and `syncos_migration_test_20261005_098`. New databases were created solely for certification, fresh-install verification and recovery; staging and existing operational/demo records are preserved. Migration 097 adds temporary upload storage and history indexes; migration 098 widens the final evidence-original constraint to 100 MiB without altering existing records. No external email or payment is sent.
 
 ## Implemented locally
 
@@ -15,13 +15,14 @@ This continuation is not full completion of the eighteen-area backlog and is not
 ## Verification
 
 - API, worker and production web builds passed. API was rebuilt after adding bounded finalization.
-- Final regression run: **250 passed, zero failed, two database-gated tests skipped**. Both skipped demo-preservation tests were then run with the correct isolated database variables: **2 passed**. The earlier 250-test run also passed; it predates the two new safeguard tests.
-- Final focused UI suite: **7 passed**, covering restricted controls, form creation/submission, retry preservation, phone-sized inventory layout, draft reload/version/user separation, and offline shell isolation/logout.
+- Final post-098 regression run with every database variable supplied: **252 passed, zero failed, zero skipped**. Earlier evidence also records the separate 250-pass run and two preservation checks.
+- Final focused UI suite with controlled API responses: **7 passed**, covering restricted controls, form creation/submission, retry preservation, phone-sized inventory layout, draft reload/version/user separation, and offline shell isolation/logout.
 - Final integrated field suite: **17 passed** against the current local API and production web build. This includes lost-response photo recovery, resumed multipart originals, incident recovery, offline replay, revoked authorization, work shutdown, immutable submitted reports, partner isolation, evidence-readability gates and quantity reconciliation.
 - An earlier integrated upload test caught the default JSON parser rejecting chunks. A route-specific 2 MiB parser fixed the transport without widening ordinary API request limits.
 - The first full 706-test certification attempt was interrupted: **19 passed, 2 failed, 685 did not run**. It encountered browser teardown/display errors. This attempt is retained as failed/incomplete evidence, not certification.
-- A fresh full certification run against the current candidate is in progress. Its final result must be recorded before any release claim.
-- Fresh empty-database installation passed all 97 migrations. A local synthetic database dump/restore preserved 12 upload sessions, 5 chunks with identical content fingerprint, 6 evidence originals and 448 audit entries. This is database recovery evidence, not a coordinated file/server or offsite recovery claim.
+- Fresh full existing-application certification against application commit `e93ff6e`: **706 passed, zero failed**, completed October 5 UTC. This supersedes the interrupted attempt for that local checkpoint. It preceded migration 098; the focused maximum-size and regression suites were rerun after that follow-up. It does not prove unimplemented features or physical/deployed acceptance. Counts from the focused and full suites overlap and must not be summed.
+- A follow-up 100 MiB synthetic-original browser test exposed the older 20 MiB final-storage constraint. Migration 098 corrects it. The five-test setup/recovery sequence then passed with `SYNCOS_E2E_UPLOAD_BYTES=104857600`: lost response, reload, received-part reuse, one stored original and matching checksum. Playwright required a disk-backed fixture because its in-memory file injection is capped at 50 MiB. This is desktop transport acceptance, not camera-format/readability or physical-phone certification.
+- Fresh empty-database installation passed all **98 migrations**. Local startup health returned HTTP 200 after the change. A local synthetic database dump/restore preserved 12 upload sessions, 5 chunks with identical content fingerprint, 6 evidence originals and 448 audit entries. That restored database was then upgraded to 098 with identical session/chunk/original/audit counts and chunk fingerprint. This is database recovery evidence, not a coordinated file/server or offsite recovery claim. A future rollback must preserve larger originals; do not simply reinstate the 20 MiB constraint or delete evidence to fit it.
 - Evidence is saved in `docs/acceptance/evidence-20261004-continuation/`. No physical-phone, independent offsite recovery or staging activation result is asserted.
 
 ## Items not closed by this continuation

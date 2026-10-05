@@ -1,0 +1,12 @@
+
+Running 5 tests using 1 worker
+
+(node:35420) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/e2e/syncfield-daily-production.spec.ts:61:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › production gate, Work Order codes, and field UI hydrate without rates (2.1s)
+  ✓  2 tests/e2e/syncfield-daily-production.spec.ts:95:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › changed safety conditions preserve the signed revision and block production until renewed review (336ms)
+  ✓  3 tests/e2e/syncfield-daily-production.spec.ts:111:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › partner crew independently acknowledges, obtains pre-bore approval and completes ordered utility-strike restart (1.7s)
+  ✓  4 tests/e2e/syncfield-daily-production.spec.ts:115:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › evidence survives lost responses, reload and offline capture without duplicate uploads (5.5s)
+  ✓  5 tests/e2e/syncfield-daily-production.spec.ts:151:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › large evidence resumes received chunks after reload and stores one original (47.3s)
+
+  5 passed (1.0m)

@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "restored_database_upgrade": 98,
+  "preserved": {
+    "sessions": "12",
+    "chunks": "5",
+    "chunk_fingerprint": "91dc535fbccc8dfc701abcaf77f96cd6",
+    "originals": "6",
+    "audits": "448"
+  }
+}

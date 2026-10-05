@@ -2,6 +2,7 @@ import {reviewFixtureQuantity} from "./helpers/quantity-review";
 import { verifySafetyLifecycle } from "./helpers/safety-lifecycle";
 import { acknowledgeFixtureJsa, reviewFixtureSafetyScope, safetyActor } from "./helpers/individual-safety";
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
 
@@ -147,11 +148,12 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   });
 
-  test("large evidence resumes received chunks after reload and stores one original",async({page})=>{
+  test("large evidence resumes received chunks after reload and stores one original",async({page},testInfo)=>{
+    const uploadBytes=Number(process.env.SYNCOS_E2E_UPLOAD_BYTES??(2*1048576+17));expect(Number.isSafeInteger(uploadBytes)&&uploadBytes>1048576&&uploadBytes<=100*1048576).toBeTruthy();if(uploadBytes>2*1048576+17)test.setTimeout(180000);
     await installSession(page,seeded.foremanToken,seeded.foremanPermissions);await page.goto('/syncfield/production/review');
-    const panel=page.getByRole('region',{name:'Photos and evidence'}),picture=Buffer.alloc(2*1048576+17,0);picture.set([255,216,255]);let dropped=false;const indices:number[]=[];
+    const panel=page.getByRole('region',{name:'Photos and evidence'}),picture=Buffer.alloc(uploadBytes,0);picture.set([255,216,255]);let dropped=false;const indices:number[]=[];
     await page.route('**/syncfield/foreman/evidence-uploads/*/chunks',async route=>{const body=route.request().postDataJSON();indices.push(body.index);if(body.index===1&&!dropped){dropped=true;const result=await route.fetch();expect(result.ok()).toBeTruthy();await route.abort('failed');}else await route.continue();});
-    await panel.getByLabel('Evidence file').setInputFiles({name:'resumable-original.jpg',mimeType:'image/jpeg',buffer:picture});await panel.getByLabel('What does this evidence show?').fill('Synthetic resumable original');await panel.getByRole('button',{name:'Upload evidence',exact:true}).click();await expect(panel.getByRole('alert')).toBeVisible();await page.reload();await expect(panel.getByText(/Waiting for confirmation: resumable-original/)).toBeVisible();await panel.getByRole('button',{name:'Retry upload'}).click();await expect(panel.getByText('Evidence saved on the server.',{exact:true})).toBeVisible();expect(indices).toEqual([0,1,2]);const rows=(await client.query("SELECT checksum,octet_length(content_bytes) size FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND file_name='resumable-original.jpg'",[seeded.tenantA,reportId])).rows;expect(rows).toHaveLength(1);expect(rows[0].checksum).toBe(crypto.createHash('sha256').update(picture).digest('hex'));expect(rows[0].size).toBe(picture.length);
+    const filePath=testInfo.outputPath('resumable-original.jpg');await fs.mkdir(testInfo.outputPath(),{recursive:true});await fs.writeFile(filePath,picture);await panel.getByLabel('Evidence file').setInputFiles(filePath);await panel.getByLabel('What does this evidence show?').fill('Synthetic resumable original');await panel.getByRole('button',{name:'Upload evidence',exact:true}).click();await expect(panel.getByRole('alert')).toBeVisible();await page.reload();await expect(panel.getByText(/Waiting for confirmation: resumable-original/)).toBeVisible();await panel.getByRole('button',{name:'Retry upload'}).click();await expect(panel.getByText('Evidence saved on the server.',{exact:true})).toBeVisible({timeout:uploadBytes>2*1048576+17?120000:15000});expect(indices).toEqual(Array.from({length:Math.ceil(uploadBytes/1048576)},(_,i)=>i));const rows=(await client.query("SELECT checksum,octet_length(content_bytes) size FROM syncfield_field_evidence WHERE tenant_id=$1 AND daily_report_id=$2 AND file_name='resumable-original.jpg'",[seeded.tenantA,reportId])).rows;expect(rows).toHaveLength(1);expect(rows[0].checksum).toBe(crypto.createHash('sha256').update(picture).digest('hex'));expect(rows[0].size).toBe(picture.length);await fs.unlink(filePath);
   });
 
   test("incident device draft survives disconnect and lost response without duplicate records or audit",async({page,context})=>{
