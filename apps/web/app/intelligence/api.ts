@@ -20,6 +20,7 @@ export type AuthContext = {
   roles: string[];
   role_names?: string[];
   permissions: string[];
+  tenant_permissions?: string[];
   partner_context?: {
     persona?: "partner_admin" | "partner_foreman";
     organization_id?: string;
@@ -317,7 +318,7 @@ export function clearAuthContext() {
   window.localStorage.removeItem(permissionKey);
   for (const key of partnerSensitiveStorageKeys) window.localStorage.removeItem(key);
   if ("indexedDB" in window) {
-    for (const database of ["syncos-field-production", "syncos-field-evidence", "syncos-field-incidents", "syncos-form-drafts"]) {
+    for (const database of ["syncos-field-production", "syncos-field-evidence", "syncos-field-incidents", "syncos-form-drafts", "syncos-field-materials"]) {
       const request = window.indexedDB.deleteDatabase(database);
       request.onerror = () => undefined;
       request.onblocked = () => undefined;

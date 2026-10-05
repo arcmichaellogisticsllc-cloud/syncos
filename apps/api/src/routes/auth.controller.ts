@@ -136,13 +136,13 @@ export class AuthController {
       SELECT
         r.name AS role_name,
         r.system_key AS role_key,
-        p.key AS permission_key
+        p.key AS permission_key, ur.scope_type
       FROM tenant_users tu
       JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id
       JOIN roles r ON r.id = ur.role_id AND r.tenant_id = tu.tenant_id
       JOIN role_permissions rp ON rp.role_id = r.id AND rp.tenant_id = tu.tenant_id
       JOIN permissions p ON p.id = rp.permission_id
-      WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active'
+      WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active' AND tu.deleted_at IS NULL AND r.deleted_at IS NULL
       ORDER BY r.name, p.key
       `,
       [tenantId, userId],
@@ -211,7 +211,8 @@ export class AuthController {
 
     const roles = Array.from(new Set(result.rows.map((row) => row.role_key || row.role_name)));
     const roleNames = Array.from(new Set(result.rows.map((row) => row.role_name)));
-    const permissions = Array.from(new Set(result.rows.map((row) => row.permission_key)));
+    const tenantPermissions = Array.from(new Set(result.rows.filter(row => row.scope_type === 'tenant').map(row => row.permission_key)));
+    const permissions = Array.from(new Set(result.rows.filter(row => !/^(form|inventory|customer_inquiry)\./.test(row.permission_key) || row.scope_type === 'tenant').map((row) => row.permission_key)));
     const partnerRow = partner.rows[0];
     const linkedWorker = await this.pool.query(`SELECT 1 FROM partner_worker_user_links l
       JOIN tenant_users tu ON tu.tenant_id=l.tenant_id AND tu.id=l.tenant_user_id AND tu.status='active' AND tu.deleted_at IS NULL
@@ -225,6 +226,7 @@ export class AuthController {
       role_names: roleNames,
       is_linked_worker: linkedWorker.rows.length > 0,
       permissions,
+      tenant_permissions: tenantPermissions,
       partner_context: partnerRow ? {
         persona: partnerRow.role_key,
         organization_id: partnerRow.organization_id,

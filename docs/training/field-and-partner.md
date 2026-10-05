@@ -284,3 +284,35 @@ These instructions apply after the candidate containing migration 097 is activat
 5. If work is stopped or your assignment was removed, contact the supervisor. Retrying does not override these controls. Expired temporary sessions restart from the saved original without authorizing new work.
 6. After an online SyncField visit prepares offline recovery, reopening a SyncField route without connectivity shows **SyncField connection recovery**. It displays last-verified assignment labels and supported pending device work for at most one hour, tied to the same session. This screen cannot authorize work, edit maps, or submit records.
 7. Choose **Reconnect and verify access** once connected. Review/retry pending work in its normal workspace. Logging out clears device context and drafts; preserve originals first.
+
+## Assigned supplemental forms and offline answers
+
+1. Sign in as the assigned Sync or partner foreman. Open **Assigned forms** from SyncField navigation.
+2. Choose the work assignment, then the published form version. Only versions assigned by an authorized operator appear.
+3. Enter answers and select **Save answers on this device** before leaving. A confirmed device save is not a server submission. Drafts expire after seven days and logout removes them.
+4. If disconnected after closing the page, reopen SyncField. While the same account's one-hour offline context remains valid, expand **Edit saved form**, revise answers and select **Save edited answers on this device**.
+5. Reconnect, open **Assigned forms**, select the same assignment/version and review restored answers. Select **Submit reviewed answers**.
+6. If a work stop, removed assignment or expired authorization blocks submission, retain the draft and contact the responsible operator. Do not recreate approvals or choose another crew to bypass the restriction.
+7. This offline capability covers saved supplemental forms. Full cold-start production entry and map availability are still separate unfinished capabilities.
+
+## Crew material use
+
+1. Open **Crew materials** and choose your current work assignment.
+2. Review lot/reel identifiers and the balance in your crew's custody.
+3. Select the material and classify use as **Installed**, **Scrap** or **Offcut**. Enter quantity, work date, source reference and reason.
+4. Select **Record material use**. Work/safety authorization and available stock are checked on the server. Retry unchanged entries after an uncertain connection response.
+5. Receipts, transfers and approved count adjustments remain inventory-operator actions. Material use is not accepted production and does not create billable quantities or partner earnings.
+
+## Recover and correct saved offline work
+
+1. While connected, open SyncField with your assigned account. The device keeps an expiring, same-session assignment snapshot.
+2. If the app is reopened without connectivity, **SyncField connection recovery** lists saved work. It cannot verify current safety clearance. Contact the supervisor before continuing work.
+3. Open **Saved production** to edit a production draft that has never been attempted. Correct its quantity, location labels or notes, then click **Save production edits on this device**. Wait for the saved confirmation before closing the screen.
+4. An attempted request is locked against offline edits because the server may already have recorded it. Preserve its reference, reconnect and reconcile it rather than create a replacement.
+5. Click **Reconnect and verify access**, then return to Production. Pending and interrupted in-flight entries retry using their original identities. After the automatic retry budget is exhausted, inspect the failure and use **Retry Sync**. Conflicts remain for review. Server authorization, assignment, JSA and work-stop checks still apply.
+6. For supplemental forms, use **Edit saved form** in recovery, save, reconnect, choose the same assignment/version, review and submit. Device-saved answers are not accepted work. Unsaved-answer warnings appear before switching assignment or form.
+7. In **Assigned forms**, inspect your submitted forms and use **Older submitted forms**. In **Crew materials**, use **Older material use** or **Latest material use**. These views stay within the current assignment, crew and authorized account.
+
+The recovery screen does not provide a cached map viewer or create a new daily report from a cold offline start. Actual-phone background suspension and storage-loss acceptance remain separate from browser tests.
+
+If **Record material use** loses its response, the original request is saved before transmission. Reopen **Crew materials**, choose the same assignment and select **Retry saved material use**. The same reference is reused so stock is deducted once. Do not enter a replacement while confirmation is pending. A confirmed validation rejection offers **Correct rejected entries**. Existing recorded movements can be reconciled during a stop; new movements remain blocked. Logout clears local pending requests, so preserve the reference first.

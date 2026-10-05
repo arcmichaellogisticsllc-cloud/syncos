@@ -30,7 +30,7 @@ test('Sync management provisions a real internal crew through field production w
             expect(identity.roles).not.toContain('system_admin');
             return bearer;
         }
-        const management = await actor('operations_manager', ['crew.read','crew.create','worker.create','work_order.assign','work_order.start','syncfield_map.create','syncfield_map.version.upload','syncfield_map.assignment.manage']);
+        const management = await actor('operations_manager', ['form.manage','form.read','inventory.manage','inventory.read','crew.read','crew.create','worker.create','work_order.assign','work_order.start','syncfield_map.create','syncfield_map.version.upload','syncfield_map.assignment.manage']);
         const customerQc = await actor('qc_manager', ['customer_qc.completeness_review','customer_qc.decision_record']);
         const finance = await actor('billing_manager', ['billing.create_billable','billing.create_invoice','contract.read','contract.update','invoice.read','invoice.update','invoice.mark_sent','invoice.approve']);
         const collections = await actor('finance_manager', ['cash_receipt.record','payment_application.create']);
@@ -114,11 +114,30 @@ test('Sync management provisions a real internal crew through field production w
         const code = codes.find((r: any) => r.code === 'LABOR');
         const record = await api(request, employee, 'syncfield/foreman/production/records', { work_date: date, client_mutation_id: crypto.randomUUID(), production_code_id: code.id, location_type: 'daily', reported_quantity: 8, status: 'complete', notes: 'Synthetic employee work' });
         expect(record.id).toBeTruthy();
+        const fieldAssignment=await api(request,employee,'syncfield/foreman/map-assignment');
+        const form=await api(request,management,'supplemental-forms/versions',{request_key:crypto.randomUUID(),schema:{name:'Internal crew notes',fields:[{key:'note',label:'Note',type:'text',required:true}]}});
+        await api(request,management,`supplemental-forms/versions/${form.id}/publish`,{approved:true});
+        await api(request,management,'supplemental-forms/assignments',{version_id:form.id,assignment_id:fieldAssignment.id,active:true});
+        const answer={assignment_id:fieldAssignment.id,version_id:form.id,request_key:crypto.randomUUID(),answers:{note:'Synthetic Sync observation'}};
+        const formResponse=await api(request,employee,'syncfield/foreman/supplemental-forms',answer);
+        expect((await api(request,employee,'syncfield/foreman/supplemental-forms',answer)).id).toBe(formResponse.id);
+        const lot=await api(request,management,'material-inventory/lots',{label:'Synthetic fiber',serial_number:crypto.randomUUID(),unit:'feet'});
+        const location=await api(request,management,'material-inventory/locations',{label:'Synthetic crew custody '+crypto.randomUUID(),crew_id:crew.id});
+        await api(request,management,'material-inventory/movements',{lot_id:lot.id,to_location_id:location.id,kind:'receipt',quantity:'100',reference:'SYNTHETIC RECEIPT',reason:'Acceptance fixture',request_key:crypto.randomUUID()});
+        const materials=await api(request,employee,`syncfield/foreman/materials?assignment_id=${fieldAssignment.id}`);expect(materials.balances.find((x:any)=>x.lot_id===lot.id).balance).toBe('100.0000');
+        const materialUse={assignment_id:fieldAssignment.id,lot_id:lot.id,from_location_id:location.id,work_order_id:wo,work_date:date,kind:'installed',quantity:'10',reference:'SYNTHETIC INSTALL',reason:'Acceptance fixture',request_key:crypto.randomUUID()};
+        const usage=await api(request,employee,'syncfield/foreman/materials',materialUse);expect((await api(request,employee,'syncfield/foreman/materials',materialUse)).id).toBe(usage.id);
+        expect((await api(request,employee,`syncfield/foreman/materials?assignment_id=${fieldAssignment.id}`)).balances.find((x:any)=>x.lot_id===lot.id).balance).toBe('90.0000');
+
         // Scoped shutdown fixture: queued/new work must be rechecked by the server.
         await db.query("UPDATE production_records SET stop_work_status='active' WHERE tenant_id=$1 AND id=$2",[t,record.id]);
         const queuedBody = {work_date:date,client_mutation_id:crypto.randomUUID(),production_code_id:code.id,location_type:'daily',reported_quantity:1,status:'complete'};
         const stopped = await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/production/records`,{headers:{authorization:`Bearer ${employee}`},data:queuedBody});
         expect(stopped.status()).toBe(400);expect(await stopped.text()).toContain('crew_work_order_stopped');
+        expect((await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/supplemental-forms`,{headers:{authorization:`Bearer ${employee}`},data:{...answer,request_key:crypto.randomUUID()}})).status()).toBe(400);
+        expect((await request.post(`${process.env.API_BASE_URL}/syncfield/foreman/materials`,{headers:{authorization:`Bearer ${employee}`},data:{...materialUse,request_key:crypto.randomUUID()}})).status()).toBe(400);
+
+        expect((await api(request,employee,'syncfield/foreman/materials',materialUse)).id).toBe(usage.id); // Existing movement is reconciled during a stop; no second deduction.
         await db.query("UPDATE production_records SET stop_work_status='released' WHERE tenant_id=$1 AND id=$2",[t,record.id]);
         const photo=Buffer.alloc(3500000);photo.set([255,216,255]);
         const evidenceBody={daily_report_id:record.daily_report_id,production_record_id:record.id,file_name:'synthetic-photo.jpg',mime_type:'image/jpeg',description:'Synthetic crossing evidence',content_base64:photo.toString('base64'),client_mutation_id:crypto.randomUUID()};

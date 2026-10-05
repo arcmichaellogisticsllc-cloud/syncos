@@ -96,5 +96,9 @@
   "095_customer_service_inquiries.sql",
   "096_product_workspace_admin_grants.sql",
   "097_resumable_field_evidence.sql",
-  "098_resumable_evidence_original_limit.sql"
+  "098_resumable_evidence_original_limit.sql",
+  "099_public_intake_follow_up.sql",
+  "100_field_form_assignments.sql",
+  "101_workflow_notifications.sql",
+  "102_record_history_indexes.sql"
 ]

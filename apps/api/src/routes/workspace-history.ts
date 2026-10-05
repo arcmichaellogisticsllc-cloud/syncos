@@ -2,6 +2,7 @@ import {BadRequestException} from '@nestjs/common';
 import type {Pool} from 'pg';
 export type HistoryQuery={before?:string;q?:string};
 const resources={
+ notifications:{table:'inquiry_follow_up_notifications',search:"concat_ws(' ',kind,status,last_error)",select:"i.*, (SELECT subject FROM customer_service_inquiries c WHERE c.tenant_id=i.tenant_id AND c.id=i.inquiry_id) AS subject, (SELECT display_name FROM users u WHERE u.id=i.recipient_user_id) AS recipient_name"},
  forms:{table:'supplemental_form_versions',search:"schema->>'name'",select:'*'},
  records:{table:'supplemental_form_records',search:"schema_snapshot->>'name'",select:'*'},
  movements:{table:'material_movements',search:"concat_ws(' ',kind,reference,reason)",select:'*'},

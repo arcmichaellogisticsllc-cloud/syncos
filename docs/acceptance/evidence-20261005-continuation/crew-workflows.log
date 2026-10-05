@@ -1,0 +1,31 @@
+
+Running 24 tests using 1 worker
+
+(node:54824) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/internal-workforce.spec.ts:10:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries (27.5s)
+  ✓   2 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:61:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › production gate, Work Order codes, and field UI hydrate without rates (3.1s)
+  ✓   3 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:95:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › changed safety conditions preserve the signed revision and block production until renewed review (409ms)
+  ✓   4 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:111:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › partner crew independently acknowledges, obtains pre-bore approval and completes ordered utility-strike restart (2.1s)
+  ✓   5 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:115:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › evidence survives lost responses, reload and offline capture without duplicate uploads (7.7s)
+  ✓   6 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:151:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › large evidence resumes received chunks after reload and stores one original (18.0s)
+  ✓   7 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:159:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › incident device draft survives disconnect and lost response without duplicate records or audit (7.7s)
+  ✓   8 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:184:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once (6.3s)
+  ✓   9 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:225:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › offline replay revalidates lost production-start authorization and keeps failed work traceable (4.1s)
+  ✓  10 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:249:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Asset, Route, and Daily production create authoritative records with subordinate annotations and idempotency (1.3s)
+  ✓  11 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:291:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › a crew work shutdown blocks new records and requires authorized release (788ms)
+  ✓  12 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:319:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency (5.3s)
+  ✓  13 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:597:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submission creates immutable revision snapshot and blocks ordinary edits without QC or finance (5.8s)
+  ✓  14 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:669:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submitted-report offline conflict does not reopen the report or create production (6.0s)
+  ✓  15 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:684:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner-local queue isolation hides pending field work after account switch (7.3s)
+  ✓  16 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:697:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner Admin receives safe read-only report and duplicate submitted work requires traceability (3.3s)
+  ✓  17 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:721:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › required evidence blocks missing and unreadable handoffs, preserves originals and pins approved requirements (7.1s)
+  ✓  18 [chromium] › tests/e2e/syncfield-daily-production.spec.ts:784:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › quantity reconciliation excludes rock subsets and overlapping summaries and protects stable work identities (1.1s)
+  ✓  19 [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:46:7 › P8 SyncField map foundation and Daily JSA › internal Manager creates immutable private Map Version, Work Zones, and active assignment (336ms)
+  ✓  20 [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:127:7 › P8 SyncField map foundation and Daily JSA › assigned forms preserve retries and stop revoked or cross-company access (378ms)
+  ✓  21 [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:151:7 › P8 SyncField map foundation and Daily JSA › Partner Foreman opens read-only field map and cannot cross scope or see storage internals (3.1s)
+  ✓  22 [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:194:7 › P8 SyncField map foundation and Daily JSA › Crew participation buttons identify the worker and announce the saved state (2.0s)
+  ✓  23 [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:206:7 › P8 SyncField map foundation and Daily JSA › Foreman completes one Daily JSA for own Crew without changing mobilization or downstream records (2.9s)
+  ✓  24 [chromium] › tests/e2e/syncfield-map-jsa.spec.ts:244:7 › P8 SyncField map foundation and Daily JSA › Partner Admin sees safe JSA history and P9-era field navigation remains QC-safe (2.7s)
+
+  24 passed (2.4m)

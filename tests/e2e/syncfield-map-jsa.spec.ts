@@ -124,6 +124,30 @@ test.describe.serial("P8 SyncField map foundation and Daily JSA", () => {
     expect(assignments).toEqual(expect.arrayContaining([expect.objectContaining({ id: current.id, map: expect.objectContaining({ version_id: version.id }) })]));
   });
 
+  test("assigned forms preserve retries and stop revoked or cross-company access", async ({request}) => {
+    const foreman=JSON.parse(Buffer.from(seeded.foremanToken.split('.')[1], 'base64url').toString()).sub;
+    await client.query(`INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT ur.tenant_id,ur.role_id,p.id FROM user_roles ur JOIN tenant_users tu ON tu.id=ur.tenant_user_id CROSS JOIN permissions p WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND p.key IN ('partner_daily_production.read','partner_production_record.create') ON CONFLICT DO NOTHING`,[seeded.tenantA,foreman]);
+    const internal = JSON.parse(Buffer.from(seeded.internalToken.split('.')[1], 'base64url').toString()).sub;
+    await client.query(`INSERT INTO role_permissions(tenant_id,role_id,permission_id)
+      SELECT ur.tenant_id,ur.role_id,p.id FROM user_roles ur JOIN tenant_users tu ON tu.id=ur.tenant_user_id AND tu.tenant_id=ur.tenant_id CROSS JOIN permissions p
+      WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND ur.scope_type='tenant' AND p.key IN ('form.read','form.manage','form.submit') ON CONFLICT DO NOTHING`,[seeded.tenantA,internal]);
+    const v=await apiJson(request,seeded.internalToken,'POST','/supplemental-forms/versions',{request_key:crypto.randomUUID(),schema:{name:'Crew supplemental observation',fields:[{key:'note',label:'Observation',type:'text',required:true}]}});
+    await apiJson(request,seeded.internalToken,'POST',`/supplemental-forms/versions/${v.id}/publish`,{approved:true});
+    await apiJson(request,seeded.internalToken,'POST','/supplemental-forms/assignments',{version_id:v.id,assignment_id:seeded.assignmentId,active:true});
+    const path=`/syncfield/foreman/supplemental-forms?assignment_id=${seeded.assignmentId}`;
+    const list=await apiJson(request,seeded.foremanToken,'GET',path);expect(list.versions.map((x:any)=>x.id)).toContain(v.id);
+    const body={assignment_id:seeded.assignmentId,version_id:v.id,request_key:crypto.randomUUID(),answers:{note:'Synthetic observation'}};
+    const [one,two]=await Promise.all([apiJson(request,seeded.foremanToken,'POST','/syncfield/foreman/supplemental-forms',body),apiJson(request,seeded.foremanToken,'POST','/syncfield/foreman/supplemental-forms',body)]);expect(one.id).toBe(two.id);
+    expect((await request.get(apiUrl(path),{headers:auth(seeded.tenantBToken)})).status()).toBe(403);
+    const invalid=await request.post(apiUrl('/syncfield/foreman/supplemental-forms'),{headers:auth(seeded.foremanToken),data:{...body,answers:{note:'Changed'}}});expect(invalid.status()).toBe(400);
+    await apiJson(request,seeded.internalToken,'POST','/supplemental-forms/assignments',{version_id:v.id,assignment_id:seeded.assignmentId,active:false});
+    expect((await request.post(apiUrl('/syncfield/foreman/supplemental-forms'),{headers:auth(seeded.foremanToken),data:{...body,request_key:crypto.randomUUID()}})).status()).toBe(400);
+    expect((await apiJson(request,seeded.foremanToken,'GET',path)).records).toHaveLength(1);
+    const materials=await apiJson(request,seeded.foremanToken,'GET',`/syncfield/foreman/materials?assignment_id=${seeded.assignmentId}`);expect(materials.balances).toEqual([]);
+    expect((await request.get(apiUrl(`/syncfield/foreman/materials?assignment_id=${crypto.randomUUID()}`),{headers:auth(seeded.foremanToken)})).status()).toBe(404);
+    await client.query(`DELETE FROM role_permissions rp USING user_roles ur,tenant_users tu,permissions p WHERE rp.role_id=ur.role_id AND rp.tenant_id=ur.tenant_id AND tu.id=ur.tenant_user_id AND p.id=rp.permission_id AND tu.tenant_id=$1 AND tu.user_id=$2 AND p.key IN ('partner_daily_production.read','partner_production_record.create')`,[seeded.tenantA,foreman]);
+  });
+
   test("Partner Foreman opens read-only field map and cannot cross scope or see storage internals", async ({ page, request }) => {
     await installSession(page, seeded.foremanToken, seeded.foremanPermissions);
     await page.setViewportSize({ width: 820, height: 1040 });

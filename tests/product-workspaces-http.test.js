@@ -12,5 +12,15 @@ test('product workspace HTTP routes enforce unauthenticated, read-only and mutat
  await pool.query("INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT $1,$2,id FROM permissions WHERE key IN ('form.read','inventory.read','customer_inquiry.read')",[tenant,role]);
  for(const path of ['supplemental-forms','material-inventory','customer-inquiries'])assert.equal((await fetch(`${base}/${path}`,{headers})).status,200);
  for(const path of ['supplemental-forms/versions','supplemental-forms/records','material-inventory/lots','material-inventory/movements','material-inventory/adjustments','customer-inquiries','syncfield/foreman/evidence-uploads','syncfield/foreman/evidence-uploads/00000000-0000-0000-0000-000000000001/chunks','syncfield/foreman/evidence-uploads/00000000-0000-0000-0000-000000000001/complete'])assert.equal((await fetch(`${base}/${path}`,{method:'POST',headers,body:'{}'})).status,403);
+ // Matching scope headers must not turn an organization role into tenant-wide access.
+ await pool.query("INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT $1,$2,id FROM permissions WHERE key IN ('form.manage','form.submit','inventory.manage','inventory.adjust','customer_inquiry.manage','workflow_task.read','workflow_task.update') ON CONFLICT DO NOTHING",[tenant,role]);
+ const organization=randomUUID();await pool.query("UPDATE user_roles SET scope_type='organization',scope_id=$1 WHERE tenant_id=$2 AND role_id=$3",[organization,tenant,role]);
+ const scopedHeaders={...headers,'x-scope-type':'organization','x-scope-id':organization};
+ const context=await (await fetch(`${base}/auth/me`,{headers})).json();assert.deepEqual(context.tenant_permissions,[]);assert.equal(context.permissions.some(p=>/^(form|inventory|customer_inquiry)\./.test(p)),false,'Scoped administration controls must be absent from UI grants');
+ for(const path of ['supplemental-forms','material-inventory','customer-inquiries','customer-intake-channels','customer-inquiry-notifications','workflow-notifications'])assert.equal((await fetch(`${base}/${path}`,{headers:scopedHeaders})).status,403,path+' must require a tenant-wide grant');
+ for(const path of ['supplemental-forms/versions','supplemental-forms/records','material-inventory/lots','material-inventory/movements','material-inventory/adjustments','customer-inquiries','customer-intake-channels'])assert.equal((await fetch(`${base}/${path}`,{method:'POST',headers:scopedHeaders,body:'{}'})).status,403,path+' must reject scoped mutation authority');
+ await pool.query("UPDATE user_roles SET scope_type='tenant',scope_id=NULL WHERE tenant_id=$1 AND role_id=$2",[tenant,role]);
+ await pool.query('UPDATE roles SET deleted_at=now() WHERE id=$1',[role]);
+ for(const path of ['supplemental-forms','material-inventory','customer-inquiries','workflow-notifications'])assert.equal((await fetch(`${base}/${path}`,{headers})).status,403,'Deleted role must not retain grants');
  }finally{await pool.end();}
 });

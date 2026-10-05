@@ -101,3 +101,13 @@ test('failure before recording never credits paid balance and later completion i
  const f=setup();assert.equal((await reconcile(f.repository,f.binding,{...f.transaction,status:'failed'})).reason,'provider_failed');
  assert.equal((await reconcile(f.repository,f.binding,{...f.transaction,version:2})).reason,'terminal_status_changed');assert.equal(f.repository.state.payables['synthetic-payable'].paidAmount,'0.00');
 });
+
+test('separate partial payments sum exactly once and excess remains in review',async()=>{
+ const f=setup();f.repository.state.payables['synthetic-payable'].eligibleAmount='100.00';
+ const partial={...f.transaction,transactionId:'partial-one',amount:'30.00'};
+ const final={...f.transaction,transactionId:'partial-two',amount:'70.00'};
+ for(const t of [partial,final])f.repository.state.mappings.push({...f.repository.state.mappings[0],transactionId:t.transactionId,amount:t.amount});
+ const outcomes=await Promise.all([partial,partial,final,final].map(t=>reconcile(f.repository,f.binding,t)));
+ assert.equal(outcomes.filter(o=>o.outcome==='recorded').length,2);assert.equal(f.repository.state.payables['synthetic-payable'].paidAmount,'100.00');
+ const extra={...partial,transactionId:'extra'};f.repository.state.mappings.push({...f.repository.state.mappings[0],transactionId:extra.transactionId,amount:extra.amount});assert.equal((await reconcile(f.repository,f.binding,extra)).reason,'exceeds_available_balance');assert.equal(f.repository.state.payables['synthetic-payable'].paidAmount,'100.00');
+});

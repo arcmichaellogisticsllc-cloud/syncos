@@ -1,0 +1,39 @@
+TAP version 13
+# {"timestamp":"2026-10-05T15:22:04.560Z","category":"Event","message":"event_created","tenantId":"6ad7be54-f62b-4ba5-9dbc-4b6506302174","actorUserId":"a64a7779-2b3c-4344-b1e1-426511909bcc","eventId":"44df91ea-cdbc-47ab-aa20-8647678e8c2c","eventType":"customer_intake.configured","aggregateType":"customer_intake_channel","aggregateId":"f78f559c-aca9-49f2-ad08-16772cad9ac6"}
+# {"timestamp":"2026-10-05T15:22:04.569Z","category":"Audit","message":"audit_log_created","tenantId":"6ad7be54-f62b-4ba5-9dbc-4b6506302174","actorUserId":"a64a7779-2b3c-4344-b1e1-426511909bcc","action":"customer_intake.configured","entityType":"customer_intake_channel","entityId":"f78f559c-aca9-49f2-ad08-16772cad9ac6"}
+# {"timestamp":"2026-10-05T15:22:04.587Z","category":"Event","message":"event_created","tenantId":"6ad7be54-f62b-4ba5-9dbc-4b6506302174","actorUserId":"a64a7779-2b3c-4344-b1e1-426511909bcc","eventId":"28931d8a-0add-4834-aee5-d981f7c914da","eventType":"customer_intake.configured","aggregateType":"customer_intake_channel","aggregateId":"f78f559c-aca9-49f2-ad08-16772cad9ac6"}
+# {"timestamp":"2026-10-05T15:22:04.590Z","category":"Audit","message":"audit_log_created","tenantId":"6ad7be54-f62b-4ba5-9dbc-4b6506302174","actorUserId":"a64a7779-2b3c-4344-b1e1-426511909bcc","action":"customer_intake.configured","entityType":"customer_intake_channel","entityId":"f78f559c-aca9-49f2-ad08-16772cad9ac6"}
+# Subtest: public intake routes explicitly, deduplicates, throttles, and preserves durable follow-up
+not ok 1 - public intake routes explicitly, deduplicates, throttles, and preserves durable follow-up
+  ---
+  duration_ms: 333.304695
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/public-intake-database.test.js:5:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    A changed future deadline must cancel the stale reminder
+    + actual - expected
+
+    + 'sent'
+    - 'cancelled'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'cancelled'
+  actual: 'sent'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/public-intake-database.test.js:35:43)
+    process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1061.480713

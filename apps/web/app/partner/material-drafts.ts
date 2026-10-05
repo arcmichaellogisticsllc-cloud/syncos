@@ -1,0 +1,5 @@
+"use client";
+export async function materialRequest(scope:string,value?:Record<string,unknown>|null):Promise<Record<string,unknown>|undefined>{
+ const db=await new Promise<IDBDatabase>((resolve,reject)=>{const q=indexedDB.open('syncos-field-materials',1);q.onupgradeneeded=()=>q.result.createObjectStore('drafts',{keyPath:'scope'});q.onerror=()=>reject(Error('Device storage is unavailable. Material use was not sent.'));q.onsuccess=()=>{q.result.onversionchange=()=>q.result.close();resolve(q.result);};});
+ try{return await new Promise((resolve,reject)=>{const tx=db.transaction('drafts',value===undefined?'readonly':'readwrite'),store=tx.objectStore('drafts'),q=value===undefined?store.get(scope):value===null?store.delete(scope):store.put({scope,body:value,savedAt:Date.now()});tx.oncomplete=()=>resolve(value===undefined?q.result?.body:value??undefined);tx.onerror=tx.onabort=()=>reject(Error('Device save was not confirmed. Keep this page open and preserve the original reference.'));});}finally{db.close();}
+}

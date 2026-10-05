@@ -1,14 +1,17 @@
 "use client";
 import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandShell, MetricList, ObjectTable, Panel } from "../dashboard-components";
+import { useTenantCapability } from "../access-control";
 import { valueAt } from "../dashboard-data";
 
 export default function WorkflowsCenterPage() {
+  const canReadNotifications = useTenantCapability("workflow_task.read");
   const dashboard = useDashboardData("workflows");
   const data = dashboard.data;
   if (!data) return <DashboardStatus title="Workflow Operations View" state={dashboard} />;
   return (
     <CommandShell title="Workflow Operations View" purpose="Workflow instances, open work, overdue work, and escalations.">
+      {canReadNotifications && <a href="/workflow-notifications">My workflow notifications</a>}
       <div className="grid">
         <Panel title="Summary">
           <MetricList data={data} metrics={[["Open instances", "summary.openWorkflowInstances"], ["Open tasks", "summary.openTasks"], ["Overdue tasks", "summary.overdueTasks"], ["Escalated tasks", "summary.escalatedTasks"]]} />

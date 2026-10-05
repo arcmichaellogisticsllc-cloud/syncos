@@ -67,7 +67,7 @@ Run migrations separately from deployment:
 NODE_ENV=staging DATABASE_URL=<staging-db-url-with-ssl> npm run release:staging:migrate
 ```
 
-This command must not reset the database. It validates that migrations reach `059_syncfield_coil_commercial_policy.sql`.
+This command must not reset the database. It validates that migrations reach the current committed migration manifest (through `102_record_history_indexes.sql` for this candidate).
 
 If using local VPS Postgres, the current script expects SSL markers in `DATABASE_URL`. Either connect over SSL with an appropriate local URL marker or adjust the staging migration gate only after review.
 

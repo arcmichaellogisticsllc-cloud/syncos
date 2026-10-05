@@ -27,6 +27,20 @@ class DurableIntake {
  available_at=now()+interval '60 seconds',lease_token=NULL,lease_until=NULL,last_error_code=$4,updated_at=now()
  WHERE tenant_id=$1 AND id=$2 AND lease_token=$3 AND status='leased' AND lease_until>now() RETURNING id`,[tenant,job,lease,code])).rows[0];if(!row)throw new Error('Expired or foreign lease');return row;
  });}
+ // Authoritative refresh completion and job acknowledgment share one transaction.
+ // This preparation path records observations and review exceptions, never financial payments.
+ async ingestRefresh(tenant,id,jobId,lease,input){const t=normalize(input);return this.transaction(async c=>{
+  const connection=await this.connection(c,tenant,id);
+  const job=(await c.query("SELECT * FROM passport_refresh_jobs WHERE tenant_id=$1 AND connection_id=$2 AND id=$3 AND lease_token=$4 AND status='leased' AND lease_until>now() FOR UPDATE",[tenant,id,jobId,lease])).rows[0];if(!job)throw new Error('Expired or foreign lease');
+  if(t.customerId!==connection.customer_reference||t.accountId!==connection.account_reference||t.transactionId!==job.transaction_reference)throw new Error('Provider scope mismatch');
+  const hash=createHash('sha256').update(JSON.stringify(t)).digest('hex');
+  const old=(await c.query('SELECT fingerprint FROM passport_observations WHERE tenant_id=$1 AND connection_id=$2 AND transaction_reference=$3 AND normalized_version=$4',[tenant,id,t.transactionId,t.version])).rows;
+  await c.query('INSERT INTO passport_observations(tenant_id,connection_id,transaction_reference,normalized_version,fingerprint,normalized_metadata) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[tenant,id,t.transactionId,t.version,hash,t]);
+  const reason=old.some(x=>x.fingerprint!==hash)?'conflicting_same_version':t.status==='completed'?'provider_acceptance_required':['returned','reversed','failed'].includes(t.status)?'provider_'+t.status:null;
+  if(reason)await c.query('INSERT INTO passport_reconciliation_exceptions(tenant_id,connection_id,transaction_reference,fingerprint,reason) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[tenant,id,t.transactionId,hash,reason]);
+  await c.query("UPDATE passport_refresh_jobs SET status=CASE WHEN hint_version>leased_hint_version THEN 'queued' ELSE 'complete' END,available_at=now(),lease_token=NULL,lease_until=NULL,last_error_code=NULL,updated_at=now() WHERE id=$1",[jobId]);
+  return {observed:1,automaticallyRecorded:0,reviewRequired:reason!==null};
+ });}
  async checkpoint(tenant,id){return this.transaction(async c=>{await this.connection(c,tenant,id);const row=(await c.query('SELECT cursor,version FROM passport_poll_checkpoints WHERE tenant_id=$1 AND connection_id=$2',[tenant,id])).rows[0];return row||{cursor:null,version:'0'};});}
  // This accepts the INTERNAL normalized contract only. It does not decode real Passport JSON
  // or post payments. Every completion stays in review until provider certification is complete.

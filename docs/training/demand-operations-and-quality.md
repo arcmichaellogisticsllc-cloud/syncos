@@ -18,7 +18,7 @@ Actor: any provisioned user. Prerequisite: active account and known password.
 2. Enter **Email** and **Password**.
 3. Click **Sign In** once. While pending it reads **Signing In...**.
 4. Confirm the destination matches the authenticated role: internal Operations, Finance or Command Center; Partner Portal for a partner administrator; SyncField for an assigned foreman.
-5. If sign-in fails, read the message below Password, correct the entries and retry. Ask the administrator for account recovery; this page has no password-reset, SSO or magic-link workflow.
+5. If sign-in fails, read the message below Password, correct the entries and retry. Use **Forgot password** and the recovery instructions below when configured delivery is available, or ask the administrator for help. SSO and magic-link login remain future enhancements.
 
 **Become a Partner** and **Become a Sync Partner** lead to the public partner inquiry page. They do not create an approved operational user. Employee and partner invitation activation are covered in the workforce/field guide. Never paste a token or alter browser permissions for ordinary training.
 
@@ -351,3 +351,46 @@ Supplemental forms do not replace JSA, shutdown, QC, customer acceptance, contra
 2. Reopen with the same account and select the same published version. Choose **Restore saved answers**, review them, then **Submit form** while connected. Drafts expire after seven days and are removed on logout. A different version is not silently substituted.
 3. Use the history search and **Load older** controls to reach earlier forms, inquiries and inventory movements. Searches do not change stored records.
 4. When an older project, opportunity, crew or work order is absent from a selection list, use its **Find** control, then choose the returned record. Searching alone does not link it.
+
+## Public service requests and follow-up
+
+Available in the local candidate; enable channels deliberately after deployment.
+
+1. Sign in with `customer_inquiry.manage` and open **Customer service inquiries**.
+2. Under **Public request channels**, enter a public channel address, customer-facing title and reviewed privacy notice.
+3. Choose the follow-up owner, overdue escalation owner and deadline in elapsed hours. Both owners must have current organization-wide inquiry-management access.
+4. Select **Enable public submissions**, then **Save channel**. Open **Open request form** to verify the customer page before sharing its address.
+5. On the customer page, enter name, email, subject and request details. Confirm permission to process the request and select **Submit request**. Save the receipt reference. No work authorization or confirmation email is implied.
+6. If the connection fails, preserve the entries and retry. The same submission reference protects against duplicate inquiry creation.
+7. Return to **Follow-up queue**, expand the request and review its owner, deadline and source. Enter follow-up notes and any reviewed project/opportunity link, then **Save follow-up**.
+8. If reassigning the owner, a new internal notification is queued. Change the deadline deliberately using the local-time field.
+9. Under **Inquiry notification delivery**, search status/kind, load older history, and inspect failures. **Retry failed notification** records who requested the retry. Pending means queued; sent means provider acceptance, not recipient acknowledgment. Disabled delivery leaves the queue intact.
+10. Closing or qualifying an inquiry cancels pending follow-up messages at delivery time. Requests never bypass project readiness, field authorization or approved agreements.
+
+Delivery is disabled by default. Staging must use its approved recipient allowlist. No live email was sent during synthetic acceptance.
+
+## Assign a supplemental form to field work
+
+1. With `form.manage`, open **Supplemental forms** and create/review a version.
+2. Confirm approval and **Publish version**. Published schemas remain immutable.
+3. In the published version's **Assign to field work** section, choose the project/work order/crew assignment and select **Assign this version**.
+4. To stop future submissions, select that assignment and **Remove field assignment**. Previously submitted records remain unchanged.
+5. Both Sync and partner foremen access only their current authorized assignments in SyncField. Supplemental forms do not replace fixed safety, QC, customer acceptance or financial controls.
+
+## Find older records across workspaces
+
+1. Open **History** in the workspace navigation, or `/record-history`.
+2. Select **Record type**. Only types your current tenant-wide role can read appear.
+3. Enter a name, reference, status or record ID and click **Search history**. Search applies across that type's available records, not only the visible page.
+4. Use **Older matching records** until the desired record appears. Equal creation times do not skip records. **Back to latest** starts the same search again.
+5. Click the record title to open its existing authorized detail page. Workflow tasks and instances currently show reference metadata without a dedicated detail link. This history view does not change records or grant approval authority.
+
+## Workflow reminders and escalation delivery
+
+1. Open **My workflow notifications** from `/workflows-center`, or `/workflow-notifications`.
+2. Review the task title, deadline, current task state and delivery state. Assignment notices use the assigned person or role. Overdue notices use the task deadline. Escalation notices use the most recent explicitly recorded escalation role; no recipient or deadline is invented.
+3. A pending notice is queued. A sent notice means the configured provider accepted the message; it is not proof that the recipient read it. Delivery stays pending while the delivery switch is disabled.
+4. An authorized task updater can click **Retry delivery** on their own failed notice. The original attempts remain in the delivery audit. Revoked access, reassignment, changed deadlines and closed tasks are checked again before a send.
+5. Use **Older notifications** for history. Follow the relevant work-record process to perform the task. Reading or receiving a reminder never approves safety, customer acceptance or finance.
+
+Provider interruptions can result in repeated emails when the provider cannot confirm the first send. SyncOS prevents duplicate queue entries and retries with a stable delivery reference; email itself is not claimed to be exactly once.

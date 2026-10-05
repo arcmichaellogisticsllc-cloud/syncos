@@ -30,3 +30,23 @@ test('durable Passport intake survives restart, deduplicates observations and ro
  await assert.rejects(repo.checkpoint(randomUUID(),connection),/not found/);
  }finally{await pool.end();}
 });
+
+test('prepared refresh atomically records observations and completion while live posting stays disabled',{skip:!url},async()=>{
+ const {preparedRefresh}=require('../packages/passport/src/prepared-refresh');
+ const pool=new Pool({connectionString:url});try{
+ const tag=randomUUID(),tenant=(await pool.query("INSERT INTO tenants(name,slug) VALUES('Synthetic refresh',$1) RETURNING id",['refresh-'+tag])).rows[0].id,user=(await pool.query("INSERT INTO users(email,display_name) VALUES($1,'Synthetic refresh reviewer') RETURNING id",[tag+'@synthetic.test'])).rows[0].id;
+ const connection=(await pool.query("INSERT INTO passport_connections(tenant_id,customer_reference,account_reference,created_by) VALUES($1,$2,$3,$4) RETURNING id",[tenant,tag,'account-'+tag,user])).rows[0].id,intake=new DurableIntake(pool);
+ const t={customerId:tag,accountId:'account-'+tag,transactionId:'synthetic-refresh',payeeId:'payee',direction:'outgoing',currency:'USD',amount:'30.00',status:'completed',completedDate:'2026-09-01',version:1};
+ let calls=0;const reader={getTransaction:async()=>{calls++;return {...t,bankAccount:'NEVER-PERSIST'};}};
+ const options={intake,tenantId:tenant,connectionId:connection,reader,decode:value=>value};
+ await intake.enqueue(tenant,connection,t.transactionId);assert.equal((await preparedRefresh(options)).outcome,'disabled');assert.equal(calls,0);
+ const result=await preparedRefresh({...options,enabled:true});assert.equal(result.automaticallyRecorded,0);assert.equal(result.reviewRequired,true);
+ await intake.enqueue(tenant,connection,t.transactionId);await preparedRefresh({...options,enabled:true});
+ assert.equal((await pool.query('SELECT count(*)::int n FROM passport_observations WHERE tenant_id=$1',[tenant])).rows[0].n,1);
+ const stored=(await pool.query('SELECT normalized_metadata FROM passport_observations WHERE tenant_id=$1',[tenant])).rows[0].normalized_metadata;assert.equal(stored.bankAccount,undefined);
+ await intake.enqueue(tenant,connection,t.transactionId);assert.equal((await preparedRefresh({...options,enabled:true,reader:{getTransaction:async()=>{throw Error('private provider data');}}})).reason,'provider_unavailable');
+ assert.equal((await pool.query('SELECT last_error_code FROM passport_refresh_jobs WHERE tenant_id=$1',[tenant])).rows[0].last_error_code,'provider_unavailable');
+ await intake.enqueue(tenant,connection,t.transactionId);await preparedRefresh({...options,enabled:true,decode:v=>({...v,accountId:'foreign'})});
+ assert.equal((await pool.query('SELECT count(*)::int n FROM passport_observations WHERE tenant_id=$1',[tenant])).rows[0].n,1);
+ }finally{await pool.end();}
+});

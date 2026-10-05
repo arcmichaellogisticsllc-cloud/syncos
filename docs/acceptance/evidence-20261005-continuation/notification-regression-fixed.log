@@ -1,0 +1,20 @@
+TAP version 13
+# {"timestamp":"2026-10-05T15:25:18.767Z","category":"Event","message":"event_created","tenantId":"1fc2125a-f7e7-4a05-86ff-72764c1d0776","actorUserId":"c4f8ddee-73e6-4950-8e2a-a60f8d37b8e4","eventId":"07f4cc16-5c65-4902-9976-e2f03c6b914c","eventType":"customer_intake.configured","aggregateType":"customer_intake_channel","aggregateId":"198eb78d-577d-44f6-88eb-36f62be07cf0"}
+# {"timestamp":"2026-10-05T15:25:18.777Z","category":"Audit","message":"audit_log_created","tenantId":"1fc2125a-f7e7-4a05-86ff-72764c1d0776","actorUserId":"c4f8ddee-73e6-4950-8e2a-a60f8d37b8e4","action":"customer_intake.configured","entityType":"customer_intake_channel","entityId":"198eb78d-577d-44f6-88eb-36f62be07cf0"}
+# {"timestamp":"2026-10-05T15:25:18.791Z","category":"Event","message":"event_created","tenantId":"1fc2125a-f7e7-4a05-86ff-72764c1d0776","actorUserId":"c4f8ddee-73e6-4950-8e2a-a60f8d37b8e4","eventId":"1efa9e6a-12f0-440e-843e-883a936e6b6c","eventType":"customer_intake.configured","aggregateType":"customer_intake_channel","aggregateId":"198eb78d-577d-44f6-88eb-36f62be07cf0"}
+# {"timestamp":"2026-10-05T15:25:18.793Z","category":"Audit","message":"audit_log_created","tenantId":"1fc2125a-f7e7-4a05-86ff-72764c1d0776","actorUserId":"c4f8ddee-73e6-4950-8e2a-a60f8d37b8e4","action":"customer_intake.configured","entityType":"customer_intake_channel","entityId":"198eb78d-577d-44f6-88eb-36f62be07cf0"}
+# Subtest: public intake routes explicitly, deduplicates, throttles, and preserves durable follow-up
+ok 1 - public intake routes explicitly, deduplicates, throttles, and preserves durable follow-up
+  ---
+  duration_ms: 303.433193
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 982.133884

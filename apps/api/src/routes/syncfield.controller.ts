@@ -1,3 +1,5 @@
+import {validateFormAnswers} from '@syncos/shared/form-schema';
+import {MaterialInventoryController} from './material-inventory.controller';
 import {ResumableEvidence,UPLOAD_MAX_BYTES,withEvidenceFinalization} from './resumable-evidence';
 import { scheduleCorrectionDeadline, verifiedReceivedTime } from "./prime-correction-deadlines";
 import { requireReviewedProductionQuantity, productionQuantityFingerprint, productionQuantitySource, quantityReviewCurrent } from "./production-quantity-integrity";
@@ -468,6 +470,53 @@ export class SyncfieldController {
         notice:{status:ready?"issued":"held",production_start_status:ready?"authorized":"held",initial_work_area:assignment.primary_work_area,
           production_start:{authorization_status:ready?"authorized":"held",work_area:assignment.primary_work_area}},
         boundary:{internal_management_clearance:true,partner_agreement_required:false}};
+    });
+  }
+
+  @Get("foreman/supplemental-forms")
+  @RequirePermission("partner_daily_production.read")
+  async fieldForms(@Req() request:AuthenticatedRequest,@Query("assignment_id") id?:string,@Query("before") before?:string){return this.withClient(async c=>{
+    const context=await this.requirePartnerForeman(c,request),a=await this.requireForemanOperationalAssignment(c,context,id);
+    const versions=(await c.query(`SELECT v.id,v.version,v.schema FROM supplemental_form_versions v JOIN supplemental_form_assignments f ON f.tenant_id=v.tenant_id AND f.version_id=v.id WHERE f.tenant_id=$1 AND f.assignment_id=$2 AND f.active AND v.status='published' ORDER BY v.created_at DESC`,[a.tenant_id,a.assignment_id])).rows;
+    if(before&&!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(before))throw new BadRequestException('Invalid history position.');
+    const records=(await c.query(`SELECT id,version_id,schema_snapshot,answers,created_at FROM supplemental_form_records WHERE tenant_id=$1 AND assignment_id=$2 AND submitted_by=$3 AND ($4::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM supplemental_form_records WHERE tenant_id=$1 AND assignment_id=$2 AND submitted_by=$3 AND id=$4)) ORDER BY created_at DESC,id DESC LIMIT 201`,[a.tenant_id,a.assignment_id,request.auth.userId,before??null])).rows;
+    return {assignment_id:a.assignment_id,versions,records:records.slice(0,200),next:records.length>200?records[199].id:null};});}
+
+  @Post("foreman/supplemental-forms")
+  @RequirePermission("partner_production_record.create")
+  async submitFieldForm(@Req() request:AuthenticatedRequest,@Body() b:Record<string,unknown>){
+    const version=String(b.version_id??''),key=String(b.request_key??'');if(![version,key].every(v=>/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(v)))throw new BadRequestException('Invalid form reference.');
+    return this.withClient(c=>this.writeWithClient(c,request,'form.field_submitted','form.field_submitted','supplemental_form',async tx=>{
+      const context=await this.requirePartnerForeman(tx,request),a=await this.requireForemanOperationalAssignment(tx,context,this.optionalString(b.assignment_id));
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[a.tenant_id+':form-request:'+key]);
+      const v=(await tx.query(`SELECT v.* FROM supplemental_form_versions v JOIN supplemental_form_assignments f ON f.tenant_id=v.tenant_id AND f.version_id=v.id WHERE v.tenant_id=$1 AND v.id=$2 AND f.assignment_id=$3 AND f.active AND v.status='published' FOR SHARE OF f`,[a.tenant_id,version,a.assignment_id])).rows[0];if(!v)throw new BadRequestException('This form is no longer assigned to your work. Keep your saved answers for review.');
+      let answers;try{answers=validateFormAnswers(v.schema,b.answers);}catch(e){throw new BadRequestException((e as Error).message);}
+      const old=(await tx.query('SELECT * FROM supplemental_form_records WHERE tenant_id=$1 AND request_key=$2',[a.tenant_id,key])).rows[0];
+      if(old){if(old.version_id!==version||old.assignment_id!==a.assignment_id||old.submitted_by!==request.auth.userId||JSON.stringify(validateFormAnswers(v.schema,old.answers))!==JSON.stringify(answers))throw new BadRequestException('This retry contains different answers.');return {entityType:'supplemental_form_record',entityId:old.id,afterState:old,skipEventAudit:true};}
+      if((await safetyBlockers(tx,a.tenant_id,a.work_order_id,a.crew_id,null,false)).length||await hasActiveFieldStop(tx,a.tenant_id,a.work_order_id,a.crew_id))throw new BadRequestException('Work is stopped. Saved form answers cannot be submitted until applicable clearance.');
+      const row=(await tx.query('INSERT INTO supplemental_form_records(tenant_id,version_id,schema_snapshot,answers,submitted_by,request_key,assignment_id) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[a.tenant_id,version,JSON.stringify(v.schema),JSON.stringify(answers),request.auth.userId,key,a.assignment_id])).rows[0];return {entityType:'supplemental_form_record',entityId:row.id,afterState:row};
+    }));
+  }
+
+  @Get("foreman/materials")
+  @RequirePermission("partner_daily_production.read")
+  async fieldMaterials(@Req() request:AuthenticatedRequest,@Query("assignment_id") id?:string,@Query("before") before?:string){return this.withClient(async c=>{
+    const context=await this.requirePartnerForeman(c,request),a=await this.requireForemanOperationalAssignment(c,context,id);
+    const balances=(await c.query(`SELECT l.id AS location_id,l.label AS location_label,m.lot_id,t.label,t.serial_number,t.unit,sum(CASE WHEN m.to_location_id=l.id THEN m.quantity ELSE 0 END)-sum(CASE WHEN m.from_location_id=l.id THEN m.quantity ELSE 0 END) AS balance
+      FROM material_locations l JOIN material_movements m ON m.tenant_id=l.tenant_id AND (m.from_location_id=l.id OR m.to_location_id=l.id) JOIN material_lots t ON t.tenant_id=m.tenant_id AND t.id=m.lot_id
+      WHERE l.tenant_id=$1 AND l.crew_id=$2 GROUP BY l.id,m.lot_id,t.id ORDER BY t.label,l.label`,[a.tenant_id,a.crew_id])).rows;
+    if(before&&!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(before))throw new BadRequestException('Invalid history position.');
+    const movements=(await c.query(`SELECT m.id,m.kind,m.quantity,m.reference,m.reason,m.created_at,t.label,t.unit FROM material_movements m JOIN material_lots t ON t.tenant_id=m.tenant_id AND t.id=m.lot_id JOIN material_locations l ON l.tenant_id=m.tenant_id AND l.id=m.from_location_id WHERE m.tenant_id=$1 AND l.crew_id=$2 AND m.work_order_id=$3 AND m.kind IN ('installed','scrap','offcut') AND ($4::uuid IS NULL OR (m.created_at,m.id)<(SELECT prev.created_at,prev.id FROM material_movements prev JOIN material_locations pl ON pl.tenant_id=prev.tenant_id AND pl.id=prev.from_location_id WHERE prev.tenant_id=$1 AND pl.crew_id=$2 AND prev.work_order_id=$3 AND prev.id=$4)) ORDER BY m.created_at DESC,m.id DESC LIMIT 201`,[a.tenant_id,a.crew_id,a.work_order_id,before??null])).rows;
+    return {assignment_id:a.assignment_id,work_order_id:a.work_order_id,balances,movements:movements.slice(0,200),next:movements.length>200?movements[199].id:null};});}
+
+  @Post("foreman/materials")
+  @RequirePermission("partner_production_record.create")
+  async useFieldMaterials(@Req() request:AuthenticatedRequest,@Body() b:Record<string,unknown>){
+    return new MaterialInventoryController(this.pool).fieldMove(request,b,async (c,existing)=>{
+      const context=await this.requirePartnerForeman(c,request),a=await this.requireForemanOperationalAssignment(c,context,this.optionalString(b.assignment_id));
+      if(b.work_order_id!==a.work_order_id||b.to_location_id)throw new ForbiddenException('Material use must belong to this work assignment.');
+      if(!(await c.query('SELECT 1 FROM material_locations WHERE tenant_id=$1 AND id=$2 AND crew_id=$3',[a.tenant_id,b.from_location_id,a.crew_id])).rowCount)throw new ForbiddenException('Material custody is outside your crew.');
+      if(!existing)await this.assertProductionGate(c,a,this.workDate(String(b.work_date??'')));
     });
   }
 

@@ -1,0 +1,40 @@
+{
+  "httpStatus": 200,
+  "ok": true,
+  "environment": {
+    "ok": true,
+    "nodeEnv": "test",
+    "errors": [],
+    "warnings": [
+      "REDIS_URL is not set; Redis startup readiness is skipped outside production"
+    ]
+  },
+  "database": {
+    "ok": true
+  },
+  "migrations": {
+    "ok": true,
+    "appliedCount": 102,
+    "missing": [],
+    "unexpected": [],
+    "currentCeiling": "102_record_history_indexes.sql",
+    "hasCurrentCeiling": true
+  },
+  "requiredTables": {
+    "ok": true,
+    "missing": []
+  },
+  "redis": {
+    "ok": true,
+    "configured": false,
+    "skipped": true
+  },
+  "permissionSeed": {
+    "ok": true,
+    "missing": []
+  },
+  "requiredRoles": {
+    "ok": true,
+    "missing": []
+  }
+}

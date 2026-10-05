@@ -201,10 +201,14 @@ test.describe.serial("P9 SyncField Daily Production, map annotation, offline que
 
     const duplicatePayload = queued[0].payload;
     await createProduction(request, seeded, duplicatePayload);
+    // Simulate an interrupted in-flight request and an exhausted automatic retry budget.
+    await page.evaluate(async ids=>{await new Promise<void>((resolve,reject)=>{const open=indexedDB.open('syncos-field-production',1);open.onsuccess=()=>{const db=open.result,tx=db.transaction('mutations','readwrite'),store=tx.objectStore('mutations');ids.forEach((id,index)=>{const get=store.get(id);get.onsuccess=()=>store.put({...get.result,status:index===0?'SYNCING':'FAILED',retryCount:index===0?1:3,lastAttemptAt:new Date().toISOString()});});tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(Error('fixture queue save failed'));};});},[queued[0].mutationId,queued[1].mutationId]);
 
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(page.locator("h2").filter({ hasText: "Production" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Sync Failed", { exact: true }).first()).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button',{name:'Retry Sync',exact:true}).click();
     await expect(page.getByText("Synchronized", { exact: true }).first()).toBeVisible({ timeout: 15000 });
 
     const after = await productionCountsForReport(client, seeded.tenantA, reportId);

@@ -1,0 +1,21 @@
+-- Stable directory history pagination; original records remain unchanged.
+CREATE INDEX IF NOT EXISTS projects_history_page_idx ON projects(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS work_orders_history_page_idx ON work_orders(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS production_records_history_page_idx ON production_records(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS qc_reviews_history_page_idx ON qc_reviews(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS invoices_history_page_idx ON invoices(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS contractor_payables_history_page_idx ON contractor_payables(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS payroll_runs_history_page_idx ON payroll_runs(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS payment_batches_history_page_idx ON payment_batches(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS cash_receipts_history_page_idx ON cash_receipts(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS collection_cases_history_page_idx ON collection_cases(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS accounting_export_batches_history_page_idx ON accounting_export_batches(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS workflow_tasks_history_page_idx ON workflow_tasks(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS workflow_instances_history_page_idx ON workflow_instances(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS organizations_history_page_idx ON organizations(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS contacts_history_page_idx ON contacts(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS opportunities_history_page_idx ON opportunities(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS signals_history_page_idx ON signals(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS billable_items_history_page_idx ON billable_items(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS settlements_history_page_idx ON settlements(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS bank_transactions_history_page_idx ON bank_transactions(tenant_id,created_at DESC,id DESC) WHERE deleted_at IS NULL;

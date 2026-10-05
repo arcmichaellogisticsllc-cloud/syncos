@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import {routeAllowed} from "./access-control";
+import type {AuthContext} from "./intelligence/api";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { clearAuthContext, hasPermission, loadAuthContext, readPermissions, readToken, sessionEmailFromToken } from "./intelligence/api";
@@ -27,6 +29,7 @@ export type WorkspaceDefinition = {
 };
 
 export const workspaces: WorkspaceDefinition[] = [
+  {label:"History",href:"/record-history",scope:"Older records",description:"Search complete directory history",permissions:["project.read", "work_order.read", "production_record.read", "qc_review.read", "invoice.read", "contractor_payable.read", "payroll_run.read", "payment_batch.read", "cash_receipt.read", "collection_case.read", "accounting_export_batch.read", "workflow_task.read", "workflow_instance.read", "organization.read", "contact.read", "opportunity.read", "signal.read", "billable_item.read", "settlement.read", "bank_transaction.read"],items:[{label:"Record history",href:"/record-history",workspace:"History",description:"Find older records across authorized workspaces."}]},
   {label:"Materials",href:"/material-inventory",scope:"Stock and custody",description:"Material and reel reconciliation",permissions:["inventory.read"],items:[{label:"Material Inventory",href:"/material-inventory",workspace:"Materials",description:"Receive, transfer and reconcile physical stock.",permission:"inventory.read"}]},
   {label:"Forms",href:"/forms",scope:"Supplemental records",description:"Approved form versions and responses",permissions:["form.read"],items:[{label:"Supplemental Forms",href:"/forms",workspace:"Forms",description:"Create approved versions and preserve submitted records.",permission:"form.read"}]},
   {
@@ -205,6 +208,7 @@ export function OperatorSubnavigation() {
 function useOperatorNavigationState() {
   const pathname = usePathname();
   const [permissions, setPermissions] = useState<string[] | null>(null);
+  const [identity,setIdentity] = useState<AuthContext|null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -218,6 +222,7 @@ function useOperatorNavigationState() {
     loadAuthContext(token)
       .then((context) => {
         setPermissions(context.permissions ?? []);
+        setIdentity(context);
         setError("");
       })
       .catch(() => {
@@ -226,7 +231,7 @@ function useOperatorNavigationState() {
       });
   }, []);
 
-  const visibleWorkspaces = useMemo(() => workspaces.filter((workspace) => canSeeWorkspace(workspace, permissions)).map(workspace => ({ ...workspace, href: workspace.items.find(item => item.href === workspace.href && canSeeItem(item, permissions))?.href ?? workspace.items.find(item => canSeeItem(item, permissions))?.href ?? workspace.href })), [permissions]);
+  const visibleWorkspaces = useMemo(() => workspaces.filter((workspace) => canSeeWorkspace(workspace, permissions) && (workspace.href!=="/record-history" || routeAllowed(workspace.href,identity))).map(workspace => ({ ...workspace, href: workspace.items.find(item => item.href === workspace.href && canSeeItem(item, permissions))?.href ?? workspace.items.find(item => canSeeItem(item, permissions))?.href ?? workspace.href })), [permissions,identity]);
   const activeWorkspace = useMemo(() => {
     const matched = visibleWorkspaces
       .filter((workspace) => workspace.status !== "planned")

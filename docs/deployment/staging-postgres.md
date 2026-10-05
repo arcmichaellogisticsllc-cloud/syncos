@@ -26,7 +26,7 @@ Run from the release branch after secrets are configured:
 NODE_ENV=staging DATABASE_URL=<staging-url> npm run release:staging:migrate
 ```
 
-The command checks connectivity, applies pending migrations, and verifies that the schema reaches `059_syncfield_coil_commercial_policy.sql`. It never resets or cleans the database.
+The command checks connectivity, applies pending migrations, and verifies that the schema reaches the current committed migration manifest (through `102_record_history_indexes.sql` for this candidate). It never resets or cleans the database.
 
 ## Verification
 

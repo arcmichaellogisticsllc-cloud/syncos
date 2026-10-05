@@ -6,7 +6,7 @@ import type { PermissionKey } from "@syncos/permissions";
 import { DATABASE_POOL } from "../modules/database.module";
 import { IS_PUBLIC_ROUTE } from "./public.decorator";
 import { AUTHENTICATED_ONLY_ROUTE } from "./authenticated-only.decorator";
-import { REQUIRED_PERMISSION } from "./require-permission.decorator";
+import { REQUIRED_PERMISSION, TENANT_PERMISSION_ONLY } from "./require-permission.decorator";
 
 const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_context.read",
@@ -130,21 +130,24 @@ export class PermissionGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request & { auth: { tenantId: string; userId: string } }>();
-    const scopeType = this.getScopeType(request);
-    const scopeId = this.getScopeId(request);
-    const isPartnerScopedPermission = partnerScopedPermissions.has(permission);
+    const tenantOnly = this.reflector.getAllAndOverride<boolean>(TENANT_PERMISSION_ONLY, [context.getHandler(), context.getClass()]) === true;
+    const scopeType = tenantOnly ? "tenant" : this.getScopeType(request);
+    const scopeId = tenantOnly ? request.auth.tenantId : this.getScopeId(request);
+    const isPartnerScopedPermission = !tenantOnly && partnerScopedPermissions.has(permission);
     const hasExplicitScopeHeader = Boolean(request.header("x-scope-type") || request.header("x-scope-id"));
     const result = await this.pool.query<{ allowed: boolean }>(
       `
       SELECT EXISTS (
         SELECT 1
         FROM tenant_users tu
-        JOIN user_roles ur ON ur.tenant_user_id = tu.id
-        JOIN role_permissions rp ON rp.role_id = ur.role_id
+        JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id
+        JOIN roles active_role ON active_role.id = ur.role_id AND active_role.tenant_id = tu.tenant_id AND active_role.deleted_at IS NULL
+        JOIN role_permissions rp ON rp.role_id = ur.role_id AND rp.tenant_id = tu.tenant_id
         JOIN permissions p ON p.id = rp.permission_id
         WHERE tu.tenant_id = $1
           AND tu.user_id = $2
           AND tu.status = 'active'
+          AND tu.deleted_at IS NULL
           AND p.key = $3
           AND (
             (

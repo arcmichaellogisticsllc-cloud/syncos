@@ -4,12 +4,12 @@ import type {Response} from 'express';
 import type {Pool,PoolClient} from 'pg';
 import {executeWriteAction} from '@syncos/shared';
 import {DATABASE_POOL} from '../modules/database.module';
-import {RequirePermission} from '../security/require-permission.decorator';
+import {RequirePermission,TenantPermissionOnly} from '../security/require-permission.decorator';
 import type {AuthenticatedRequest} from './intelligence.types';
 import {sanitizeRestrictedFileName,detectRestrictedFileMime,calculateRestrictedFileSha256} from '../restricted-files/restricted-file.primitives';
 const uuid=(v:unknown)=>{if(typeof v!=='string'||!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(v))throw new BadRequestException('Select a valid record.');return v;};
 const str=(v:unknown,label:string,max=1000)=>{if(typeof v!=='string'||!v.trim()||v.length>max)throw new BadRequestException(`${label} is required, up to ${max} characters.`);return v.trim();};
-@Controller('customer-inquiries')
+@Controller('customer-inquiries') @TenantPermissionOnly()
 export class CustomerInquiriesController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get() @RequirePermission('customer_inquiry.read')
@@ -27,10 +27,10 @@ export class CustomerInquiriesController {
  @Post(':id/review') @RequirePermission('customer_inquiry.manage')
  async review(@Req() r:AuthenticatedRequest,@Param('id') id:string,@Body() b:Record<string,unknown>){uuid(id);const status=str(b.status,'Status'),note=str(b.follow_up_note,'Follow-up or closure note',4000),owner=b.owner_user_id?uuid(b.owner_user_id):null,opportunity=b.opportunity_id?uuid(b.opportunity_id):null,project=b.project_id?uuid(b.project_id):null;
   if(!['new','assigned','awaiting_customer','qualified','closed'].includes(status))throw new BadRequestException('Invalid inquiry status.');if(status!=='new'&&!owner)throw new BadRequestException('Assign an owner before advancing this inquiry.');if(status==='qualified'&&!opportunity&&!project)throw new BadRequestException('Link a reviewed opportunity or project before marking qualified.');
-  return this.write(r,'customer_inquiry.reviewed',async c=>{const old=await this.get(c,r,id,true);if(old.status===status&&old.follow_up_note===note&&old.owner_user_id===owner&&old.opportunity_id===opportunity&&old.project_id===project)return this.result(old,true);if(b.revision!==old.revision)throw new BadRequestException('This inquiry changed. Refresh and review the current version.');
+  return this.write(r,'customer_inquiry.reviewed',async c=>{const old=await this.get(c,r,id,true);const due=b.due_at===undefined?old.due_at:b.due_at===null||b.due_at===''?null:new Date(String(b.due_at));if(due&&!Number.isFinite(due.getTime()))throw new BadRequestException('Use a valid follow-up date and time.');if(old.status===status&&old.follow_up_note===note&&old.owner_user_id===owner&&old.opportunity_id===opportunity&&old.project_id===project&&String(old.due_at)===String(due))return this.result(old,true);if(b.revision!==old.revision)throw new BadRequestException('This inquiry changed. Refresh and review the current version.');
    if(owner&&!(await c.query("SELECT 1 FROM tenant_users tu JOIN users u ON u.id=tu.user_id WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL AND u.status='active' AND u.deleted_at IS NULL AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles ar ON ar.id=ur.role_id AND ar.tenant_id=ur.tenant_id AND ar.deleted_at IS NULL JOIN role_permissions rp ON rp.role_id=ur.role_id AND rp.tenant_id=ur.tenant_id JOIN permissions perm ON perm.id=rp.permission_id WHERE ur.tenant_user_id=tu.id AND ur.tenant_id=tu.tenant_id AND ur.scope_type='tenant' AND perm.key='customer_inquiry.manage')",[r.auth.tenantId,owner])).rowCount)throw new BadRequestException('Owner unavailable in this organization.');
    for(const [table,value] of [['opportunities',opportunity],['projects',project]])if(value&&!(await c.query(`SELECT 1 FROM ${table} WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,[r.auth.tenantId,value])).rowCount)throw new BadRequestException('Linked record unavailable in this organization.');
-   const row=(await c.query('UPDATE customer_service_inquiries SET status=$3,follow_up_note=$4,owner_user_id=$5,opportunity_id=$6,project_id=$7,revision=revision+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *',[r.auth.tenantId,id,status,note,owner,opportunity,project])).rows[0];return {...this.result(row),beforeState:old};});}
+   const row=(await c.query('UPDATE customer_service_inquiries SET status=$3,follow_up_note=$4,owner_user_id=$5,opportunity_id=$6,project_id=$7,due_at=$8,revision=revision+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *',[r.auth.tenantId,id,status,note,owner,opportunity,project,due])).rows[0];if(owner&&owner!==old.owner_user_id&&!['closed','qualified'].includes(status))await c.query("INSERT INTO inquiry_follow_up_notifications(tenant_id,inquiry_id,recipient_user_id,kind,dedupe_key) VALUES($1,$2,$3,'assigned',$4) ON CONFLICT DO NOTHING",[r.auth.tenantId,id,owner,'assigned:'+id+':'+row.revision]);return {...this.result(row),beforeState:old};});}
  @Get(':id/files') @RequirePermission('customer_inquiry.read')
  async files(@Req() r:AuthenticatedRequest,@Param('id') id:string){uuid(id);return (await this.pool.query('SELECT id,file_name,mime_type,checksum,octet_length(content) AS size_bytes FROM customer_inquiry_files WHERE tenant_id=$1 AND inquiry_id=$2 ORDER BY created_at',[r.auth.tenantId,id])).rows;}
  @Post(':id/files') @RequirePermission('customer_inquiry.manage')

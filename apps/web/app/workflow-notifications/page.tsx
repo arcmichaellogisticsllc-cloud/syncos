@@ -1,0 +1,12 @@
+"use client";
+import {useEffect,useState} from 'react';
+import {syncosFetch} from '../intelligence/api';
+import {useTenantCapability} from '../access-control';
+type Notice={id:string;title:string;kind:string;status:string;task_status:string;due_at:string|null;created_at:string;sent_at:string|null;attempts:number;last_error:string|null};
+export default function WorkflowNotifications(){
+ const canRetry=useTenantCapability('workflow_task.update');const [rows,setRows]=useState<Notice[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[before,setBefore]=useState('');
+ async function load(cursor=''){setBusy(true);setError('');try{setRows(await syncosFetch<Notice[]>('workflow-notifications'+(cursor?'?before='+encodeURIComponent(cursor):'')));setBefore(cursor);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ useEffect(()=>{void load();},[]);
+ async function retry(id:string){setBusy(true);setError('');try{await syncosFetch('workflow-notifications/'+id+'/retry',{method:'POST',body:{}});await load(before);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return <main className="completion-workspace" style={{maxWidth:900,padding:24,margin:'auto'}}><h1>My workflow notifications</h1><p>Assignments, overdue reminders and recorded escalations for your account. Open the relevant work record to complete its required action; a notification does not approve work or payment.</p><p>Pending means queued. Sent means the email provider accepted the message, not that it was read. Delivery remains pending while email is disabled. A provider interruption may cause the same email to arrive again.</p>{error&&<p role="alert">{error}</p>}<button disabled={busy} onClick={()=>void load()}>Refresh latest</button>{!busy&&!rows.length&&<p>No notifications on this page.</p>}<ul style={{padding:0,listStyle:'none'}}>{rows.map(n=><li key={n.id} style={{padding:16,border:'1px solid #8c9bab',marginTop:12,borderRadius:8}}><h2>{n.title}</h2><p>{n.kind} · Delivery: {n.status} · Task: {n.task_status}</p><p>Due: {n.due_at?new Date(n.due_at).toLocaleString():'No deadline set'} · Attempts: {n.attempts}</p>{n.last_error&&<p>{n.last_error}</p>}{n.status==='failed'&&canRetry&&<button disabled={busy} onClick={()=>void retry(n.id)}>Retry delivery</button>}</li>)}</ul>{rows.length===100&&<button disabled={busy} onClick={()=>void load(rows[rows.length-1].id)}>Older notifications</button>}{before&&<button disabled={busy} onClick={()=>void load()}>Back to latest</button>}</main>;
+}

@@ -5,11 +5,11 @@ import {randomUUID} from 'node:crypto';
 import {executeWriteAction} from '@syncos/shared';
 import {validateFormTemplate,validateFormAnswers} from '@syncos/shared/form-schema';
 import {DATABASE_POOL} from '../modules/database.module';
-import {RequirePermission} from '../security/require-permission.decorator';
+import {RequirePermission,TenantPermissionOnly} from '../security/require-permission.decorator';
 import type {AuthenticatedRequest} from './intelligence.types';
 function uuid(value:unknown){if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new BadRequestException('A valid record reference is required.');return value;}
 function validate<T>(fn:()=>T):T{try{return fn();}catch(e){throw new BadRequestException((e as Error).message);}}
-@Controller('supplemental-forms')
+@Controller('supplemental-forms') @TenantPermissionOnly()
 export class SupplementalFormsController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get() @RequirePermission('form.read')
@@ -42,6 +42,17 @@ export class SupplementalFormsController {
    return {entityType:'supplemental_form_version',entityId:id,beforeState:row,afterState:after};
   });
  }
+ @Get('assignments') @RequirePermission('form.manage')
+ async assignments(@Req() r:AuthenticatedRequest){return (await this.pool.query(`SELECT a.id,p.name AS project_name,c.name AS crew_name,w.work_order_number,
+ COALESCE((SELECT json_agg(f.version_id) FROM supplemental_form_assignments f WHERE f.tenant_id=a.tenant_id AND f.assignment_id=a.id AND f.active),'[]') AS version_ids
+ FROM syncfield_map_assignments a JOIN projects p ON p.tenant_id=a.tenant_id AND p.id=a.project_id JOIN crews c ON c.tenant_id=a.tenant_id AND c.id=a.crew_id JOIN partner_work_order_versions w ON w.tenant_id=a.tenant_id AND w.id=a.work_order_version_id
+ WHERE a.tenant_id=$1 AND a.current AND a.assignment_status='active' AND a.deleted_at IS NULL ORDER BY p.name,c.name`,[r.auth.tenantId])).rows;}
+ @Post('assignments') @RequirePermission('form.manage')
+ async assign(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){const version=uuid(b.version_id),assignment=uuid(b.assignment_id);if(typeof b.active!=='boolean')throw new BadRequestException('Choose whether this form assignment is active.');
+ return this.write(r,'form.assignment_changed',async c=>{
+ const a=(await c.query("SELECT id FROM syncfield_map_assignments WHERE tenant_id=$1 AND id=$2 AND current AND assignment_status='active' AND deleted_at IS NULL FOR SHARE",[r.auth.tenantId,assignment])).rows[0];
+ const v=(await c.query("SELECT id FROM supplemental_form_versions WHERE tenant_id=$1 AND id=$2 AND status='published'",[r.auth.tenantId,version])).rows[0];if(!a||!v)throw new BadRequestException('Choose an active assignment and published form in this organization.');
+ const row=(await c.query(`INSERT INTO supplemental_form_assignments(tenant_id,version_id,assignment_id,assigned_by,active) VALUES($1,$2,$3,$4,$5) ON CONFLICT(tenant_id,version_id,assignment_id) DO UPDATE SET active=EXCLUDED.active,assigned_by=EXCLUDED.assigned_by RETURNING *`,[r.auth.tenantId,version,assignment,r.auth.userId,b.active])).rows[0];return {entityType:'supplemental_form_assignment',entityId:assignment,afterState:row};});}
  @Post('records') @RequirePermission('form.submit')
  async submit(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){
   const version=uuid(b.version_id),key=uuid(b.request_key);

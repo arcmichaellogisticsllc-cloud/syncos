@@ -68,6 +68,10 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Envir
   if (!env.DATABASE_URL) errors.push("DATABASE_URL is required");
   if (!env.AUTH_JWT_SECRET) errors.push("AUTH_JWT_SECRET is required");
   if (env.AUTH_JWT_SECRET && env.AUTH_JWT_SECRET.length < authJwtSecretMinLength) errors.push(`AUTH_JWT_SECRET must be at least ${authJwtSecretMinLength} characters`);
+  requireBoolean(errors,"PASSWORD_RECOVERY_ENABLED",env.PASSWORD_RECOVERY_ENABLED);
+  requireBoolean(errors,"INQUIRY_NOTIFICATION_DELIVERY_ENABLED",env.INQUIRY_NOTIFICATION_DELIVERY_ENABLED);
+  requireBoolean(errors,"WORKFLOW_NOTIFICATION_DELIVERY_ENABLED",env.WORKFLOW_NOTIFICATION_DELIVERY_ENABLED);
+  if (hostedNodeEnvs.has(nodeEnv) && (env.PASSWORD_RECOVERY_ENABLED==='true'||env.INQUIRY_NOTIFICATION_DELIVERY_ENABLED==='true'||env.WORKFLOW_NOTIFICATION_DELIVERY_ENABLED==='true') && !['generic_http','smtp_relay'].includes(env.EMAIL_PROVIDER??'')) errors.push('Enabled recovery or inquiry delivery requires a configured email provider');
   if (hostedNodeEnvs.has(nodeEnv)) {
     const environmentName = nodeEnv;
     requireHttpsUrl(errors, "API_BASE_URL", env.API_BASE_URL ?? env.PUBLIC_API_URL, environmentName);

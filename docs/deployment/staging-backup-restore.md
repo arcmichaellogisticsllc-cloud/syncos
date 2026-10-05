@@ -12,7 +12,7 @@ Staging is synthetic, but backup and restore must be exercised before production
 
 1. Restore the latest staging snapshot into a separate `staging-restore` database.
 2. Point a temporary API instance or local verification client at the restored database.
-3. Confirm `schema_migrations` includes `059_syncfield_coil_commercial_policy.sql`.
+3. Confirm `schema_migrations` includes the current committed migration manifest (through `102_record_history_indexes.sql` for this candidate).
 4. Confirm representative synthetic records exist.
 5. Destroy the restore target after the drill if provider policy requires it.
 

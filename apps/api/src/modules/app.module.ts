@@ -1,3 +1,7 @@
+import {RecordHistoryController} from '../routes/record-history.controller';
+import {WorkflowNotificationsController} from '../routes/workflow-notifications.controller';
+import {InquiryNotificationsController} from '../routes/inquiry-notifications.controller';
+import {PublicCustomerIntakeController,CustomerIntakeChannelsController} from '../routes/public-customer-intake.controller';
 import { CustomerInquiriesController } from '../routes/customer-inquiries.controller';
 import { MaterialInventoryController } from '../routes/material-inventory.controller';
 import { SupplementalFormsController } from '../routes/supplemental-forms.controller';
@@ -66,7 +70,7 @@ import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [CustomerInquiriesController,MaterialInventoryController,SupplementalFormsController,PassportIntakeController,InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
+  controllers: [RecordHistoryController,WorkflowNotificationsController,InquiryNotificationsController,PublicCustomerIntakeController,CustomerIntakeChannelsController,CustomerInquiriesController,MaterialInventoryController,SupplementalFormsController,PassportIntakeController,InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
     WorkSafetyController,
     InternalWorkforceController,

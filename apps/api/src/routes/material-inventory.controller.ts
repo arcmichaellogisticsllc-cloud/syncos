@@ -3,12 +3,12 @@ import {BadRequestException,Body,Controller,Get,Inject,Post,Req,Query} from '@ne
 import type {Pool,PoolClient} from 'pg';
 import {executeWriteAction} from '@syncos/shared';
 import {DATABASE_POOL} from '../modules/database.module';
-import {RequirePermission} from '../security/require-permission.decorator';
+import {RequirePermission,TenantPermissionOnly} from '../security/require-permission.decorator';
 import type {AuthenticatedRequest} from './intelligence.types';
 const id=(v:unknown)=>{if(typeof v!=='string'||!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(v))throw new BadRequestException('Select a valid record.');return v;};
 const scaled=(s:string)=>{const negative=s.startsWith('-');const [whole,fraction='']=s.replace(/^-/,'').split('.');return (BigInt(whole)*10000n+BigInt(fraction.padEnd(4,'0')))*(negative?-1n:1n);};
 const text=(v:unknown,label:string)=>{if(typeof v!=='string'||!v.trim()||v.length>1000)throw new BadRequestException(`${label} is required, up to 1000 characters.`);return v.trim();};
-@Controller('material-inventory')
+@Controller('material-inventory') @TenantPermissionOnly()
 export class MaterialInventoryController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get() @RequirePermission('inventory.read')
@@ -37,7 +37,8 @@ export class MaterialInventoryController {
  async move(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){if(b.kind==='adjustment')throw new BadRequestException('Use the approved count-adjustment action.');return this.movement(r,b,false);}
  @Post('adjustments') @RequirePermission('inventory.adjust')
  async adjust(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){if(b.approved!==true)throw new BadRequestException('A count adjustment requires explicit approval.');return this.movement(r,{...b,kind:'adjustment'},true);}
- private async movement(r:AuthenticatedRequest,b:Record<string,unknown>,adjustment:boolean){
+ async fieldMove(r:AuthenticatedRequest,b:Record<string,unknown>,authorize:(c:PoolClient,existing:boolean)=>Promise<void>){if(!['installed','scrap','offcut'].includes(String(b.kind)))throw new BadRequestException('Field use supports installed, scrap or offcut only.');return this.movement(r,b,false,authorize);}
+ private async movement(r:AuthenticatedRequest,b:Record<string,unknown>,adjustment:boolean,authorize?:(c:PoolClient,existing:boolean)=>Promise<void>){
   const lot=id(b.lot_id),key=id(b.request_key),from=b.from_location_id?id(b.from_location_id):null,to=b.to_location_id?id(b.to_location_id):null,work=b.work_order_id?id(b.work_order_id):null;
   const kind=String(b.kind),quantity=String(b.quantity),reference=text(b.reference,'Source document reference'),reason=text(b.reason,'Movement reason');
   if(!/^-?\d{1,12}(\.\d{1,4})?$/.test(quantity)||Number(quantity)===0||(!adjustment&&Number(quantity)<0))throw new BadRequestException('Use a nonzero quantity with at most four decimal places.');
@@ -50,6 +51,7 @@ export class MaterialInventoryController {
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[r.auth.tenantId+':inventory-request:'+key]);
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[r.auth.tenantId+':inventory-lot:'+lot]);
    const old=(await c.query('SELECT * FROM material_movements WHERE tenant_id=$1 AND request_key=$2',[r.auth.tenantId,key])).rows[0];
+   if(authorize){await authorize(c,Boolean(old));if(old&&old.actor_user_id!==r.auth.userId)throw new BadRequestException('Material request belongs to another operator.');}
    if(old){if(old.lot_id!==lot||old.from_location_id!==from||old.to_location_id!==to||old.kind!==kind||scaled(old.quantity)!==scaled(quantity)||old.reference!==reference||old.reason!==reason||old.work_order_id!==work)throw new BadRequestException('This request already recorded different material movement.');return this.result(old,'material_movement',true);}
    const item=(await c.query('SELECT * FROM material_lots WHERE tenant_id=$1 AND id=$2',[r.auth.tenantId,lot])).rows[0];if(!item)throw new BadRequestException('Material lot unavailable.');
    if(item.unit==='each'&&scaled(quantity)%10000n!==0n)throw new BadRequestException('Each quantities must be whole numbers.');

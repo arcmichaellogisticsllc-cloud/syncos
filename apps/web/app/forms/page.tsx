@@ -1,4 +1,5 @@
 "use client";
+import {FormAssignmentControls} from './assignment-controls';
 import {HistoryControls} from '../history-controls';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {validateFormTemplate,validateFormAnswers,visibleFormFields,type FormSchema,type FormField} from '@syncos/shared/form-schema';
@@ -54,7 +55,7 @@ export default function FormsPage(){
   <Panel title="Form versions"><HistoryControls label="form versions" busy={busy} more={more.versions&&versions.length>=200} onSearch={q=>void history('versions',q)} onMore={()=>void history('versions',historyQueries.current.versions,true)}/><p>Versions are shown newest first. Review the fields before publishing. Existing responses keep their original version.</p>{versions.map(v=><article key={v.id}><h3>{v.schema.name} — version {v.version} ({v.status})</h3><p>{v.schema.description}</p><ul>{v.schema.fields.map(f=><li key={f.key}>{f.label} · {f.type}{f.required?' · required':''}{f.showWhen?' · conditional':''}</li>)}</ul>
    {manage&&<button disabled={busy} onClick={()=>{request.current='';setFamily(v.family_id);setSchema(v.schema);setMessage('Version loaded into the editor. Save changes as a new draft.');}}>Create revised version</button>}
    {manage&&v.status==='draft'&&<form onSubmit={e=>{e.preventDefault();void action(()=>syncosFetch(`supplemental-forms/versions/${v.id}/publish`,{method:'POST',body:{approved:true}}),'Version published.');}}><label><input type="checkbox" required disabled={busy}/> I reviewed and approve these fields as supplemental information.</label><button disabled={busy}>Publish version {v.version}</button></form>}
-  </article>)}</Panel>
+  {manage&&v.status==='published'&&<FormAssignmentControls version={v.id}/>}</article>)}</Panel>
   {submit&&<Panel title="Complete a published form"><label>Form version<select disabled={busy} value={selected} onChange={e=>{answerRequest.current='';setSelected(e.target.value);setAnswers({});}}><option value="">Select a published version</option>{versions.filter(v=>v.status==='published').map(v=><option key={v.id} value={v.id}>{v.schema.name} — version {v.version}</option>)}</select></label>
    {active&&<><p>Save unfinished answers on this device before closing the page. Drafts belong to your account and this exact form version; logout removes them. Submission requires a connection.</p>{savedDraft&&<button type="button" disabled={busy} onClick={restoreAnswers}>Restore saved answers</button>}<button type="button" disabled={busy} onClick={()=>void saveAnswers()}>Save answers on this device</button></>}
    {active&&<form onSubmit={record}><fieldset disabled={busy} style={{border:0,minWidth:0}}><legend>{active.schema.name}</legend><p>{active.schema.description}</p>{visibleFormFields(active.schema,answers).map(f=><label key={f.key}>{f.label}{f.required?' (required)':''}

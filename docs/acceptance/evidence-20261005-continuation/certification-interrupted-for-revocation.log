@@ -1,0 +1,63 @@
+
+> syncos@0.1.0 e2e:certification
+> playwright test tests/e2e/internal-workforce.spec.ts tests/e2e/partner-admin-invitations.spec.ts tests/e2e/production-readiness.spec.ts tests/e2e/executive-command-throughput.spec.ts tests/e2e/opportunity-capacity-matching.spec.ts tests/e2e/partner-performance-capacity.spec.ts tests/e2e/payment-retainage-adjustments.spec.ts tests/e2e/accepted-production-financials.spec.ts tests/e2e/syncfield-production-exports-dashboard.spec.ts tests/e2e/syncfield-customer-qc.spec.ts tests/e2e/syncfield-daily-production.spec.ts tests/e2e/syncfield-map-jsa.spec.ts tests/e2e/partner-portal-shell.spec.ts tests/e2e/partner-mobilization-readiness.spec.ts tests/e2e/partner-agreements-work-orders-vehicles.spec.ts tests/e2e/partner-workforce-credentials.spec.ts tests/e2e/partner-compliance-onboarding.spec.ts tests/e2e/route-matrix.spec.ts tests/e2e/workflows tests/e2e/lifecycle tests/e2e/personas tests/e2e/detail-hydration tests/e2e/boundaries tests/e2e/timeline-audit tests/e2e/action-states
+
+
+Running 707 tests using 1 worker
+
+(node:61407) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    1 [chromium] › tests/e2e/accepted-production-financials.spec.ts:39:7 › P12 accepted production financials › production item choices stay tenant-scoped and exclude unauthorized partners (84ms)
+  ✓    2 [chromium] › tests/e2e/accepted-production-financials.spec.ts:50:7 › P12 accepted production financials › Customer-accepted production converts to one Billable using Customer rate only (218ms)
+  ✓    3 [chromium] › tests/e2e/accepted-production-financials.spec.ts:66:7 › P12 accepted production financials › Invoice, cash, payment application, and invoice balance stay in Customer revenue chain (162ms)
+  ✓    4 [chromium] › tests/e2e/accepted-production-financials.spec.ts:90:7 › P12 accepted production financials › Partner settlement, Contractor Payable, and pay-when-paid eligibility use Partner rate (422ms)
+  ✓    5 [chromium] › tests/e2e/accepted-production-financials.spec.ts:120:7 › P12 accepted production financials › Partner Admin sees own settlement without Customer rate or margin; Foreman and Partner B are denied (38ms)
+  ✓    6 [chromium] › tests/e2e/accepted-production-financials.spec.ts:131:7 › P12 accepted production financials › Customer and Partner coil commercial policies are independent and preserve base accepted quantity (193ms)
+  ✓    7 [chromium] › tests/e2e/accepted-production-financials.spec.ts:176:7 › P12 accepted production financials › Editing a schedule cannot change an already approved partner rate (95ms)
+  ✓    8 [chromium] › tests/e2e/accepted-production-financials.spec.ts:186:7 › P12 accepted production financials › Post-billing Customer QC change creates exception without rewriting issued invoice or Billable (70ms)
+  ✓    9 [chromium] › tests/e2e/accepted-production-financials.spec.ts:347:5 › a newer pending customer QC cycle blocks readiness using an older accepted decision (536ms)
+  ✓   10 [chromium] › tests/e2e/accepted-production-financials.spec.ts:384:6 › Financial handoff completion safeguards › workflow choices are tenant-scoped; cash retry and duplicate settlement cannot double financial facts (558ms)
+  ✓   11 [chromium] › tests/e2e/accepted-production-financials.spec.ts:404:6 › Financial handoff completion safeguards › accepted correction production code controls locked customer rate, preserving original record (326ms)
+  ✓   12 [chromium] › tests/e2e/accepted-production-financials.spec.ts:422:5 › targeted reinspection retains unrelated accepted production while unresolved corrected work stays blocked (419ms)
+  ✓   13 [chromium] › tests/e2e/accepted-production-financials.spec.ts:464:5 › four-decimal approved rates survive conversion and invoice storage without early rounding (380ms)
+  ✓   14 [chromium] › tests/e2e/accepted-production-financials.spec.ts:482:5 › agreement UI approves a reviewed business calendar and shows its history (2.2s)
+  ✓   15 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodDraft: cancel does not mutate forbidden tables (2.3s)
+  ✓   16 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodSubmitted: cancel does not mutate forbidden tables (2.0s)
+  ✓   17 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodUnderReview: cancel does not mutate forbidden tables (2.0s)
+  ✓   18 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodCorrectionRequested: cancel does not mutate forbidden tables (2.1s)
+  ✓   19 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodApprovedNotMarked: cancel does not mutate forbidden tables (2.3s)
+  ✓   20 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Production] prodVoid: cancel does not mutate forbidden tables (2.9s)
+  ✓   21 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcPending: cancel does not mutate forbidden tables (2.9s)
+  ✓   22 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcInReview: cancel does not mutate forbidden tables (3.2s)
+  ✓   23 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcCorrectionRequested: cancel does not mutate forbidden tables (3.2s)
+  ✓   24 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [QC] qcVoid: cancel does not mutate forbidden tables (3.4s)
+  ✓   25 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Billable] billableDraft: cancel does not mutate forbidden tables (3.0s)
+  ✓   26 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Billable] billableOnHold: cancel does not mutate forbidden tables (3.2s)
+  ✓   27 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Billable] billableDisputed: cancel does not mutate forbidden tables (2.7s)
+  ✓   28 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Billable] billableVoid: cancel does not mutate forbidden tables (3.8s)
+  ✓   29 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Settlement] settlementDraft: cancel does not mutate forbidden tables (2.8s)
+  ✓   30 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Settlement] settlementItemDraft: cancel does not mutate forbidden tables (2.6s)
+  ✓   31 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Settlement] settlementUnderReview: cancel does not mutate forbidden tables (2.4s)
+  ✓   32 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Settlement] settlementApproved: cancel does not mutate forbidden tables (2.2s)
+  ✓   33 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Settlement] settlementDisputed: cancel does not mutate forbidden tables (2.2s)
+  ✓   34 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Settlement] settlementVoid: cancel does not mutate forbidden tables (2.1s)
+  ✓   35 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Invoice] invoiceDraft: cancel does not mutate forbidden tables (2.1s)
+  ✓   36 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Invoice] invoiceItemDraft: cancel does not mutate forbidden tables (1.8s)
+  ✓   37 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Invoice] invoiceUnderReview: cancel does not mutate forbidden tables (1.8s)
+  ✓   38 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Invoice] invoiceApproved: cancel does not mutate forbidden tables (2.0s)
+  ✓   39 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Invoice] invoiceDisputed: cancel does not mutate forbidden tables (2.0s)
+  ✓   40 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Invoice] invoiceVoid: cancel does not mutate forbidden tables (3.3s)
+  ✓   41 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Cash] cashReceiptUnapplied: cancel does not mutate forbidden tables (3.0s)
+  ✓   42 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Cash] cashReceiptVoidTarget: cancel does not mutate forbidden tables (3.6s)
+  ✓   43 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Cash] cashReceiptVoid: cancel does not mutate forbidden tables (3.7s)
+  ✓   44 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Cash] paymentApplicationApplied: cancel does not mutate forbidden tables (3.2s)
+  ✓   45 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Cash] paymentApplicationVoid: cancel does not mutate forbidden tables (3.9s)
+  ✓   46 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Collections] collectionCaseOpen: cancel does not mutate forbidden tables (2.9s)
+  ✓   47 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Collections] collectionCaseClosed: cancel does not mutate forbidden tables (3.2s)
+  ✓   48 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Collections] collectionActionPlanned: cancel does not mutate forbidden tables (2.5s)
+  ✘   49 [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Collections] collectionActionCompleted: cancel does not mutate forbidden tables (2.5s)
+
+  1 interrupted
+    [chromium] › tests/e2e/action-states/action-state-boundaries.spec.ts:33:9 › Action-state boundaries — open/cancel must not mutate forbidden tables › [Collections] collectionActionCompleted: cancel does not mutate forbidden tables
+  658 did not run
+  48 passed (1.8m)

@@ -1,0 +1,5 @@
+
+> syncos@0.1.0 staging:check
+> node scripts/check-staging-readiness.js
+
+Staging readiness check passed.

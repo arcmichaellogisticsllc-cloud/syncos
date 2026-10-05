@@ -656,6 +656,7 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
                 </div>
               ))}
           {persona === "partner_admin" && foremanFieldPermissions.some((permission) => permissions.includes(permission)) ? <Link className="partner-nav-link" href="/syncfield/today">SyncField</Link> : null}
+          {persona === "partner_foreman" && permissions.includes("partner_daily_production.read") ? <><Link className="partner-nav-link" href="/syncfield/forms">Assigned forms</Link><Link className="partner-nav-link" href="/syncfield/materials">Crew materials</Link></> : null}
           {permissions.length > 0 ? <Link className="partner-nav-link" href="/training">Training</Link> : null}
         </nav>
         <div className="partner-account-control">
@@ -3618,7 +3619,7 @@ function useFieldProductionQueue(data: PortalData) {
   async function replay() {
     if (!scopeKey || (typeof navigator !== "undefined" && !navigator.onLine)) return;
     try {
-      await replayFieldMutations(scopeKey, setMutations);
+      await replayFieldMutations(scopeKey, setMutations, true);
     } catch {
       setMutations((current) => current.map((mutation) => isUnsyncedMutation(mutation) ? { ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." } : mutation));
     }
@@ -3709,19 +3710,38 @@ function tokenTenantId() {
   }
 }
 
-async function replayFieldMutations(scopeKey: string, setMutations: (mutations: OfflineMutation[]) => void) {
+async function replayFieldMutations(scopeKey: string, setMutations: (mutations: OfflineMutation[]) => void, manual = false) {
+  const run = () => replayFieldMutationsLocked(scopeKey, setMutations, manual);
+  // Serialize tabs where supported. Server idempotency remains authoritative everywhere.
+  if (typeof navigator !== "undefined" && navigator.locks) return navigator.locks.request(`syncos-field-replay:${scopeKey}`, run);
+  return run();
+}
+
+function queueSessionMatches(scopeKey: string) {
+  try {
+    const token = readToken();
+    const claims = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return !!claims.sub && !!claims.tenant_id && scopeKey.startsWith(`tenant:${claims.tenant_id}:user:${claims.sub}:`) && (!claims.exp || Number(claims.exp) * 1000 > Date.now());
+  } catch { return false; }
+}
+
+async function replayFieldMutationsLocked(scopeKey: string, setMutations: (mutations: OfflineMutation[]) => void, manual: boolean) {
   let syncedCount = 0;
   const queue = (await listFieldMutations(scopeKey)).filter(isReplayableMutation).sort((left, right) => left.sequence - right.sequence);
-  for (const mutation of queue) {
+  for (const queued of queue) {
+    if (!queueSessionMatches(scopeKey) || !navigator.onLine) break;
+    // A deliberate retry resets only the attempt budget, never payload or identity.
+    const mutation = manual ? { ...queued, retryCount: 0 } : queued;
     if (mutation.retryCount >= maxAutoRetries) {
       await saveFieldMutation({ ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." });
       setMutations(await listFieldMutations(scopeKey));
       continue;
     }
-    const syncing = { ...mutation, status: "SYNCING" as const, lastAttemptAt: new Date().toISOString() };
+    const syncing = { ...mutation, status: "SYNCING" as const, retryCount: mutation.retryCount + 1, lastAttemptAt: new Date().toISOString() };
     await saveFieldMutation(syncing);
     setMutations(await listFieldMutations(scopeKey));
     try {
+      if (!queueSessionMatches(scopeKey)) break;
       const canonical = await syncosFetch<Record<string, unknown>>(fieldMutationEndpoint(mutation.operation), { method: "POST", body: mutation.payload });
       await saveFieldMutation({ ...syncing, status: "SYNCED", serverEntityId: str(canonical.id), canonical, lastSafeError: undefined });
       syncedCount += 1;
@@ -3746,7 +3766,7 @@ function fieldMutationEndpoint(operation: FieldMutationOperation) {
 }
 
 function isReplayableMutation(mutation: OfflineMutation) {
-  return mutation.status === "PENDING" || mutation.status === "FAILED";
+  return mutation.status === "PENDING" || mutation.status === "FAILED" || mutation.status === "SYNCING";
 }
 
 function isUnsyncedMutation(mutation: OfflineMutation) {

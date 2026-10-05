@@ -1,0 +1,17 @@
+TAP version 13
+# {"scenario":"synthetic core history","records":1206,"pages":13,"elapsedMs":504}
+# Subtest: core history pages realistic volumes without gaps, respects literal search and tenant permissions
+ok 1 - core history pages realistic volumes without gaps, respects literal search and tenant permissions
+  ---
+  duration_ms: 3750.508378
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11645.191642

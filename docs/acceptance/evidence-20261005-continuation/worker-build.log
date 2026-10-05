@@ -1,0 +1,11 @@
+
+> @syncos/worker@0.1.0 build
+> npm run build:deps && tsc
+
+
+> @syncos/worker@0.1.0 build:deps
+> npm run build -w @syncos/shared
+
+
+> @syncos/shared@0.1.0 build
+> tsc

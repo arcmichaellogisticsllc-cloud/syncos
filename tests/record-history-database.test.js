@@ -1,0 +1,19 @@
+const test=require('node:test'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto'),{Pool}=require('pg');
+const {RecordHistoryController}=require('../apps/api/dist/routes/record-history.controller');
+const url=process.env.SYNCOS_COMMERCIAL_TEST_DATABASE_URL;
+test('core history pages realistic volumes without gaps, respects literal search and tenant permissions',{skip:!url,timeout:60000},async()=>{
+ const pool=new Pool({connectionString:url});try{
+ const tag=randomUUID(),tenant=(await pool.query("INSERT INTO tenants(name,slug) VALUES('Synthetic history',$1) RETURNING id",['history-'+tag])).rows[0].id,other=(await pool.query("INSERT INTO tenants(name,slug) VALUES('Other synthetic history',$1) RETURNING id",['history-other-'+tag])).rows[0].id,user=(await pool.query("INSERT INTO users(email,display_name) VALUES($1,'History reader') RETURNING id",[tag+'@synthetic.test'])).rows[0].id,member=(await pool.query('INSERT INTO tenant_users(tenant_id,user_id) VALUES($1,$2) RETURNING id',[tenant,user])).rows[0].id,role=(await pool.query("INSERT INTO roles(tenant_id,name) VALUES($1,'History reader') RETURNING id",[tenant])).rows[0].id;
+ await pool.query('INSERT INTO user_roles(tenant_id,tenant_user_id,role_id) VALUES($1,$2,$3)',[tenant,member,role]);
+ const keys=['project.read','work_order.read','production_record.read','qc_review.read','invoice.read','contractor_payable.read','payroll_run.read','payment_batch.read','cash_receipt.read','collection_case.read','accounting_export_batch.read','workflow_task.read','workflow_instance.read','organization.read','contact.read','opportunity.read','signal.read','billable_item.read','settlement.read','bank_transaction.read'];
+ for(const key of keys){await pool.query('INSERT INTO permissions(key,name) VALUES($1,$1) ON CONFLICT(key) DO NOTHING',[key]);await pool.query('INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT $1,$2,id FROM permissions WHERE key=$3',[tenant,role,key]);}
+ const controller=new RecordHistoryController(pool),req={auth:{tenantId:tenant,userId:user}};const choices=await controller.choices(req);assert.equal(choices.length,20);
+ for(const choice of choices){const result=await controller.list(req,choice.key,{});assert.equal(result.rows.length,0);}
+ await pool.query("INSERT INTO projects(tenant_id,name,created_at) SELECT $1,'Synthetic project '||n,'2026-01-01T00:00:00Z'::timestamptz FROM generate_series(1,1205) n",[tenant]);
+ await pool.query("INSERT INTO projects(tenant_id,name) VALUES($1,'Literal % query')",[tenant]);const foreign=(await pool.query("INSERT INTO projects(tenant_id,name) VALUES($1,'Other private project') RETURNING id",[other])).rows[0].id;
+ const seen=new Set();let before,requests=0;const started=Date.now();do{const result=await controller.list(req,'projects',before?{before}:{});requests++;assert.ok(result.rows.length<=100);for(const row of result.rows){assert.equal(seen.has(row.id),false);seen.add(row.id);assert.equal(row.href,'/projects/'+row.id);assert.equal(Object.keys(row).sort().join(','),'created_at,href,id,status,title');}before=result.next;}while(before);assert.equal(seen.size,1206);assert.equal(requests,13);
+ assert.equal((await controller.list(req,'projects',{q:'%'})).rows.length,1);assert.equal((await controller.list(req,'projects',{before:foreign})).rows.length,0);await assert.rejects(controller.list(req,'__proto__'),/cannot read/);await assert.rejects(controller.list(req,'projects',{before:'not-an-id'}),/Invalid history/);
+ await pool.query("UPDATE user_roles SET scope_type='organization',scope_id=$1 WHERE tenant_id=$2 AND role_id=$3",[randomUUID(),tenant,role]);assert.equal((await controller.choices(req)).length,0);await assert.rejects(controller.list(req,'projects'),/cannot read/);
+ console.log(JSON.stringify({scenario:'synthetic core history',records:1206,pages:13,elapsedMs:Date.now()-started}));
+ }finally{await pool.end();}
+});

@@ -19,6 +19,7 @@ const resources: Record<string, string> = {
   "/opportunities/candidates": "opportunity_candidate", "/opportunities/coverage": "coverage_plan", "/opportunities": "opportunity",
 };
 const pages: Record<string, string[]> = {
+  "/record-history": ["project.read", "work_order.read", "production_record.read", "qc_review.read", "invoice.read", "contractor_payable.read", "payroll_run.read", "payment_batch.read", "cash_receipt.read", "collection_case.read", "accounting_export_batch.read", "workflow_task.read", "workflow_instance.read", "organization.read", "contact.read", "opportunity.read", "signal.read", "billable_item.read", "settlement.read", "bank_transaction.read"],
   "/customer-inquiries": ["customer_inquiry.read"],
   "/material-inventory": ["inventory.read"],
   "/forms": ["form.read"],
@@ -34,10 +35,10 @@ const pages: Record<string, string[]> = {
   "/field-setup": ["syncfield_map.create"], "/internal-workforce": ["crew.read"],
   "/accepted-production-financials": ["billing.read"], "/production-dashboard": ["production_dashboard.read"],
   "/payment-retainage-adjustments": ["partner_payment.execute", "retainage.release", "financial_adjustment.create", "contract.update"], "/constraints-center": ["dashboard.constraints.read"],
-  "/recommendations-center": ["dashboard.recommendations.read"], "/kpis-center": ["dashboard.kpis.read"], "/workflows-center": ["dashboard.workflows.read"],
+  "/recommendations-center": ["dashboard.recommendations.read"], "/kpis-center": ["dashboard.kpis.read"], "/workflows-center": ["dashboard.workflows.read"], "/workflow-notifications": ["workflow_task.read"],
   "/intelligence": ["signal.read", "organization.read"],
 };
-function publicRoute(path: string) { return path === "/login" || path === "/forgot-password" || path === "/reset-password" || path === "/activate-employee" || path.startsWith("/partner/invite/"); }
+function publicRoute(path: string) { return path.startsWith("/request-service/") || path === "/login" || path === "/forgot-password" || path === "/reset-password" || path === "/activate-employee" || path.startsWith("/partner/invite/"); }
 export function routeAllowed(path: string, context: AuthContext | null): boolean {
   const route = path.split(/[?#]/)[0];
   if (publicRoute(route)) return true;
@@ -46,9 +47,11 @@ export function routeAllowed(path: string, context: AuthContext | null): boolean
   if (route === "/training") return context.permissions.length > 0;
   // Field/company routes enforce assignment and persona boundaries in their own shell and APIs.
   if (route === "/syncfield/design-prep") return context.permissions.includes("syncfield_map.work_zone.manage");
+  if (["/syncfield/forms", "/syncfield/materials"].includes(route)) return context.permissions.includes("partner_daily_production.read") && context.permissions.includes("partner_context.read");
   if (route.startsWith("/syncfield/") || route === "/partner" || route.startsWith("/partner/")) return context.permissions.includes("partner_context.read");
   if (route === "/internal-workforce" && !context.roles.some(role => ["system_admin", "executive", "operations_manager"].includes(role))) return false;
   let required = pages[route];
+  if (["/record-history", "/workflow-notifications"].includes(route)) return Boolean(required?.some(permission => context.tenant_permissions?.includes(permission)));
   if (!required) {
     const resource = Object.keys(resources).sort((a,b) => b.length-a.length).find(prefix => route === prefix || route.startsWith(`${prefix}/`));
     if (resource) required = [`${resources[resource]}.${route.endsWith("/new") ? "create" : route.endsWith("/edit") ? "update" : "read"}`];
@@ -57,6 +60,7 @@ export function routeAllowed(path: string, context: AuthContext | null): boolean
 }
 
 export function useVerifiedIdentity() { return useContext(AccessContext); }
+export function useTenantCapability(permission: string) { return useContext(AccessContext)?.tenant_permissions?.includes(permission) ?? false; }
 export function useCapability(permission: string) { return useContext(AccessContext)?.permissions.includes(permission) ?? false; }
 export function Capability({ permission, children }: { permission: string; children: ReactNode }) { return useCapability(permission) ? <>{children}</> : null; }
 export function PermissionLink(props: ComponentProps<typeof NextLink> & { allowed?: boolean }) {
