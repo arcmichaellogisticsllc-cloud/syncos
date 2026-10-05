@@ -199,7 +199,7 @@ These paths are implemented in the current local candidate. Execute the matching
 
 ### Attach photos or documents
 1. Sign in as the assigned foreman (Sync crew or partner crew), select the intended assignment, and open **Review & Submit**.
-2. Under **Photos and evidence**, choose **Evidence file**: JPEG, PNG, PDF or MP4, up to 20 MB.
+2. Under **Photos and evidence**, choose **Evidence file**: JPEG, PNG, HEIC, HEIF, PDF, MP4 or MOV, up to 100 MiB in the current local candidate.
 3. Describe what it shows, then select **Upload evidence**. Wait for **Evidence saved on the server**.
 4. The file appears with its description. **Download [filename]** retrieves the authorized file. Before transmission, the application stores a device copy and its request identifier. If confirmation is lost or you are offline, reconnect, reopen the same report as the same user and select **Retry upload**. The unchanged request is recorded once. **Discard device copy** removes only the pending local copy; keep your original file. Signing out clears local field data.
 5. Evidence added after submission is an additional record. It does not overwrite the submitted quantity, accept work, create billing, or replace the original submission.
@@ -271,3 +271,16 @@ Company approval, crew readiness, project mobilization, and authorization to sta
 ## Verification boundaries
 
 These steps describe the local candidate. Automated UI tests cover save/failure/retry, visibility for read-only users, and scoped worker creation. API tests cover declaration tenant scope, duplicate retry, internal response, and unchanged compliance readiness. Real-phone acceptance and staging activation remain separate release checks.
+
+
+## Local candidate: resumable evidence and connection recovery
+
+These instructions apply after the candidate containing migration 097 is activated; they do not describe the older deployed staging build.
+
+1. Open the assigned report and **Photos and evidence**. Choose the original and describe it. Check the capture time, location and category.
+2. Select **Upload evidence**. Larger originals upload in parts. A parts-progress message is not final submission confirmation.
+3. If disconnected or interrupted, retain the device copy and original. Reconnect using the original account, reopen the report and choose **Retry upload**. Received parts are reused; the server checks the full original before recording evidence.
+4. Wait for **Evidence saved on the server**. Customer acceptance and readability review remain separate.
+5. If work is stopped or your assignment was removed, contact the supervisor. Retrying does not override these controls. Expired temporary sessions restart from the saved original without authorizing new work.
+6. After an online SyncField visit prepares offline recovery, reopening a SyncField route without connectivity shows **SyncField connection recovery**. It displays last-verified assignment labels and supported pending device work for at most one hour, tied to the same session. This screen cannot authorize work, edit maps, or submit records.
+7. Choose **Reconnect and verify access** once connected. Review/retry pending work in its normal workspace. Logging out clears device context and drafts; preserve originals first.

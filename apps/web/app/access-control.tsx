@@ -3,7 +3,7 @@
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ComponentProps, type ReactNode } from "react";
-import { loadAuthContext, readToken, type AuthContext } from "./intelligence/api";
+import { loadAuthContext, readToken, SyncosApiError, type AuthContext } from "./intelligence/api";
 
 const AccessContext = createContext<AuthContext | null>(null);
 
@@ -56,6 +56,7 @@ export function routeAllowed(path: string, context: AuthContext | null): boolean
   return Boolean(required?.some(permission => context.permissions.includes(permission)));
 }
 
+export function useVerifiedIdentity() { return useContext(AccessContext); }
 export function useCapability(permission: string) { return useContext(AccessContext)?.permissions.includes(permission) ?? false; }
 export function Capability({ permission, children }: { permission: string; children: ReactNode }) { return useCapability(permission) ? <>{children}</> : null; }
 export function PermissionLink(props: ComponentProps<typeof NextLink> & { allowed?: boolean }) {
@@ -77,18 +78,23 @@ export function AccessProvider({ children }: { children: ReactNode }) {
     const storage = (event: StorageEvent) => { if (event.key === "syncos.apiToken" || event.key === null) setRevision(value => value + 1); };
     window.addEventListener("storage", storage);
     window.addEventListener("focus", revalidate);
+    window.addEventListener("online", revalidate);
     document.addEventListener("visibilitychange", visibility);
-    return () => { window.removeEventListener("storage", storage); window.removeEventListener("focus", revalidate); document.removeEventListener("visibilitychange", visibility); };
+    return () => { window.removeEventListener("storage", storage); window.removeEventListener("focus", revalidate); window.removeEventListener("online", revalidate); document.removeEventListener("visibilitychange", visibility); };
   }, []);
-  const [state, setState] = useState<{ path: string; context: AuthContext | null; error: string } | null>(null);
+  const [state, setState] = useState<{ path: string; context: AuthContext | null; error: string; token?:string } | null>(null);
   useEffect(() => {
     let alive = true;
     if (publicRoute(pathname)) return;
 
     const token = readToken();
     if (!token) { setState({ path: pathname, context: null, error: "Sign in to continue." }); return; }
-    loadAuthContext(token).then(context => { if (alive) setState({ path: pathname, context, error: "" }); })
-      .catch(() => { if (alive) setState({ path: pathname, context: null, error: "We could not verify your access. Sign in again or retry." }); });
+    loadAuthContext(token).then(context => { if (alive) setState({ path: pathname, context, error: "",token }); })
+      .catch(error => {
+        const denied=error instanceof SyncosApiError&&[401,403].includes(error.status);
+        if(denied)localStorage.removeItem("syncos.offlineContext");
+        if(alive)setState(previous=>!denied&&!navigator.onLine&&pathname.startsWith('/syncfield/')&&previous?.path===pathname&&previous.token===token&&token===readToken()&&previous.context?previous:{path:pathname,context:null,error:"We could not verify your access. Sign in again or retry."});
+      });
     return () => { alive = false; };
   }, [pathname, revision]);
   if (publicRoute(pathname)) return <AccessContext.Provider value={null}>{children}</AccessContext.Provider>;

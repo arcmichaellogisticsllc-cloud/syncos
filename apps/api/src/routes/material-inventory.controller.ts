@@ -1,4 +1,5 @@
-import {BadRequestException,Body,Controller,Get,Inject,Post,Req} from '@nestjs/common';
+import {workspaceHistory,workspaceChoices,type HistoryQuery} from './workspace-history';
+import {BadRequestException,Body,Controller,Get,Inject,Post,Req,Query} from '@nestjs/common';
 import type {Pool,PoolClient} from 'pg';
 import {executeWriteAction} from '@syncos/shared';
 import {DATABASE_POOL} from '../modules/database.module';
@@ -11,14 +12,16 @@ const text=(v:unknown,label:string)=>{if(typeof v!=='string'||!v.trim()||v.lengt
 export class MaterialInventoryController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get() @RequirePermission('inventory.read')
- async list(@Req() r:AuthenticatedRequest){const t=r.auth.tenantId;const [lots,locations,movements,balances]=await Promise.all([
+ async list(@Req() r:AuthenticatedRequest,@Query() query:HistoryQuery={}){const t=r.auth.tenantId;const [lots,locations,movements,balances]=await Promise.all([
   this.pool.query('SELECT * FROM material_lots WHERE tenant_id=$1 ORDER BY label',[t]),
   this.pool.query('SELECT * FROM material_locations WHERE tenant_id=$1 ORDER BY label',[t]),
-  this.pool.query('SELECT * FROM material_movements WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200',[t]),
+  workspaceHistory(this.pool,t,'movements',query),
   this.pool.query(`SELECT lot_id,location_id,sum(quantity)::text AS balance FROM (
    SELECT lot_id,to_location_id AS location_id,quantity FROM material_movements WHERE tenant_id=$1 AND to_location_id IS NOT NULL
    UNION ALL SELECT lot_id,from_location_id,-quantity FROM material_movements WHERE tenant_id=$1 AND from_location_id IS NOT NULL
-  ) a GROUP BY lot_id,location_id ORDER BY lot_id,location_id`,[t])]);return {lots:lots.rows,locations:locations.rows,movements:movements.rows,balances:balances.rows,usage:(await this.pool.query(`SELECT m.lot_id,m.work_order_id,w.work_order_number,p.name AS project_name,m.kind,sum(m.quantity)::text AS quantity FROM material_movements m JOIN work_orders w ON w.tenant_id=m.tenant_id AND w.id=m.work_order_id LEFT JOIN projects p ON p.tenant_id=w.tenant_id AND p.id=w.project_id WHERE m.tenant_id=$1 AND m.kind IN ('installed','scrap','offcut') GROUP BY m.lot_id,m.work_order_id,w.work_order_number,p.name,m.kind ORDER BY w.work_order_number,m.kind`,[t])).rows,crews:(await this.pool.query("SELECT id,name AS label FROM crews WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY name LIMIT 200",[t])).rows,work_orders:(await this.pool.query("SELECT id,work_order_number AS label FROM work_orders WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200",[t])).rows};}
+  ) a GROUP BY lot_id,location_id ORDER BY lot_id,location_id`,[t])]);return {lots:lots.rows,locations:locations.rows,movements:movements,balances:balances.rows,usage:(await this.pool.query(`SELECT m.lot_id,m.work_order_id,w.work_order_number,p.name AS project_name,m.kind,sum(m.quantity)::text AS quantity FROM material_movements m JOIN work_orders w ON w.tenant_id=m.tenant_id AND w.id=m.work_order_id LEFT JOIN projects p ON p.tenant_id=w.tenant_id AND p.id=w.project_id WHERE m.tenant_id=$1 AND m.kind IN ('installed','scrap','offcut') GROUP BY m.lot_id,m.work_order_id,w.work_order_number,p.name,m.kind ORDER BY w.work_order_number,m.kind`,[t])).rows,crews:(await this.pool.query("SELECT id,name AS label FROM crews WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY name LIMIT 200",[t])).rows,work_orders:(await this.pool.query("SELECT id,work_order_number AS label FROM work_orders WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200",[t])).rows};}
+ @Get('choices') @RequirePermission('inventory.read')
+ async choices(@Req() r:AuthenticatedRequest,@Query() query:{kind?:string;q?:string}){return workspaceChoices(this.pool,r.auth.tenantId,String(query.kind),query.q,['crews','work_orders']);}
  @Post('lots') @RequirePermission('inventory.manage')
  async lot(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){const label=text(b.label,'Material name'),serial=text(b.serial_number,'Reel or lot identifier');if(!['feet','each'].includes(String(b.unit)))throw new BadRequestException('Choose feet or each.');return this.write(r,'inventory.lot_created',async c=>{
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[r.auth.tenantId+':lot:'+serial]);

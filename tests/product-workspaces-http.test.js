@@ -11,6 +11,6 @@ test('product workspace HTTP routes enforce unauthenticated, read-only and mutat
  for(const path of ['supplemental-forms','material-inventory','customer-inquiries']){assert.equal((await fetch(`${base}/${path}`)).status,401);assert.equal((await fetch(`${base}/${path}`,{headers})).status,403);}
  await pool.query("INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT $1,$2,id FROM permissions WHERE key IN ('form.read','inventory.read','customer_inquiry.read')",[tenant,role]);
  for(const path of ['supplemental-forms','material-inventory','customer-inquiries'])assert.equal((await fetch(`${base}/${path}`,{headers})).status,200);
- for(const path of ['supplemental-forms/versions','supplemental-forms/records','material-inventory/lots','material-inventory/movements','material-inventory/adjustments','customer-inquiries'])assert.equal((await fetch(`${base}/${path}`,{method:'POST',headers,body:'{}'})).status,403);
+ for(const path of ['supplemental-forms/versions','supplemental-forms/records','material-inventory/lots','material-inventory/movements','material-inventory/adjustments','customer-inquiries','syncfield/foreman/evidence-uploads','syncfield/foreman/evidence-uploads/00000000-0000-0000-0000-000000000001/chunks','syncfield/foreman/evidence-uploads/00000000-0000-0000-0000-000000000001/complete'])assert.equal((await fetch(`${base}/${path}`,{method:'POST',headers,body:'{}'})).status,403);
  }finally{await pool.end();}
 });

@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: demo crew repair preserves existing ownership and unrelated records
+ok 1 - demo crew repair preserves existing ownership and unrelated records
+  ---
+  duration_ms: 105.824324
+  type: 'test'
+  ...
+# Subtest: existing demo roles recover execution duties without reseeding or widening other roles
+ok 2 - existing demo roles recover execution duties without reseeding or widening other roles
+  ---
+  duration_ms: 121.802882
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 421.412975

@@ -1,3 +1,4 @@
+import {ResumableEvidence,UPLOAD_MAX_BYTES,withEvidenceFinalization} from './resumable-evidence';
 import { scheduleCorrectionDeadline, verifiedReceivedTime } from "./prime-correction-deadlines";
 import { requireReviewedProductionQuantity, productionQuantityFingerprint, productionQuantitySource, quantityReviewCurrent } from "./production-quantity-integrity";
 import { evidenceKinds, evidenceReadiness, requireEvidenceReady } from "./field-evidence-readiness";
@@ -1220,7 +1221,9 @@ export class SyncfieldController {
 
   @Post("foreman/evidence")
   @RequirePermission("partner_production_record.create")
-  async uploadFieldEvidence(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+  async uploadFieldEvidence(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {return this.persistFieldEvidence(request,body);}
+
+  private async persistFieldEvidence(request:AuthenticatedRequest,body:Record<string,unknown>,maximumBytes?:number) {
     return this.withClient(async client => {
       const context = await this.requirePartnerForeman(client, request);
       const crew = await this.requireForemanCrew(client, context);
@@ -1233,7 +1236,7 @@ export class SyncfieldController {
       }
       const mime = requireString(body.mime_type, "mime_type is required");
       const encoded = requireString(body.content_base64, "file is required");
-      const { bytes, checksum } = decodeFieldEvidence(mime, encoded);
+      const { bytes, checksum } = decodeFieldEvidence(mime, encoded, maximumBytes);
       const fileName = this.sanitizeFileName(requireString(body.file_name,"file_name is required"));
       const description = requireString(body.description,"description is required");
       const mutationId = requireString(body.client_mutation_id,"client_mutation_id is required");
@@ -1248,11 +1251,44 @@ export class SyncfieldController {
           assertEvidenceReplay(previous, { daily_report_id: report.id, production_record_id: recordId, file_name: fileName, mime_type: mime, description, checksum, evidence_kind:kind,captured_at:captureTime,capture_location:captureLocation });
           return { entityType: "field_evidence", entityId: previous.id, afterState: previous, skipEventAudit: true };
         }
+        if(await hasActiveFieldStop(writeClient,context.tenant_id,report.work_order_id,crew.id))throw new BadRequestException('crew_work_order_stopped');
+        const stops=await safetyBlockers(writeClient,context.tenant_id,report.work_order_id,crew.id,null,false);if(stops.length)throw new BadRequestException(stops.join(', '));
+        const assignments=await this.activeForemanAssignments(writeClient,context);if(!assignments.some(a=>a.work_order_id===report.work_order_id&&a.work_order_version_id===report.work_order_version_id))throw new ForbiddenException('An active assignment is required to upload evidence.');
         const inserted = await writeClient.query(`INSERT INTO syncfield_field_evidence (tenant_id,daily_report_id,production_record_id,crew_id,organization_id,file_name,mime_type,content_bytes,description,checksum,uploaded_by_user_id,client_mutation_id,evidence_kind,captured_at,capture_location,received_revision_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT(tenant_id,uploaded_by_user_id,client_mutation_id) DO UPDATE SET client_mutation_id = EXCLUDED.client_mutation_id RETURNING id,daily_report_id,production_record_id,file_name,mime_type,description,checksum,created_at`, [context.tenant_id,report.id,recordId,crew.id,context.organization.id,fileName,mime,bytes,description,checksum,request.auth.userId,mutationId,kind,captureTime,captureLocation,report.revision_number]);
         if (inserted.rows[0].daily_report_id !== report.id || inserted.rows[0].production_record_id !== recordId) throw new BadRequestException("mutation belongs to another evidence upload");
         return { entityType: "field_evidence", entityId: inserted.rows[0].id, afterState: inserted.rows[0] };
       });
     });
+  }
+
+  @Post('foreman/evidence-uploads')
+  @RequirePermission('partner_production_record.create')
+  async startEvidenceUpload(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){
+    const metadata=body.metadata as Record<string,unknown>;
+    if(!metadata||typeof metadata!=='object'||Array.isArray(metadata)||JSON.stringify(metadata).length>16000)throw new BadRequestException('Evidence details are required.');
+    await this.checkUploadReport(request,metadata);
+    return new ResumableEvidence(this.pool).start(request.auth.tenantId,request.auth.userId,{request_key:body.request_key,metadata,byte_size:body.byte_size,checksum:body.checksum});
+  }
+  @Post('foreman/evidence-uploads/:id/chunks')
+  @RequirePermission('partner_production_record.create')
+  async uploadEvidenceChunk(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){
+    // Current account/crew authorization is checked again before final evidence creation.
+    await this.withClient(async c=>this.requireForemanCrew(c,await this.requirePartnerForeman(c,request)));
+    return new ResumableEvidence(this.pool).chunk(request.auth.tenantId,request.auth.userId,id,body.index,body.content_base64);
+  }
+  @Post('foreman/evidence-uploads/:id/complete')
+  @RequirePermission('partner_production_record.create')
+  async completeEvidenceUpload(@Req() request:AuthenticatedRequest,@Param('id') id:string){
+    return withEvidenceFinalization(async()=>{
+    const uploads=new ResumableEvidence(this.pool),{row,bytes}=await uploads.assemble(request.auth.tenantId,request.auth.userId,id);
+    await this.checkUploadReport(request,row.metadata);
+    if(row.evidence_id)return {id:row.evidence_id};
+    const evidence=await this.persistFieldEvidence(request,{...row.metadata,content_base64:bytes!.toString('base64'),client_mutation_id:row.request_key},UPLOAD_MAX_BYTES);
+    await uploads.finish(request.auth.tenantId,request.auth.userId,id,evidence.id);return evidence;
+    });
+  }
+  private async checkUploadReport(request:AuthenticatedRequest,metadata:Record<string,unknown>){
+    return this.withClient(async c=>{const context=await this.requirePartnerForeman(c,request),crew=await this.requireForemanCrew(c,context),report=await this.requireDailyReportById(c,context.tenant_id,requireString(metadata.daily_report_id,'Report is required.'));if(report.crew_id!==crew.id||report.organization_id!==context.organization.id)throw new NotFoundException('Report unavailable.');});
   }
 
   @Get("foreman/evidence-readiness")

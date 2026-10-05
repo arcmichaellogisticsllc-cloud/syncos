@@ -94,5 +94,6 @@
   "093_supplemental_forms.sql",
   "094_material_inventory.sql",
   "095_customer_service_inquiries.sql",
-  "096_product_workspace_admin_grants.sql"
+  "096_product_workspace_admin_grants.sql",
+  "097_resumable_field_evidence.sql"
 ]

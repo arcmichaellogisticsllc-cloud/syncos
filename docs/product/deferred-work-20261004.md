@@ -2,13 +2,19 @@
 
 The user authorized recording work that cannot be completed now separately. This register is not a statement that all engineering is complete. It distinguishes unfinished implementation from unavailable external acceptance. No item is silently removed from scope.
 
+## Continuation status — current local work
+
+A later local continuation adds a one-hour, same-session offline recovery screen; version/account-scoped form draft save/restore; keyset history navigation and search; resumable originals up to 100 MiB; seven-day temporary upload cleanup; and stronger upload-time stop/assignment checks. Migration 097 is applied only to isolated local test databases. None of these changes are activated on staging. See `docs/acceptance/engineering-continuation-20261004.md` for the exact evidence and limits.
+
+These additions do not complete all eighteen areas. In particular, the recovery screen is read-only: full cold-start offline editing/maps, field-scoped form/inventory actions, public intake, delivery/escalation and the Passport provider adapter remain engineering work.
+
 ## Unfinished engineering
 
 | Item | Current boundary | Closure needed |
 | --- | --- | --- |
-| Offline cold start | No complete offline application shell with a scoped assignment snapshot and safe session-expiry handling has been implemented. Existing queue/retry behavior remains. | Implement persisted field context, cold-start navigation, pending-work visibility, logout cleanup, expiry/revocation handling and server revalidation before replay; then test actual devices. |
-| Resumable large uploads | Existing field-evidence size limit and upload transport remain. Inquiry attachments deliberately use a separate bounded 5 MiB path. | Persist upload sessions/chunks, resumable client state, integrity verification, quota/expiry cleanup and final authorization; test interruption, duplicate completion and shutdown rejection. |
-| Offline supplemental form drafts | Published schemas and submitted snapshots are implemented; the new form-answer screen does not persist unfinished offline responses. | Add user/tenant/version-scoped drafts and replay protection, resolve template changes explicitly, and clear device data at logout. |
+| Offline cold start | A read-only recovery shell now shows expiring, same-session assignment context and saved drafts after a visited SyncField installation loses connectivity. It does not provide complete cold-start offline editing or maps. | Implement persisted field context, cold-start navigation, pending-work visibility, logout cleanup, expiry/revocation handling and server revalidation before replay; then test actual devices. |
+| Resumable large uploads | A local resumable transport now accepts originals up to 100 MiB, verifies chunks and original checksums, and rechecks stops/assignment before a new evidence record. Inquiry attachments retain their separate 5 MiB limit. | Browser interruption/resume and duplicate protection now pass. Complete real-phone/background acceptance and production resource-load validation; finalization is bounded to one original per API process, but capacity has not been certified. |
+| Offline supplemental form drafts | Explicit device save/restore now preserves account/tenant/version-scoped answers and retry identity for seven days. Submission still requires connectivity; this is not a full offline forms application. | Complete real-device/storage-failure acceptance and field assignment integration; retain explicit review before replay and immutable version matching. |
 | Field-specific forms and inventory access | New workspaces initially support authorized internal staff. Registering either crew type as a custody location does not grant a partner/foreman tenant-wide inventory or form access. | Implement explicit assignment/company-scoped field views and actions before granting those personas access. |
 | Public customer website intake | Authorized internal capture, assignment, duplicate hints and attachments are implemented. No anonymous public endpoint was exposed. | Confirm the website deployment/channel and tenant routing; implement anti-abuse/rate limits, public acknowledgment semantics and privacy controls. |
 | Alert delivery and escalation | Existing workflow events remain; complete operational delivery/escalation acceptance is not established. | Implement/verify owner routing, bounded retries, delivery status, failed-delivery review and escalation with the selected provider. |

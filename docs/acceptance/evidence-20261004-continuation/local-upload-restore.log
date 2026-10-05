@@ -1,0 +1,21 @@
+{
+  "result": "PASS",
+  "scope": "local synthetic database restore only",
+  "before": {
+    "migrations": "97",
+    "sessions": "12",
+    "chunks": "5",
+    "chunk_fingerprint": "91dc535fbccc8dfc701abcaf77f96cd6",
+    "originals": "6",
+    "audits": "448"
+  },
+  "after": {
+    "migrations": "97",
+    "sessions": "12",
+    "chunks": "5",
+    "chunk_fingerprint": "91dc535fbccc8dfc701abcaf77f96cd6",
+    "originals": "6",
+    "audits": "448"
+  },
+  "archive_sha256": "de13be0e245b11305274006ad2fae462f6960fd83df952d1daaa35d8b9f91c5c"
+}

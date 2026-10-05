@@ -9,6 +9,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Scope the larger base64 body allowance to the bounded field-evidence upload.
   app.use("/syncfield/foreman/evidence", json({ limit: "28mb" }));
+  // One bounded 1 MiB chunk expands to about 1.4 MiB in JSON.
+  app.use(/^\/syncfield\/foreman\/evidence-uploads\/[^/]+\/chunks\/?$/, json({ limit: "2mb" }));
   // Private onboarding JSON carries base64 evidence; binary limits remain enforced per file.
   // Two-document policy/payment submissions need room for two 5 MB files after base64 expansion.
   app.use(/^\/partner-compliance\/me\/(payment-profile|insurance-policies)\/?$/, json({ limit: "14mb" }));

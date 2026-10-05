@@ -1,0 +1,24 @@
+
+Running 17 tests using 1 worker
+
+(node:30831) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/e2e/syncfield-daily-production.spec.ts:60:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › production gate, Work Order codes, and field UI hydrate without rates (3.7s)
+  ✓   2 tests/e2e/syncfield-daily-production.spec.ts:94:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › changed safety conditions preserve the signed revision and block production until renewed review (327ms)
+  ✓   3 tests/e2e/syncfield-daily-production.spec.ts:110:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › partner crew independently acknowledges, obtains pre-bore approval and completes ordered utility-strike restart (1.5s)
+  ✓   4 tests/e2e/syncfield-daily-production.spec.ts:114:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › evidence survives lost responses, reload and offline capture without duplicate uploads (5.2s)
+  ✓   5 tests/e2e/syncfield-daily-production.spec.ts:150:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › large evidence resumes received chunks after reload and stores one original (4.4s)
+  ✓   6 tests/e2e/syncfield-daily-production.spec.ts:157:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › incident device draft survives disconnect and lost response without duplicate records or audit (2.8s)
+  ✓   7 tests/e2e/syncfield-daily-production.spec.ts:182:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › browser offline queue persists and automatically replays Asset, Route, and Daily production exactly once (3.4s)
+  ✓   8 tests/e2e/syncfield-daily-production.spec.ts:219:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › offline replay revalidates lost production-start authorization and keeps failed work traceable (1.9s)
+  ✓   9 tests/e2e/syncfield-daily-production.spec.ts:243:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Asset, Route, and Daily production create authoritative records with subordinate annotations and idempotency (463ms)
+  ✓  10 tests/e2e/syncfield-daily-production.spec.ts:285:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › a crew work shutdown blocks new records and requires authorized release (354ms)
+  ✓  11 tests/e2e/syncfield-daily-production.spec.ts:313:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › DesignSegment, pole observations, and redline completion preserve design, ticks, authority, and idempotency (1.8s)
+  ✓  12 tests/e2e/syncfield-daily-production.spec.ts:591:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submission creates immutable revision snapshot and blocks ordinary edits without QC or finance (2.3s)
+  ✓  13 tests/e2e/syncfield-daily-production.spec.ts:663:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › submitted-report offline conflict does not reopen the report or create production (1.6s)
+  ✓  14 tests/e2e/syncfield-daily-production.spec.ts:678:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner-local queue isolation hides pending field work after account switch (2.2s)
+  ✓  15 tests/e2e/syncfield-daily-production.spec.ts:691:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › Partner Admin receives safe read-only report and duplicate submitted work requires traceability (1.5s)
+  ✓  16 tests/e2e/syncfield-daily-production.spec.ts:715:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › required evidence blocks missing and unreadable handoffs, preserves originals and pins approved requirements (4.3s)
+  ✓  17 tests/e2e/syncfield-daily-production.spec.ts:778:7 › P9 SyncField Daily Production, map annotation, offline queue, and submission › quantity reconciliation excludes rock subsets and overlapping summaries and protects stable work identities (598ms)
+
+  17 passed (44.8s)

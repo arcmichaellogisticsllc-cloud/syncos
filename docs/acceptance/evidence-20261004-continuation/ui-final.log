@@ -1,0 +1,14 @@
+
+Running 7 tests using 1 worker
+
+(node:29657) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/backlog-ui/workspaces.spec.ts:5:5 › read-only roles see records without form, stock or inquiry mutation controls (2.7s)
+  ✓  2 tests/backlog-ui/workspaces.spec.ts:10:5 › form designer publishes a revision and records a rendered answer (3.1s)
+  ✓  3 tests/backlog-ui/workspaces.spec.ts:20:5 › inquiry failure preserves entries and retries the same request (2.2s)
+  ✓  4 tests/backlog-ui/workspaces.spec.ts:25:5 › inventory separates ordinary movements from approved count adjustments on a phone-sized viewport (1.6s)
+  ✓  5 tests/backlog-ui/workspaces.spec.ts:29:5 › saved form answers survive reload and preserve retry identity (3.1s)
+  ✓  6 tests/backlog-ui/workspaces.spec.ts:35:5 › form drafts do not cross users or published versions (3.2s)
+  ✓  7 tests/backlog-ui/workspaces.spec.ts:39:5 › offline cold navigation exposes only matching unexpired saved context and logout removes it (2.0s)
+
+  7 passed (21.8s)

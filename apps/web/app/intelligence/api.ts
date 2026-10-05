@@ -9,6 +9,7 @@ let verifiedPermissions: string[] = [];
 let verifiedToken = "";
 const partnerSensitiveStorageKeys = [
   "syncos.syncfieldAssignmentId",
+  "syncos.offlineContext",
   "syncos.fieldMutations",
   "syncos.fieldProductionMutations",
 ];
@@ -316,7 +317,7 @@ export function clearAuthContext() {
   window.localStorage.removeItem(permissionKey);
   for (const key of partnerSensitiveStorageKeys) window.localStorage.removeItem(key);
   if ("indexedDB" in window) {
-    for (const database of ["syncos-field-production", "syncos-field-evidence", "syncos-field-incidents"]) {
+    for (const database of ["syncos-field-production", "syncos-field-evidence", "syncos-field-incidents", "syncos-form-drafts"]) {
       const request = window.indexedDB.deleteDatabase(database);
       request.onerror = () => undefined;
       request.onblocked = () => undefined;
@@ -347,6 +348,7 @@ export async function loadAuthContext(token = readToken()) {
     return !roles || (context.role_names ?? []).some(role => roles.includes(role));
   });
   if (token === readToken()) {
+    if(!context.permissions.includes("partner_daily_production.read"))window.localStorage.removeItem("syncos.offlineContext");
     verifiedToken = token;
     verifiedPermissions = context.permissions ?? [];
     savePermissions(verifiedPermissions);

@@ -1,4 +1,5 @@
-import {BadRequestException,Body,Controller,Get,Inject,Param,Post,Req,Res} from '@nestjs/common';
+import {workspaceHistory,workspaceChoices,type HistoryQuery} from './workspace-history';
+import {BadRequestException,Body,Controller,Get,Inject,Param,Post,Req,Res,Query} from '@nestjs/common';
 import type {Response} from 'express';
 import type {Pool,PoolClient} from 'pg';
 import {executeWriteAction} from '@syncos/shared';
@@ -12,11 +13,13 @@ const str=(v:unknown,label:string,max=1000)=>{if(typeof v!=='string'||!v.trim()|
 export class CustomerInquiriesController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get() @RequirePermission('customer_inquiry.read')
- async list(@Req() r:AuthenticatedRequest){const t=r.auth.tenantId;return {
- inquiries:(await this.pool.query(`SELECT i.*, (SELECT count(*)::int FROM customer_service_inquiries other WHERE other.tenant_id=i.tenant_id AND other.id<>i.id AND lower(other.email)=lower(i.email) AND lower(other.subject)=lower(i.subject)) AS possible_duplicates FROM customer_service_inquiries i WHERE tenant_id=$1 ORDER BY updated_at DESC LIMIT 200`,[t])).rows,
+ async list(@Req() r:AuthenticatedRequest,@Query() query:HistoryQuery={}){const t=r.auth.tenantId;return {
+ inquiries:await workspaceHistory(this.pool,t,'inquiries',query),
  owners:(await this.pool.query("SELECT u.id,u.display_name AS label FROM users u JOIN tenant_users tu ON tu.user_id=u.id WHERE tu.tenant_id=$1 AND tu.status='active' AND tu.deleted_at IS NULL AND u.status='active' AND u.deleted_at IS NULL AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles ar ON ar.id=ur.role_id AND ar.tenant_id=ur.tenant_id AND ar.deleted_at IS NULL JOIN role_permissions rp ON rp.role_id=ur.role_id AND rp.tenant_id=ur.tenant_id JOIN permissions perm ON perm.id=rp.permission_id WHERE ur.tenant_user_id=tu.id AND ur.tenant_id=tu.tenant_id AND ur.scope_type='tenant' AND perm.key='customer_inquiry.manage') ORDER BY u.display_name",[t])).rows,
  opportunities:(await this.pool.query('SELECT id,title AS label FROM opportunities WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200',[t])).rows,
  projects:(await this.pool.query('SELECT id,name AS label FROM projects WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200',[t])).rows};}
+ @Get('choices') @RequirePermission('customer_inquiry.read')
+ async choices(@Req() r:AuthenticatedRequest,@Query() query:{kind?:string;q?:string}){return workspaceChoices(this.pool,r.auth.tenantId,String(query.kind),query.q,['opportunities','projects']);}
  @Post() @RequirePermission('customer_inquiry.manage')
  async create(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){const key=uuid(b.request_key),values=[str(b.customer_name,'Customer name'),str(b.email,'Email',254).toLowerCase(),str(b.subject,'Subject',240),str(b.details,'Request details',10000),str(b.source_reference,'Source and permission to process this request')];if(!/^\S+@\S+\.\S+$/.test(values[1]))throw new BadRequestException('Enter a valid contact email.');if(b.authorized!==true)throw new BadRequestException('Confirm that this request is authorized for processing.');
   return this.write(r,'customer_inquiry.created',async c=>{await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[r.auth.tenantId+':inquiry:'+key]);const old=(await c.query('SELECT * FROM customer_service_inquiries WHERE tenant_id=$1 AND request_key=$2',[r.auth.tenantId,key])).rows[0];if(old){if(['customer_name','email','subject','details','source_reference'].some((k,i)=>old[k]!==values[i]))throw new BadRequestException('This request was already saved with different details.');return this.result(old,true);}

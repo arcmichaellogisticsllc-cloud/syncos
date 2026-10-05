@@ -1,4 +1,5 @@
-import {BadRequestException,Body,Controller,Get,Inject,Param,Post,Req} from '@nestjs/common';
+import {workspaceHistory,type HistoryQuery} from './workspace-history';
+import {BadRequestException,Body,Controller,Get,Inject,Param,Post,Req,Query} from '@nestjs/common';
 import type {Pool,PoolClient} from 'pg';
 import {randomUUID} from 'node:crypto';
 import {executeWriteAction} from '@syncos/shared';
@@ -12,9 +13,9 @@ function validate<T>(fn:()=>T):T{try{return fn();}catch(e){throw new BadRequestE
 export class SupplementalFormsController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get() @RequirePermission('form.read')
- async list(@Req() r:AuthenticatedRequest){return (await this.pool.query('SELECT * FROM supplemental_form_versions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200',[r.auth.tenantId])).rows;}
+ async list(@Req() r:AuthenticatedRequest,@Query() query:HistoryQuery={}){return workspaceHistory(this.pool,r.auth.tenantId,'forms',query);}
  @Get('records') @RequirePermission('form.read')
- async records(@Req() r:AuthenticatedRequest){return (await this.pool.query('SELECT * FROM supplemental_form_records WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200',[r.auth.tenantId])).rows;}
+ async records(@Req() r:AuthenticatedRequest,@Query() query:HistoryQuery={}){return workspaceHistory(this.pool,r.auth.tenantId,'records',query);}
  @Post('versions') @RequirePermission('form.manage')
  async create(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){
   const schema=validate(()=>validateFormTemplate(b.schema)),key=uuid(b.request_key),family=b.family_id?uuid(b.family_id):null;

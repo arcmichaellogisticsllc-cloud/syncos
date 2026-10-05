@@ -195,6 +195,14 @@ export function startExecutiveCommandScheduler(options: { pool?: Pool; intervalM
   };
 }
 
+export function startUploadCleanup(options:{pool?:Pool;intervalMs?:number}={}){
+ if(!options.pool&&!process.env.DATABASE_URL)return {started:false,stop:async()=>undefined};
+ const pool=options.pool??createDatabasePool(process.env.DATABASE_URL!);let running:Promise<void>|undefined;
+ const run=()=>{if(running)return;running=(async()=>{try{await pool.query(`DELETE FROM field_upload_sessions WHERE id IN (SELECT id FROM field_upload_sessions WHERE expires_at<now() ORDER BY expires_at LIMIT 100)`);}catch{console.error('Expired evidence upload cleanup failed; check worker database access.');}finally{running=undefined;}})();};
+ const timer=setInterval(run,Math.max(60000,options.intervalMs??3600000));timer.unref();run();
+ return {started:true,stop:async()=>{clearInterval(timer);await running;if(!options.pool)await pool.end();}};
+}
+
 function defaultRetryPolicy(): JobsOptions {
   return {
     attempts: 3,
@@ -224,6 +232,7 @@ if (require.main === module) {
   const performanceScheduler = startPartnerPerformanceScheduler();
   const matchingScheduler = startOpportunityCapacityMatchingScheduler();
   const executiveCommandScheduler = startExecutiveCommandScheduler();
+  const uploadCleanup = startUploadCleanup();
   worker.on("completed", (job) => console.log(`completed ${job.id}`));
   worker.on("failed", (job, error) => console.error(`failed ${job?.id}: ${error.message}`));
   const shutdown = async () => {
@@ -231,6 +240,7 @@ if (require.main === module) {
     await performanceScheduler.stop();
     await matchingScheduler.stop();
     await executiveCommandScheduler.stop();
+    await uploadCleanup.stop();
     await worker.close();
   };
   process.once("SIGINT", () => void shutdown().then(() => process.exit(0)));

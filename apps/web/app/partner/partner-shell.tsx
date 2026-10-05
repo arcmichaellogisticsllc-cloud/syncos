@@ -1,5 +1,6 @@
 "use client";
 
+import {prepareOfflineContext} from './offline-context';
 import NextLink from "next/link";
 import { FieldEvidence, FieldIncident } from "./field-evidence";
 import { ProductionExports } from "../production-dashboard/production-exports";
@@ -557,8 +558,10 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
   const onboardingMutationId = useRef<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
+  const [selectionReady, setSelectionReady] = useState(false);
 
   useEffect(() => {
+    if (!selectionReady) return;
     let cancelled = false;
     async function load() {
       setState({ loading: true, data: {} });
@@ -583,8 +586,9 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
         }
 
         const data = effectiveContext.persona === "partner_foreman" ? await loadForeman(effectiveContext, actions, section, selectedAssignmentId) : await loadAdmin(effectiveContext, actions, section, itemId);
-        if (!cancelled) setState({ loading: false, data });
+        if (!cancelled) {setState({ loading: false, data });if(product==='syncfield'&&data.foremanAssignments)void prepareOfflineContext(data.foremanAssignments).catch(()=>setMessage('Offline recovery could not be prepared on this device. Keep this page open while disconnected.'));}
       } catch (error) {
+        if(error instanceof SyncosApiError&&[401,403].includes(error.status))localStorage.removeItem("syncos.offlineContext");
         const text = product === "syncfield" && error instanceof SyncosApiError && error.status === 403 ? "SyncField requires an active Foreman assignment." : error instanceof Error ? error.message : String(error);
         if (!cancelled) setState({ loading: false, denied: error instanceof SyncosApiError ? [401,403].includes(error.status) : /401|403|forbidden|unauthorized/i.test(text), error: text, data: {} });
       }
@@ -593,11 +597,12 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
     return () => {
       cancelled = true;
     };
-  }, [section, itemId, product, selectedAssignmentId]);
+  }, [section, itemId, product, selectedAssignmentId, selectionReady]);
 
   useEffect(() => {
     setSessionEmail(sessionEmailFromToken());
     if (typeof window !== "undefined") setSelectedAssignmentId(window.localStorage.getItem(syncfieldAssignmentKey) ?? "");
+    setSelectionReady(true);
   }, []);
 
   const data = state.data;
@@ -3872,33 +3877,13 @@ async function fieldQueueStore(): Promise<{ list(scopeKey: string): Promise<Offl
 }
 
 async function indexedDbQueueStore() {
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(queueDbName, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(queueStoreName)) {
-        const store = db.createObjectStore(queueStoreName, { keyPath: "mutationId" });
-        store.createIndex("scopeKey", "scopeKey", { unique: false });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB unavailable."));
-  });
+  async function transact<T>(mode:IDBTransactionMode,operation:(store:IDBObjectStore)=>IDBRequest):Promise<T>{
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{const q=indexedDB.open(queueDbName,1);q.onupgradeneeded=()=>{const store=q.result.createObjectStore(queueStoreName,{keyPath:"mutationId"});store.createIndex("scopeKey","scopeKey",{unique:false});};q.onsuccess=()=>{q.result.onversionchange=()=>q.result.close();resolve(q.result);};q.onerror=()=>reject(q.error??new Error("Device queue unavailable."));});
+    try{return await new Promise<T>((resolve,reject)=>{const tx=db.transaction(queueStoreName,mode),q=operation(tx.objectStore(queueStoreName));tx.oncomplete=()=>resolve(q.result as T);tx.onerror=tx.onabort=()=>reject(tx.error??new Error("Device queue save was not confirmed."));});}finally{db.close();}
+  }
   return {
-    list(scopeKey: string) {
-      return new Promise<OfflineMutation[]>((resolve, reject) => {
-        const request = db.transaction(queueStoreName, "readonly").objectStore(queueStoreName).index("scopeKey").getAll(scopeKey);
-        request.onsuccess = () => resolve((request.result as OfflineMutation[]).sort((left, right) => left.sequence - right.sequence));
-        request.onerror = () => reject(request.error ?? new Error("Field queue read failed."));
-      });
-    },
-    save(mutation: OfflineMutation) {
-      return new Promise<void>((resolve, reject) => {
-        const request = db.transaction(queueStoreName, "readwrite").objectStore(queueStoreName).put(mutation);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error ?? new Error("Field queue write failed."));
-      });
-    },
+    async list(scopeKey:string){return (await transact<OfflineMutation[]>("readonly",store=>store.index("scopeKey").getAll(scopeKey))).sort((left,right)=>left.sequence-right.sequence);},
+    async save(mutation:OfflineMutation){await transact("readwrite",store=>store.put(mutation));}
   };
 }
 

@@ -343,3 +343,11 @@ Supplemental forms do not replace JSA, shutdown, QC, customer acceptance, contra
 6. Compare **Current stock** with the physical count and review **Work-order material reconciliation**. Physical material usage does not establish accepted production or billing quantities.
 7. Only an adjustment-authorized reviewer can use **Approve a count adjustment**. Enter the signed difference from the recorded balance, the count sheet reference and discrepancy explanation. A negative adjustment cannot create negative stock.
 8. Review the immutable movement history. Correct discrepancies with a documented new adjustment; do not replace past entries.
+
+
+## Local candidate: form drafts and historical records
+
+1. In **Supplemental forms**, choose the published version and enter answers. Select **Save answers on this device** before closing. Wait for the device-save confirmation; it is not a submitted record.
+2. Reopen with the same account and select the same published version. Choose **Restore saved answers**, review them, then **Submit form** while connected. Drafts expire after seven days and are removed on logout. A different version is not silently substituted.
+3. Use the history search and **Load older** controls to reach earlier forms, inquiries and inventory movements. Searches do not change stored records.
+4. When an older project, opportunity, crew or work order is absent from a selection list, use its **Find** control, then choose the returned record. Searching alone does not link it.
