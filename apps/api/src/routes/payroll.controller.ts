@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
@@ -394,16 +395,14 @@ export class PayrollController {
       await this.requireRun(client, request.auth.tenantId, id);
       const itemIds = await client.query("SELECT id FROM payroll_items WHERE tenant_id = $1 AND payroll_run_id = $2", [request.auth.tenantId, id]);
       const ids = [id, ...itemIds.rows.map((row) => row.id)];
-      const result = await client.query(
-        `
-        SELECT e.id, e.event_type, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.actor_user_id AS actor, e.created_at AS timestamp, e.audit_context AS summary
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id, e.event_type, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.actor_user_id AS actor, e.created_at AS timestamp, e.audit_context AS summary
         FROM events e
         WHERE e.tenant_id = $1 AND e.aggregate_id = ANY($2::uuid[])
           AND e.event_type = ANY($3::text[])
         ORDER BY e.created_at DESC
         LIMIT 250
-        `,
-        [request.auth.tenantId, ids, [
+        `, [request.auth.tenantId, ids, [
           "payroll_run.created",
           "payroll_run.updated",
           "payroll_run.item_added",
@@ -424,8 +423,7 @@ export class PayrollController {
           "payroll_item.updated",
           "payroll_item.voided",
           "payroll_item.archived",
-        ]],
-      );
+        ]], request.query);
       return result.rows;
     });
   }
@@ -437,16 +435,13 @@ export class PayrollController {
       await this.requireRun(client, request.auth.tenantId, id);
       const itemIds = await client.query("SELECT id FROM payroll_items WHERE tenant_id = $1 AND payroll_run_id = $2", [request.auth.tenantId, id]);
       const ids = [id, ...itemIds.rows.map((row) => row.id)];
-      const result = await client.query(
-        `
-        SELECT id, actor_user_id AS actor, action, entity_type AS object, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, id, actor_user_id AS actor, action, entity_type AS object, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1 AND entity_id = ANY($2::uuid[])
         ORDER BY created_at DESC
         LIMIT 250
-        `,
-        [request.auth.tenantId, ids],
-      );
+        `, [request.auth.tenantId, ids], request.query);
       return result.rows;
     });
   }

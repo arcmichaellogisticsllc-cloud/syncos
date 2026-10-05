@@ -1,0 +1,5 @@
+
+> syncos@0.1.0 security:dependencies
+> npm audit --omit=dev --audit-level=high
+
+found 0 vulnerabilities

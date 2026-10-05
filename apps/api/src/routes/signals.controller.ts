@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { findTenantRecordById, insertTenantRecord, updateTenantRecord } from "@syncos/database";
@@ -65,7 +66,7 @@ export class SignalsController {
   async timeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireSignal(client, request.auth.tenantId, id);
-      return this.signalTimeline(client, request.auth.tenantId, id);
+      return this.signalTimeline(client, request.auth.tenantId, id,request.query);
     });
   }
 
@@ -74,10 +75,8 @@ export class SignalsController {
   async auditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireSignal(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
-        SELECT
-          al.id AS audit_id,
+      const result = await activityPage(client,`
+        SELECT al.id AS __history_id,al.created_at::text AS __history_time, al.id AS audit_id,
           al.actor_user_id AS actor_id,
           u.display_name AS actor_name,
           al.action,
@@ -99,9 +98,7 @@ export class SignalsController {
           )
         ORDER BY al.created_at DESC
         LIMIT 50
-        `,
-        [request.auth.tenantId, id],
-      );
+        `,[request.auth.tenantId, id],request.query);
       return result.rows;
     });
   }
@@ -775,11 +772,9 @@ export class SignalsController {
     };
   }
 
-  private async signalTimeline(client: PoolClient, tenantId: string, signalId: string) {
-    const result = await client.query(
-      `
-      SELECT
-        e.id AS event_id,
+  private async signalTimeline(client: PoolClient, tenantId: string, signalId: string,query:any={}) {
+    const result = await activityPage(client,`
+      SELECT e.id AS __history_id,e.occurred_at::text AS __history_time, e.id AS event_id,
         e.event_type,
         e.actor_user_id AS actor_id,
         u.display_name AS actor_name,
@@ -798,9 +793,7 @@ export class SignalsController {
         )
       ORDER BY e.occurred_at DESC
       LIMIT 50
-      `,
-      [tenantId, signalId],
-    );
+      `,[tenantId, signalId],query);
     return result.rows;
   }
 

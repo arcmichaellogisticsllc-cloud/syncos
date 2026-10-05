@@ -10,7 +10,7 @@ test.describe('QC create supported advanced capabilities', () => {
   let foreignSource: string;
   test.beforeAll(async () => {
     const db = new URL(process.env.DATABASE_URL!);
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(db.hostname) || !/test|scope|browser|release/.test(db.pathname)) {
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(db.hostname) || !/test|scope|browser|release|^\/syncos_synthetic_[a-z0-9_]+$/.test(db.pathname)) {
       throw new Error("QC capability fixtures require a disposable local test database");
     }
     const client = new Client({ connectionString: process.env.DATABASE_URL });

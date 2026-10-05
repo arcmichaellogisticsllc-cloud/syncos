@@ -80,7 +80,7 @@ test('Sync management provisions a real internal crew through field production w
         const setupPage = await page.context().newPage();
         await setupPage.addInitScript(({ bearer, permissions }) => { localStorage.setItem('syncos.apiToken', bearer); localStorage.setItem('syncos.permissions', permissions.join(',')); }, { bearer: management, permissions: managerAuth.permissions });
         await setupPage.goto('/field-setup');
-        await setupPage.getByLabel('Work assignment').selectOption(assignment.id);
+        await setupPage.getByRole('combobox', {name:/^Work assignment/}).selectOption(assignment.id);
         await setupPage.getByLabel('Map name').fill('Customer map');
         await setupPage.getByLabel('Revision', { exact: true }).fill('A');
         await setupPage.getByLabel('Source / customer').fill('Synthetic customer');

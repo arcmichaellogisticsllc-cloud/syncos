@@ -1,0 +1,78 @@
+
+Running 7 tests using 1 worker
+
+(node:99977) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review (6.0s)
+  ✓  2 [chromium] › tests/e2e/qc-create-capabilities.spec.ts:93:7 › QC create supported advanced capabilities › QC Manager findings request corrections without accepting or billing production (2.9s)
+  ✓  3 [chromium] › tests/e2e/qc-create-capabilities.spec.ts:130:7 › QC create supported advanced capabilities › read-only actor cannot enumerate create choices or create a review (47ms)
+  ✓  4 [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:38:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment (2.2s)
+  ✓  5 [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:111:7 › Scope preservation: financial role handoffs › accepted employee source remains customer billable but cannot create partner debt (418ms)
+  ✘  6 [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden (11.9s)
+(node:290) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  7 [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden (12.1s)
+
+
+  1) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden 
+
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /\/production\/[0-9a-f-]{36}$/
+    Received string:  "http://127.0.0.1:3458/production/new"
+    Timeout: 10000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 10000ms
+        23 × locator resolved to <html lang="en">…</html>
+           - unexpected value "http://127.0.0.1:3458/production/new"
+
+
+      41 |       await page.getByLabel("Foreman User ID", { exact: true }).fill(manifest.personas["partner-foreman"].userId);
+      42 |       await page.getByRole("button", { name: "Create Production", exact: true }).click();
+    > 43 |       await expect(page).toHaveURL(/\/production\/[0-9a-f-]{36}$/);
+         |                          ^
+      44 |       const id = page.url().split("/").pop()!;
+      45 |       const readRecord = () => apiGet<Record<string, unknown>>(request, actor.storageState, `/production-records/${id}`);
+      46 |       const draft = await readRecord();
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/scope-production-roles.spec.ts:43:26
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/scope-production-roles-ops-088d6--and-money-remain-forbidden-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/scope-production-roles-ops-088d6--and-money-remain-forbidden-chromium/error-context.md
+
+  2) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden 
+
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /\/production\/[0-9a-f-]{36}$/
+    Received string:  "http://127.0.0.1:3458/production/new"
+    Timeout: 10000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 10000ms
+        23 × locator resolved to <html lang="en">…</html>
+           - unexpected value "http://127.0.0.1:3458/production/new"
+
+
+      41 |       await page.getByLabel("Foreman User ID", { exact: true }).fill(manifest.personas["partner-foreman"].userId);
+      42 |       await page.getByRole("button", { name: "Create Production", exact: true }).click();
+    > 43 |       await expect(page).toHaveURL(/\/production\/[0-9a-f-]{36}$/);
+         |                          ^
+      44 |       const id = page.url().split("/").pop()!;
+      45 |       const readRecord = () => apiGet<Record<string, unknown>>(request, actor.storageState, `/production-records/${id}`);
+      46 |       const draft = await readRecord();
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/scope-production-roles.spec.ts:43:26
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/scope-production-roles-fie-9d517--and-money-remain-forbidden-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/scope-production-roles-fie-9d517--and-money-remain-forbidden-chromium/error-context.md
+
+  2 failed
+    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden 
+    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden 
+  5 passed (45.4s)

@@ -1,0 +1,17 @@
+TAP version 13
+# {"scenario":"synthetic queue interruption","jobs":1000,"consumers":4,"abandonedLeases":4,"elapsedMs":2475,"automaticPayments":0}
+# Subtest: four refresh consumers drain 1000 queued hints and recover interrupted leases without duplicate completion
+ok 1 - four refresh consumers drain 1000 queued hints and recover interrupted leases without duplicate completion
+  ---
+  duration_ms: 2495.394075
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2626.232741

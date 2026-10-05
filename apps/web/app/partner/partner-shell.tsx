@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 
 import {prepareOfflineContext} from './offline-context';
 import NextLink from "next/link";
@@ -295,6 +296,7 @@ type CustomerCorrection = {
   production_record_id?: string;
 };
 type CustomerQcItem = {
+  _history_cursor?:string;
   report_id?: string;
   work_date?: string;
   revision_number?: number;
@@ -656,7 +658,8 @@ export function PartnerShell({ section, itemId, product = "partner" }: { section
                 </div>
               ))}
           {persona === "partner_admin" && foremanFieldPermissions.some((permission) => permissions.includes(permission)) ? <Link className="partner-nav-link" href="/syncfield/today">SyncField</Link> : null}
-          {persona === "partner_foreman" && permissions.includes("partner_daily_production.read") ? <><Link className="partner-nav-link" href="/syncfield/forms">Assigned forms</Link><Link className="partner-nav-link" href="/syncfield/materials">Crew materials</Link></> : null}
+          {persona === "partner_admin" && permissions.includes("partner_daily_production.read_org") ? <Link className="partner-nav-link" href="/partner/field-oversight">Company field oversight</Link> : null}
+          {persona === "partner_foreman" && permissions.includes("partner_daily_production.read") ? <><a className="partner-nav-link" href="/syncfield/offline.html">Prepare offline work</a><Link className="partner-nav-link" href="/syncfield/forms">Assigned forms</Link><Link className="partner-nav-link" href="/syncfield/materials">Crew materials</Link></> : null}
           {permissions.length > 0 ? <Link className="partner-nav-link" href="/training">Training</Link> : null}
         </nav>
         <div className="partner-account-control">
@@ -1996,9 +1999,10 @@ function jsaLabel(value: string) {
 }
 
 function AdminJsaWorkspace({ data }: { data: PortalData }) {
-  const jsas = data.jsas ?? [];
+  const [jsas,setJsas] = useState(data.jsas ?? []);
+  useEffect(()=>setJsas(data.jsas??[]),[data.jsas]);
   return (
-    <Panel title="Daily JSAs" eyebrow="Partner Admin-safe history">
+    <Panel title="Daily JSAs" eyebrow="Partner Admin-safe history"><HistoryPager rows={jsas} path="syncfield/partner/jsas" label="company safety records" onRows={setJsas}/>
       <div className="partner-card-grid">
         {jsas.map((jsa) => (
           <RecordCard key={jsa.id} title={`${jsa.work_date || "Work date"} · ${jsa.work_location || "Work area"}`} status={jsa.status}>
@@ -2491,6 +2495,8 @@ function ReviewDayWorkspace({ data, permissions }: { data: PortalData; permissio
 
 function AdminProductionWorkspace({ data }: { data: PortalData }) {
   const dashboard = data.productionDashboard;
+  const [reports,setReports]=useState(data.productionReports??[]);
+  useEffect(()=>setReports(data.productionReports??[]),[data.productionReports]);
   return (
     <div className="partner-stack">
       <Panel title="Production Dashboard" eyebrow="Partner Admin-safe">
@@ -2511,17 +2517,17 @@ function AdminProductionWorkspace({ data }: { data: PortalData }) {
       <Panel title="Reported vs Customer Accepted" eyebrow="Unit-aware totals">
         <ProductionMetricRows rows={dashboard?.reported_vs_accepted ?? []} />
       </Panel>
-      <Panel title="Daily Production" eyebrow="Submitted reports">
+      <Panel title="Daily Production" eyebrow="Submitted reports"><HistoryPager rows={reports} path="syncfield/partner/production" label="company production reports" onRows={setReports}/>
         <div className="partner-card-grid">
-          {(dashboard?.recent_reports ?? data.productionReports ?? []).map((report) => (
+          {(reports).map((report) => (
             <RecordCard key={str(report.id)} title={str(report.work_date) || "Work date"} status={statusLabel(report.customer_qc_outcome ?? report.status)}>
               <StatusRows rows={[["Work Order", str(report.work_order_number) || "Work Order Unavailable"], ["Submitted", str(report.submitted_at) || "Not submitted"], ["Revision", str(report.revision_number) || "1"], ["Customer Accepted", quantityText(report.customer_accepted_quantity, "")]]} />
             </RecordCard>
           ))}
         </div>
-        {!(dashboard?.recent_reports ?? data.productionReports ?? []).length ? <EmptyPortal title="No Daily Production" body="Draft and submitted field reports appear here after Foreman entry." /> : null}
+        {!(reports).length ? <EmptyPortal title="No Daily Production" body="Draft and submitted field reports appear here after Foreman entry." /> : null}
       </Panel>
-      <ProductionExports reports={dashboard?.recent_reports ?? data.productionReports ?? []} artifacts={dashboard?.artifacts ?? []} mode="partner" />
+      <ProductionExports reports={reports} artifacts={dashboard?.artifacts ?? []} mode="partner" />
       <Panel title="Aging" eyebrow="Customer QC and corrections">
         <StatusRows rows={[["Awaiting Customer QC", String(dashboard?.customer_qc_aging?.length ?? 0)], ["Open Corrections", String(dashboard?.correction_aging?.length ?? 0)]]} />
       </Panel>
@@ -2552,9 +2558,9 @@ function ProductionMetricRows({ rows }: { rows: Array<Record<string, unknown>> }
 }
 
 function CustomerQcWorkspace({ data }: { data: PortalData }) {
-  const reports = data.customerQcReports ?? [];
+  const [reports,historyControls] = useCustomerQcHistory(data.customerQcReports??EMPTY_QC_HISTORY,false);
   return (
-    <div className="partner-stack">
+    <div className="partner-stack">{historyControls}
       <Panel title="Customer QC" eyebrow="Customer authority decisions">
         <div className="partner-card-grid">
           {reports.map((report) => (
@@ -2618,10 +2624,11 @@ function PartnerSettlementsWorkspace({ data }: { data: PortalData }) {
 }
 
 function PartnerPaymentsWorkspace({ data }: { data: PortalData }) {
-  const payables = data.partnerPayments ?? [];
+  const [payables,setPayables] = useState<PartnerPayment[]>(data.partnerPayments ?? []);
+  useEffect(()=>setPayables(data.partnerPayments??[]),[data.partnerPayments]);
   return (
     <div className="partner-stack">
-      <Panel title="Payments" eyebrow="Partner Admin payment status">
+      <Panel title="Payments" eyebrow="Partner Admin payment status"><HistoryPager rows={payables} path="payment-retainage-adjustments/partner/payments" label="company payments" onRows={setPayables}/>
         <div className="partner-card-grid">
           {payables.map((payable) => (
             <RecordCard key={str(payable.contractor_payable_id)} title={str(payable.payable_number)} status={paymentDisplayStatus(payable)}>
@@ -2716,10 +2723,18 @@ function partnerPerformanceLabel(value: unknown) {
   return partnerPerformanceLabels[code] ?? (/[_-]/.test(text) ? "Performance Unavailable" : text);
 }
 
+const EMPTY_QC_HISTORY:CustomerQcItem[]=[];
+function useCustomerQcHistory(initial:CustomerQcItem[],field:boolean):[CustomerQcItem[],React.ReactNode]{
+ const [rows,setRows]=useState(initial),[next,setNext]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{setRows(initial);setNext(initial.length===100?initial.at(-1)?._history_cursor??null:null);},[initial]);
+ async function older(){if(busy||!next)return;setBusy(true);try{const found=await syncosFetch<CustomerQcItem[]>('syncfield/'+(field?'foreman':'partner')+'/customer-qc?before='+encodeURIComponent(next));setRows(old=>[...old,...found.filter(r=>!old.some(p=>p._history_cursor===r._history_cursor))]);setNext(found.length===100?found.at(-1)?._history_cursor??null:null);setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return [rows,<div key="qc-history">{error&&<p role="alert">{error}</p>}{next&&<button className="partner-button" disabled={busy} onClick={()=>void older()}>Older customer QC and corrections</button>}</div>];
+}
+
 function ForemanCorrectionsWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
-  const reports = data.customerQcReports ?? [];
+  const [reports,historyControls] = useCustomerQcHistory(data.customerQcReports??EMPTY_QC_HISTORY,true);
   return (
-    <div className="partner-stack">
+    <div className="partner-stack">{historyControls}
       <section className="field-status-band" aria-label="Customer correction status">
         <div>
           <p className="eyebrow">Corrections</p>

@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 import { ObservationReview } from "./observation-review";
 import { AdjustmentForms } from "./adjustment-forms";
 import { Capability, useCapability } from "../access-control";
@@ -93,7 +94,7 @@ export default function PaymentRetainageAdjustmentsPage() {
         </div>
       </section>
       <section className="workspace-panel">
-        <h2>Ready To Pay</h2>
+        <h2>Ready To Pay</h2><HistoryPager rows={ready} path="payment-retainage-adjustments/ready-to-pay" label="eligible payables" onRows={ready=>setState(s=>({...s,ready}))}/>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Payable</th><th>Partner</th><th>Eligible</th><th>In Flight</th><th>Paid</th><th>Due</th><th>Status</th></tr></thead>
@@ -128,7 +129,7 @@ export default function PaymentRetainageAdjustmentsPage() {
           <button type="submit">{busy?'Recording…':'Record payment'}</button>
         </fieldset></form>
       </section></Capability></Capability>
-      <Capability permission="partner_payment.execute"><section className="workspace-panel"><h2>Recorded external payments</h2><p>Most recent 100 completed payments. Receipt references remain available for reconciliation.</p><div className="table-wrap"><table><thead><tr><th>Date</th><th>Partner / payable</th><th>Amount</th><th>Method / reference</th><th>Proof</th><th>Recorded by</th></tr></thead><tbody>{(state.history??[]).map(r=><tr key={r.id}><td>{String(r.payment_date).slice(0,10)}</td><td>{r.partner_name} · {r.payable_number}</td><td>{money(r.amount)}</td><td>{r.method} · {r.reference}</td><td>{r.evidence_reference}</td><td>{r.recorded_by}</td></tr>)}</tbody></table></div>{!state.history?.length&&<p>No external payments recorded.</p>}</section></Capability>
+      <Capability permission="partner_payment.execute"><section className="workspace-panel"><h2>Recorded external payments</h2><HistoryPager rows={state.history??[]} path="payment-retainage-adjustments/external-payments" label="recorded payments" onRows={history=>setState(s=>({...s,history}))}/><p>Search or load older completed payments. Receipt references remain available for reconciliation.</p><div className="table-wrap"><table><thead><tr><th>Date</th><th>Partner / payable</th><th>Amount</th><th>Method / reference</th><th>Proof</th><th>Recorded by</th></tr></thead><tbody>{(state.history??[]).map(r=><tr key={r.id}><td>{String(r.payment_date).slice(0,10)}</td><td>{r.partner_name} · {r.payable_number}</td><td>{money(r.amount)}</td><td>{r.method} · {r.reference}</td><td>{r.evidence_reference}</td><td>{r.recorded_by}</td></tr>)}</tbody></table></div>{!state.history?.length&&<p>No external payments recorded.</p>}</section></Capability>
       <Capability permission="partner_payment.execute"><Capability permission="partner_payment.confirm"><ObservationReview payments={(state.history ?? []).map(row=>({id:String(row.id),reference:String(row.reference),amount:String(row.amount),partner_name:String(row.partner_name ?? "Partner")}))} /></Capability></Capability>
       <AdjustmentForms />
     </main>

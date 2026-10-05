@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 import { InvoicePackages } from "./invoice-packages";
 import { CommercialTerms } from "./commercial-terms";
 import { FinancialWorkflow } from "./financial-workflow";
@@ -206,7 +207,7 @@ export default function AcceptedProductionFinancialsPage() {
       <InvoicePackages />
       <FinancialWorkflow onChange={() => setRetry(value => value + 1)} />
       <section className="workspace-panel">
-        <h2>Coil Commercial Policy</h2>
+        <h2>Coil Commercial Policy</h2><HistoryPager rows={state.policies??[]} path="accepted-production-financials/coil-policies" label="coil policies" onRows={policies=>setState(s=>({...s,policies}))}/>
         <p className="muted-copy">Recorded coil is construction truth. These policies determine customer billing and Partner compensation separately after accepted production.</p>
         <Capability permission="billing.create_billable">
         {!canReadWorkOrders ? <p>Creating a policy requires access to the work order list. Ask an administrator to review your work order access.</p> : workOrderState === "loading" ? <p role="status">Loading authorized work orders…</p> : workOrderState === "error" ? <div><p role="alert">Work order choices could not load. Your entries are preserved.</p><button type="button" onClick={() => setRetry(value => value + 1)}>Retry work order choices</button></div> : !workOrders.length ? <p>No authorized work orders are available for a policy.</p> : <>
@@ -237,7 +238,7 @@ export default function AcceptedProductionFinancialsPage() {
         </div>
       </section>
       <section className="workspace-panel">
-        <h2>Coil Commercial Review</h2>
+        <h2>Coil Commercial Review</h2><HistoryPager rows={state.coils??[]} path="accepted-production-financials/coil-commercial-summary" label="coil reviews" onRows={coils=>setState(s=>({...s,coils}))}/>
         <div className="wide-table">
           <table>
             <thead><tr><th>Work Order</th><th>Pole / Asset</th><th>Coil Type</th><th>Actual</th><th>Customer Treatment</th><th>Partner Treatment</th></tr></thead>

@@ -1091,3 +1091,59 @@ async function enterObservedProduction(page: Page, kind: "asset" | "route" | "da
     await form.getByRole("button", { name: "Save production", exact: true }).click();
   }
 }
+
+
+test('company field oversight is scoped and delegation needs an explicit grant',async({request})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedSyncfieldFixture(db,process.env.AUTH_JWT_SECRET!);await authorizeMobilization(request,f);await createAssignedMap(request,f);
+  const actor=JSON.parse(Buffer.from(f.adminToken.split('.')[1],'base64url').toString()).sub;
+  const version=crypto.randomUUID(),family=crypto.randomUUID();
+  await db.query("INSERT INTO supplemental_form_versions(id,tenant_id,family_id,version,schema,status,created_by,request_key,published_by,published_at) VALUES($1,$2,$3,1,$4,'published',$5,$6,$5,now())",[version,f.tenantA,family,JSON.stringify({name:'Synthetic company form',fields:[{key:'note',label:'Note',type:'text'}]}),actor,crypto.randomUUID()]);
+  await db.query('INSERT INTO supplemental_form_assignments(tenant_id,version_id,assignment_id,assigned_by) VALUES($1,$2,$3,$4)',[f.tenantA,version,f.assignmentId,actor]);
+  const overview=await apiJson(request,f.adminToken,'GET','/syncfield/partner/field-overview?assignment_id='+f.assignmentId);
+  expect(overview.forms[0].id).toBe(version);expect(overview.forms[0].submission_count).toBe(0);
+  const body={source_assignment_id:f.assignmentId,assignment_id:f.assignmentId,version_id:version};
+  expect((await request.post(apiUrl('/syncfield/partner/delegate-form'),{headers:auth(f.adminToken),data:body})).status()).toBe(403);
+  await db.query("INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT ur.tenant_id,ur.role_id,p.id FROM user_roles ur JOIN tenant_users tu ON tu.id=ur.tenant_user_id AND tu.tenant_id=ur.tenant_id CROSS JOIN permissions p WHERE tu.user_id=$1 AND tu.tenant_id=$2 AND p.key='partner_form.delegate' ON CONFLICT DO NOTHING",[actor,f.tenantA]);
+  expect((await request.post(apiUrl('/syncfield/partner/delegate-form'),{headers:auth(f.adminToken),data:body})).status()).toBe(201);
+  expect((await request.get(apiUrl('/syncfield/partner/field-overview?assignment_id='+f.assignmentId),{headers:auth(f.foremanToken)})).status()).toBe(403);
+  expect((await request.get(apiUrl('/syncfield/partner/field-overview?assignment_id='+f.assignmentId),{headers:auth(f.tenantBToken)})).status()).toBe(404);
+  expect((await request.post(apiUrl('/syncfield/partner/delegate-form'),{headers:auth(f.adminToken),data:{...body,assignment_id:crypto.randomUUID()}})).status()).toBe(403);
+  expect((await db.query('SELECT count(*)::int n FROM supplemental_form_assignments WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(1);
+ }finally{await db.end();}
+});
+
+test('cold-offline report replay preserves notes, checks map and assignment, and serializes retries',async({request})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();try{
+  const f=await seedSyncfieldFixture(db,process.env.AUTH_JWT_SECRET!);await authorizeMobilization(request,f);await reviewFixtureSafetyScope(request,f.tenantA,f.workOrderVersionId);await createAssignedMap(request,f);await completeJsa(request,f);
+  const body={assignment_id:f.assignmentId,work_date:today(),weather:'Clear',general_notes:'Saved while disconnected',offline_capture:true,prepared_map_version_id:f.mapVersionId,client_mutation_id:crypto.randomUUID()};
+  expect((await request.post(apiUrl('/syncfield/foreman/production/today'),{headers:auth(f.foremanToken),data:{...body,prepared_map_version_id:crypto.randomUUID()}})).status()).toBe(400);
+  const started=Date.now();const responses=await Promise.all(Array.from({length:16},()=>apiJson(request,f.foremanToken,'POST','/syncfield/foreman/production/today',body)));expect(new Set(responses.map(r=>r.id)).size).toBe(1);console.log(JSON.stringify({scenario:'concurrent offline report replay',requests:16,records:1,elapsedMs:Date.now()-started}));
+  expect((await db.query('SELECT count(*)::int n FROM daily_production_reports WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(1);
+  expect((await request.post(apiUrl('/syncfield/foreman/production/today'),{headers:auth(f.foremanToken),data:{...body,work_date:tomorrow()}})).status()).toBe(400);
+  expect((await request.post(apiUrl('/syncfield/foreman/production/today'),{headers:auth(f.foremanToken),data:{...body,client_mutation_id:crypto.randomUUID()}})).status()).toBe(400);
+  expect((await db.query('SELECT general_notes FROM daily_production_reports WHERE tenant_id=$1',[f.tenantA])).rows[0].general_notes).toBe(body.general_notes);
+  await db.query("UPDATE syncfield_map_assignments SET current=false WHERE tenant_id=$1 AND id=$2",[f.tenantA,f.assignmentId]);
+  expect((await request.post(apiUrl('/syncfield/foreman/production/today'),{headers:auth(f.foremanToken),data:body})).status()).toBeGreaterThanOrEqual(400);
+ }finally{await db.end();}
+});
+
+test('company material discrepancy retries preserve custody and only inventory operators resolve them',async({request})=>{
+ const db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();try{
+  const f=await seedSyncfieldFixture(db,process.env.AUTH_JWT_SECRET!);await authorizeMobilization(request,f);await createAssignedMap(request,f);
+  const actor=JSON.parse(Buffer.from(f.adminToken.split('.')[1],'base64url').toString()).sub,operator=JSON.parse(Buffer.from(f.internalToken.split('.')[1],'base64url').toString()).sub;
+  for(const [user,keys] of [[actor,['partner_inventory.report']],[operator,['inventory.read','inventory.adjust']]] as [string,string[]][])await db.query('INSERT INTO role_permissions(tenant_id,role_id,permission_id) SELECT ur.tenant_id,ur.role_id,p.id FROM user_roles ur JOIN tenant_users tu ON tu.id=ur.tenant_user_id AND tu.tenant_id=ur.tenant_id CROSS JOIN permissions p WHERE tu.user_id=$1 AND tu.tenant_id=$2 AND p.key=ANY($3::text[]) ON CONFLICT DO NOTHING',[user,f.tenantA,keys]);
+  const lot=(await db.query("INSERT INTO material_lots(tenant_id,label,serial_number,unit) VALUES($1,'Synthetic reel','REEL-1','feet') RETURNING id",[f.tenantA])).rows[0].id;
+  const location=(await db.query("INSERT INTO material_locations(tenant_id,label,crew_id) VALUES($1,'Crew stock',$2) RETURNING id",[f.tenantA,f.crewA])).rows[0].id;
+  await db.query("INSERT INTO material_movements(tenant_id,lot_id,to_location_id,kind,quantity,reference,reason,actor_user_id,request_key) VALUES($1,$2,$3,'receipt',100,'SYNTHETIC receipt','Synthetic custody',$4,$5)",[f.tenantA,lot,location,actor,crypto.randomUUID()]);
+  const body={assignment_id:f.assignmentId,lot_id:lot,location_id:location,reported_count:'90',reference:'SYNTHETIC count sheet',description:'Recheck measured stock',request_key:crypto.randomUUID()};
+  const responses=await Promise.all([apiJson(request,f.adminToken,'POST','/syncfield/partner/material-discrepancies',body),apiJson(request,f.adminToken,'POST','/syncfield/partner/material-discrepancies',body)]);expect(responses[0].id).toBe(responses[1].id);expect(Number(responses[0].recorded_balance)).toBe(100);
+  const path='/material-inventory/discrepancies/'+responses[0].id+'/resolve',resolution={resolution_note:'Second verified count confirmed original stock',no_adjustment_needed:true};
+  expect((await request.post(apiUrl(path),{headers:auth(f.adminToken),data:resolution})).status()).toBe(403);
+  expect((await apiJson(request,f.internalToken,'POST',path,resolution)).status).toBe('resolved');
+  expect((await apiJson(request,f.internalToken,'POST',path,resolution)).id).toBe(responses[0].id);
+  expect((await request.post(apiUrl('/syncfield/partner/material-discrepancies'),{headers:auth(f.adminToken),data:{...body,location_id:crypto.randomUUID()}})).status()).toBe(403);
+  const overview=await apiJson(request,f.adminToken,'GET','/syncfield/partner/field-overview?assignment_id='+f.assignmentId);expect(overview.discrepancies[0].status).toBe('resolved');expect(Number(overview.balances[0].balance)).toBe(100);
+ }finally{await db.end();}
+});

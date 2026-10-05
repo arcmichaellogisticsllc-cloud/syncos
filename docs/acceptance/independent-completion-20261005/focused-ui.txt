@@ -1,0 +1,30 @@
+
+Running 23 tests using 1 worker
+
+(node:94171) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/passport-ui/capacity-feedback.spec.ts:2:5 › capacity matching validates input, reports errors and completes recalculation (5.4s)
+  ✓   2 tests/passport-ui/customer-qc.spec.ts:10:5 › customer decision failure preserves form and retry identity; phone layout fits (6.1s)
+  ✓   3 tests/passport-ui/customer-qc.spec.ts:15:5 › completeness reader sees incidents but no unapproved decisions or completeness actions (2.1s)
+  ✓   4 tests/passport-ui/customer-qc.spec.ts:18:5 › QC report navigation reaches older reports, preserves the applied search and stops at the last page (1.8s)
+  ✓   5 tests/passport-ui/design-prep.spec.ts:2:5 › design prep uses explicit measured geometry and retains input after failed save (1.5s)
+  ✓   6 tests/passport-ui/finance-workflow.spec.ts:20:5 › accepted finance buttons use canonical endpoints, filter employee debt and preserve retry key (1.6s)
+  ✓   7 tests/passport-ui/finance-workflow.spec.ts:37:5 › read-only finance sees metrics without any financial action controls (1.0s)
+  ✓   8 tests/passport-ui/finance-workflow.spec.ts:42:5 › retainage-only reviewer loads scoped release data without payment execution calls (952ms)
+  ✓   9 tests/passport-ui/finance-workflow.spec.ts:55:5 › each financial handoff form sends its intended canonical action (2.1s)
+  ✓  10 tests/passport-ui/finance-workflow.spec.ts:73:5 › retainage authorization and reduced-acceptance review use selected record lineage (764ms)
+  ✓  11 tests/passport-ui/partner-setup.spec.ts:13:5 › company edits retain entries on failure and hide unauthorized actions (840ms)
+  ✓  12 tests/passport-ui/partner-setup.spec.ts:31:5 › read-only partner cannot see company submit or declaration controls (483ms)
+  ✓  13 tests/passport-ui/partner-setup.spec.ts:37:5 › worker creation uses scoped endpoint and never submits approval (680ms)
+  ✓  14 tests/passport-ui/production-exports.spec.ts:2:5 › authorized operator generates scoped exports and downloads privately; failures are recoverable (611ms)
+  ✓  15 tests/passport-ui/production-exports.spec.ts:11:5 › dashboard reader does not see unauthorized export actions (447ms)
+  ✓  16 tests/passport-ui/project-handoffs.spec.ts:2:5 › handoff follows named coverage source, explicit review, approval and planning project gates (1.1s)
+  ✓  17 tests/passport-ui/qualification.spec.ts:2:5 › qualification resets company and checks, preserves failed notes, and sends only confirmed facts (857ms)
+  ✓  18 tests/passport-ui/training.spec.ts:2:5 › training provides searchable role guides, clear limitations and downloads (921ms)
+  ✓  19 tests/passport-ui/workspace.spec.ts:8:5 › finance sees simulation, filters and details without any write actions (1.2s)
+  ✓  20 tests/passport-ui/workspace.spec.ts:20:5 › unapproved server identity overrides forged stored permissions and never requests preview (449ms)
+  ✓  21 tests/passport-ui/workspace.spec.ts:23:5 › failed preview provides retry and recovers (531ms)
+  ✓  22 tests/passport-ui/workspace.spec.ts:27:5 › saved preparation is distinct from preview, requires admin for accounts and never posts money (996ms)
+  ✓  23 tests/passport-ui/workspace.spec.ts:43:5 › finance without administrator permission cannot prepare accounts (482ms)
+
+  23 passed (38.7s)

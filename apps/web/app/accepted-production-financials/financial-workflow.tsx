@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Capability, PermissionLink } from "../access-control";
 import { syncosFetch } from "../intelligence/api";
@@ -31,7 +32,7 @@ export function FinancialWorkflow({ onChange }: { onChange: () => void }) {
     <PermissionLink href="/payment-retainage-adjustments">Open external payments, retainage and adjustments</PermissionLink>
     <fieldset disabled={loading || Boolean(error)} style={{ border: 0, padding: 0, minWidth: 0 }}>
       <FinanceAction permission="billing.create_billable" title="1. Convert accepted production" endpoint="billables/convert" submitLabel="Create billable" onSaved={refresh}>
-        <ChoiceSelect label="Accepted production" name="customer_qc_decision_id" rows={data.accepted.filter(r => !r.billable_item_id).map(r => ({ ...r, id: r.customer_qc_decision_id, label: `${r.work_order_number || "Work order"} · ${String(r.production_date || "").slice(0,10)} · ${r.production_code} · ${r.accepted_quantity} ${r.unit_of_measure} · ${r.from_asset_identifier || r.production_description}${r.to_asset_identifier ? ` → ${r.to_asset_identifier}` : ""}` }))} />
+        <HistoryPager rows={data.accepted} path="accepted-production-financials/workflow-choices" select={v=>v.accepted} label="accepted production" onRows={accepted=>setData(d=>({...d,accepted}))}/><ChoiceSelect label="Accepted production" name="customer_qc_decision_id" rows={data.accepted.filter(r => !r.billable_item_id).map(r => ({ ...r, id: r.customer_qc_decision_id, label: `${r.work_order_number || "Work order"} · ${String(r.production_date || "").slice(0,10)} · ${r.production_code} · ${r.accepted_quantity} ${r.unit_of_measure} · ${r.from_asset_identifier || r.production_description}${r.to_asset_identifier ? ` → ${r.to_asset_identifier}` : ""}` }))} />
       </FinanceAction>
       <FinanceAction permission="billing.create_invoice" title="2. Create customer invoice" endpoint="invoices/create" submitLabel="Create customer invoice" onSaved={refresh} transform={f => ({ ...f, billable_item_ids: [f.billable_item_id] })}>
         <p>The invoice is created as approved under your invoice-creation authority. Check the selected billable before submitting. Retainage and payment terms come from its approved agreement.</p>

@@ -2,7 +2,7 @@ const test=require('node:test');const assert=require('node:assert/strict');const
 const apiRequire=createRequire(path.resolve('apps/api/src/routes/project-handoffs.controller.ts'));
 const source=fs.readFileSync('apps/api/src/routes/project-handoffs.controller.ts','utf8');
 const exportsObject={};
-vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,experimentalDecorators:true}}).outputText,{exports:exportsObject,require(name){if(name==='../modules/database.module')return {DATABASE_POOL:'pool'};if(name==='../security/require-permission.decorator')return {RequirePermission:()=>()=>{}};if(name==='./intelligence.types')return {pick:(body,keys)=>Object.fromEntries(keys.filter(key=>body[key]!==undefined).map(key=>[key,body[key]]))};return apiRequire(name);},Set,Date,Number,Object,String,Boolean,Array,Math});
+vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,experimentalDecorators:true}}).outputText,{exports:exportsObject,require(name){if(name==='../modules/database.module')return {DATABASE_POOL:'pool'};if(name==='../security/require-permission.decorator')return {RequirePermission:()=>()=>{}};if(name==='./activity-pagination')return require('../apps/api/dist/routes/activity-pagination');if(name==='./intelligence.types')return {pick:(body,keys)=>Object.fromEntries(keys.filter(key=>body[key]!==undefined).map(key=>[key,body[key]]))};return apiRequire(name);},Set,Date,Number,Object,String,Boolean,Array,Math});
 const Controller=exportsObject.ProjectHandoffsController;
 const request={auth:{tenantId:'tenant',userId:'user'}};
 test('general handoff update cannot assign approval or project-created status',async()=>{

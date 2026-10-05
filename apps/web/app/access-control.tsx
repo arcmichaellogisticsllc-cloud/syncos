@@ -19,7 +19,7 @@ const resources: Record<string, string> = {
   "/opportunities/candidates": "opportunity_candidate", "/opportunities/coverage": "coverage_plan", "/opportunities": "opportunity",
 };
 const pages: Record<string, string[]> = {
-  "/record-history": ["project.read", "work_order.read", "production_record.read", "qc_review.read", "invoice.read", "contractor_payable.read", "payroll_run.read", "payment_batch.read", "cash_receipt.read", "collection_case.read", "accounting_export_batch.read", "workflow_task.read", "workflow_instance.read", "organization.read", "contact.read", "opportunity.read", "signal.read", "billable_item.read", "settlement.read", "bank_transaction.read"],
+  "/record-history": ["bank_account.read", "reconciliation_match.read", "project_handoff.read", "coverage_plan.read", "relationship_map.read", "opportunity_candidate.read", "payment_application.read", "collection_action.read", "ar_record.read", "rate_schedule.read", "rate_code.read", "project.read", "work_order.read", "production_record.read", "qc_review.read", "invoice.read", "contractor_payable.read", "payroll_run.read", "payment_batch.read", "cash_receipt.read", "collection_case.read", "accounting_export_batch.read", "workflow_task.read", "workflow_instance.read", "organization.read", "contact.read", "opportunity.read", "signal.read", "billable_item.read", "settlement.read", "bank_transaction.read"],
   "/customer-inquiries": ["customer_inquiry.read"],
   "/material-inventory": ["inventory.read"],
   "/forms": ["form.read"],

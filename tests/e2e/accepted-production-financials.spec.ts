@@ -503,3 +503,31 @@ test('agreement UI approves a reviewed business calendar and shows its history',
   expect(saved.payment_day_basis).toBe('business_days');expect(saved.holidays).toEqual(['2026-10-12']);
  }finally{await db.end();}
 });
+
+test('prepared customer receipts post once, retain partial balances and send overpayments and reversals to review',async({request})=>{
+ const {Pool}=require('pg'),{PreparedPaymentPosting}=require('../../apps/api/dist/routes/prepared-payment-posting');
+ const db=new Client({connectionString:process.env.DATABASE_URL}),pool=new Pool({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedP12Fixture(db,process.env.AUTH_JWT_SECRET!),actor=JSON.parse(Buffer.from(f.internalToken.split('.')[1],'base64url').toString()).sub;
+  const billable=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/billables/convert',{customer_qc_decision_id:f.fiberDecision});
+  const invoice=await apiJson(request,f.internalToken,'POST','/accepted-production-financials/invoices/create',{billable_item_ids:[billable.id]});
+  const customer='SYNTHETIC-'+crypto.randomUUID(),connection=(await db.query("INSERT INTO passport_connections(tenant_id,customer_reference,account_reference,created_by) VALUES($1,$2,'ACCOUNT',$3) RETURNING id",[f.tenantA,customer,actor])).rows[0].id;
+  const req={auth:{tenantId:f.tenantA,userId:actor}},engine=new PreparedPaymentPosting(pool),tx={customerId:customer,accountId:'ACCOUNT',transactionId:'RECEIPT-1',payerId:'PRIME',direction:'incoming',currency:'USD',amount:'30.00',status:'completed',completedDate:'2026-09-01',version:1};
+  expect((await engine.rehearse(req,connection,tx)).reason).toBe('unmatched_receipt');
+  for(const [ref,amount] of [['RECEIPT-1','30.00'],['TOO-MUCH','10000.00'],['RECEIPT-2','102.54']])await db.query("INSERT INTO passport_receivable_mappings(tenant_id,connection_id,transaction_reference,payer_reference,invoice_id,amount,currency,evidence_reference,approved_by) VALUES($1,$2,$3,'PRIME',$4,$5,'USD','SYNTHETIC approved incoming allocation',$6)",[f.tenantA,connection,ref,invoice.id,amount,actor]);
+  expect((await engine.rehearse(req,connection,tx)).reason).toBe('receivable_controls_require_review');
+  expect((await db.query('SELECT count(*)::int n FROM cash_receipts WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(0);
+  // Isolated fixture represents the separately approved package/receivable state, not real customer acceptance.
+  await db.query("UPDATE invoices SET cash_application_status='ready_for_cash_application',customer_acceptance_status='accepted',contract_trigger_at='2026-08-25',due_date='2026-09-08' WHERE tenant_id=$1 AND id=$2",[f.tenantA,invoice.id]);
+  const results=await Promise.all([engine.rehearse(req,connection,tx),engine.rehearse(req,connection,tx)]);expect(results.map((r:any)=>r.outcome).sort()).toEqual(['duplicate','recorded']);
+  expect((await db.query('SELECT paid_amount,balance_amount FROM invoices WHERE id=$1',[invoice.id])).rows[0]).toEqual({paid_amount:'30.00',balance_amount:'102.54'});
+  expect((await engine.rehearse(req,connection,{...tx,transactionId:'TOO-MUCH',amount:'10000.00'})).reason).toBe('receivable_controls_require_review');
+  expect((await db.query('SELECT count(*)::int n FROM cash_receipts WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(1);
+  expect((await engine.rehearse(req,connection,{...tx,version:2,status:'reversed'})).reason).toBe('recorded_receipt_return_or_reversal');
+  expect((await engine.rehearse(req,connection,{...tx,transactionId:'RECEIPT-2',amount:'102.54'})).outcome).toBe('recorded');
+  expect((await db.query('SELECT paid_amount,balance_amount FROM invoices WHERE id=$1',[invoice.id])).rows[0]).toEqual({paid_amount:'132.54',balance_amount:'0.00'});
+  expect((await db.query("SELECT count(*)::int n FROM audit_logs WHERE tenant_id=$1 AND action='payment_application.create' AND entity_type='payment_application'",[f.tenantA])).rows[0].n).toBe(2);
+  expect((await db.query('SELECT count(*)::int n FROM external_partner_payments WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(0);
+  await expect(engine.rehearse({auth:{tenantId:f.tenantB,userId:actor}},connection,tx)).rejects.toThrow('Provider account');
+ }finally{await db.end();await pool.end();}
+});

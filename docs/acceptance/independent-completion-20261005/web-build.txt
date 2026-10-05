@@ -1,0 +1,195 @@
+
+> @syncos/web@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.26
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 17.3s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/114) ...
+   Generating static pages (28/114) 
+   Generating static pages (56/114) 
+   Generating static pages (85/114) 
+ ✓ Generating static pages (114/114)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                         Size  First Load JS
+┌ ○ /                                            2.21 kB         119 kB
+├ ○ /_not-found                                    987 B         104 kB
+├ ○ /accepted-production-financials              8.45 kB         125 kB
+├ ƒ /accounting-export-items/[id]                  175 B         134 kB
+├ ○ /accounting-exports                            174 B         134 kB
+├ ƒ /accounting-exports/[id]                       175 B         134 kB
+├ ƒ /accounting-exports/[id]/edit                  175 B         134 kB
+├ ○ /accounting-exports/new                        175 B         134 kB
+├ ○ /activate-employee                           3.53 kB         113 kB
+├ ƒ /api/syncos/[...path]                          138 B         103 kB
+├ ○ /bank-reconciliation                           174 B         134 kB
+├ ƒ /bank-reconciliation/accounts/[id]             174 B         134 kB
+├ ƒ /bank-reconciliation/accounts/[id]/edit        175 B         134 kB
+├ ○ /bank-reconciliation/accounts/new              174 B         134 kB
+├ ƒ /bank-reconciliation/transactions/[id]         175 B         134 kB
+├ ƒ /bank-reconciliation/transactions/[id]/edit    175 B         134 kB
+├ ○ /bank-reconciliation/transactions/new          175 B         134 kB
+├ ○ /billable                                      171 B         129 kB
+├ ƒ /billable/[id]                                 171 B         129 kB
+├ ƒ /billable/[id]/edit                            170 B         129 kB
+├ ○ /billable/new                                  171 B         129 kB
+├ ○ /cash                                          172 B         132 kB
+├ ƒ /cash/receipts/[id]                            174 B         132 kB
+├ ƒ /cash/receipts/[id]/edit                       173 B         132 kB
+├ ○ /cash/receipts/new                             174 B         132 kB
+├ ○ /collection-actions                            171 B         132 kB
+├ ƒ /collection-actions/[id]                       171 B         132 kB
+├ ○ /collections                                   171 B         132 kB
+├ ƒ /collections/[id]                              172 B         132 kB
+├ ƒ /collections/[id]/edit                         171 B         132 kB
+├ ○ /collections/new                               171 B         132 kB
+├ ○ /command-center                              2.92 kB         120 kB
+├ ○ /constraints-center                          1.05 kB         118 kB
+├ ○ /contractor-payables                           174 B         133 kB
+├ ƒ /contractor-payables/[id]                      175 B         133 kB
+├ ƒ /contractor-payables/[id]/edit                 172 B         133 kB
+├ ○ /contractor-payables/new                       175 B         133 kB
+├ ○ /customer-inquiries                          4.71 kB         122 kB
+├ ○ /customer-qc                                 9.68 kB         119 kB
+├ ○ /executive                                   2.08 kB         119 kB
+├ ○ /field-setup                                 4.42 kB         114 kB
+├ ○ /finance                                     1.86 kB         119 kB
+├ ○ /forgot-password                               895 B         110 kB
+├ ○ /forms                                       6.29 kB         123 kB
+├ ○ /growth                                      1.12 kB         118 kB
+├ ○ /intelligence                                  138 B         103 kB
+├ ○ /intelligence/account-onboarding             6.92 kB         124 kB
+├ ○ /intelligence/contacts                         171 B         129 kB
+├ ƒ /intelligence/contacts/[id]                    170 B         129 kB
+├ ƒ /intelligence/contacts/[id]/edit               173 B         129 kB
+├ ○ /intelligence/contacts/new                     173 B         129 kB
+├ ○ /intelligence/organizations                    171 B         130 kB
+├ ƒ /intelligence/organizations/[id]               171 B         130 kB
+├ ƒ /intelligence/organizations/[id]/edit          174 B         130 kB
+├ ○ /intelligence/organizations/new                174 B         130 kB
+├ ○ /intelligence/relationship-maps                171 B         130 kB
+├ ƒ /intelligence/relationship-maps/[id]           170 B         130 kB
+├ ƒ /intelligence/relationship-maps/[id]/edit      175 B         130 kB
+├ ○ /intelligence/relationship-maps/new            175 B         130 kB
+├ ○ /intelligence/signals                        6.21 kB         125 kB
+├ ƒ /intelligence/signals/[id]                   5.71 kB         124 kB
+├ ○ /internal-workforce                          5.46 kB         115 kB
+├ ○ /invoices                                      181 B         141 kB
+├ ƒ /invoices/[id]                                 179 B         141 kB
+├ ƒ /invoices/[id]/edit                            181 B         141 kB
+├ ○ /invoices/new                                  181 B         141 kB
+├ ○ /kpis-center                                    1 kB         118 kB
+├ ○ /login                                       3.82 kB         113 kB
+├ ○ /material-inventory                           4.2 kB         121 kB
+├ ○ /operations                                  2.66 kB         119 kB
+├ ○ /opportunities                                 138 B         103 kB
+├ ƒ /opportunities/[id]                            171 B         132 kB
+├ ƒ /opportunities/[id]/edit                       174 B         132 kB
+├ ○ /opportunities/candidates                      171 B         130 kB
+├ ƒ /opportunities/candidates/[id]                 171 B         130 kB
+├ ƒ /opportunities/candidates/[id]/edit            174 B         130 kB
+├ ○ /opportunities/candidates/new                  174 B         130 kB
+├ ○ /opportunities/capacity-matching             3.08 kB         120 kB
+├ ○ /opportunities/coverage                        171 B         132 kB
+├ ƒ /opportunities/coverage/[id]                   171 B         132 kB
+├ ƒ /opportunities/coverage/[id]/edit              174 B         132 kB
+├ ƒ /opportunities/coverage/new                    174 B         132 kB
+├ ○ /opportunities/new                             174 B         132 kB
+├ ○ /opportunities/pipeline                        171 B         132 kB
+├ ○ /partner                                       130 B         164 kB
+├ ○ /partner-network                             5.42 kB         122 kB
+├ ○ /partner-performance                         5.38 kB         115 kB
+├ ○ /partner/agreements                            130 B         164 kB
+├ ƒ /partner/agreements/[id]                       130 B         164 kB
+├ ○ /partner/company                               130 B         164 kB
+├ ○ /partner/compliance                            128 B         164 kB
+├ ○ /partner/corrections                           130 B         164 kB
+├ ○ /partner/crews                                 130 B         164 kB
+├ ƒ /partner/crews/[id]                            130 B         164 kB
+├ ○ /partner/customer-qc                           130 B         164 kB
+├ ○ /partner/field-oversight                     5.28 kB         115 kB
+├ ○ /partner/field/map                             138 B         103 kB
+├ ○ /partner/field/today                           138 B         103 kB
+├ ƒ /partner/invite/[token]                      1.85 kB         111 kB
+├ ○ /partner/jsa                                   130 B         164 kB
+├ ○ /partner/mobilization                          130 B         164 kB
+├ ○ /partner/onboarding                            130 B         164 kB
+├ ○ /partner/payments                              130 B         164 kB
+├ ○ /partner/performance                           130 B         164 kB
+├ ○ /partner/production                            130 B         164 kB
+├ ○ /partner/production/review                     130 B         164 kB
+├ ○ /partner/settlements                           130 B         164 kB
+├ ○ /partner/vehicles                              130 B         164 kB
+├ ○ /partner/work-orders                           130 B         164 kB
+├ ƒ /partner/work-orders/[id]                      130 B         164 kB
+├ ○ /partner/workers                               130 B         164 kB
+├ ƒ /partner/workers/[id]                          130 B         164 kB
+├ ○ /partner/workforce                             130 B         164 kB
+├ ○ /passport                                    3.82 kB         121 kB
+├ ○ /payment-applications                          174 B         132 kB
+├ ƒ /payment-applications/[id]                     174 B         132 kB
+├ ƒ /payment-items/[id]                            174 B         133 kB
+├ ○ /payment-retainage-adjustments               7.89 kB         122 kB
+├ ○ /payments                                      174 B         133 kB
+├ ƒ /payments/[id]                                 175 B         133 kB
+├ ƒ /payments/[id]/edit                            175 B         133 kB
+├ ○ /payments/new                                  174 B         133 kB
+├ ○ /payroll                                       169 B         132 kB
+├ ƒ /payroll/[id]                                  171 B         132 kB
+├ ƒ /payroll/[id]/edit                             171 B         132 kB
+├ ○ /payroll/new                                   171 B         132 kB
+├ ○ /production                                    174 B         135 kB
+├ ○ /production-dashboard                        2.81 kB         120 kB
+├ ƒ /production/[id]                               175 B         135 kB
+├ ƒ /production/[id]/edit                          175 B         135 kB
+├ ○ /production/new                                174 B         135 kB
+├ ○ /project-handoffs                            3.58 kB         120 kB
+├ ○ /projects                                      170 B         127 kB
+├ ƒ /projects/[id]                                 171 B         127 kB
+├ ƒ /projects/[id]/edit                            171 B         127 kB
+├ ○ /qc                                            180 B         133 kB
+├ ƒ /qc/[id]                                       175 B         133 kB
+├ ƒ /qc/[id]/edit                                  175 B         133 kB
+├ ○ /qc/new                                        174 B         133 kB
+├ ○ /recommendations-center                      1.05 kB         118 kB
+├ ƒ /reconciliation-matches/[id]                   174 B         134 kB
+├ ○ /record-history                               4.6 kB         114 kB
+├ ƒ /request-service/[slug]                      1.74 kB         104 kB
+├ ○ /reset-password                              1.14 kB         110 kB
+├ ○ /settlements                                   171 B         131 kB
+├ ƒ /settlements/[id]                              171 B         131 kB
+├ ƒ /settlements/[id]/edit                         171 B         131 kB
+├ ○ /settlements/new                               171 B         131 kB
+├ ○ /syncfield/corrections                         130 B         164 kB
+├ ○ /syncfield/crew                                130 B         164 kB
+├ ○ /syncfield/design-prep                       4.61 kB         114 kB
+├ ○ /syncfield/forms                             6.81 kB         116 kB
+├ ○ /syncfield/jsa                                 130 B         164 kB
+├ ○ /syncfield/map                                 129 B         164 kB
+├ ○ /syncfield/materials                         5.04 kB         114 kB
+├ ○ /syncfield/production                          130 B         164 kB
+├ ○ /syncfield/production/review                   130 B         164 kB
+├ ○ /syncfield/today                               130 B         164 kB
+├ ○ /syncfield/workload                            130 B         164 kB
+├ ○ /training                                    41.8 kB         159 kB
+├ ○ /work-orders                                   175 B         134 kB
+├ ƒ /work-orders/[id]                              174 B         134 kB
+├ ƒ /work-orders/[id]/edit                         175 B         134 kB
+├ ○ /work-orders/new                               172 B         134 kB
+├ ○ /work-safety                                 4.22 kB         110 kB
+├ ○ /workflow-notifications                      3.82 kB         113 kB
+└ ○ /workflows-center                            1.18 kB         118 kB
++ First Load JS shared by all                     103 kB
+  ├ chunks/18-498168fb58dcd546.js                46.4 kB
+  ├ chunks/87c73c54-24122e7b92478d00.js          54.2 kB
+  └ other shared chunks (total)                  1.95 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

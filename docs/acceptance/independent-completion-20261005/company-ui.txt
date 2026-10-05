@@ -1,0 +1,10 @@
+
+Running 3 tests using 1 worker
+
+(node:92360) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/company-field.browser.ts:12:5 › company reader sees coverage and custody without unauthorized actions (1.4s)
+  ✓  2 tests/company-field.browser.ts:15:5 › authorized company admin delegates exact version and reports a stock discrepancy without adjusting stock (1.9s)
+  ✓  3 tests/company-field.browser.ts:20:5 › failed stock report retains count and stable request key for retry (1.3s)
+
+  3 passed (7.9s)

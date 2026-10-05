@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { allocateRetainedRelease, calculateRetainedSchedule, retainedTermsInput } from './retained-fund-schedule';
 import { requireFreshSchedule, lockScheduleInputs } from './payable-schedule-freshness';
 import { normalizePaymentObservation } from "./external-payment-observation";
@@ -22,9 +23,8 @@ export class PaymentRetainageAdjustmentsController {
   @RequirePermission("partner_payment.execute")
   async readyToPay(@Req() request: AuthenticatedRequest) {
     return this.withClient(async (client) => {
-      const result = await client.query(
-        `
-        SELECT cp.*, o.name AS partner_name, s.settlement_number
+      const result = await activityPage(client,`
+        SELECT cp.id AS __history_id,cp.created_at::text AS __history_time,cp.*, o.name AS partner_name, s.settlement_number
         FROM contractor_payables cp
         LEFT JOIN organizations o ON o.tenant_id = cp.tenant_id AND o.id = cp.partner_organization_id
         LEFT JOIN settlements s ON s.tenant_id = cp.tenant_id AND s.id = cp.settlement_id
@@ -38,10 +38,8 @@ export class PaymentRetainageAdjustmentsController {
           AND COALESCE(cp.eligible_amount,0) - COALESCE(cp.paid_amount,0) - COALESCE(cp.in_flight_payment_amount,0) > 0
         ORDER BY cp.payment_due_at NULLS LAST, cp.created_at
         LIMIT 250
-        `,
-        [request.auth.tenantId],
-      );
-      return result.rows.map((row) => this.safePayable(row));
+        `,[request.auth.tenantId],request.query);
+      return result.rows.map((row) => ({...this.safePayable(row),_history_cursor:row._history_cursor}));
     });
   }
 
@@ -87,7 +85,7 @@ export class PaymentRetainageAdjustmentsController {
   @Get("external-payment-observations")
   @RequirePermission("partner_payment.confirm")
   async paymentObservations(@Req() request: AuthenticatedRequest) {
-    return this.withClient(async client => (await client.query("SELECT * FROM external_payment_observations WHERE tenant_id=$1 ORDER BY received_at DESC LIMIT 200", [request.auth.tenantId])).rows);
+    return this.withClient(async client => (await activityPage(client,"SELECT id AS __history_id,received_at::text AS __history_time,* FROM external_payment_observations WHERE tenant_id=$1 ORDER BY received_at DESC LIMIT 200",[request.auth.tenantId],request.query)).rows);
   }
 
   @Post("external-payment-observations")
@@ -137,20 +135,24 @@ export class PaymentRetainageAdjustmentsController {
   @Get("external-payments")
   @RequirePermission("partner_payment.execute")
   async externalPayments(@Req() request: AuthenticatedRequest) {
-    return this.withClient(async client => (await client.query(`
-      SELECT ep.id,ep.amount,ep.payment_date,ep.method,ep.reference,ep.evidence_reference,ep.created_at,
+    return this.withClient(async client => (await activityPage(client,`
+      SELECT ep.id AS __history_id,ep.created_at::text AS __history_time,ep.id,ep.amount,ep.payment_date,ep.method,ep.reference,ep.evidence_reference,ep.created_at,
         cp.payable_number,o.name AS partner_name,u.display_name AS recorded_by
       FROM external_partner_payments ep
       JOIN contractor_payables cp ON cp.tenant_id=ep.tenant_id AND cp.id=ep.contractor_payable_id
       LEFT JOIN organizations o ON o.tenant_id=cp.tenant_id AND o.id=cp.partner_organization_id
       LEFT JOIN users u ON u.id=ep.recorded_by
-      WHERE ep.tenant_id=$1 ORDER BY ep.created_at DESC LIMIT 100`,[request.auth.tenantId])).rows);
+      WHERE ep.tenant_id=$1 ORDER BY ep.created_at DESC LIMIT 100`,[request.auth.tenantId],request.query)).rows);
   }
 
   @Post("external-payments")
   @RequirePermission("partner_payment.confirm")
   async recordExternalPayment(@Req() request: AuthenticatedRequest, @Body() body: Row) {
-    return this.write(request, "partner_payment.external_recorded", "partner_payment.external_recorded", "external_partner_payment", async client => {
+    return this.write(request, "partner_payment.external_recorded", "partner_payment.external_recorded", "external_partner_payment", client => this.recordExternalPaymentInTransaction(client,request,body));
+  }
+
+  // Internal adapter seam. Caller owns the audited transaction; no additional HTTP route.
+  async recordExternalPaymentInTransaction(client:PoolClient,request:AuthenticatedRequest,body:Row) {
       const payable = await this.requirePayable(client, request.auth.tenantId, requireString(body.contractor_payable_id,"Payable is required"));
       const key = requireString(body.idempotency_key,"Payment request identifier is required");
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[`${request.auth.tenantId}:external-payment-key:${key}`]);
@@ -178,7 +180,6 @@ export class PaymentRetainageAdjustmentsController {
       const status=paid>=Number(payable.net_payable_amount)?'paid_later':'partially_paid_later';
       await client.query("UPDATE contractor_payables SET paid_amount=$3,payment_status=$4,status=$4,payment_execution_status='confirmed',updated_by=$5,updated_at=now() WHERE tenant_id=$1 AND id=$2",[request.auth.tenantId,payable.id,paid,status,request.auth.userId]);
       return {entityType:"external_partner_payment",entityId:recorded.id,afterState:recorded};
-    });
   }
 
   @Post("payment-instructions")
@@ -319,7 +320,7 @@ export class PaymentRetainageAdjustmentsController {
         LEFT JOIN contractor_payable_items cpi ON cpi.tenant_id=src.tenant_id AND cpi.id=src.contractor_payable_item_id
         LEFT JOIN contractor_payables cp ON cp.tenant_id=cpi.tenant_id AND cp.id=cpi.contractor_payable_id
         WHERE src.tenant_id=$1 AND src.deleted_at IS NULL AND src.billable_item_id IS NOT NULL AND COALESCE(cqd.customer_accepted_quantity,0)<src.accepted_quantity ORDER BY src.created_at DESC`, [request.auth.tenantId]);
-      const adjustments = await client.query(`SELECT id,status,reason,source_reference,adjustment_amount FROM financial_adjustments WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, [request.auth.tenantId]);
+      const adjustments = await activityPage(client,`SELECT id AS __history_id,created_at::text AS __history_time,id,status,reason,source_reference,adjustment_amount FROM financial_adjustments WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`,[request.auth.tenantId],request.query);
       return { sources: sources.rows, adjustments: adjustments.rows };
     });
   }
@@ -457,9 +458,9 @@ export class PaymentRetainageAdjustmentsController {
   async partnerPayments(@Req() request: AuthenticatedRequest) {
     return this.withClient(async (client) => {
       const partner = await this.partnerContext(client, request.auth.tenantId, request.auth.userId);
-      const result = await client.query(
+      const result = await activityPage(client,
         `
-        SELECT cp.id AS contractor_payable_id, cp.payable_number, cp.net_payable_amount, cp.eligible_amount, cp.paid_amount,
+        SELECT cp.id AS __history_id,cp.created_at::text AS __history_time,cp.id AS contractor_payable_id, cp.payable_number, cp.net_payable_amount, cp.eligible_amount, cp.paid_amount,
           cp.in_flight_payment_amount, cp.retained_balance_amount, cp.payment_due_at, cp.payment_status, cp.pay_when_paid_status,
           COALESCE(json_agg(json_build_object(
             'id', ppi.id,
@@ -477,7 +478,7 @@ export class PaymentRetainageAdjustmentsController {
         ORDER BY cp.created_at DESC
         LIMIT 100
         `,
-        [request.auth.tenantId, partner.organization_id],
+        [request.auth.tenantId, partner.organization_id],request.query,
       );
       return result.rows.map((row) => this.safePayable(row));
     });

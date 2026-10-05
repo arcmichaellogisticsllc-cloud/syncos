@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { findTenantRecordById, insertTenantRecord, updateTenantRecord } from "@syncos/database";
@@ -80,7 +81,7 @@ export class OrganizationsController {
   async timeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireOrganization(client, request.auth.tenantId, id);
-      return this.organizationTimeline(client, request.auth.tenantId, id);
+      return this.organizationTimeline(client, request.auth.tenantId, id,100,request.query??{});
     });
   }
 
@@ -89,10 +90,8 @@ export class OrganizationsController {
   async auditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireOrganization(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
-        SELECT
-          al.id AS audit_id,
+      const result = await activityPage(client,`
+        SELECT al.id AS __history_id,al.created_at::text AS __history_time, al.id AS audit_id,
           al.actor_user_id AS actor_id,
           u.display_name AS actor_name,
           al.action,
@@ -110,9 +109,7 @@ export class OrganizationsController {
           AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 50
-        `,
-        [request.auth.tenantId, id],
-      );
+        `,[request.auth.tenantId, id],request.query);
       return result.rows;
     });
   }
@@ -612,9 +609,39 @@ export class OrganizationsController {
     return result.rows;
   }
 
-  private async organizationTimeline(client: PoolClient, tenantId: string, organizationId: string, limit = 50) {
-    const result = await client.query(
-      `
+  private async organizationTimeline(client: PoolClient, tenantId: string, organizationId: string, limit = 50,query:any=null) {
+    const result = await (query?activityPage(client,`
+      SELECT e.id AS __history_id,e.occurred_at::text AS __history_time, e.id AS event_id,
+        e.event_type,
+        e.actor_user_id AS actor_id,
+        u.display_name AS actor_name,
+        e.occurred_at AS timestamp,
+        e.aggregate_type AS object_type,
+        e.aggregate_id AS object_id,
+        e.event_type AS summary,
+        ep.payload
+      FROM events e
+      LEFT JOIN users u ON u.id = e.actor_user_id
+      LEFT JOIN event_payloads ep ON ep.event_id = e.id
+      WHERE e.tenant_id = $1
+        AND (
+          (e.aggregate_type = 'organization' AND e.aggregate_id = $2)
+          OR (e.aggregate_type = 'contact' AND e.aggregate_id IN (SELECT id FROM contacts WHERE tenant_id = $1 AND organization_id = $2))
+          OR (e.aggregate_type = 'signal' AND e.aggregate_id IN (
+            SELECT s.id
+            FROM signals s
+            LEFT JOIN signal_entities se ON se.tenant_id = s.tenant_id AND se.signal_id = s.id AND se.entity_type = 'organization' AND se.archived_at IS NULL AND se.deleted_at IS NULL
+            WHERE s.tenant_id = $1 AND se.entity_id = $2
+          ))
+          OR (e.aggregate_type = 'opportunity_candidate' AND e.aggregate_id IN (SELECT id FROM opportunity_candidates WHERE tenant_id = $1 AND organization_id = $2))
+          OR (e.aggregate_type = 'opportunity' AND e.aggregate_id IN (SELECT id FROM opportunities WHERE tenant_id = $1 AND organization_id = $2))
+          OR (e.aggregate_type = 'capacity_provider' AND e.aggregate_id IN (SELECT id FROM capacity_providers WHERE tenant_id = $1 AND organization_id = $2))
+          OR (e.aggregate_type = 'constraint' AND e.aggregate_id IN (SELECT id FROM constraints WHERE tenant_id = $1 AND affected_object_type = 'organization' AND affected_object_id = $2))
+          OR (e.aggregate_type = 'recommendation' AND e.aggregate_id IN (SELECT id FROM recommendations WHERE tenant_id = $1 AND related_object_type = 'organization' AND related_object_id = $2))
+        )
+      ORDER BY e.occurred_at DESC
+      LIMIT $3
+      `.replace('LIMIT $3','LIMIT 50'),[tenantId,organizationId],query):client.query(`
       SELECT
         e.id AS event_id,
         e.event_type,
@@ -646,9 +673,7 @@ export class OrganizationsController {
         )
       ORDER BY e.occurred_at DESC
       LIMIT $3
-      `,
-      [tenantId, organizationId, limit],
-    );
+      `,[tenantId, organizationId, limit]));
     return result.rows;
   }
 

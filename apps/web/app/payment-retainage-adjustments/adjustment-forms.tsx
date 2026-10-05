@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 import { useEffect, useState } from "react";
 import { Capability, useCapability } from "../access-control";
 import { syncosFetch } from "../intelligence/api";
@@ -46,6 +47,6 @@ export function AdjustmentForms() {
       </FinanceAction>
     </fieldset>
     <Capability permission="retainage.release"><h3>Release history</h3>{data.releases.length ? <ul>{data.releases.map(r => <li key={r.id}>{r.label} — {r.status?.replaceAll("_", " ")}{r.approved_terms ? ` · ${r.approved_terms.payment_days} days from ${r.approved_terms.payment_trigger.replaceAll("_", " ")} · ${r.approved_terms.source_reference}` : " · Awaiting contract-term approval"}</li>)}</ul> : <p>No retainage releases recorded.</p>}</Capability>
-    <Capability permission="financial_adjustment.create"><h3>Adjustment review history</h3>{data.adjustments.length ? <ul>{data.adjustments.map(r => <li key={r.id}>{r.reason} — ${Number(r.adjustment_amount).toFixed(2)} — {r.status.replaceAll("_", " ")}</li>)}</ul> : <p>No adjustment requests recorded.</p>}</Capability>
+    <Capability permission="financial_adjustment.create"><h3>Adjustment review history</h3><HistoryPager rows={data.adjustments} path="payment-retainage-adjustments/adjustment-choices" label="adjustments" select={v=>v.adjustments} onRows={adjustments=>setData(d=>({...d,adjustments}))}/>{data.adjustments.length ? <ul>{data.adjustments.map(r => <li key={r.id}>{r.reason} — ${Number(r.adjustment_amount).toFixed(2)} — {r.status.replaceAll("_", " ")}</li>)}</ul> : <p>No adjustment requests recorded.</p>}</Capability>
   </section>;
 }

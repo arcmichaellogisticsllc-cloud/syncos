@@ -101,12 +101,15 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     });
     const annotatedBytes = await apiJson(request, fixture.internalToken, "GET", `/syncfield/production-exports/${annotated.id}/bytes`);
     const annotatedPdf = Buffer.from(annotatedBytes.content_base64, "base64").toString("latin1");
+    // Compare visible text across wrapped PDF lines, rather than PDF operators.
+    const visibleText = (pdf: string) => [...pdf.matchAll(/\(((?:\\[\s\S]|[^\\)])*)\)\s*Tj/g)].map(match => match[1].replace(/\\([\\()])/g, "$1")).join(" ").replace(/\s+/g," ");
+    const annotatedText = visibleText(annotatedPdf);
     expect(annotatedPdf.startsWith("%PDF-")).toBe(true);
-    expect(annotatedPdf).toContain("correction_required");
-    expect(annotatedPdf).toContain("REDLINE 15-12-2->15-12-4");
-    expect(annotatedPdf).toContain("IN/OUT 14826.00/14780.00");
-    expect(annotatedPdf).toContain("COIL 15-12-2; 15-12-4");
-    expect(annotatedPdf).toContain("actual=232.00");
+    expect(annotatedText).toContain("correction_required");
+    expect(annotatedText).toContain("REDLINE 15-12-2->15-12-4");
+    expect(annotatedText).toContain("IN/OUT 14826.00/14780.00");
+    expect(annotatedText).toContain("COIL 15-12-2; 15-12-4");
+    expect(annotatedText).toContain("actual=232.00");
     expect(annotatedPdf).toContain("point\\(257.04,411.84\\)");
     const daily = await apiJson(request, fixture.internalToken, "POST", "/syncfield/production-exports", {
       artifact_type: "daily_production_pdf",
@@ -115,9 +118,10 @@ test.describe.serial("P11 accepted production exports, dashboard, and operationa
     });
     const dailyBytes = await apiJson(request, fixture.internalToken, "GET", `/syncfield/production-exports/${daily.id}/bytes`);
     const dailyPdf = Buffer.from(dailyBytes.content_base64, "base64").toString("latin1");
-    expect(dailyPdf).toContain("Reported 141 LF; Customer Accepted 132");
-    expect(dailyPdf).toContain("Recorded coil/slack: 232 FT; Commercial treatment: not configured");
-    expect(dailyPdf).toContain("Pending Customer QC");
+    const dailyText = visibleText(dailyPdf);
+    expect(dailyText).toContain("Reported 141 LF; Customer Accepted 132");
+    expect(dailyText).toContain("Recorded coil/slack: 232 FT; Commercial treatment: not configured");
+    expect(dailyText).toContain("Pending Customer QC");
     const after = await client.query("SELECT checksum FROM partner_restricted_file_objects WHERE tenant_id = $1 AND id = $2", [fixture.tenantA, fixture.mapFileId]);
     expect(after.rows[0].checksum).toBe(before.rows[0].checksum);
   });

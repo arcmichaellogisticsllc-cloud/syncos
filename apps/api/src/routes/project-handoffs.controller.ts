@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { findTenantRecordById, insertTenantRecord, updateTenantRecord } from "@syncos/database";
@@ -600,11 +601,10 @@ export class ProjectHandoffsController {
   async timeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const handoff = await this.requireHandoff(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
+      const result = await activityPage(client, `
         WITH checklist_ids AS (SELECT id FROM project_handoff_checklist_items WHERE tenant_id = $1 AND project_handoff_id = $2),
         risk_ids AS (SELECT id FROM project_handoff_risks WHERE tenant_id = $1 AND project_handoff_id = $2)
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.occurred_at AS timestamp,
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.occurred_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -618,9 +618,7 @@ export class ProjectHandoffsController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, handoff.project_id],
-      );
+        `, [request.auth.tenantId, id, handoff.project_id], request.query);
       return result.rows;
     });
   }
@@ -630,12 +628,11 @@ export class ProjectHandoffsController {
   async auditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const handoff = await this.requireHandoff(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
+      const result = await activityPage(client, `
         WITH checklist_ids AS (SELECT id FROM project_handoff_checklist_items WHERE tenant_id = $1 AND project_handoff_id = $2),
         risk_ids AS (SELECT id FROM project_handoff_risks WHERE tenant_id = $1 AND project_handoff_id = $2),
         approval_ids AS (SELECT id FROM project_handoff_approvals WHERE tenant_id = $1 AND project_handoff_id = $2)
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
           al.entity_type AS object_type, al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -650,9 +647,7 @@ export class ProjectHandoffsController {
           )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, handoff.project_id],
-      );
+        `, [request.auth.tenantId, id, handoff.project_id], request.query);
       return result.rows;
     });
   }

@@ -76,6 +76,8 @@ const partnerScopedPermissions = new Set<PermissionKey>([
   "partner_production_record.delete_draft",
   "partner_production_photo.create",
   "partner_field_sync.submit",
+  "partner_form.delegate",
+  "partner_inventory.report",
   "partner_daily_production.read_org",
   "partner_production.read_org",
   "partner_customer_qc.read",

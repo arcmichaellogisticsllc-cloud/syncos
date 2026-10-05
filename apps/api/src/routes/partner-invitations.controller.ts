@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import crypto from "node:crypto";
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, InternalServerErrorException, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import { createAuthToken, hashPassword, validatePassword } from "@syncos/auth";
@@ -162,11 +163,8 @@ export class PartnerInvitationsController {
   @RequirePermission("partner_inquiry.read")
   async listInquiries(@Req() request: AuthenticatedRequest) {
     return this.withClient(async (client) => {
-      const result = await client.query<InquiryRow>(
-        "SELECT * FROM partner_inquiries WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",
-        [request.auth.tenantId],
-      );
-      return { inquiries: result.rows.map((row) => this.safeInquiry(row)) };
+      const result = await activityPage(client,"SELECT id AS __history_id,created_at::text AS __history_time,* FROM partner_inquiries WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",[request.auth.tenantId],request.query);
+      return { inquiries: result.rows.map((row) => ({...this.safeInquiry(row as InquiryRow),_history_cursor:row._history_cursor})) };
     });
   }
 
@@ -309,9 +307,8 @@ export class PartnerInvitationsController {
   @RequirePermission("partner_onboarding.review")
   async onboardingWorkspace(@Req() request: AuthenticatedRequest) {
     return this.withClient(async (client) => {
-      const result = await client.query(
-        `
-        SELECT o.id AS organization_id, o.name AS company, o.status AS organization_status,
+      const result = await activityPage(client,`
+        SELECT o.id AS __history_id,o.created_at::text AS __history_time,o.id AS organization_id, o.name AS company, o.status AS organization_status,
                max(i.created_at) AS last_invite_at,
                count(i.id)::int AS invite_count,
                count(i.id) FILTER (WHERE i.status = 'SENT')::int AS sent_invites,
@@ -324,13 +321,12 @@ export class PartnerInvitationsController {
         GROUP BY o.id, o.name, o.status
         ORDER BY max(i.created_at) DESC NULLS LAST, o.name ASC
         LIMIT 100
-        `,
-        [request.auth.tenantId, Array.from(partnerProviderTypes)],
-      );
+        `,[request.auth.tenantId, Array.from(partnerProviderTypes)],request.query);
       const rows = [];
       for (const row of result.rows) {
         const checklist = await this.checklist(client, request.auth.tenantId, row.organization_id);
         rows.push({
+          _history_cursor:row._history_cursor,
           organization_id: row.organization_id,
           company: row.company,
           source: row.source ?? "UNKNOWN",
@@ -425,18 +421,15 @@ export class PartnerInvitationsController {
   @RequirePermission("partner_invitation.read")
   async listInvitations(@Req() request: AuthenticatedRequest) {
     return this.withClient(async (client) => {
-      const result = await client.query<InvitationRow>(
-        `
-        SELECT i.*, o.name AS organization_name
+      const result = await activityPage(client,`
+        SELECT i.id AS __history_id,i.created_at::text AS __history_time,i.*, o.name AS organization_name
         FROM partner_onboarding_invitations i
         JOIN organizations o ON o.tenant_id = i.tenant_id AND o.id = i.organization_id
         WHERE i.tenant_id = $1
         ORDER BY i.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId],
-      );
-      return { invitations: result.rows.map((row) => this.safeInvitation(row, row.organization_name)) };
+        `,[request.auth.tenantId],request.query);
+      return { invitations: result.rows.map((row) => ({...this.safeInvitation(row as InvitationRow, row.organization_name),_history_cursor:row._history_cursor})) };
     });
   }
 

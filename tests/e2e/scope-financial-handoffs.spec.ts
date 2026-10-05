@@ -1,3 +1,4 @@
+import {prepareSyntheticCommercialFixture} from "./helpers/commercial-fixture-provenance";
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { Client } from "pg";
@@ -26,7 +27,7 @@ test.describe("Scope preservation: financial role handoffs", () => {
   let client: Client;
   test.beforeAll(async () => {
     const db = new URL(process.env.DATABASE_URL!);
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(db.hostname) || !/test|scope|browser|release/.test(db.pathname)) {
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(db.hostname) || !/test|scope|browser|release|^\/syncos_synthetic_[a-z0-9_]+$/.test(db.pathname)) {
       throw new Error("Scope tests require an explicitly disposable local test database");
     }
     client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -223,6 +224,9 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("INSERT INTO projects (id,tenant_id,customer_organization_id,name,status,qc_authority_organization_id) VALUES ($1,$2,$3,'P12 Project','active',$3)", [project, tenantA, customerOrg]);
     await client.query("INSERT INTO contracts (id,tenant_id,organization_id,partner_organization_id,capacity_provider_id,name,contract_type,status,agreement_lifecycle_status,agreement_effective_date) VALUES ($1,$2,$3,$3,$4,'P12 MSA','partner_master_agreement','active','active','2026-08-01')", [contract, tenantA, partnerOrg, provider]);
     await client.query("INSERT INTO partner_agreement_versions (id,tenant_id,organization_id,capacity_provider_id,contract_id,version_number,status,effective_date,created_by_user_id) VALUES ($1,$2,$3,$4,$5,1,'effective','2026-08-01',$6)", [agreementVersion, tenantA, partnerOrg, provider, contract, internalUser]);
+    const agreementFile = crypto.randomUUID();
+    await client.query("INSERT INTO partner_restricted_file_objects (id,tenant_id,organization_id,capacity_provider_id,category,related_entity_type,related_entity_id,file_name,mime_type,size_bytes,checksum,storage_key,uploaded_by_user_id) VALUES ($1,$2,$3,$4,'partner_msa_executed','partner_agreement_version',$5,'synthetic-agreement.pdf','application/pdf',16,'synthetic-agreement-checksum',$6,$7)", [agreementFile,tenantA,partnerOrg,provider,agreementVersion,`${tenantA}/${partnerOrg}/${agreementFile}.pdf`,internalUser]);
+    await client.query("UPDATE partner_agreement_versions SET executed_at='2026-08-01',artifact_file_object_id=$3,artifact_verified_at='2026-08-01',artifact_verified_by_user_id=$4 WHERE tenant_id=$1 AND id=$2",[tenantA,agreementVersion,agreementFile,internalUser]);
     await client.query("INSERT INTO rate_schedules (id,tenant_id,organization_id,name,effective_date,status) VALUES ($1,$2,$3,'P12 Customer Rates','2026-08-01','active'),($4,$2,$5,'P12 Partner Rates','2026-08-01','active')", [customerSchedule, tenantA, customerOrg, partnerSchedule, partnerOrg]);
     await client.query("INSERT INTO rate_codes (tenant_id,rate_schedule_id,code,description,unit,unit_type,amount,customer_rate,contractor_rate,status) VALUES ($1,$2,'FIBER','Place Fiber','feet','feet',0.94,0.94,NULL,'active'),($1,$3,'FIBER','Place Fiber','feet','feet',0.70,NULL,0.70,'active')", [tenantA, customerSchedule, partnerSchedule]);
     await client.query("INSERT INTO syncfield_production_codes (id,tenant_id,code,description,unit_of_measure,location_type,requires_route) VALUES ($1,$2,'FIBER','Place Fiber','feet','route',true)", [fiberCode, tenantA]);
@@ -254,6 +258,7 @@ async function seedP12Fixture(client: Client, secret: string): Promise<Fixture> 
     await client.query("ROLLBACK");
     throw error;
   }
+  await prepareSyntheticCommercialFixture(client,tenantA,internalUser);
   return { tenantA, tenantB, partnerOrg, customerOrg, fiberDecision, coilDecision, workOrder, pendingDecision, extraDecision, internalToken: token(internalUser, tenantA, secret), partnerToken: token(partnerUser, tenantA, secret), foremanToken: token(foremanUser, tenantA, secret), tenantBToken: token(tenantBUser, tenantB, secret) };
 }
 

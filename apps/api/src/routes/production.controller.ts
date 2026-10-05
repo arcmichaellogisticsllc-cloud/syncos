@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { productionQuantitySource } from './production-quantity-integrity';
 import { reviewedProductionSummary } from './production-reporting';
 import { canonicalRateUnit } from './commercial-terms';
@@ -81,9 +82,8 @@ export class ProductionController {
   async getProjectTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const project = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id,
           e.event_type AS summary,
           ep.payload
@@ -96,9 +96,7 @@ export class ProductionController {
         )
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, project.source_project_handoff_id],
-      );
+        `, [request.auth.tenantId, id, project.source_project_handoff_id], request.query);
       return result.rows;
     });
   }
@@ -108,9 +106,8 @@ export class ProductionController {
   async getProjectAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const project = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -121,9 +118,7 @@ export class ProductionController {
         )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, project.source_project_handoff_id],
-      );
+        `, [request.auth.tenantId, id, project.source_project_handoff_id], request.query);
       return result.rows;
     });
   }
@@ -405,9 +400,8 @@ export class ProductionController {
   async getWorkOrderTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -415,9 +409,7 @@ export class ProductionController {
         WHERE e.tenant_id = $1 AND e.aggregate_type = 'work_order' AND e.aggregate_id = $2
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -427,9 +419,8 @@ export class ProductionController {
   async getWorkOrderAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -437,9 +428,7 @@ export class ProductionController {
         WHERE al.tenant_id = $1 AND al.entity_type = 'work_order' AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -841,9 +830,8 @@ export class ProductionController {
   async getQcReviewTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -853,9 +841,7 @@ export class ProductionController {
           AND e.aggregate_id = $2
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -865,9 +851,8 @@ export class ProductionController {
   async getQcReviewAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
           al.entity_type AS object_type, al.entity_id AS object_id, al.before_state AS before_json,
           al.after_state AS after_json, al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -877,9 +862,7 @@ export class ProductionController {
           AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1141,9 +1124,8 @@ export class ProductionController {
   async getBillableItemTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -1153,9 +1135,7 @@ export class ProductionController {
           AND e.aggregate_id = $2
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1165,9 +1145,8 @@ export class ProductionController {
   async getBillableItemAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -1177,9 +1156,7 @@ export class ProductionController {
           AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1449,9 +1426,8 @@ export class ProductionController {
   async getProductionRecordTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -1468,9 +1444,7 @@ export class ProductionController {
           )
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1480,9 +1454,8 @@ export class ProductionController {
   async getProductionRecordAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -1499,9 +1472,7 @@ export class ProductionController {
           )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }

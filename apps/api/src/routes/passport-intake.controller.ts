@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException,Body,Controller,Get,Inject,NotFoundException,Param,Post,Req } from '@nestjs/common';
 import type { Pool,PoolClient } from 'pg';
 import { executeWriteAction } from '@syncos/shared';
@@ -12,10 +13,10 @@ export class PassportIntakeController {
  @Get() @RequirePermission('partner_payment.confirm')
  async read(@Req() req:AuthenticatedRequest){
   const c=await this.pool.connect();try{return {mode:'preparation',automaticRecordingEnabled:false,connections:(await c.query('SELECT * FROM passport_connections WHERE tenant_id=$1 ORDER BY created_at',[req.auth.tenantId])).rows,
-  payables:(await c.query('SELECT id,payable_number,net_payable_amount FROM contractor_payables WHERE tenant_id=$1 AND partner_organization_id IS NOT NULL AND commercial_terms_revision_id IS NOT NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200',[req.auth.tenantId])).rows,
-  mappings:(await c.query('SELECT * FROM passport_payable_mappings WHERE tenant_id=$1 ORDER BY approved_at DESC LIMIT 200',[req.auth.tenantId])).rows,
-  exceptions:(await c.query('SELECT * FROM passport_reconciliation_exceptions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200',[req.auth.tenantId])).rows,
-  jobs:(await c.query('SELECT id,connection_id,transaction_reference,status,attempts,last_error_code,updated_at FROM passport_refresh_jobs WHERE tenant_id=$1 ORDER BY updated_at DESC LIMIT 200',[req.auth.tenantId])).rows};}finally{c.release();}
+  payables:(await activityPage(c,'SELECT id AS __history_id,created_at::text AS __history_time,id,payable_number,net_payable_amount FROM contractor_payables WHERE tenant_id=$1 AND partner_organization_id IS NOT NULL AND commercial_terms_revision_id IS NOT NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200',[req.auth.tenantId],{before:req.query?.payables_before,history_q:req.query?.payables_q})).rows,
+  mappings:(await activityPage(c,'SELECT id AS __history_id,approved_at::text AS __history_time,* FROM passport_payable_mappings WHERE tenant_id=$1 ORDER BY approved_at DESC LIMIT 200',[req.auth.tenantId],{before:req.query?.mappings_before,history_q:req.query?.mappings_q})).rows,
+  exceptions:(await activityPage(c,'SELECT id AS __history_id,created_at::text AS __history_time,* FROM passport_reconciliation_exceptions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200',[req.auth.tenantId],{before:req.query?.exceptions_before,history_q:req.query?.exceptions_q})).rows,
+  jobs:(await activityPage(c,'SELECT id AS __history_id,updated_at::text AS __history_time,id,connection_id,transaction_reference,status,attempts,last_error_code,updated_at FROM passport_refresh_jobs WHERE tenant_id=$1 ORDER BY updated_at DESC LIMIT 200',[req.auth.tenantId],{before:req.query?.jobs_before,history_q:req.query?.jobs_q})).rows};}finally{c.release();}
  }
  @Post('connections') @RequirePermission('admin.manage_users')
  async connection(@Req() req:AuthenticatedRequest,@Body() b:Record<string,unknown>){

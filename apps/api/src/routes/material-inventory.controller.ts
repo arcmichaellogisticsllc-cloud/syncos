@@ -1,5 +1,5 @@
 import {workspaceHistory,workspaceChoices,type HistoryQuery} from './workspace-history';
-import {BadRequestException,Body,Controller,Get,Inject,Post,Req,Query} from '@nestjs/common';
+import {BadRequestException,Body,Controller,Get,Inject,Post,Req,Query,Param} from '@nestjs/common';
 import type {Pool,PoolClient} from 'pg';
 import {executeWriteAction} from '@syncos/shared';
 import {DATABASE_POOL} from '../modules/database.module';
@@ -21,7 +21,17 @@ export class MaterialInventoryController {
    UNION ALL SELECT lot_id,from_location_id,-quantity FROM material_movements WHERE tenant_id=$1 AND from_location_id IS NOT NULL
   ) a GROUP BY lot_id,location_id ORDER BY lot_id,location_id`,[t])]);return {lots:lots.rows,locations:locations.rows,movements:movements,balances:balances.rows,usage:(await this.pool.query(`SELECT m.lot_id,m.work_order_id,w.work_order_number,p.name AS project_name,m.kind,sum(m.quantity)::text AS quantity FROM material_movements m JOIN work_orders w ON w.tenant_id=m.tenant_id AND w.id=m.work_order_id LEFT JOIN projects p ON p.tenant_id=w.tenant_id AND p.id=w.project_id WHERE m.tenant_id=$1 AND m.kind IN ('installed','scrap','offcut') GROUP BY m.lot_id,m.work_order_id,w.work_order_number,p.name,m.kind ORDER BY w.work_order_number,m.kind`,[t])).rows,crews:(await this.pool.query("SELECT id,name AS label FROM crews WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY name LIMIT 200",[t])).rows,work_orders:(await this.pool.query("SELECT id,work_order_number AS label FROM work_orders WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200",[t])).rows};}
  @Get('choices') @RequirePermission('inventory.read')
- async choices(@Req() r:AuthenticatedRequest,@Query() query:{kind?:string;q?:string}){return workspaceChoices(this.pool,r.auth.tenantId,String(query.kind),query.q,['crews','work_orders']);}
+ async choices(@Req() r:AuthenticatedRequest,@Query() query:{kind?:string;q?:string;before?:string}){return workspaceChoices(this.pool,r.auth.tenantId,String(query.kind),query.q,['crews','work_orders'],query.before);}
+ @Get('discrepancies') @RequirePermission('inventory.read')
+ async discrepancies(@Req() r:AuthenticatedRequest,@Query('before') before?:string){if(before)id(before);const rows=(await this.pool.query(`SELECT d.*,l.label AS material_label,o.name AS company_name FROM material_discrepancies d JOIN material_lots l ON l.tenant_id=d.tenant_id AND l.id=d.lot_id JOIN organizations o ON o.tenant_id=d.tenant_id AND o.id=d.organization_id WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR (d.created_at,d.id)<(SELECT created_at,id FROM material_discrepancies WHERE tenant_id=$1 AND id=$2)) ORDER BY d.created_at DESC,d.id DESC LIMIT 101`,[r.auth.tenantId,before??null])).rows;return {rows:rows.slice(0,100),next:rows.length>100?rows[99].id:null};}
+ @Post('discrepancies/:id/resolve') @RequirePermission('inventory.adjust')
+ async resolveDiscrepancy(@Req() r:AuthenticatedRequest,@Param('id') value:string,@Body() b:Record<string,unknown>){const key=id(value),note=text(b.resolution_note,'Resolution evidence'),adjustment=b.adjustment_id?id(b.adjustment_id):null;return this.write(r,'inventory.discrepancy_resolved',async c=>{
+  const old=(await c.query('SELECT * FROM material_discrepancies WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[r.auth.tenantId,key])).rows[0];if(!old)throw new BadRequestException('Discrepancy unavailable.');
+  if(old.status==='resolved'){if(old.resolution_note!==note||old.adjustment_id!==adjustment)throw new BadRequestException('Resolution already recorded with different details.');return this.result(old,'material_discrepancy',true);}
+  if(adjustment&&!(await c.query("SELECT id FROM material_movements WHERE tenant_id=$1 AND id=$2 AND lot_id=$3 AND to_location_id=$4 AND kind='adjustment'",[r.auth.tenantId,adjustment,old.lot_id,old.location_id])).rowCount)throw new BadRequestException('Link the approved adjustment for this material and custody.');
+  if(!adjustment&&b.no_adjustment_needed!==true)throw new BadRequestException('Link an approved adjustment or confirm that the documented review needs no adjustment.');
+  const row=(await c.query("UPDATE material_discrepancies SET status='resolved',resolution_note=$3,adjustment_id=$4,resolved_by=$5,resolved_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *",[r.auth.tenantId,key,note,adjustment,r.auth.userId])).rows[0];return {...this.result(row,'material_discrepancy'),beforeState:old};
+ });}
  @Post('lots') @RequirePermission('inventory.manage')
  async lot(@Req() r:AuthenticatedRequest,@Body() b:Record<string,unknown>){const label=text(b.label,'Material name'),serial=text(b.serial_number,'Reel or lot identifier');if(!['feet','each'].includes(String(b.unit)))throw new BadRequestException('Choose feet or each.');return this.write(r,'inventory.lot_created',async c=>{
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[r.auth.tenantId+':lot:'+serial]);

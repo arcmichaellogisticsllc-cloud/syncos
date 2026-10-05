@@ -1,0 +1,5 @@
+
+> syncos@0.1.0 e2e:check-certification
+> node scripts/check-e2e-certification.js
+
+E2E certification check passed [dev] — 68 certified

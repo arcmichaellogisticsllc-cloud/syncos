@@ -1,3 +1,4 @@
+import {workspaceChoices} from './workspace-history';
 import { createHash, randomBytes } from "node:crypto";
 import { hashPassword, validatePassword } from "@syncos/auth";
 import { Public } from "../security/public.decorator";
@@ -33,6 +34,8 @@ export class InternalWorkforceController {
             client.release();
         }
     }
+    @Get('choices') @RequirePermission('crew.read')
+    async choices(@Req() req:AuthenticatedRequest){const c=await this.pool.connect();try{await this.authorize(c,req);return workspaceChoices(this.pool,req.auth.tenantId,'work_orders',req.query.q,['work_orders'],typeof req.query.before==='string'?req.query.before:undefined);}finally{c.release();}}
     @Get()
     @RequirePermission("crew.read")
     async list(

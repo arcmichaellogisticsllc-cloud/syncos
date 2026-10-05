@@ -1,0 +1,17 @@
+TAP version 13
+# {"scenario":"synthetic database transport only","streams":32,"originalMiB":4,"totalMiB":128,"elapsedMs":3716,"rssGrowthMiB":57}
+# Subtest: concurrent upload streams preserve originals and retry bounded finalization
+ok 1 - concurrent upload streams preserve originals and retry bounded finalization
+  ---
+  duration_ms: 3737.1381
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3985.335957

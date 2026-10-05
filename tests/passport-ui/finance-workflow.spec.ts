@@ -75,7 +75,7 @@ test('retainage authorization and reduced-acceptance review use selected record 
  await page.route('**/api/syncos/payment-retainage-adjustments/**',route=>{
   const path=new URL(route.request().url()).pathname.split('payment-retainage-adjustments/')[1];
   if(route.request().method()==='POST'){writes.push({path,body:route.request().postDataJSON()});return route.fulfill({json:{id:'saved',status:'review_required'}});}
-  if(path==='retainage-choices')return route.fulfill({json:{payables:[],releases:[{id:'release',label:'CP-1 · release $20',status:'pending'}]}});
+  if(path==='retainage-choices')return route.fulfill({json:{payables:[],releases:[{id:'release',label:'CP-1 · release $20',status:'pending',approved_terms:{payment_trigger:'release_approved'}}]}});
   if(path==='adjustment-choices')return route.fulfill({json:{sources:[{id:'source',label:'INV-1 · 100 → 80 FT',contractor_payable_id:'linked-payable'}],adjustments:[]}});
   return route.fulfill({json:path==='dashboard'?{}:[]});
  });

@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { calculateRetainedSchedule } from './retained-fund-schedule';
 import { lockScheduleInputs, scheduleFingerprint } from './payable-schedule-freshness';
 import { absoluteTime } from './prime-correction-deadlines';
@@ -28,15 +29,15 @@ export class AcceptedProductionFinancialsController {
   @Get("billable-queue")
   @RequirePermission("billing.read")
   async billableQueue(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.acceptedProductionRows(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.acceptedProductionRows(client, request.auth.tenantId, query,true));
   }
 
   @Get("workflow-choices")
   @RequirePermission("billing.read")
-  async workflowChoices(@Req() request: AuthenticatedRequest) {
+  async workflowChoices(@Req() request: AuthenticatedRequest, @Query() query:Record<string,string|undefined>={}) {
     return this.withClient(async (client) => {
       const tenant = [request.auth.tenantId];
-      const accepted = await this.acceptedProductionRows(client, request.auth.tenantId, {});
+      const accepted = await this.acceptedProductionRows(client, request.auth.tenantId, query,true);
       const [billables, invoices, receipts, sources, settlements, payables] = await Promise.all([
         client.query(`SELECT b.id, b.customer_organization_id, b.billable_quantity, b.unit, b.net_billable_amount,
           concat(o.name, ' · ', b.rate_description, ' · ', b.billable_quantity, ' ', b.unit) AS label
@@ -387,8 +388,8 @@ export class AcceptedProductionFinancialsController {
           where.push(`${column} = $${values.length}`);
         }
       }
-      const result = await client.query(`SELECT * FROM syncfield_coil_commercial_policies WHERE ${where.join(" AND ")} ORDER BY work_order_id, party_type, effective_from DESC, version DESC LIMIT 250`, values);
-      return result.rows.map((row) => this.safeCoilPolicy(row));
+      const result = await activityPage(client,`SELECT id AS __history_id,created_at::text AS __history_time,* FROM syncfield_coil_commercial_policies WHERE ${where.join(" AND ")} ORDER BY work_order_id, party_type, effective_from DESC, version DESC LIMIT 250`,values,request.query);
+      return result.rows.map((row) => ({...this.safeCoilPolicy(row),_history_cursor:row._history_cursor}));
     });
   }
 
@@ -403,9 +404,8 @@ export class AcceptedProductionFinancialsController {
         values.push(workOrderId);
         where.push(`co.work_order_id = $${values.length}`);
       }
-      const result = await client.query(
-        `
-        SELECT co.id, co.work_order_id, co.production_record_id, co.asset_identifier, co.coil_type, co.easement_type,
+      const result = await activityPage(client,`
+        SELECT co.id AS __history_id,co.created_at::text AS __history_time,co.id, co.work_order_id, co.production_record_id, co.asset_identifier, co.coil_type, co.easement_type,
           co.actual_length_ft, co.required_length_ft,
           cs.commercial_treatment AS customer_treatment, cs.policy_version AS customer_policy_version, cs.customer_extended_amount AS customer_amount,
           ps.commercial_treatment AS partner_treatment, ps.policy_version AS partner_policy_version, ps.partner_extended_amount AS partner_amount
@@ -423,9 +423,7 @@ export class AcceptedProductionFinancialsController {
         WHERE ${where.join(" AND ")}
         ORDER BY co.production_date DESC, co.asset_identifier
         LIMIT 250
-        `,
-        values,
-      );
+        `,values,request.query);
       return result.rows.map((row) => ({
         ...row,
         customer_treatment: row.customer_treatment ?? "unconfirmed",
@@ -598,7 +596,7 @@ export class AcceptedProductionFinancialsController {
   @Get("exceptions")
   @RequirePermission("financial_exception.read")
   async exceptions(@Req() request: AuthenticatedRequest) {
-    return this.withClient(async (client) => (await client.query("SELECT * FROM financial_exceptions WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100", [request.auth.tenantId])).rows);
+    return this.withClient(async (client) => (await activityPage(client,"SELECT id AS __history_id,created_at::text AS __history_time,* FROM financial_exceptions WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100",[request.auth.tenantId],request.query)).rows);
   }
 
   @Post("detect-qc-change")
@@ -649,7 +647,7 @@ export class AcceptedProductionFinancialsController {
     });
   }
 
-  private async acceptedProductionRows(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+  private async acceptedProductionRows(client: PoolClient, tenantId: string, query: Record<string, string | undefined>,paged=false) {
     const values: unknown[] = [tenantId];
     const where = ["cqd.tenant_id = $1", "cqd.current = true", "cqd.deleted_at IS NULL", "cqd.decision IN ('accepted','partially_accepted')", "COALESCE(cqd.customer_accepted_quantity,0) > 0"];
     if (query.work_order_id) {
@@ -664,9 +662,8 @@ export class AcceptedProductionFinancialsController {
       values.push(query.customer_qc_decision_id);
       where.push(`cqd.id = $${values.length}`);
     }
-    const result = await client.query(
-      `
-      SELECT
+    const sql=`
+      SELECT cqd.id AS __history_id,cqd.created_at::text AS __history_time,
         cqd.id AS customer_qc_decision_id,
         cqd.qc_cycle_id AS customer_qc_cycle_id,
         cqd.production_record_id,
@@ -730,9 +727,8 @@ export class AcceptedProductionFinancialsController {
           AND correction.production_record_id=cqd.production_record_id AND correction.deleted_at IS NULL AND correction.status NOT IN ('resolved','cancelled'))
       ORDER BY pr.created_at DESC
       LIMIT 250
-      `,
-      values,
-    );
+      `;
+    const result=await (paged?activityPage(client,sql,values,query):client.query(sql.replace(/LIMIT 250\s*$/,''),values));
     return result.rows;
   }
 

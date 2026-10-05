@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: company safety, production and customer QC history reach older records with scoped cursors
+ok 1 - company safety, production and customer QC history reach older records with scoped cursors
+  ---
+  duration_ms: 222.272054
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 658.544881

@@ -1,0 +1,1548 @@
+{
+  "scope": "Route query bounds; verify unbounded reads and UI reachability separately",
+  "entries": [
+    {
+      "file": "apps/api/src/routes/accepted-production-financials.controller.ts",
+      "line": 391,
+      "method": "coilPolicies",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accepted-production-financials.controller.ts",
+      "line": 407,
+      "method": "coilCommercialSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accepted-production-financials.controller.ts",
+      "line": 599,
+      "method": "exceptions",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accepted-production-financials.controller.ts",
+      "line": 802,
+      "method": "billablesForBody",
+      "classification": "bounded processing batch; not a complete history response",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accepted-production-financials.controller.ts",
+      "line": 821,
+      "method": "sourcesForSettlement",
+      "classification": "bounded processing batch; not a complete history response",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accepted-production-financials.controller.ts",
+      "line": 1024,
+      "method": "createCustomerCoilBillables",
+      "classification": "bounded processing batch; not a complete history response",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accounting-export.controller.ts",
+      "line": 49,
+      "method": "listBatches",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accounting-export.controller.ts",
+      "line": 409,
+      "method": "batchTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/accounting-export.controller.ts",
+      "line": 425,
+      "method": "batchAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/activity-pagination.ts",
+      "line": 14,
+      "method": "activityPage",
+      "classification": "cursor page / searchable directory",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/bank-reconciliation.controller.ts",
+      "line": 42,
+      "method": "listAccounts",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/bank-reconciliation.controller.ts",
+      "line": 74,
+      "method": "getAccountDetail",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/bank-reconciliation.controller.ts",
+      "line": 180,
+      "method": "listTransactions",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/bank-reconciliation.controller.ts",
+      "line": 403,
+      "method": "listMatches",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/bank-reconciliation.controller.ts",
+      "line": 811,
+      "method": "timeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/bank-reconciliation.controller.ts",
+      "line": 825,
+      "method": "audit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 84,
+      "method": "listInvoices",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 652,
+      "method": "invoiceTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 673,
+      "method": "invoiceAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 715,
+      "method": "listCollectionCases",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "1",
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1083,
+      "method": "listCollectionActions",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1167,
+      "method": "collectionCaseTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1189,
+      "method": "collectionActionTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1211,
+      "method": "collectionCaseAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1232,
+      "method": "collectionActionAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1270,
+      "method": "listCashReceipts",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1527,
+      "method": "listPaymentApplications",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1630,
+      "method": "cashReceiptTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1652,
+      "method": "paymentApplicationTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1674,
+      "method": "cashReceiptAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1695,
+      "method": "paymentApplicationAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/cash.controller.ts",
+      "line": 1715,
+      "method": "listArRecords",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 96,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 593,
+      "method": "relatedSignals",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 629,
+      "method": "relatedProjects",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 649,
+      "method": "financeRelevance",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 650,
+      "method": "financeRelevance",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 651,
+      "method": "financeRelevance",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 667,
+      "method": "constraintsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 675,
+      "method": "recommendationsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contacts.controller.ts",
+      "line": 683,
+      "method": "contactTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contractor-payables.controller.ts",
+      "line": 72,
+      "method": "listPayables",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contractor-payables.controller.ts",
+      "line": 423,
+      "method": "payableTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/contractor-payables.controller.ts",
+      "line": 463,
+      "method": "payableAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/coverage-plans.controller.ts",
+      "line": 100,
+      "method": "timeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/coverage-plans.controller.ts",
+      "line": 142,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/coverage-plans.controller.ts",
+      "line": 815,
+      "method": "complianceDocumentsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/coverage-plans.controller.ts",
+      "line": 1147,
+      "method": "sourceCommitmentWarnings",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "10"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/customer-inquiries.controller.ts",
+      "line": 19,
+      "method": "list",
+      "classification": "initial selector options; searchable choices endpoint reaches remaining records",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/customer-inquiries.controller.ts",
+      "line": 20,
+      "method": "list",
+      "classification": "initial selector options; searchable choices endpoint reaches remaining records",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 243,
+      "method": "snapshotTrend",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "2"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 262,
+      "method": "latestCapacityGaps",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "5"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 270,
+      "method": "customerPaymentStats",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 278,
+      "method": "recommendationsByStatus",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 286,
+      "method": "recentWorkflowInstances",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 294,
+      "method": "recentWorkflowTasks",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 302,
+      "method": "overdueTasks",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/dashboards.controller.ts",
+      "line": 333,
+      "method": "recentRows",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/executive-command.controller.ts",
+      "line": 105,
+      "method": "actionsForSnapshot",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "$3"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/executive-command.controller.ts",
+      "line": 113,
+      "method": "blockersForSnapshot",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/inquiry-notifications.controller.ts",
+      "line": 20,
+      "method": "tick",
+      "classification": "bounded processing batch; not a complete history response",
+      "bounds": [
+        "1000"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/internal-workforce.controller.ts",
+      "line": 54,
+      "method": "list",
+      "classification": "initial selector options; searchable choices endpoint reaches remaining records",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/material-inventory.controller.ts",
+      "line": 22,
+      "method": "list",
+      "classification": "initial selector options; searchable choices endpoint reaches remaining records",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/material-inventory.controller.ts",
+      "line": 22,
+      "method": "list",
+      "classification": "initial selector options; searchable choices endpoint reaches remaining records",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/material-inventory.controller.ts",
+      "line": 26,
+      "method": "discrepancies",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunities.controller.ts",
+      "line": 85,
+      "method": "timeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunities.controller.ts",
+      "line": 119,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunities.controller.ts",
+      "line": 1157,
+      "method": "relatedConstraints",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunities.controller.ts",
+      "line": 1165,
+      "method": "relatedRecommendations",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-candidates.controller.ts",
+      "line": 55,
+      "method": "timeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-candidates.controller.ts",
+      "line": 90,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-candidates.controller.ts",
+      "line": 813,
+      "method": "relatedContacts",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-candidates.controller.ts",
+      "line": 834,
+      "method": "relatedConstraints",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-candidates.controller.ts",
+      "line": 839,
+      "method": "relatedRecommendations",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-capacity-matching.controller.ts",
+      "line": 34,
+      "method": "detail",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-capacity-matching.controller.ts",
+      "line": 45,
+      "method": "detail",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "500"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-capacity-matching.controller.ts",
+      "line": 70,
+      "method": "detail",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/opportunity-capacity-matching.controller.ts",
+      "line": 92,
+      "method": "coverage",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 93,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 441,
+      "method": "contactsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 457,
+      "method": "signalsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 483,
+      "method": "candidatesSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 503,
+      "method": "opportunitiesSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 589,
+      "method": "constraintsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 597,
+      "method": "recommendationsSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 605,
+      "method": "learningSummary",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/organizations.controller.ts",
+      "line": 644,
+      "method": "organizationTimeline",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "$3"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-dashboard.controller.ts",
+      "line": 577,
+      "method": "todayByCrewPanel",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "12"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-dashboard.controller.ts",
+      "line": 630,
+      "method": "workOrdersPanel",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "8"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-dashboard.controller.ts",
+      "line": 688,
+      "method": "qcCorrectionsPanel",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "10"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-dashboard.controller.ts",
+      "line": 736,
+      "method": "financialPanel",
+      "classification": "intentional dashboard preview; operational records use their authorized workspace/history",
+      "bounds": [
+        "20"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-invitations.controller.ts",
+      "line": 166,
+      "method": "listInquiries",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-invitations.controller.ts",
+      "line": 310,
+      "method": "onboardingWorkspace",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-invitations.controller.ts",
+      "line": 424,
+      "method": "listInvitations",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-performance-capacity.controller.ts",
+      "line": 43,
+      "method": "dashboard",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/partner-performance-capacity.controller.ts",
+      "line": 104,
+      "method": "capacity",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/passport-intake.controller.ts",
+      "line": 16,
+      "method": "read",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/passport-intake.controller.ts",
+      "line": 17,
+      "method": "read",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/passport-intake.controller.ts",
+      "line": 18,
+      "method": "read",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/passport-intake.controller.ts",
+      "line": 19,
+      "method": "read",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-execution.controller.ts",
+      "line": 65,
+      "method": "listBatches",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-execution.controller.ts",
+      "line": 444,
+      "method": "batchTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-execution.controller.ts",
+      "line": 486,
+      "method": "batchAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-retainage-adjustments.controller.ts",
+      "line": 26,
+      "method": "readyToPay",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-retainage-adjustments.controller.ts",
+      "line": 88,
+      "method": "paymentObservations",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-retainage-adjustments.controller.ts",
+      "line": 138,
+      "method": "externalPayments",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-retainage-adjustments.controller.ts",
+      "line": 323,
+      "method": "adjustmentChoices",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payment-retainage-adjustments.controller.ts",
+      "line": 461,
+      "method": "partnerPayments",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payroll.controller.ts",
+      "line": 68,
+      "method": "listPayrollRuns",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payroll.controller.ts",
+      "line": 398,
+      "method": "payrollRunTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/payroll.controller.ts",
+      "line": 438,
+      "method": "payrollRunAudit",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 85,
+      "method": "getProjectTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 109,
+      "method": "getProjectAuditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 403,
+      "method": "getWorkOrderTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 422,
+      "method": "getWorkOrderAuditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 755,
+      "method": "listQcReviewQueue",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 833,
+      "method": "getQcReviewTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 854,
+      "method": "getQcReviewAuditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 1127,
+      "method": "getBillableItemTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 1148,
+      "method": "getBillableItemAuditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 1429,
+      "method": "getProductionRecordTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 1457,
+      "method": "getProductionRecordAuditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 2050,
+      "method": "listQcReviewsEnriched",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 2239,
+      "method": "listBillableItemsEnriched",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 2596,
+      "method": "listProductionRecordsEnriched",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 2750,
+      "method": "listWorkOrdersEnriched",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/production.controller.ts",
+      "line": 3202,
+      "method": "listProjectsEnriched",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/project-handoffs.controller.ts",
+      "line": 119,
+      "method": "list",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/project-handoffs.controller.ts",
+      "line": 604,
+      "method": "timeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/project-handoffs.controller.ts",
+      "line": 631,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/record-history.controller.ts",
+      "line": 58,
+      "method": "list",
+      "classification": "cursor page / searchable directory",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/record-history.controller.ts",
+      "line": 69,
+      "method": "activity",
+      "classification": "cursor page / searchable directory",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/record-work-authorization.ts",
+      "line": 14,
+      "method": "requireRecordWorkAuthorization",
+      "classification": "at-most-two ambiguity check; rejects ambiguous authorization",
+      "bounds": [
+        "2"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/relationship-maps.controller.ts",
+      "line": 63,
+      "method": "timeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/relationship-maps.controller.ts",
+      "line": 98,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/relationship-maps.controller.ts",
+      "line": 716,
+      "method": "relatedConstraints",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/relationship-maps.controller.ts",
+      "line": 721,
+      "method": "relatedRecommendations",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/relationship-maps.controller.ts",
+      "line": 726,
+      "method": "workflowTasks",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "25"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/reports.controller.ts",
+      "line": 142,
+      "method": "billableProduction",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/reports.controller.ts",
+      "line": 216,
+      "method": "openConstraints",
+      "classification": "intentional dashboard or ranked-match preview",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/search.controller.ts",
+      "line": 20,
+      "method": "search",
+      "classification": "search preview or existing parameterized directory pagination; complete records via directory/history",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/signals.controller.ts",
+      "line": 78,
+      "method": "auditSummary",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/signals.controller.ts",
+      "line": 519,
+      "method": "listEnrichedSignals",
+      "classification": "search preview or existing parameterized directory pagination; complete records via directory/history",
+      "bounds": []
+    },
+    {
+      "file": "apps/api/src/routes/signals.controller.ts",
+      "line": 585,
+      "method": "getSignalDetail",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "10"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/signals.controller.ts",
+      "line": 586,
+      "method": "getSignalDetail",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "10"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/signals.controller.ts",
+      "line": 587,
+      "method": "getSignalDetail",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "10"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/signals.controller.ts",
+      "line": 776,
+      "method": "signalTimeline",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 229,
+      "method": "setupAssignments",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 485,
+      "method": "companyFieldOverview",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 493,
+      "method": "companyFieldOverview",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 496,
+      "method": "companyFieldOverview",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 497,
+      "method": "companyFieldOverview",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "101"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 548,
+      "method": "fieldForms",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "201"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 575,
+      "method": "fieldMaterials",
+      "classification": "scoped cursor page with one extra row for next-page detection",
+      "bounds": [
+        "201"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 901,
+      "method": "partnerJsas",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 1119,
+      "method": "partnerProductionReports",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 1495,
+      "method": "internalFieldIncidents",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 1504,
+      "method": "customerQcCompletenessQueue",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 2042,
+      "method": "acceptedProductionRows",
+      "classification": "explicit export size guard; rejects oversize rather than truncating",
+      "bounds": [
+        "1",
+        "1",
+        "1",
+        "10001"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 2696,
+      "method": "partnerCustomerQcPayload",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 3553,
+      "method": "duplicateWarning",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "5"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/syncfield.controller.ts",
+      "line": 3555,
+      "method": "duplicateWarning",
+      "classification": "intentional contextual preview; full underlying records/activity retain separate authorization",
+      "bounds": [
+        "5"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/work-safety.controller.ts",
+      "line": 29,
+      "method": "ownParticipants",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "50"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/work-safety.controller.ts",
+      "line": 60,
+      "method": "controls",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/work-safety.controller.ts",
+      "line": 66,
+      "method": "controls",
+      "classification": "initial selector options; searchable choices endpoint reaches remaining records",
+      "bounds": [
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/work-safety.controller.ts",
+      "line": 68,
+      "method": "controls",
+      "classification": "cursor page; supported final SQL bound is replaced by authorized keyset query",
+      "bounds": [
+        "1",
+        "250"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/workflow-notifications.controller.ts",
+      "line": 15,
+      "method": "list",
+      "classification": "recipient-scoped cursor page",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/workflow-notifications.controller.ts",
+      "line": 19,
+      "method": "tick",
+      "classification": "bounded processing batch; not a complete history response",
+      "bounds": [
+        "1000"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/workflows.controller.ts",
+      "line": 284,
+      "method": "listTasks",
+      "classification": "recent workspace view; complete records via Record history and existing detail actions",
+      "bounds": [
+        "100"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/workspace-history.ts",
+      "line": 18,
+      "method": "workspaceHistory",
+      "classification": "cursor page / searchable directory",
+      "bounds": [
+        "200"
+      ]
+    },
+    {
+      "file": "apps/api/src/routes/workspace-history.ts",
+      "line": 27,
+      "method": "workspaceChoices",
+      "classification": "cursor page / searchable directory",
+      "bounds": [
+        "200"
+      ]
+    }
+  ],
+  "unclassified": []
+}

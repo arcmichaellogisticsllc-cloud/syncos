@@ -10,6 +10,7 @@ export class ProductionQuantityReviewController {
  constructor(@Inject(DATABASE_POOL) private readonly pool:Pool){}
  @Get(':id/candidates') @RequirePermission('customer_qc.completeness_review')
  async candidates(@Req() r:AuthenticatedRequest,@Param('id') id:string,@Query('search') search=''){
+  if(typeof search!=='string'||search.length>200)throw new BadRequestException('Search must be text up to 200 characters');
   const c=await this.pool.connect();try{
    const record=(await c.query('SELECT work_order_id FROM production_records WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL',[r.auth.tenantId,id])).rows[0];
    if(!record)throw new NotFoundException('Production record not found');
@@ -18,7 +19,7 @@ export class ProductionQuantityReviewController {
      WHERE p.tenant_id=$1 AND p.work_order_id=$2 AND p.id<>$3 AND p.deleted_at IS NULL AND q.disposition IN ('primary_work','additional_work')
        AND p.status NOT IN ('voided','archived','cancelled')
        AND (q.canonical_reference ILIKE $4 OR p.asset_identifier ILIKE $4 OR p.from_asset_identifier ILIKE $4 OR p.to_asset_identifier ILIKE $4)
-     ORDER BY p.production_date DESC,p.id LIMIT 100`,[r.auth.tenantId,record.work_order_id,id,`%${String(search).slice(0,200)}%`])).rows;
+     ORDER BY p.production_date DESC,p.id`,[r.auth.tenantId,record.work_order_id,id,`%${search.replace(/[\\%_]/g,'\\$&')}%`])).rows;
    const choices=[];for(const row of rows){try{const reviewed=await requireReviewedProductionQuantity(c,r.auth.tenantId,row.id);const source=reviewed.record;choices.push({id:row.id,label:`${row.canonical_reference} · ${Number(source.quantity_submitted)} ${source.unit??source.unit_type} · ${source.asset_identifier??[source.from_asset_identifier,source.to_asset_identifier].filter(Boolean).join(' → ')}`});}catch(error){if(!(error instanceof BadRequestException))throw error;}}
    return choices;
   }finally{c.release();}

@@ -1,3 +1,5 @@
+import {activityPage} from './activity-pagination';
+import {workspaceChoices} from './workspace-history';
 import { evidenceRequirements } from "./field-evidence-readiness";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Post, Req } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
@@ -23,45 +25,47 @@ export class WorkSafetyController {
   private async write(r: AuthenticatedRequest,action: string,fn: (c: PoolClient)=>Promise<any>) {
     const c=await this.pool.connect();try{return await executeWriteAction(c,{tenantId:r.auth.tenantId,actorUserId:r.auth.userId,action,aggregateType:'work_safety',eventType:action,write:fn});}finally{c.release();}
   }
-  private async ownParticipants(c: PoolClient,r: AuthenticatedRequest) {
-    return (await c.query(`SELECT j.*,p.id AS participant_id,p.worker_id,p.acknowledged_by,p.acknowledged_at,p.participation_status
+  private async ownParticipants(c: PoolClient,r: AuthenticatedRequest,target?:string) {
+    return (await activityPage(c,`SELECT p.id AS __history_id,j.work_date::text AS __history_time,j.*,p.id AS participant_id,p.worker_id,p.acknowledged_by,p.acknowledged_at,p.participation_status
       FROM daily_jsas j JOIN daily_jsa_participants p ON p.tenant_id=j.tenant_id AND p.daily_jsa_id=j.id
       JOIN partner_worker_user_links l ON l.tenant_id=p.tenant_id AND l.worker_id=p.worker_id AND l.status='active' AND l.deleted_at IS NULL
       JOIN tenant_users tu ON tu.tenant_id=l.tenant_id AND tu.id=l.tenant_user_id AND tu.status='active' AND tu.deleted_at IS NULL
       JOIN workers w ON w.tenant_id=p.tenant_id AND w.id=p.worker_id AND w.status='active' AND w.deleted_at IS NULL
-      WHERE j.tenant_id=$1 AND tu.user_id=$2 AND j.current=true AND j.deleted_at IS NULL AND j.status='completed'
+      WHERE j.tenant_id=$1 AND tu.user_id=$2 AND ($3::uuid IS NULL OR j.id=$3) AND j.current=true AND j.deleted_at IS NULL AND j.status='completed'
       AND p.participation_status='present' AND EXISTS(SELECT 1 FROM partner_crew_memberships m WHERE m.tenant_id=j.tenant_id AND m.crew_id=j.crew_id AND m.worker_id=p.worker_id AND m.status='active' AND m.deleted_at IS NULL)
-      ORDER BY j.work_date DESC LIMIT 50`,[r.auth.tenantId,r.auth.userId])).rows;
+      ORDER BY j.work_date DESC LIMIT 50`,[r.auth.tenantId,r.auth.userId,target??null],target?{}:r.query)).rows;
   }
   @Get('my-jsas')
   async own(@Req() r: AuthenticatedRequest) {
-    const c=await this.pool.connect();try{return (await this.ownParticipants(c,r)).map(j=>({id:j.id,revision_number:j.revision_number,work_date:j.work_date,work_location:j.work_location,hazards:j.hazards,controls:j.controls,acknowledged_at:j.acknowledged_at,worker_id:j.worker_id,can_request_pre_bore:j.foreman_user_id===r.auth.userId}));}finally{c.release();}
+    const c=await this.pool.connect();try{return (await this.ownParticipants(c,r)).map(j=>({_history_cursor:j._history_cursor,id:j.id,revision_number:j.revision_number,work_date:j.work_date,work_location:j.work_location,hazards:j.hazards,controls:j.controls,acknowledged_at:j.acknowledged_at,worker_id:j.worker_id,can_request_pre_bore:j.foreman_user_id===r.auth.userId}));}finally{c.release();}
   }
   @Post('jsas/:id/acknowledge')
   async acknowledge(@Req() r: AuthenticatedRequest,@Param('id') id:string,@Body() b:Record<string,unknown>) {
     if(b.confirmed!==true || b.worker_id!==undefined)throw new BadRequestException('Personally confirm the safety review; another worker cannot be selected');
     return this.write(r,'daily_jsa.individually_acknowledged',async c=>{
-      let own=(await this.ownParticipants(c,r)).find(j=>j.id===id);if(!own)throw new ForbiddenException('Only your own current JSA participation can be acknowledged');
+      let own=(await this.ownParticipants(c,r,id)).find(j=>j.id===id);if(!own)throw new ForbiddenException('Only your own current JSA participation can be acknowledged');
       await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`${own.tenant_id}:jsa:${own.work_order_version_id}:${own.crew_id}:${String(own.work_date instanceof Date?own.work_date.toISOString():own.work_date).slice(0,10)}`]);
-      own=(await this.ownParticipants(c,r)).find(j=>j.id===id);if(!own)throw new BadRequestException('JSA changed; review the current revision');
+      own=(await this.ownParticipants(c,r,id)).find(j=>j.id===id);if(!own)throw new BadRequestException('JSA changed; review the current revision');
       if(Number(b.revision_number)!==Number(own.revision_number))throw new BadRequestException('Review the exact current JSA revision');
       if(own.acknowledged_by===r.auth.userId)return {entityType:'daily_jsa_participant',entityId:own.participant_id,afterState:{id:own.participant_id,acknowledged_at:own.acknowledged_at},skipEventAudit:true};
       const after=(await c.query('UPDATE daily_jsa_participants SET acknowledged=true,acknowledged_by=$3,acknowledged_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING id,daily_jsa_id,worker_id,acknowledged_by,acknowledged_at',[r.auth.tenantId,own.participant_id,r.auth.userId])).rows[0];
       return {entityType:'daily_jsa_participant',entityId:own.participant_id,afterState:after};
     });
   }
+  @Get('choices')
+  async safetyChoices(@Req() r:AuthenticatedRequest){const c=await this.pool.connect();try{await this.authority(c,r,['system_admin','executive','operations_manager','project_manager','safety_manager','qc_manager','field_supervisor']);return workspaceChoices(this.pool,r.auth.tenantId,String(r.query.kind),r.query.q,['work_orders','crews'],typeof r.query.before==='string'?r.query.before:undefined);}finally{c.release();}}
   @Get('controls')
   async controls(@Req() r: AuthenticatedRequest){const c=await this.pool.connect();try{
     const staff=(await this.roles(c,r)).some(x=>['system_admin','executive','operations_manager','project_manager','safety_manager','qc_manager','field_supervisor'].includes(x));
-    const rows=(await c.query(`SELECT sc.*,COALESCE((SELECT jsonb_agg(a ORDER BY a.recorded_at) FROM work_safety_approvals a WHERE a.tenant_id=sc.tenant_id AND a.control_id=sc.id),'[]') AS approvals
+    const rows=(await activityPage(c,`SELECT sc.id AS __history_id,sc.created_at::text AS __history_time,sc.*,COALESCE((SELECT jsonb_agg(a ORDER BY a.recorded_at) FROM work_safety_approvals a WHERE a.tenant_id=sc.tenant_id AND a.control_id=sc.id),'[]') AS approvals
       FROM work_safety_controls sc WHERE sc.tenant_id=$1 AND ($3::boolean OR EXISTS(
        SELECT 1 FROM partner_worker_user_links l JOIN tenant_users tu ON tu.tenant_id=l.tenant_id AND tu.id=l.tenant_user_id
        JOIN partner_crew_memberships m ON m.tenant_id=l.tenant_id AND m.worker_id=l.worker_id AND m.status='active' AND m.deleted_at IS NULL
        JOIN partner_work_order_versions v ON v.tenant_id=m.tenant_id AND v.work_order_id=sc.work_order_id AND v.deleted_at IS NULL AND (v.assigned_crew_id=m.crew_id OR EXISTS(SELECT 1 FROM partner_work_order_crew_assignments ca WHERE ca.tenant_id=v.tenant_id AND ca.work_order_version_id=v.id AND ca.crew_id=m.crew_id AND ca.status='active'))
-       WHERE l.tenant_id=sc.tenant_id AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL AND l.status='active' AND l.deleted_at IS NULL AND (sc.crew_id IS NULL OR sc.crew_id=m.crew_id))) ORDER BY sc.created_at DESC LIMIT 200`,[r.auth.tenantId,r.auth.userId,staff])).rows;
+       WHERE l.tenant_id=sc.tenant_id AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL AND l.status='active' AND l.deleted_at IS NULL AND (sc.crew_id IS NULL OR sc.crew_id=m.crew_id))) ORDER BY sc.created_at DESC LIMIT 200`,[r.auth.tenantId,r.auth.userId,staff],{before:r.query?.controls_before,history_q:r.query?.history_q})).rows;
     const orders=staff?(await c.query('SELECT id,work_order_number,title FROM work_orders WHERE tenant_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 250',[r.auth.tenantId])).rows:[];
     const crews=staff?(await c.query('SELECT id,name FROM crews WHERE tenant_id=$1 AND deleted_at IS NULL',[r.auth.tenantId])).rows:[];
-    const versions=staff?(await c.query(`SELECT v.id,v.work_order_number,v.version_number,v.pre_bore_required,v.safety_scope_reviewed_at,(SELECT to_jsonb(p) FROM field_evidence_policies p WHERE p.tenant_id=v.tenant_id AND p.work_order_version_id=v.id ORDER BY p.revision_number DESC LIMIT 1) AS evidence_policy FROM partner_work_order_versions v WHERE v.tenant_id=$1 AND v.deleted_at IS NULL ORDER BY v.created_at DESC LIMIT 250`,[r.auth.tenantId])).rows:[];
+    const versions=staff?(await activityPage(c,`SELECT v.id AS __history_id,v.created_at::text AS __history_time,v.id,v.work_order_number,v.version_number,v.pre_bore_required,v.safety_scope_reviewed_at,(SELECT to_jsonb(p) FROM field_evidence_policies p WHERE p.tenant_id=v.tenant_id AND p.work_order_version_id=v.id ORDER BY p.revision_number DESC LIMIT 1) AS evidence_policy FROM partner_work_order_versions v WHERE v.tenant_id=$1 AND v.deleted_at IS NULL ORDER BY v.created_at DESC LIMIT 250`,[r.auth.tenantId],{before:r.query?.versions_before,history_q:r.query?.version_search})).rows:[];
     return {staff,roles:await this.roles(c,r),controls:rows,work_orders:orders,crews,versions};
   }finally{c.release();}}
   @Post('work-orders/:id/evidence-policy')

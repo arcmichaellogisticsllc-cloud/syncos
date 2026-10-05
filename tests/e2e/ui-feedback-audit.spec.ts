@@ -17,6 +17,21 @@ test.describe('Honest queue feedback', () => {
     await expect(page.getByText('1 invoice in this view.', { exact: true })).toBeVisible();
     await expect(page.getByText('No draft invoices need attention.', { exact: true })).toHaveCount(0);
   });
+  test('production shows the actual mobilization blocker instead of a project-status error', async ({page}) => {
+    const blocker='One active, assigned work-order version is required; review mobilization before recording production';
+    await page.route('**/api/syncos/production-records', route => route.request().method()==='POST' ? route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({message:blocker})}) : route.continue());
+    await page.goto('/production/new');
+    const orders=page.getByRole('combobox',{name:'Work Order',exact:true});
+    await expect(orders.locator('option').nth(1)).toBeAttached();
+    await orders.selectOption({index:1});
+    await page.getByRole('combobox',{name:'Production Type',exact:true}).selectOption('daily_production');
+    await page.getByLabel('Production Date',{exact:true}).fill('2026-09-23');
+    await page.getByLabel('Claimed Quantity',{exact:true}).fill('12');
+    await page.getByLabel('Location Summary',{exact:true}).fill('Synthetic mobilization message check');
+    await page.getByRole('button',{name:'Create Production',exact:true}).click();
+    await expect(page.locator('.error-banner')).toHaveText(blocker);
+    await expect(page.getByText('Project must be ready for work or active.',{exact:true})).toHaveCount(0);
+  });
   test('QC creation uses supported choices and no raw override JSON', async ({ page }) => {
     await page.goto('/qc/new');
     await expect(page.getByRole('heading', { name: 'Create QC Review', exact: true })).toBeVisible();

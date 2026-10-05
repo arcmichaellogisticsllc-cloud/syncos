@@ -100,5 +100,9 @@
   "099_public_intake_follow_up.sql",
   "100_field_form_assignments.sql",
   "101_workflow_notifications.sql",
-  "102_record_history_indexes.sql"
+  "102_record_history_indexes.sql",
+  "103_company_field_delegation.sql",
+  "104_prepared_payment_posting.sql",
+  "105_prepared_customer_receipts.sql",
+  "106_company_material_discrepancies.sql"
 ]

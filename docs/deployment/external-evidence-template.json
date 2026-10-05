@@ -1,0 +1,93 @@
+{
+  "candidate": "REPLACE_WITH_EXACT_CANDIDATE",
+  "agreements": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "relationships": false,
+    "ratesEffectiveDatesAndRetainageReviewed": false,
+    "paymentTriggersAndExceptionsReviewed": false,
+    "evidence": []
+  },
+  "primePackage": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "requiredDocumentsReviewed": false,
+    "deadlinePolicyReviewed": false,
+    "deliveryAndAcceptanceProofReviewed": false,
+    "evidence": []
+  },
+  "phones": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "syncCrew": false,
+    "partnerCrew": false,
+    "interruptedUploads": false,
+    "resends": false,
+    "offlineReplay": false,
+    "browserAndDeviceRestart": false,
+    "backgroundSuspension": false,
+    "shutdownAndRevocation": false,
+    "originalFormats": false,
+    "evidence": []
+  },
+  "email": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "senderConfigured": false,
+    "recoveryLinkVerified": false,
+    "notificationsVerified": false,
+    "recipientAllowlistReviewed": false,
+    "evidence": []
+  },
+  "passport": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "correctProductConfirmed": false,
+    "authenticationVerified": false,
+    "accountAndPartyMappingVerified": false,
+    "duplicateEvents": false,
+    "partialPayments": false,
+    "changedReturnedAndUnmatchedEvents": false,
+    "providerFinalityVerified": false,
+    "evidence": []
+  },
+  "offsiteRecovery": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "independentDestination": false,
+    "retentionVerified": false,
+    "restoredWithoutOriginalServer": false,
+    "databaseAndOriginalsVerified": false,
+    "permissionsAfterRestore": false,
+    "measuredRecoveryObjectives": false,
+    "evidence": []
+  },
+  "pilot": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "deployedCandidateVerified": false,
+    "syncCrewWorkflow": false,
+    "partnerCrewWorkflow": false,
+    "customerAcceptanceBeforeFinance": false,
+    "operatorSignoff": false,
+    "evidence": []
+  },
+  "physicalStock": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "countSheetsReviewed": false,
+    "crewCustodyVerified": false,
+    "adjustmentsApproved": false,
+    "discrepanciesResolvedOrAssigned": false,
+    "evidence": []
+  },
+  "historicalReconciliation": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "exceptionsInventoried": false,
+    "acceptedWorkAndAgreementsVerified": false,
+    "explicitDispositionRecorded": false,
+    "originalAmountsPreserved": false,
+    "evidence": []
+  }
+}

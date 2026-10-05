@@ -294,8 +294,8 @@ export class PartnerDashboardController {
 
   private async workforceReadiness(client: PoolClient, context: PartnerDashboardContext, asOf: string) {
     const [workers, crews, memberships, headshots, credentials] = await Promise.all([
-      client.query("SELECT id, first_name, last_name, worker_role, status, review_status, external_return_reason, created_at, updated_at FROM workers WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 100", [context.tenantId, context.organizationId]),
-      client.query("SELECT id, name, crew_type, status, lifecycle_status, target_staffing_level, suspended_reason, created_at, updated_at FROM crews WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 50", [context.tenantId, context.organizationId]),
+      client.query("SELECT id, first_name, last_name, worker_role, status, review_status, external_return_reason, created_at, updated_at FROM workers WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC,id ASC", [context.tenantId, context.organizationId]),
+      client.query("SELECT id, name, crew_type, status, lifecycle_status, target_staffing_level, suspended_reason, created_at, updated_at FROM crews WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY created_at ASC", [context.tenantId, context.organizationId]),
       client.query("SELECT m.*, concat_ws(' ', w.first_name, w.last_name) AS worker_name FROM partner_crew_memberships m JOIN workers w ON w.tenant_id = m.tenant_id AND w.id = m.worker_id WHERE m.tenant_id = $1 AND m.organization_id = $2 AND m.deleted_at IS NULL AND m.status = 'active'", [context.tenantId, context.organizationId]),
       client.query("SELECT worker_id, status FROM partner_worker_headshots WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded'", [context.tenantId, context.organizationId]),
       client.query("SELECT worker_id, credential_type, status, expiration_date, required FROM partner_worker_credentials WHERE tenant_id = $1 AND organization_id = $2 AND deleted_at IS NULL AND status <> 'superseded'", [context.tenantId, context.organizationId]),
@@ -397,7 +397,7 @@ export class PartnerDashboardController {
       JOIN partner_agreement_versions v ON v.tenant_id = c.tenant_id AND v.contract_id = c.id AND v.deleted_at IS NULL
       WHERE c.tenant_id = $1 AND c.partner_organization_id = $2 AND c.deleted_at IS NULL
       ORDER BY v.version_number DESC
-      LIMIT 20
+
       `,
       [context.tenantId, context.organizationId],
     );
@@ -429,7 +429,7 @@ export class PartnerDashboardController {
       LEFT JOIN crews c ON c.tenant_id = va.tenant_id AND c.id = va.crew_id
       WHERE va.tenant_id = $1 AND va.organization_id = $2 AND va.deleted_at IS NULL
       ORDER BY va.created_at DESC
-      LIMIT 50
+
       `,
       [context.tenantId, context.organizationId],
     );
@@ -467,7 +467,7 @@ export class PartnerDashboardController {
       LEFT JOIN territories t ON t.tenant_id = cr.tenant_id AND t.id = cr.territory_id
       WHERE cr.tenant_id = $1 AND cr.capacity_provider_id = $2 AND cr.deleted_at IS NULL
       ORDER BY cr.created_at DESC
-      LIMIT 50
+
       `,
       [context.tenantId, context.capacityProviderId],
     );

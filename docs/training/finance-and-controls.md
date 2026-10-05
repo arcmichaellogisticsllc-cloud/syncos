@@ -335,3 +335,11 @@ These steps describe the local candidate. They do not authorize an actual paymen
 6. Refresh and inspect the recorded payment before attempting another entry. The same submission may be retried after a lost response. Remaining installments must use their own actual payment references. A source hold, changed source, or excess amount blocks advancement and requires review.
 
 Local API checks cover partial and full payment, duplicate retry, source holds, competing release authorizations and overpayment rejection. Physical-device acceptance and deployment of these changes remain outstanding.
+
+## Find older financial records
+
+1. On **Accepted Production Financials**, enter the work-order reference in **Search accepted production**, then select **Find accepted production**. Use **More accepted production** to reach additional eligible work before choosing the source. Loading a record does not grant approval or override a hold.
+2. On **Payment Retainage Adjustments**, use **Search eligible payables**, **Find eligible payables** and **More eligible payables** to reach older outstanding obligations. Review the applicable agreement, accepted work, due date and holds before recording a payment.
+3. Under **Recorded external payments**, use **Search recorded payments**, **Find recorded payments** and **More recorded payments**. Review the actual payment reference and proof before retrying an uncertain entry; never create a new reference merely to bypass duplicate protection.
+4. Use **Record history** for invoices, cash receipts, payment applications, payables, bank accounts and reconciliation matches outside the workspace's recent preview. Open the record and its authorized audit/timeline history to inspect changes. Receivables and partner payables remain separate.
+5. Prepared financial posting is restricted to synthetic integration rehearsal. Normalized observations are not proof that Priority has paid. Returned, changed, unmatched and over-balance observations require review; no live automation is enabled by these screens.

@@ -18,10 +18,11 @@ export async function workspaceHistory(pool:Pool,tenant:string,resource:keyof ty
  return (await pool.query(`SELECT ${select} FROM ${table} i WHERE ${filters.join(' AND ')} ORDER BY i.created_at DESC,i.id DESC LIMIT 200`,values)).rows;
 }
 
-export async function workspaceChoices(pool:Pool,tenant:string,kind:string,q:unknown,allowed:readonly string[]){
+export async function workspaceChoices(pool:Pool,tenant:string,kind:string,q:unknown,allowed:readonly string[],before?:string){
  const definitions:Record<string,[string,string]>={crews:['crews','name'],work_orders:['work_orders','work_order_number'],opportunities:['opportunities','title'],projects:['projects','name']};
  if(!allowed.includes(kind)||!definitions[kind])throw new BadRequestException('Invalid selection list.');
  if(q!==undefined&&(typeof q!=='string'||q.length>200))throw new BadRequestException('Search must be text up to 200 characters.');
+ if(before&&!/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(before))throw new BadRequestException('Invalid selection position.');
  const [table,label]=definitions[kind];const search='%'+String(q??'').trim().replace(/[\\%_]/g,'\\$&')+'%';
- return (await pool.query(`SELECT id,${label} AS label FROM ${table} WHERE tenant_id=$1 AND deleted_at IS NULL AND ${label} ILIKE $2 ORDER BY ${label},id LIMIT 200`,[tenant,search])).rows;
+ return (await pool.query(`SELECT id,${label} AS label FROM ${table} WHERE tenant_id=$1 AND deleted_at IS NULL AND ${label} ILIKE $2 AND ($3::uuid IS NULL OR (${label},id)>(SELECT ${label},id FROM ${table} WHERE tenant_id=$1 AND id=$3 AND deleted_at IS NULL)) ORDER BY ${label},id LIMIT 200`,[tenant,search,before??null])).rows;
 }

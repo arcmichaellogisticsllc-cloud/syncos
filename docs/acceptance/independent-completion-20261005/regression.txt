@@ -1,0 +1,1663 @@
+
+> syncos@0.1.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# Subtest: legacy activity pages preserve microseconds, related scope, literal searches and concurrent additions
+ok 1 - legacy activity pages preserve microseconds, related scope, literal searches and concurrent additions
+  ---
+  duration_ms: 118.04789
+  type: 'test'
+  ...
+# Subtest: proxy preserves multipart file bytes and downloaded PDF bytes
+ok 2 - proxy preserves multipart file bytes and downloaded PDF bytes
+  ---
+  duration_ms: 532.727716
+  type: 'test'
+  ...
+# Subtest: proxy supports empty successful responses
+ok 3 - proxy supports empty successful responses
+  ---
+  duration_ms: 82.188699
+  type: 'test'
+  ...
+# Subtest: postgres remote backup invokes AWS CLI for archive, manifest and verification and propagates failures
+ok 4 - postgres remote backup invokes AWS CLI for archive, manifest and verification and propagates failures
+  ---
+  duration_ms: 4286.679917
+  type: 'test'
+  ...
+# Subtest: files remote backup invokes AWS CLI for archive, manifest and verification and propagates failures
+ok 5 - files remote backup invokes AWS CLI for archive, manifest and verification and propagates failures
+  ---
+  duration_ms: 3178.751123
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:12.695Z","category":"Event","message":"event_created","tenantId":"72a07159-f266-42b2-84b0-a61d52b089e5","actorUserId":"708fc7e4-4bdb-4d93-a5d2-d406d4c2a9c2","eventId":"41e56a4c-965d-42bf-87d7-535bb126d64a","eventType":"commercial_terms.approved","aggregateType":"commercial_terms_revision","aggregateId":"e68fcf6a-04d2-458d-9a2b-a2a812a6d975"}
+# {"timestamp":"2026-10-05T21:13:12.698Z","category":"Audit","message":"audit_log_created","tenantId":"72a07159-f266-42b2-84b0-a61d52b089e5","actorUserId":"708fc7e4-4bdb-4d93-a5d2-d406d4c2a9c2","action":"commercial_terms.approve","entityType":"commercial_terms_revision","entityId":"e68fcf6a-04d2-458d-9a2b-a2a812a6d975"}
+# Subtest: contract approval persists immutable rate snapshots, rejects stale previews and preserves historical data
+ok 6 - contract approval persists immutable rate snapshots, rejects stale previews and preserves historical data
+  ---
+  duration_ms: 95.740264
+  type: 'test'
+  ...
+# Subtest: Net 14 starts at invoice acceptance, not issue, and preserves local time across daylight saving
+ok 7 - Net 14 starts at invoice acceptance, not issue, and preserves local time across daylight saving
+  ---
+  duration_ms: 22.873161
+  type: 'test'
+  ...
+# Subtest: unapproved or incomplete terms cannot silently become Net 30 or zero retainage
+ok 8 - unapproved or incomplete terms cannot silently become Net 30 or zero retainage
+  ---
+  duration_ms: 1.516575
+  type: 'test'
+  ...
+# Subtest: rate approval rejects overlapping unit aliases and snapshots immutable rates
+ok 9 - rate approval rejects overlapping unit aliases and snapshots immutable rates
+  ---
+  duration_ms: 0.560313
+  type: 'test'
+  ...
+# Subtest: invoice retainage rounds at cents and never exceeds subtotal
+ok 10 - invoice retainage rounds at cents and never exceeds subtotal
+  ---
+  duration_ms: 0.252396
+  type: 'test'
+  ...
+# Subtest: approval preview detects any changed agreement or rate while ignoring rate ordering
+ok 11 - approval preview detects any changed agreement or rate while ignoring rate ordering
+  ---
+  duration_ms: 2.406807
+  type: 'test'
+  ...
+# Subtest: invoice integrity rejects changed quantities, prices, duplicate work and mismatched line retainage
+ok 12 - invoice integrity rejects changed quantities, prices, duplicate work and mismatched line retainage
+  ---
+  duration_ms: 1.563937
+  type: 'test'
+  ...
+# Subtest: four-decimal source rates preserve the original line extension, rounding only final cents
+ok 13 - four-decimal source rates preserve the original line extension, rounding only final cents
+  ---
+  duration_ms: 0.429155
+  type: 'test'
+  ...
+# Subtest: business-day terms skip weekends and approved holidays and refuse an exhausted calendar
+ok 14 - business-day terms skip weekends and approved holidays and refuse an exhausted calendar
+  ---
+  duration_ms: 3.393419
+  type: 'test'
+  ...
+# Subtest: separate receipts have separate maturity dates and cumulative rounding never creates extra pennies
+ok 15 - separate receipts have separate maturity dates and cumulative rounding never creates extra pennies
+  ---
+  duration_ms: 2.858772
+  type: 'test'
+  ...
+# Subtest: company safety, production and customer QC history reach older records with scoped cursors
+ok 16 - company safety, production and customer QC history reach older records with scoped cursors
+  ---
+  duration_ms: 331.010775
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:12.715Z","category":"Event","message":"event_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","eventId":"f57a62f9-22e9-4494-8841-20cec9bb5e8e","eventType":"customer_inquiry.created","aggregateType":"customer_inquiry","aggregateId":"e9a8e635-0f88-4670-bd18-33d6ccfc495a"}
+# {"timestamp":"2026-10-05T21:13:12.718Z","category":"Audit","message":"audit_log_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","action":"customer_inquiry.created","entityType":"customer_inquiry","entityId":"e9a8e635-0f88-4670-bd18-33d6ccfc495a"}
+# {"timestamp":"2026-10-05T21:13:12.750Z","category":"Event","message":"event_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","eventId":"e80a605e-da6f-4725-88d4-f2bbedae9b52","eventType":"customer_inquiry.reviewed","aggregateType":"customer_inquiry","aggregateId":"e9a8e635-0f88-4670-bd18-33d6ccfc495a"}
+# {"timestamp":"2026-10-05T21:13:12.756Z","category":"Audit","message":"audit_log_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","action":"customer_inquiry.reviewed","entityType":"customer_inquiry","entityId":"e9a8e635-0f88-4670-bd18-33d6ccfc495a"}
+# {"timestamp":"2026-10-05T21:13:12.769Z","category":"Event","message":"event_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","eventId":"a793a222-7c5b-4a6c-b590-2fa3b6865f34","eventType":"customer_inquiry.reviewed","aggregateType":"customer_inquiry","aggregateId":"e9a8e635-0f88-4670-bd18-33d6ccfc495a"}
+# {"timestamp":"2026-10-05T21:13:12.772Z","category":"Audit","message":"audit_log_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","action":"customer_inquiry.reviewed","entityType":"customer_inquiry","entityId":"e9a8e635-0f88-4670-bd18-33d6ccfc495a"}
+# {"timestamp":"2026-10-05T21:13:12.779Z","category":"Event","message":"event_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","eventId":"2a2a6a6c-f749-481a-89ee-91450c60e10e","eventType":"customer_inquiry.file_attached","aggregateType":"customer_inquiry","aggregateId":"b1d26b02-a7d4-48d5-a2da-bc1747484473"}
+# {"timestamp":"2026-10-05T21:13:12.780Z","category":"Audit","message":"audit_log_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","action":"customer_inquiry.file_attached","entityType":"customer_inquiry_file","entityId":"b1d26b02-a7d4-48d5-a2da-bc1747484473"}
+# {"timestamp":"2026-10-05T21:13:12.787Z","category":"Event","message":"event_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","eventId":"1cf0de1a-4d75-4869-b07d-40f34fe47ef7","eventType":"customer_inquiry.created","aggregateType":"customer_inquiry","aggregateId":"57a0948a-a56c-4254-8407-9dfe01266e5c"}
+# {"timestamp":"2026-10-05T21:13:12.792Z","category":"Audit","message":"audit_log_created","tenantId":"dcec8835-56f9-421a-a66b-7a4ba6eecf46","actorUserId":"184dcf8b-831c-4e07-9c11-99709bbea379","action":"customer_inquiry.created","entityType":"customer_inquiry","entityId":"57a0948a-a56c-4254-8407-9dfe01266e5c"}
+# Subtest: inquiries preserve request history, attachments and tenant-scoped follow-up
+ok 17 - inquiries preserve request history, attachments and tenant-scoped follow-up
+  ---
+  duration_ms: 149.993921
+  type: 'test'
+  ...
+# Subtest: demo crew repair preserves existing ownership and unrelated records
+ok 18 - demo crew repair preserves existing ownership and unrelated records
+  ---
+  duration_ms: 47.64998
+  type: 'test'
+  ...
+# Subtest: existing demo roles recover execution duties without reseeding or widening other roles
+ok 19 - existing demo roles recover execution duties without reseeding or widening other roles
+  ---
+  duration_ms: 47.60635
+  type: 'test'
+  ...
+# Subtest: email delivery features reject malformed switches and disabled providers in hosted environments
+ok 20 - email delivery features reject malformed switches and disabled providers in hosted environments
+  ---
+  duration_ms: 1.937201
+  type: 'test'
+  ...
+# Subtest: external evidence checklist cannot turn missing or altered proof into operational certification
+ok 21 - external evidence checklist cannot turn missing or altered proof into operational certification
+  ---
+  duration_ms: 42.043323
+  type: 'test'
+  ...
+# Subtest: observation identity is deterministic and raw provider payload is excluded
+ok 22 - observation identity is deterministic and raw provider payload is excluded
+  ---
+  duration_ms: 2.742033
+  type: 'test'
+  ...
+# Subtest: observations reject invalid money, identity, completion dates and currency
+ok 23 - observations reject invalid money, identity, completion dates and currency
+  ---
+  duration_ms: 1.351841
+  type: 'test'
+  ...
+# Subtest: field evidence accepts an original photo above the historical two MB cap
+ok 24 - field evidence accepts an original photo above the historical two MB cap
+  ---
+  duration_ms: 93.802442
+  type: 'test'
+  ...
+# Subtest: field evidence validates types, base64 and hard size bound
+ok 25 - field evidence validates types, base64 and hard size bound
+  ---
+  duration_ms: 387.682823
+  type: 'test'
+  ...
+# Subtest: lost-response retry accepts identical evidence and rejects changed content or ownership
+ok 26 - lost-response retry accepts identical evidence and rejects changed content or ownership
+  ---
+  duration_ms: 1.297781
+  type: 'test'
+  ...
+# Subtest: phone originals retain HEIC and QuickTime bytes without pretending headers prove readability
+ok 27 - phone originals retain HEIC and QuickTime bytes without pretending headers prove readability
+  ---
+  duration_ms: 0.434596
+  type: 'test'
+  ...
+# Subtest: evidence retries preserve original capture category, time and location
+ok 28 - evidence retries preserve original capture category, time and location
+  ---
+  duration_ms: 0.749224
+  type: 'test'
+  ...
+# Subtest: evidence policy requires explicit supported categories and bounded positive counts
+ok 29 - evidence policy requires explicit supported categories and bounded positive counts
+  ---
+  duration_ms: 1.497423
+  type: 'test'
+  ...
+# Subtest: external payment eligibility rejects disputes and retired lifecycle states before allocating money
+ok 30 - external payment eligibility rejects disputes and retired lifecycle states before allocating money
+  ---
+  duration_ms: 5.608379
+  type: 'test'
+  ...
+# Subtest: editing a payment item cannot bypass the source amount ceiling
+ok 31 - editing a payment item cannot bypass the source amount ceiling
+  ---
+  duration_ms: 2.829519
+  type: 'test'
+  ...
+# Subtest: approval revalidates contractor and payroll amounts against current sources
+ok 32 - approval revalidates contractor and payroll amounts against current sources
+  ---
+  duration_ms: 0.76483
+  type: 'test'
+  ...
+# Subtest: internal approval alone cannot become customer acceptance; partial acceptance is the hard ceiling
+ok 33 - internal approval alone cannot become customer acceptance; partial acceptance is the hard ceiling
+  ---
+  duration_ms: 0.552321
+  type: 'test'
+  ...
+# Subtest: legacy create and update cannot override accepted quantities or invent customer acceptance
+ok 34 - legacy create and update cannot override accepted quantities or invent customer acceptance
+  ---
+  duration_ms: 2.569278
+  type: 'test'
+  ...
+# Subtest: billable lineage cannot silently move to a different current customer decision
+ok 35 - billable lineage cannot silently move to a different current customer decision
+  ---
+  duration_ms: 0.44382
+  type: 'test'
+  ...
+# Subtest: canonical billing readiness uses current customer QC while legacy billing retains internal QC guards
+ok 36 - canonical billing readiness uses current customer QC while legacy billing retains internal QC guards
+  ---
+  duration_ms: 1.09587
+  type: 'test'
+  ...
+# Subtest: canonical invoicing rejects stale readiness, holds, disputes and already-invoiced items before writes
+ok 37 - canonical invoicing rejects stale readiness, holds, disputes and already-invoiced items before writes
+  ---
+  duration_ms: 1.723945
+  type: 'test'
+  ...
+# Subtest: historical production billables cannot advance using stored readiness without customer acceptance
+ok 38 - historical production billables cannot advance using stored readiness without customer acceptance
+  ---
+  duration_ms: 1.174809
+  type: 'test'
+  ...
+# Subtest: invoice locking acquires deterministic production locks before billable row locks and rereads changes
+ok 39 - invoice locking acquires deterministic production locks before billable row locks and rereads changes
+  ---
+  duration_ms: 1.241668
+  type: 'test'
+  ...
+# Subtest: direct-production settlement creation requires customer acceptance despite billable status flags
+ok 40 - direct-production settlement creation requires customer acceptance despite billable status flags
+  ---
+  duration_ms: 0.788588
+  type: 'test'
+  ...
+# Subtest: linked settlement quantity edits cannot exceed current customer acceptance or reassign source
+ok 41 - linked settlement quantity edits cannot exceed current customer acceptance or reassign source
+  ---
+  duration_ms: 0.777057
+  type: 'test'
+  ...
+# Subtest: invoice items from direct-production settlements cannot bypass customer acceptance
+ok 42 - invoice items from direct-production settlements cannot bypass customer acceptance
+  ---
+  duration_ms: 0.81363
+  type: 'test'
+  ...
+# Subtest: settlement approval and both readiness transitions recheck current customer acceptance
+ok 43 - settlement approval and both readiness transitions recheck current customer acceptance
+  ---
+  duration_ms: 4.142173
+  type: 'test'
+  ...
+# Subtest: draft invoice approval rejects stale acceptance and legacy sending requires receipt details
+ok 44 - draft invoice approval rejects stale acceptance and legacy sending requires receipt details
+  ---
+  duration_ms: 32.538484
+  type: 'test'
+  ...
+# Subtest: a new quantity review cannot reuse acceptance of an earlier source or classification
+ok 45 - a new quantity review cannot reuse acceptance of an earlier source or classification
+  ---
+  duration_ms: 14.145585
+  type: 'test'
+  ...
+# Subtest: invoice delivery and acceptance remain separate ordered facts
+ok 46 - invoice delivery and acceptance remain separate ordered facts
+  ---
+  duration_ms: 18.750611
+  type: 'test'
+  ...
+# Subtest: prime requirements must be explicit, bounded and distinct
+ok 47 - prime requirements must be explicit, bounded and distinct
+  ---
+  duration_ms: 1.532674
+  type: 'test'
+  ...
+# Subtest: package preserves original bytes, safe filenames and readable escaped invoice totals
+ok 48 - package preserves original bytes, safe filenames and readable escaped invoice totals
+  ---
+  duration_ms: 9.618658
+  type: 'test'
+  ...
+# Subtest: bounded upload parsers retain an explicit ordinary JSON fallback
+ok 49 - bounded upload parsers retain an explicit ordinary JSON fallback
+  ---
+  duration_ms: 1.029545
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:13.740Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"c01197c1-3419-40ee-878d-7235dd3f6797","eventType":"inventory.lot_created","aggregateType":"material_inventory","aggregateId":"8e7d8307-83ca-42f7-80ea-27ede1a751d3"}
+# {"timestamp":"2026-10-05T21:13:13.743Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.lot_created","entityType":"material_lot","entityId":"8e7d8307-83ca-42f7-80ea-27ede1a751d3"}
+# {"timestamp":"2026-10-05T21:13:13.747Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"76c40470-8651-44c7-85f4-2f8cfdd9ee60","eventType":"inventory.location_created","aggregateType":"material_inventory","aggregateId":"a5c06946-74c3-4173-8189-b65758b815d8"}
+# {"timestamp":"2026-10-05T21:13:13.748Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.location_created","entityType":"material_location","entityId":"a5c06946-74c3-4173-8189-b65758b815d8"}
+# {"timestamp":"2026-10-05T21:13:13.751Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"81bf1091-a3b2-4fb7-8676-f42ed3768cde","eventType":"inventory.location_created","aggregateType":"material_inventory","aggregateId":"397ce8b7-113c-4a86-b422-d6c3efa3d9eb"}
+# {"timestamp":"2026-10-05T21:13:13.751Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.location_created","entityType":"material_location","entityId":"397ce8b7-113c-4a86-b422-d6c3efa3d9eb"}
+# {"timestamp":"2026-10-05T21:13:13.760Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"1cf579b9-0ab2-42ce-aa16-69605ef1b4d3","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"7a0c6bf0-90fd-4744-a5bf-c1db7e5e500b"}
+# {"timestamp":"2026-10-05T21:13:13.763Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"7a0c6bf0-90fd-4744-a5bf-c1db7e5e500b"}
+# {"timestamp":"2026-10-05T21:13:13.779Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"a47870ca-04bc-4662-b67d-48a46670a336","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"22250c08-cccd-4a48-9374-ae0f890916ce"}
+# {"timestamp":"2026-10-05T21:13:13.781Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"22250c08-cccd-4a48-9374-ae0f890916ce"}
+# {"timestamp":"2026-10-05T21:13:13.790Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"b06111c3-e062-476d-b5da-2d8193f99809","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"8e847cc8-5395-4cf3-9e65-8720047176e0"}
+# {"timestamp":"2026-10-05T21:13:13.792Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"8e847cc8-5395-4cf3-9e65-8720047176e0"}
+# {"timestamp":"2026-10-05T21:13:13.798Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"ed136109-dcab-4d69-952c-5685094845e8","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"c59c96aa-e97b-4818-a6be-fbfdb2f6f977"}
+# {"timestamp":"2026-10-05T21:13:13.799Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"c59c96aa-e97b-4818-a6be-fbfdb2f6f977"}
+# {"timestamp":"2026-10-05T21:13:13.885Z","category":"Event","message":"event_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","eventId":"c2b73fe8-babb-47b8-a0e3-c2e079af72f0","eventType":"inventory.movement_recorded","aggregateType":"material_inventory","aggregateId":"c383d9c6-a487-48ca-b1fe-29fada85c3f6"}
+# {"timestamp":"2026-10-05T21:13:13.888Z","category":"Audit","message":"audit_log_created","tenantId":"ec6a5a30-52c0-4486-a28c-fa1da02c5aab","actorUserId":"dce67b0d-8564-4359-8e06-2a60159353e2","action":"inventory.movement_recorded","entityType":"material_movement","entityId":"c383d9c6-a487-48ca-b1fe-29fada85c3f6"}
+# Subtest: material ledger conserves stock through retries, concurrent transfers, scrap and approved count reconciliation
+ok 50 - material ledger conserves stock through retries, concurrent transfers, scrap and approved count reconciliation
+  ---
+  duration_ms: 264.758502
+  type: 'test'
+  ...
+# Subtest: migration 060 preserves the cumulative pre-060 P4 category set and adds C2A categories
+ok 51 - migration 060 preserves the cumulative pre-060 P4 category set and adds C2A categories
+  ---
+  duration_ms: 1.992025
+  type: 'test'
+  ...
+# Subtest: release manifest covers every shipped migration
+ok 52 - release manifest covers every shipped migration
+  ---
+  duration_ms: 2.106465
+  type: 'test'
+  ...
+# Subtest: health rejects a pre-workforce database and an intermediate migration gap
+ok 53 - health rejects a pre-workforce database and an intermediate migration gap
+  ---
+  duration_ms: 0.358939
+  type: 'test'
+  ...
+# Subtest: health accepts the complete release and rejects unknown or duplicate migrations
+ok 54 - health accepts the complete release and rejects unknown or duplicate migrations
+  ---
+  duration_ms: 0.327867
+  type: 'test'
+  ...
+# Subtest: deployment rejects HTTP-success payloads from an old release or failed startup
+ok 55 - deployment rejects HTTP-success payloads from an old release or failed startup
+  ---
+  duration_ms: 3.535442
+  type: 'test'
+  ...
+# Subtest: P5 reuses canonical contract, work order, rate, crew, and equipment objects
+ok 56 - P5 reuses canonical contract, work order, rate, crew, and equipment objects
+  ---
+  duration_ms: 2.551304
+  type: 'test'
+  ...
+# Subtest: P5 legal artifacts reuse restricted file bytes without public URL columns
+ok 57 - P5 legal artifacts reuse restricted file bytes without public URL columns
+  ---
+  duration_ms: 0.496222
+  type: 'test'
+  ...
+# Subtest: P5 Partner self-service permissions are scoped while internal review permissions are not
+ok 58 - P5 Partner self-service permissions are scoped while internal review permissions are not
+  ---
+  duration_ms: 0.469527
+  type: 'test'
+  ...
+# Subtest: P5 controller validates legal PDF bytes and rejects client storage references
+ok 59 - P5 controller validates legal PDF bytes and rejects client storage references
+  ---
+  duration_ms: 1.453172
+  type: 'test'
+  ...
+# Subtest: P5 seed grants commercial actions narrowly to Partner personas
+ok 60 - P5 seed grants commercial actions narrowly to Partner personas
+  ---
+  duration_ms: 1.729084
+  type: 'test'
+  ...
+# Subtest: P5 E2E is registered in global certification
+ok 61 - P5 E2E is registered in global certification
+  ---
+  duration_ms: 0.689624
+  type: 'test'
+  ...
+# Subtest: Partner binary download returns exact bytes and secure attachment headers
+ok 62 - Partner binary download returns exact bytes and secure attachment headers
+  ---
+  duration_ms: 16.100587
+  type: 'test'
+  ...
+# Subtest: exact linked artifact is selected and hostile filename cannot inject headers
+ok 63 - exact linked artifact is selected and hostile filename cannot inject headers
+  ---
+  duration_ms: 3.879053
+  type: 'test'
+  ...
+# Subtest: missing bytes and unsupported MIME fail safely without a response body
+ok 64 - missing bytes and unsupported MIME fail safely without a response body
+  ---
+  duration_ms: 6.751239
+  type: 'test'
+  ...
+# Subtest: Partner Foreman and cross-scope callers are denied before bytes are returned
+ok 65 - Partner Foreman and cross-scope callers are denied before bytes are returned
+  ---
+  duration_ms: 4.02465
+  type: 'test'
+  ...
+# Subtest: P3 reuses Organization and capacity_provider as the Partner identity foundation
+ok 66 - P3 reuses Organization and capacity_provider as the Partner identity foundation
+  ---
+  duration_ms: 1.621207
+  type: 'test'
+  ...
+# Subtest: P3 schema stores structured compliance records without full TIN or full banking fields
+ok 67 - P3 schema stores structured compliance records without full TIN or full banking fields
+  ---
+  duration_ms: 1.372015
+  type: 'test'
+  ...
+# Subtest: P3 Partner self-service permissions remain organization scoped in PermissionGuard
+ok 68 - P3 Partner self-service permissions remain organization scoped in PermissionGuard
+  ---
+  duration_ms: 1.530308
+  type: 'test'
+  ...
+# Subtest: P3 permissions are provisioned narrowly for Partner Admin and Partner Foreman
+ok 69 - P3 permissions are provisioned narrowly for Partner Admin and Partner Foreman
+  ---
+  duration_ms: 0.77416
+  type: 'test'
+  ...
+# Subtest: P3 API rejects sensitive ordinary payload fields and never returns raw storage URLs
+ok 70 - P3 API rejects sensitive ordinary payload fields and never returns raw storage URLs
+  ---
+  duration_ms: 2.480964
+  type: 'test'
+  ...
+# Subtest: P3 verified compliance submissions are superseded instead of destructively overwritten
+ok 71 - P3 verified compliance submissions are superseded instead of destructively overwritten
+  ---
+  duration_ms: 0.434476
+  type: 'test'
+  ...
+# Subtest: reviewer fixture helper and authenticated test contract exist
+ok 72 - reviewer fixture helper and authenticated test contract exist
+  ---
+  duration_ms: 2.535078
+  type: 'test'
+  ...
+# Subtest: P1 partner domain reuses canonical Organization and CapacityProvider objects
+ok 73 - P1 partner domain reuses canonical Organization and CapacityProvider objects
+  ---
+  duration_ms: 1.532391
+  type: 'test'
+  ...
+# Subtest: P1 partner scope is resolved server-side from existing user role scopes
+ok 74 - P1 partner scope is resolved server-side from existing user role scopes
+  ---
+  duration_ms: 0.480146
+  type: 'test'
+  ...
+# Subtest: P1 partner routes enforce tenant and organization predicates in SQL
+ok 75 - P1 partner routes enforce tenant and organization predicates in SQL
+  ---
+  duration_ms: 0.368315
+  type: 'test'
+  ...
+# Subtest: P1 does not add a migration for duplicate partner company storage
+ok 76 - P1 does not add a migration for duplicate partner company storage
+  ---
+  duration_ms: 45.384813
+  type: 'test'
+  ...
+# Subtest: partner settlement requires verified agreement and correct workforce, party and work date
+ok 77 - partner settlement requires verified agreement and correct workforce, party and work date
+  ---
+  duration_ms: 2.402345
+  type: 'test'
+  ...
+# Subtest: payment cannot use a payable without traceable active settlement items
+ok 78 - payment cannot use a payable without traceable active settlement items
+  ---
+  duration_ms: 1.143594
+  type: 'test'
+  ...
+# Subtest: Partner Admin manual invite validates optional raw IDs before SQL
+ok 79 - Partner Admin manual invite validates optional raw IDs before SQL
+  ---
+  duration_ms: 1.776172
+  type: 'test'
+  ...
+# Subtest: Partner Network manual invite shows local feedback near the form
+ok 80 - Partner Network manual invite shows local feedback near the form
+  ---
+  duration_ms: 0.477106
+  type: 'test'
+  ...
+# Subtest: Partner Admin manual invite resolves typed company names server-side
+ok 81 - Partner Admin manual invite resolves typed company names server-side
+  ---
+  duration_ms: 2.093031
+  type: 'test'
+  ...
+# Subtest: P6 stores derived readiness snapshots without duplicating P1-P5 source facts
+ok 82 - P6 stores derived readiness snapshots without duplicating P1-P5 source facts
+  ---
+  duration_ms: 1.811637
+  type: 'test'
+  ...
+# Subtest: P6 preserves decision, override, Notice, acknowledgment, and production-start history
+ok 83 - P6 preserves decision, override, Notice, acknowledgment, and production-start history
+  ---
+  duration_ms: 0.42493
+  type: 'test'
+  ...
+# Subtest: P6 Partner permissions are scoped while internal approval and override permissions are not
+ok 84 - P6 Partner permissions are scoped while internal approval and override permissions are not
+  ---
+  duration_ms: 0.371234
+  type: 'test'
+  ...
+# Subtest: P6 controller separates mobilization approval from production start and excludes QC/financial writes
+ok 85 - P6 controller separates mobilization approval from production start and excludes QC/financial writes
+  ---
+  duration_ms: 1.962991
+  type: 'test'
+  ...
+# Subtest: P6 seed grants only safe mobilization visibility to Partner personas
+ok 86 - P6 seed grants only safe mobilization visibility to Partner personas
+  ---
+  duration_ms: 0.553261
+  type: 'test'
+  ...
+# Subtest: P6 E2E is registered in global certification
+ok 87 - P6 E2E is registered in global certification
+  ---
+  duration_ms: 0.496821
+  type: 'test'
+  ...
+# Subtest: P6 E2E fixture and event leak query are scoped to this tenant, Partner, Work Order version, and P6 aggregates
+ok 88 - P6 E2E fixture and event leak query are scoped to this tenant, Partner, Work Order version, and P6 aggregates
+  ---
+  duration_ms: 1.65583
+  type: 'test'
+  ...
+# Subtest: P6 automatic invalidation is wired through audited source writes
+ok 89 - P6 automatic invalidation is wired through audited source writes
+  ---
+  duration_ms: 1.300555
+  type: 'test'
+  ...
+# Subtest: P6C scheduled expiration and replay protections are registered
+ok 90 - P6C scheduled expiration and replay protections are registered
+  ---
+  duration_ms: 1.685401
+  type: 'test'
+  ...
+# Subtest: Partner onboarding shows ordered readiness gates without partner-side approval
+ok 91 - Partner onboarding shows ordered readiness gates without partner-side approval
+  ---
+  duration_ms: 3.089196
+  type: 'test'
+  ...
+# Subtest: Partner onboarding routes users to existing portal workspaces
+ok 92 - Partner onboarding routes users to existing portal workspaces
+  ---
+  duration_ms: 1.014324
+  type: 'test'
+  ...
+# Subtest: Partner invite activation is separated from company onboarding
+ok 93 - Partner invite activation is separated from company onboarding
+  ---
+  duration_ms: 0.290546
+  type: 'test'
+  ...
+# Subtest: Partner onboarding and activation use Sync brand colors for primary surfaces
+ok 94 - Partner onboarding and activation use Sync brand colors for primary surfaces
+  ---
+  duration_ms: 2.277545
+  type: 'test'
+  ...
+# Subtest: Partner onboarding presentation protects against raw enums and IDs
+ok 95 - Partner onboarding presentation protects against raw enums and IDs
+  ---
+  duration_ms: 1.362795
+  type: 'test'
+  ...
+# Subtest: P2 partner personas reuse existing users, tenant users, roles, permissions, and organization scope
+ok 96 - P2 partner personas reuse existing users, tenant users, roles, permissions, and organization scope
+  ---
+  duration_ms: 1.441125
+  type: 'test'
+  ...
+# Subtest: P2 partner roles and permissions are narrowly provisioned
+ok 97 - P2 partner roles and permissions are narrowly provisioned
+  ---
+  duration_ms: 0.619557
+  type: 'test'
+  ...
+# Subtest: P2 partner permissions cannot be satisfied by tenant-scoped roles in the global guard
+ok 98 - P2 partner permissions cannot be satisfied by tenant-scoped roles in the global guard
+  ---
+  duration_ms: 0.29203
+  type: 'test'
+  ...
+# Subtest: P2 partner role assignment is internal-only and organization-scoped
+ok 99 - P2 partner role assignment is internal-only and organization-scoped
+  ---
+  duration_ms: 1.70191
+  type: 'test'
+  ...
+# Subtest: P2 partner context response is external-safe
+ok 100 - P2 partner context response is external-safe
+  ---
+  duration_ms: 0.714888
+  type: 'test'
+  ...
+# Subtest: Partner Portal resolves one server-derived organization and never exposes a selector
+ok 101 - Partner Portal resolves one server-derived organization and never exposes a selector
+  ---
+  duration_ms: 2.590107
+  type: 'test'
+  ...
+# Subtest: Partner Portal uses grouped admin navigation and keeps field execution in SyncField
+ok 102 - Partner Portal uses grouped admin navigation and keeps field execution in SyncField
+  ---
+  duration_ms: 1.276221
+  type: 'test'
+  ...
+# Subtest: Invitation and role assignment block cross-organization Partner accounts
+ok 103 - Invitation and role assignment block cross-organization Partner accounts
+  ---
+  duration_ms: 1.59496
+  type: 'test'
+  ...
+# Subtest: Partner Portal product boundaries keep financial truth server-authoritative and private
+ok 104 - Partner Portal product boundaries keep financial truth server-authoritative and private
+  ---
+  duration_ms: 1.295182
+  type: 'test'
+  ...
+# Subtest: Partner Dashboard exposes daily operations and action ownership without organization selection
+ok 105 - Partner Dashboard exposes daily operations and action ownership without organization selection
+  ---
+  duration_ms: 2.203855
+  type: 'test'
+  ...
+# Subtest: Partner Dashboard financial summary keeps payment states separate and avoids rate math
+ok 106 - Partner Dashboard financial summary keeps payment states separate and avoids rate math
+  ---
+  duration_ms: 3.798695
+  type: 'test'
+  ...
+# Subtest: Partner company readiness uses one server-derived read model without self-approval
+ok 107 - Partner company readiness uses one server-derived read model without self-approval
+  ---
+  duration_ms: 10.557191
+  type: 'test'
+  ...
+# Subtest: Partner company readiness keeps raw identifiers and private file data out of presentation
+ok 108 - Partner company readiness keeps raw identifiers and private file data out of presentation
+  ---
+  duration_ms: 5.353265
+  type: 'test'
+  ...
+# Subtest: SyncField queue renders controlled operational copy without machine-status remapping
+ok 109 - SyncField queue renders controlled operational copy without machine-status remapping
+  ---
+  duration_ms: 1.469383
+  type: 'test'
+  ...
+# Subtest: P4 reuses canonical workers and crews without duplicate Partner workforce tables
+ok 110 - P4 reuses canonical workers and crews without duplicate Partner workforce tables
+  ---
+  duration_ms: 1.691493
+  type: 'test'
+  ...
+# Subtest: P4 schema stores restricted personnel facts without full driver-license or public URL fields
+ok 111 - P4 schema stores restricted personnel facts without full driver-license or public URL fields
+  ---
+  duration_ms: 0.72404
+  type: 'test'
+  ...
+# Subtest: P4 Partner self-service permissions are organization-scoped but internal review is not Partner-scoped
+ok 112 - P4 Partner self-service permissions are organization-scoped but internal review is not Partner-scoped
+  ---
+  duration_ms: 0.404948
+  type: 'test'
+  ...
+# Subtest: P4 secure file-byte implementation rejects client storage keys and public URL responses
+ok 113 - P4 secure file-byte implementation rejects client storage keys and public URL responses
+  ---
+  duration_ms: 8.295253
+  type: 'test'
+  ...
+# Subtest: P4 seed grants workforce actions narrowly to Partner personas
+ok 114 - P4 seed grants workforce actions narrowly to Partner personas
+  ---
+  duration_ms: 0.520584
+  type: 'test'
+  ...
+# Subtest: P4 E2E is registered in global certification
+ok 115 - P4 E2E is registered in global certification
+  ---
+  duration_ms: 0.673831
+  type: 'test'
+  ...
+# Subtest: durable Passport intake survives restart, deduplicates observations and rolls back incomplete pages without posting payments
+ok 116 - durable Passport intake survives restart, deduplicates observations and rolls back incomplete pages without posting payments
+  ---
+  duration_ms: 205.641775
+  type: 'test'
+  ...
+# Subtest: prepared refresh atomically records observations and completion while live posting stays disabled
+ok 117 - prepared refresh atomically records observations and completion while live posting stays disabled
+  ---
+  duration_ms: 68.295047
+  type: 'test'
+  ...
+# Subtest: Passport preparation routes require server-side administrative or finance permissions
+ok 118 - Passport preparation routes require server-side administrative or finance permissions
+  ---
+  duration_ms: 1.028542
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:14.977Z","category":"Event","message":"event_created","tenantId":"3347682c-2906-406e-8f9a-cc20917b45f7","actorUserId":"8d7946ba-0dcd-45be-90d1-693a07be439e","eventId":"ef81c9be-372b-4a92-81cd-2ee98a46a7f4","eventType":"passport.connection_prepared","aggregateType":"passport","aggregateId":"84a13a40-8338-4180-915b-4d96a6cd9ac6"}
+# {"timestamp":"2026-10-05T21:13:14.980Z","category":"Audit","message":"audit_log_created","tenantId":"3347682c-2906-406e-8f9a-cc20917b45f7","actorUserId":"8d7946ba-0dcd-45be-90d1-693a07be439e","action":"passport.connection_prepared","entityType":"passport_connection","entityId":"84a13a40-8338-4180-915b-4d96a6cd9ac6"}
+# {"timestamp":"2026-10-05T21:13:15.001Z","category":"Event","message":"event_created","tenantId":"3347682c-2906-406e-8f9a-cc20917b45f7","actorUserId":"8d7946ba-0dcd-45be-90d1-693a07be439e","eventId":"b5d9c330-0079-467c-b664-2780378c1276","eventType":"passport.exception_reviewed","aggregateType":"passport","aggregateId":"b137ec98-d2d6-4bb0-a568-a291514ec700"}
+# {"timestamp":"2026-10-05T21:13:15.003Z","category":"Audit","message":"audit_log_created","tenantId":"3347682c-2906-406e-8f9a-cc20917b45f7","actorUserId":"8d7946ba-0dcd-45be-90d1-693a07be439e","action":"passport.exception_reviewed","entityType":"passport_exception","entityId":"b137ec98-d2d6-4bb0-a568-a291514ec700"}
+# Subtest: Passport preparation is tenant isolated, retry safe, audited and cannot enable provider access
+ok 119 - Passport preparation is tenant isolated, retry safe, audited and cannot enable provider access
+  ---
+  duration_ms: 124.13557
+  type: 'test'
+  ...
+# Subtest: whole-cent amounts use exact arithmetic and reject unsafe inputs
+ok 120 - whole-cent amounts use exact arithmetic and reject unsafe inputs
+  ---
+  duration_ms: 1.621389
+  type: 'test'
+  ...
+# Subtest: allowlisted normalization discards sensitive extra fields
+ok 121 - allowlisted normalization discards sensitive extra fields
+  ---
+  duration_ms: 1.932209
+  type: 'test'
+  ...
+# Subtest: disabled reconciliation cannot touch repository
+ok 122 - disabled reconciliation cannot touch repository
+  ---
+  duration_ms: 1.210818
+  type: 'test'
+  ...
+# Subtest: parallel webhook/poll replay records one payment with exact balance and provenance
+ok 123 - parallel webhook/poll replay records one payment with exact balance and provenance
+  ---
+  duration_ms: 4.25303
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: unmatched_payment
+ok 124 - exception preserves payable: unmatched_payment
+  ---
+  duration_ms: 0.384639
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: ambiguous_mapping
+ok 125 - exception preserves payable: ambiguous_mapping
+  ---
+  duration_ms: 0.257465
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: payee_or_tenant_mismatch
+ok 126 - exception preserves payable: payee_or_tenant_mismatch
+  ---
+  duration_ms: 0.310327
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: payee_or_tenant_mismatch
+ok 127 - exception preserves payable: payee_or_tenant_mismatch
+  ---
+  duration_ms: 0.240778
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: employee_work_not_partner_debt
+ok 128 - exception preserves payable: employee_work_not_partner_debt
+  ---
+  duration_ms: 0.699831
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: amount_or_currency_mismatch
+ok 129 - exception preserves payable: amount_or_currency_mismatch
+  ---
+  duration_ms: 0.788931
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: amount_or_currency_mismatch
+ok 130 - exception preserves payable: amount_or_currency_mismatch
+  ---
+  duration_ms: 0.812698
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: payable_not_eligible
+ok 131 - exception preserves payable: payable_not_eligible
+  ---
+  duration_ms: 0.754904
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: payable_not_eligible
+ok 132 - exception preserves payable: payable_not_eligible
+  ---
+  duration_ms: 0.674638
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: payable_not_eligible
+ok 133 - exception preserves payable: payable_not_eligible
+  ---
+  duration_ms: 0.359711
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: exceeds_available_balance
+ok 134 - exception preserves payable: exceeds_available_balance
+  ---
+  duration_ms: 0.324631
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: already_recorded_manually
+ok 135 - exception preserves payable: already_recorded_manually
+  ---
+  duration_ms: 0.311406
+  type: 'test'
+  ...
+# Subtest: exception preserves payable: future_completion_date
+ok 136 - exception preserves payable: future_completion_date
+  ---
+  duration_ms: 0.192679
+  type: 'test'
+  ...
+# Subtest: wrong provider account is rejected before storage
+ok 137 - wrong provider account is rejected before storage
+  ---
+  duration_ms: 0.225263
+  type: 'test'
+  ...
+# Subtest: pending then completed then stale pending does not undo recording
+ok 138 - pending then completed then stale pending does not undo recording
+  ---
+  duration_ms: 1.391807
+  type: 'test'
+  ...
+# Subtest: same version with different amount requires review
+ok 139 - same version with different amount requires review
+  ---
+  duration_ms: 0.329823
+  type: 'test'
+  ...
+# Subtest: failed after recording creates exception without silently rewriting money
+ok 140 - failed after recording creates exception without silently rewriting money
+  ---
+  duration_ms: 0.450708
+  type: 'test'
+  ...
+# Subtest: returned after recording creates exception without silently rewriting money
+ok 141 - returned after recording creates exception without silently rewriting money
+  ---
+  duration_ms: 0.675933
+  type: 'test'
+  ...
+# Subtest: reversed after recording creates exception without silently rewriting money
+ok 142 - reversed after recording creates exception without silently rewriting money
+  ---
+  duration_ms: 0.437901
+  type: 'test'
+  ...
+# Subtest: new payee on recorded transaction requires review
+ok 143 - new payee on recorded transaction requires review
+  ---
+  duration_ms: 0.352859
+  type: 'test'
+  ...
+# Subtest: exception replay can resolve after mapping is explicitly fixed
+ok 144 - exception replay can resolve after mapping is explicitly fixed
+  ---
+  duration_ms: 0.317845
+  type: 'test'
+  ...
+# Subtest: exceptions are tenant-scoped and finance-only
+ok 145 - exceptions are tenant-scoped and finance-only
+  ---
+  duration_ms: 0.369718
+  type: 'test'
+  ...
+# Subtest: simulation transaction rolls back all writes on failure
+ok 146 - simulation transaction rolls back all writes on failure
+  ---
+  duration_ms: 0.288254
+  type: 'test'
+  ...
+# Subtest: webhook verification is mandatory and payload cannot supply financial writes
+ok 147 - webhook verification is mandatory and payload cannot supply financial writes
+  ---
+  duration_ms: 0.564152
+  type: 'test'
+  ...
+# Subtest: poll retry after outage resumes cursor and duplicate items are harmless
+ok 148 - poll retry after outage resumes cursor and duplicate items are harmless
+  ---
+  duration_ms: 2.35605
+  type: 'test'
+  ...
+# Subtest: page normalization failure does not advance checkpoint
+ok 149 - page normalization failure does not advance checkpoint
+  ---
+  duration_ms: 1.669144
+  type: 'test'
+  ...
+# Subtest: repeated cursors terminate safely
+ok 150 - repeated cursors terminate safely
+  ---
+  duration_ms: 0.711614
+  type: 'test'
+  ...
+# Subtest: sandbox reader defaults off; enabled reader only makes fixed-host GET
+ok 151 - sandbox reader defaults off; enabled reader only makes fixed-host GET
+  ---
+  duration_ms: 0.734056
+  type: 'test'
+  ...
+# Subtest: provider error bodies and credentials are not exposed
+ok 152 - provider error bodies and credentials are not exposed
+  ---
+  duration_ms: 0.253762
+  type: 'test'
+  ...
+# Subtest: concurrent distinct payments cannot exceed one eligible balance
+ok 153 - concurrent distinct payments cannot exceed one eligible balance
+  ---
+  duration_ms: 0.432422
+  type: 'test'
+  ...
+# Subtest: failure before recording never credits paid balance and later completion is held for review
+ok 154 - failure before recording never credits paid balance and later completion is held for review
+  ---
+  duration_ms: 0.401323
+  type: 'test'
+  ...
+# Subtest: separate partial payments sum exactly once and excess remains in review
+ok 155 - separate partial payments sum exactly once and excess remains in review
+  ---
+  duration_ms: 0.848802
+  type: 'test'
+  ...
+# {"scenario":"synthetic queue interruption","jobs":1000,"consumers":4,"abandonedLeases":4,"elapsedMs":5206,"automaticPayments":0}
+# Subtest: four refresh consumers drain 1000 queued hints and recover interrupted leases without duplicate completion
+ok 156 - four refresh consumers drain 1000 queued hints and recover interrupted leases without duplicate completion
+  ---
+  duration_ms: 5235.745948
+  type: 'test'
+  ...
+# Subtest: recovery protects tokens, resets once and revokes all old sessions
+ok 157 - recovery protects tokens, resets once and revokes all old sessions
+  ---
+  duration_ms: 534.973538
+  type: 'test'
+  ...
+# Subtest: delivery resumes after a database connection failure
+ok 158 - delivery resumes after a database connection failure
+  ---
+  duration_ms: 1.085358
+  type: 'test'
+  ...
+# Subtest: delivery retries are bounded and expired links cannot reset passwords
+ok 159 - delivery retries are bounded and expired links cannot reset passwords
+  ---
+  duration_ms: 197.164925
+  type: 'test'
+  ...
+# Subtest: payment schedule freshness rejects missing calculations and changed inputs while serializing writers
+ok 160 - payment schedule freshness rejects missing calculations and changed inputs while serializing writers
+  ---
+  duration_ms: 276.401611
+  type: 'test'
+  ...
+# Subtest: calendar days retain local clock across daylight-saving transitions; elapsed hours do not
+ok 161 - calendar days retain local clock across daylight-saving transitions; elapsed hours do not
+  ---
+  duration_ms: 8.573696
+  type: 'test'
+  ...
+# Subtest: business days skip weekends and the explicitly approved holiday calendar
+ok 162 - business days skip weekends and the explicitly approved holiday calendar
+  ---
+  duration_ms: 2.13792
+  type: 'test'
+  ...
+# Subtest: invalid policy calendars, zones, offsets and future received times are rejected
+ok 163 - invalid policy calendars, zones, offsets and future received times are rejected
+  ---
+  duration_ms: 2.42933
+  type: 'test'
+  ...
+# Subtest: late policy application uses the original receipt; missing policy never invents a date
+ok 164 - late policy application uses the original receipt; missing policy never invents a date
+  ---
+  duration_ms: 1.43758
+  type: 'test'
+  ...
+# Subtest: product workspace HTTP routes enforce unauthenticated, read-only and mutation boundaries
+ok 165 - product workspace HTTP routes enforce unauthenticated, read-only and mutation boundaries
+  ---
+  duration_ms: 408.312299
+  type: 'test'
+  ...
+# Subtest: production PDF and report selectors retain every detail beyond legacy cutoffs
+ok 166 - production PDF and report selectors retain every detail beyond legacy cutoffs
+  ---
+  duration_ms: 6.646903
+  type: 'test'
+  ...
+# Subtest: 886 installed feet can include 180 rock without adding another installed quantity
+ok 167 - 886 installed feet can include 180 rock without adding another installed quantity
+  ---
+  duration_ms: 2.10864
+  type: 'test'
+  ...
+# Subtest: overlapping summaries must exactly reconcile to distinct underlying records
+ok 168 - overlapping summaries must exactly reconcile to distinct underlying records
+  ---
+  duration_ms: 0.306573
+  type: 'test'
+  ...
+# Subtest: date, quantity, location and submitted correction revisions invalidate quantity review
+ok 169 - date, quantity, location and submitted correction revisions invalidate quantity review
+  ---
+  duration_ms: 1.495759
+  type: 'test'
+  ...
+# Subtest: unreviewed, stale and summary quantities cannot advance to finance
+ok 170 - unreviewed, stale and summary quantities cannot advance to finance
+  ---
+  duration_ms: 0.858102
+  type: 'test'
+  ...
+# Subtest: an underlying correction invalidates the subset review without rewriting originals
+ok 171 - an underlying correction invalidates the subset review without rewriting originals
+  ---
+  duration_ms: 0.937299
+  type: 'test'
+  ...
+# Subtest: field production responses exclude internal quantity-review notes and commercial references
+ok 172 - field production responses exclude internal quantity-review notes and commercial references
+  ---
+  duration_ms: 196.730849
+  type: 'test'
+  ...
+# Subtest: operations quantities exclude references and stale reviews and keep feet separate from hours
+ok 173 - operations quantities exclude references and stale reviews and keep feet separate from hours
+  ---
+  duration_ms: 3.66179
+  type: 'test'
+  ...
+# Subtest: general handoff update cannot assign approval or project-created status
+ok 174 - general handoff update cannot assign approval or project-created status
+  ---
+  duration_ms: 2.272436
+  type: 'test'
+  ...
+# Subtest: general checklist/risk editing cannot weaken gates or finalize review
+ok 175 - general checklist/risk editing cannot weaken gates or finalize review
+  ---
+  duration_ms: 1.299655
+  type: 'test'
+  ...
+# Subtest: explicit override still rejects hard stops and non-overridable records
+ok 176 - explicit override still rejects hard stops and non-overridable records
+  ---
+  duration_ms: 1.130807
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:16.381Z","category":"Event","message":"event_created","tenantId":"137f31a7-d188-4b28-ba65-b976a8017a61","actorUserId":"9138f1ce-2ee0-4513-970b-501b72c5170c","eventId":"387b2c8b-174b-4a2e-b7e6-27f1a6513e9f","eventType":"customer_intake.configured","aggregateType":"customer_intake_channel","aggregateId":"3d819975-3213-46a0-8a99-9161e1bf5118"}
+# {"timestamp":"2026-10-05T21:13:16.384Z","category":"Audit","message":"audit_log_created","tenantId":"137f31a7-d188-4b28-ba65-b976a8017a61","actorUserId":"9138f1ce-2ee0-4513-970b-501b72c5170c","action":"customer_intake.configured","entityType":"customer_intake_channel","entityId":"3d819975-3213-46a0-8a99-9161e1bf5118"}
+# {"timestamp":"2026-10-05T21:13:16.396Z","category":"Event","message":"event_created","tenantId":"137f31a7-d188-4b28-ba65-b976a8017a61","actorUserId":"9138f1ce-2ee0-4513-970b-501b72c5170c","eventId":"ff9d1790-3ab0-4971-b0a1-83d8e9a72011","eventType":"customer_intake.configured","aggregateType":"customer_intake_channel","aggregateId":"3d819975-3213-46a0-8a99-9161e1bf5118"}
+# {"timestamp":"2026-10-05T21:13:16.398Z","category":"Audit","message":"audit_log_created","tenantId":"137f31a7-d188-4b28-ba65-b976a8017a61","actorUserId":"9138f1ce-2ee0-4513-970b-501b72c5170c","action":"customer_intake.configured","entityType":"customer_intake_channel","entityId":"3d819975-3213-46a0-8a99-9161e1bf5118"}
+# Subtest: public intake routes explicitly, deduplicates, throttles, and preserves durable follow-up
+ok 177 - public intake routes explicitly, deduplicates, throttles, and preserves durable follow-up
+  ---
+  duration_ms: 285.448806
+  type: 'test'
+  ...
+# {"scenario":"synthetic core history","records":1206,"pages":13,"elapsedMs":449}
+# Subtest: core history pages realistic volumes without gaps, respects literal search and tenant permissions
+ok 178 - core history pages realistic volumes without gaps, respects literal search and tenant permissions
+  ---
+  duration_ms: 1261.300702
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:16.635Z","category":"Event","message":"event_created","tenantId":"6b988dce-7397-48e5-bb4e-bc9472997970","actorUserId":"4ef5d960-3887-4e4b-be89-59940b8b7e56","eventId":"a3ba9797-d326-4b6d-845b-2a88b43fbeeb","eventType":"constraint.created","aggregateType":"constraint","aggregateId":"fa217bf2-1d03-4907-9076-bee84fffc700"}
+# {"timestamp":"2026-10-05T21:13:16.641Z","category":"Audit","message":"audit_log_created","tenantId":"6b988dce-7397-48e5-bb4e-bc9472997970","actorUserId":"4ef5d960-3887-4e4b-be89-59940b8b7e56","action":"constraint.create","entityType":"constraint","entityId":"fa217bf2-1d03-4907-9076-bee84fffc700"}
+# {"timestamp":"2026-10-05T21:13:16.736Z","category":"Event","message":"event_created","tenantId":"6b988dce-7397-48e5-bb4e-bc9472997970","actorUserId":"4ef5d960-3887-4e4b-be89-59940b8b7e56","eventId":"eeb234f1-5ee2-4c55-a121-20afe0f9cd0d","eventType":"relationship_path.created","aggregateType":"relationship_path","aggregateId":"f72659bc-612b-42ee-88a2-c128996d1456"}
+# {"timestamp":"2026-10-05T21:13:16.762Z","category":"Audit","message":"audit_log_created","tenantId":"6b988dce-7397-48e5-bb4e-bc9472997970","actorUserId":"4ef5d960-3887-4e4b-be89-59940b8b7e56","action":"relationship_path.create","entityType":"relationship_path","entityId":"f72659bc-612b-42ee-88a2-c128996d1456"}
+# Subtest: record actions preserve tenant boundaries, audit once and reject changed retry payloads
+ok 179 - record actions preserve tenant boundaries, audit once and reject changed retry payloads
+  ---
+  duration_ms: 297.017556
+  type: 'test'
+  ...
+# Subtest: regression route and permission coverage exists for completed sprints
+ok 180 - regression route and permission coverage exists for completed sprints
+  ---
+  duration_ms: 9.204578
+  type: 'test'
+  ...
+# Subtest: all sprint smoke commands are wired
+ok 181 - all sprint smoke commands are wired
+  ---
+  duration_ms: 0.516665
+  type: 'test'
+  ...
+# Subtest: migration ordering is lexical and complete
+ok 182 - migration ordering is lexical and complete
+  ---
+  duration_ms: 1.241299
+  type: 'test'
+  ...
+# Subtest: write helpers remain the only shared write action path
+ok 183 - write helpers remain the only shared write action path
+  ---
+  duration_ms: 0.383003
+  type: 'test'
+  ...
+# Subtest: Sprint 14 does not introduce disallowed business artifacts
+ok 184 - Sprint 14 does not introduce disallowed business artifacts
+  ---
+  duration_ms: 1724.875039
+  type: 'test'
+  ...
+# Subtest: e2e certification: no not-certified states, no undocumented blocked states, no placeholder notes, no empty forbiddenTables
+ok 185 - e2e certification: no not-certified states, no undocumented blocked states, no placeholder notes, no empty forbiddenTables
+  ---
+  duration_ms: 2.654206
+  type: 'test'
+  ...
+# Subtest: e2e specs: no test.skip, test.only, or .fixme
+ok 186 - e2e specs: no test.skip, test.only, or .fixme
+  ---
+  duration_ms: 18.42509
+  type: 'test'
+  ...
+# Subtest: certified Partner compliance E2E is included in the global certification runner
+ok 187 - certified Partner compliance E2E is included in the global certification runner
+  ---
+  duration_ms: 0.416806
+  type: 'test'
+  ...
+# Subtest: certified Partner workforce E2E is included in the global certification runner
+ok 188 - certified Partner workforce E2E is included in the global certification runner
+  ---
+  duration_ms: 0.544523
+  type: 'test'
+  ...
+# Subtest: certified Partner agreement E2E is included in the global certification runner
+ok 189 - certified Partner agreement E2E is included in the global certification runner
+  ---
+  duration_ms: 0.620272
+  type: 'test'
+  ...
+# Subtest: certified Partner mobilization E2E is included in the global certification runner
+ok 190 - certified Partner mobilization E2E is included in the global certification runner
+  ---
+  duration_ms: 0.343285
+  type: 'test'
+  ...
+# Subtest: certified Partner Portal shell E2E is included in the global certification runner
+ok 191 - certified Partner Portal shell E2E is included in the global certification runner
+  ---
+  duration_ms: 0.225238
+  type: 'test'
+  ...
+# Subtest: certified SyncField map and Daily JSA E2E is included in the global certification runner
+ok 192 - certified SyncField map and Daily JSA E2E is included in the global certification runner
+  ---
+  duration_ms: 0.196187
+  type: 'test'
+  ...
+# Subtest: certified SyncField Daily Production E2E is included in the global certification runner
+ok 193 - certified SyncField Daily Production E2E is included in the global certification runner
+  ---
+  duration_ms: 20.346713
+  type: 'test'
+  ...
+# Subtest: P9A field offline replay wiring remains browser-persistent and automatic
+ok 194 - P9A field offline replay wiring remains browser-persistent and automatic
+  ---
+  duration_ms: 5.276109
+  type: 'test'
+  ...
+# Subtest: certified Customer QC E2E is included in the global certification runner
+ok 195 - certified Customer QC E2E is included in the global certification runner
+  ---
+  duration_ms: 0.288795
+  type: 'test'
+  ...
+# Subtest: certified SyncField production exports/dashboard E2E is included in the global certification runner
+ok 196 - certified SyncField production exports/dashboard E2E is included in the global certification runner
+  ---
+  duration_ms: 0.348065
+  type: 'test'
+  ...
+# Subtest: certified accepted production financials E2E is included in the global certification runner
+ok 197 - certified accepted production financials E2E is included in the global certification runner
+  ---
+  duration_ms: 0.328243
+  type: 'test'
+  ...
+# Subtest: certified payment retainage adjustments E2E is included in the global certification runner
+ok 198 - certified payment retainage adjustments E2E is included in the global certification runner
+  ---
+  duration_ms: 0.398761
+  type: 'test'
+  ...
+# Subtest: certified Partner performance capacity E2E is included in the global certification runner
+ok 199 - certified Partner performance capacity E2E is included in the global certification runner
+  ---
+  duration_ms: 0.382539
+  type: 'test'
+  ...
+# Subtest: certified Opportunity capacity matching E2E is included in the global certification runner
+ok 200 - certified Opportunity capacity matching E2E is included in the global certification runner
+  ---
+  duration_ms: 0.329722
+  type: 'test'
+  ...
+# Subtest: certified Executive command throughput E2E is included in the global certification runner
+ok 201 - certified Executive command throughput E2E is included in the global certification runner
+  ---
+  duration_ms: 0.511816
+  type: 'test'
+  ...
+# Subtest: P17 production readiness E2E is included in the global certification runner
+ok 202 - P17 production readiness E2E is included in the global certification runner
+  ---
+  duration_ms: 0.361978
+  type: 'test'
+  ...
+# Subtest: P17 remains a release-readiness gate without a synthetic migration
+ok 203 - P17 remains a release-readiness gate without a synthetic migration
+  ---
+  duration_ms: 0.327521
+  type: 'test'
+  ...
+# Subtest: Partner Admin invitation E2E is included in the global certification runner
+ok 204 - Partner Admin invitation E2E is included in the global certification runner
+  ---
+  duration_ms: 0.339053
+  type: 'test'
+  ...
+# Subtest: P17 release boundary checks preserve no-auto-action and no-sensitive-leak rules
+ok 205 - P17 release boundary checks preserve no-auto-action and no-sensitive-leak rules
+  ---
+  duration_ms: 1.948155
+  type: 'test'
+  ...
+# Subtest: P16 Command Center preserves read-model and no-auto-action boundaries
+ok 206 - P16 Command Center preserves read-model and no-auto-action boundaries
+  ---
+  duration_ms: 2.341802
+  type: 'test'
+  ...
+# Subtest: P15 Opportunity matching preserves recommendation and assignment boundaries
+ok 207 - P15 Opportunity matching preserves recommendation and assignment boundaries
+  ---
+  duration_ms: 3.22231
+  type: 'test'
+  ...
+# Subtest: P14 Partner performance preserves intelligence and commercial boundaries
+ok 208 - P14 Partner performance preserves intelligence and commercial boundaries
+  ---
+  duration_ms: 13.680624
+  type: 'test'
+  ...
+# Subtest: P13 payment execution preserves money-movement boundaries
+ok 209 - P13 payment execution preserves money-movement boundaries
+  ---
+  duration_ms: 4.911897
+  type: 'test'
+  ...
+# Subtest: P10 Customer QC language preserves customer authority boundary
+ok 210 - P10 Customer QC language preserves customer authority boundary
+  ---
+  duration_ms: 9.389354
+  type: 'test'
+  ...
+# Subtest: P11 exports and closeout preserve production and financial boundaries
+ok 211 - P11 exports and closeout preserve production and financial boundaries
+  ---
+  duration_ms: 6.697747
+  type: 'test'
+  ...
+# Subtest: release validation includes every registered domain smoke check
+ok 212 - release validation includes every registered domain smoke check
+  ---
+  duration_ms: 3.687027
+  type: 'test'
+  ...
+# Subtest: production readiness smoke validates the current shipped release
+ok 213 - production readiness smoke validates the current shipped release
+  ---
+  duration_ms: 87.613192
+  type: 'test'
+  ...
+# Subtest: PartnerComplianceController emits the canonical RestrictedFileService runtime token
+ok 214 - PartnerComplianceController emits the canonical RestrictedFileService runtime token
+  ---
+  duration_ms: 1144.140357
+  type: 'test'
+  ...
+# Subtest: AppModule declares RestrictedFileService as a provider, not a controller
+ok 215 - AppModule declares RestrictedFileService as a provider, not a controller
+  ---
+  duration_ms: 963.637151
+  type: 'test'
+  ...
+# Subtest: restricted filename sanitizer removes traversal and bounds names
+ok 216 - restricted filename sanitizer removes traversal and bounds names
+  ---
+  duration_ms: 31.162018
+  type: 'test'
+  ...
+# Subtest: restricted MIME detection and extension mapping use signatures
+ok 217 - restricted MIME detection and extension mapping use signatures
+  ---
+  duration_ms: 8.923381
+  type: 'test'
+  ...
+# Subtest: restricted SHA-256 and root containment are deterministic
+ok 218 - restricted SHA-256 and root containment are deterministic
+  ---
+  duration_ms: 0.197816
+  type: 'test'
+  ...
+# Subtest: RestrictedFileService writes exact bytes and uses supplied PoolClient
+ok 219 - RestrictedFileService writes exact bytes and uses supplied PoolClient
+  ---
+  duration_ms: 15.649385
+  type: 'test'
+  ...
+# Subtest: RestrictedFileService write failure skips metadata insert
+ok 220 - RestrictedFileService write failure skips metadata insert
+  ---
+  duration_ms: 5.134343
+  type: 'test'
+  ...
+# Subtest: RestrictedFileService metadata failure cleans up written bytes
+ok 221 - RestrictedFileService metadata failure cleans up written bytes
+  ---
+  duration_ms: 10.616716
+  type: 'test'
+  ...
+# Subtest: RestrictedFileService is injectable and owns create/write persistence
+ok 222 - RestrictedFileService is injectable and owns create/write persistence
+  ---
+  duration_ms: 2.463598
+  type: 'test'
+  ...
+# Subtest: Workforce create paths use the service and local creator is absent
+ok 223 - Workforce create paths use the service and local creator is absent
+  ---
+  duration_ms: 0.337446
+  type: 'test'
+  ...
+# Subtest: service uses the caller supplied database client and safe storage primitives
+ok 224 - service uses the caller supplied database client and safe storage primitives
+  ---
+  duration_ms: 0.192901
+  type: 'test'
+  ...
+# Subtest: service rejects invalid/empty writes before metadata persistence
+ok 225 - service rejects invalid/empty writes before metadata persistence
+  ---
+  duration_ms: 0.168845
+  type: 'test'
+  ...
+# Subtest: resumable originals enforce ownership, chunk integrity, retries, expiry and completion
+ok 226 - resumable originals enforce ownership, chunk integrity, retries, expiry and completion
+  ---
+  duration_ms: 412.82996
+  type: 'test'
+  ...
+# Subtest: new evidence is rejected during either stop type or revoked assignment before insertion
+ok 227 - new evidence is rejected during either stop type or revoked assignment before insertion
+  ---
+  duration_ms: 133.817092
+  type: 'test'
+  ...
+# Subtest: finalization bounds concurrent original buffers and releases capacity after failure
+ok 228 - finalization bounds concurrent original buffers and releases capacity after failure
+  ---
+  duration_ms: 0.944489
+  type: 'test'
+  ...
+# {"scenario":"synthetic database transport only","streams":8,"originalMiB":4,"totalMiB":32,"elapsedMs":2720,"rssGrowthMiB":45}
+# Subtest: concurrent upload streams preserve originals and retry bounded finalization
+ok 229 - concurrent upload streams preserve originals and retry bounded finalization
+  ---
+  duration_ms: 2792.103795
+  type: 'test'
+  ...
+# Subtest: retained-fund terms never assume the regular payable clock
+ok 230 - retained-fund terms never assume the regular payable clock
+  ---
+  duration_ms: 10.824818
+  type: 'test'
+  ...
+# Subtest: nonapproval retained-fund triggers require a completed, timezone-qualified event and proof
+ok 231 - nonapproval retained-fund triggers require a completed, timezone-qualified event and proof
+  ---
+  duration_ms: 20.157245
+  type: 'test'
+  ...
+# Subtest: partial retained releases conserve exact cents and cannot reuse previous releases
+ok 232 - partial retained releases conserve exact cents and cannot reuse previous releases
+  ---
+  duration_ms: 1.977251
+  type: 'test'
+  ...
+# Subtest: release source scan excludes generated and dependency trees before descent
+ok 233 - release source scan excludes generated and dependency trees before descent
+  ---
+  duration_ms: 63.83853
+  type: 'test'
+  ...
+# Subtest: smtp_relay is a hosted email provider with STARTTLS and optional auth
+ok 234 - smtp_relay is a hosted email provider with STARTTLS and optional auth
+  ---
+  duration_ms: 1.798436
+  type: 'test'
+  ...
+# Subtest: staging smtp_relay keeps recipient allowlist and Sync sender controls
+ok 235 - staging smtp_relay keeps recipient allowlist and Sync sender controls
+  ---
+  duration_ms: 0.780697
+  type: 'test'
+  ...
+# Subtest: invitation URLs remain sourced from APPLICATION_BASE_URL without token logging
+ok 236 - invitation URLs remain sourced from APPLICATION_BASE_URL without token logging
+  ---
+  duration_ms: 1.899314
+  type: 'test'
+  ...
+# Subtest: patched SMTP transport initializes with isolated TLS settings without opening a connection
+ok 237 - patched SMTP transport initializes with isolated TLS settings without opening a connection
+  ---
+  duration_ms: 121.872895
+  type: 'test'
+  ...
+# Subtest: deployment rejects dirty before migrations or service shutdown
+ok 238 - deployment rejects dirty before migrations or service shutdown
+  ---
+  duration_ms: 2463.184655
+  type: 'test'
+  ...
+# Subtest: deployment rejects legacy before migrations or service shutdown
+ok 239 - deployment rejects legacy before migrations or service shutdown
+  ---
+  duration_ms: 3114.396302
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on migration-failed
+ok 240 - deployment leaves services stopped without publishing on migration-failed
+  ---
+  duration_ms: 3522.226685
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on health-failed
+ok 241 - deployment leaves services stopped without publishing on health-failed
+  ---
+  duration_ms: 4155.161472
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on worker-failed
+ok 242 - deployment leaves services stopped without publishing on worker-failed
+  ---
+  duration_ms: 4102.368372
+  type: 'test'
+  ...
+# Subtest: healthy deployment stops writers before migrating and publishes after verification
+ok 243 - healthy deployment stops writers before migrating and publishes after verification
+  ---
+  duration_ms: 3520.04378
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:19.639Z","category":"Event","message":"event_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","eventId":"8e49ca66-d97a-49b5-a20b-05920049539c","eventType":"form.version_created","aggregateType":"supplemental_form","aggregateId":"12821554-0e00-415a-a6be-5e07013a1f0b"}
+# {"timestamp":"2026-10-05T21:13:19.643Z","category":"Audit","message":"audit_log_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","action":"form.version_created","entityType":"supplemental_form_version","entityId":"12821554-0e00-415a-a6be-5e07013a1f0b"}
+# {"timestamp":"2026-10-05T21:13:19.666Z","category":"Event","message":"event_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","eventId":"140c7c08-8fee-45f3-8ab6-1d825234495a","eventType":"form.published","aggregateType":"supplemental_form","aggregateId":"12821554-0e00-415a-a6be-5e07013a1f0b"}
+# {"timestamp":"2026-10-05T21:13:19.668Z","category":"Audit","message":"audit_log_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","action":"form.published","entityType":"supplemental_form_version","entityId":"12821554-0e00-415a-a6be-5e07013a1f0b"}
+# {"timestamp":"2026-10-05T21:13:19.678Z","category":"Event","message":"event_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","eventId":"6ec62fa9-62d8-446c-897f-19f170d80a9b","eventType":"form.submitted","aggregateType":"supplemental_form","aggregateId":"afd186bf-a398-4dae-b55f-c493c4e31cfd"}
+# {"timestamp":"2026-10-05T21:13:19.679Z","category":"Audit","message":"audit_log_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","action":"form.submitted","entityType":"supplemental_form_record","entityId":"afd186bf-a398-4dae-b55f-c493c4e31cfd"}
+# {"timestamp":"2026-10-05T21:13:19.690Z","category":"Event","message":"event_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","eventId":"9489cb9b-e08f-4456-b72a-dc2d34c5e345","eventType":"form.version_created","aggregateType":"supplemental_form","aggregateId":"39ec345d-3e98-4d05-80e1-e134cc56334d"}
+# {"timestamp":"2026-10-05T21:13:19.691Z","category":"Audit","message":"audit_log_created","tenantId":"526566e8-faa5-4f4b-ba45-490e02dc05b8","actorUserId":"e65435b4-6ba0-44c7-822f-03d7115bfa7b","action":"form.version_created","entityType":"supplemental_form_version","entityId":"39ec345d-3e98-4d05-80e1-e134cc56334d"}
+# Subtest: form publication preserves versions, tenant boundaries, immutable responses and one audit per retry
+ok 244 - form publication preserves versions, tenant boundaries, immutable responses and one audit per retry
+  ---
+  duration_ms: 277.249507
+  type: 'test'
+  ...
+# Subtest: shared forms enforce conditional required fields and reject hidden or unknown values
+ok 245 - shared forms enforce conditional required fields and reject hidden or unknown values
+  ---
+  duration_ms: 5.057408
+  type: 'test'
+  ...
+# Subtest: shared forms reject invalid dates, types, conditions and duplicate keys
+ok 246 - shared forms reject invalid dates, types, conditions and duplicate keys
+  ---
+  duration_ms: 3.213428
+  type: 'test'
+  ...
+# Subtest: corrections admit supported revision fields but reject unknown or unauthorized changes
+ok 247 - corrections admit supported revision fields but reject unknown or unauthorized changes
+  ---
+  duration_ms: 26.720116
+  type: 'test'
+  ...
+# Subtest: supported correction changes are preserved in the immutable proposed revision
+ok 248 - supported correction changes are preserved in the immutable proposed revision
+  ---
+  duration_ms: 1.563387
+  type: 'test'
+  ...
+# Subtest: correction retry after a lost response returns the existing result
+ok 249 - correction retry after a lost response returns the existing result
+  ---
+  duration_ms: 2.47795
+  type: 'test'
+  ...
+# Subtest: a correction cannot reuse another correction mutation identifier
+ok 250 - a correction cannot reuse another correction mutation identifier
+  ---
+  duration_ms: 1.002252
+  type: 'test'
+  ...
+# Subtest: new request cannot resubmit a correction already awaiting reinspection
+ok 251 - new request cannot resubmit a correction already awaiting reinspection
+  ---
+  duration_ms: 0.384367
+  type: 'test'
+  ...
+# Subtest: daily production PDF distinguishes accepted zero from pending customer QC
+ok 252 - daily production PDF distinguishes accepted zero from pending customer QC
+  ---
+  duration_ms: 0.856295
+  type: 'test'
+  ...
+# Subtest: selected older active assignment can download its own map
+ok 253 - selected older active assignment can download its own map
+  ---
+  duration_ms: 2.274093
+  type: 'test'
+  ...
+# Subtest: selected assignment cannot download another assignment map
+ok 254 - selected assignment cannot download another assignment map
+  ---
+  duration_ms: 0.945036
+  type: 'test'
+  ...
+# Subtest: unassigned and cross-tenant assignment identifiers fail closed
+ok 255 - unassigned and cross-tenant assignment identifiers fail closed
+  ---
+  duration_ms: 0.281392
+  type: 'test'
+  ...
+# Subtest: omitted assignment remains compatible with latest map download
+ok 256 - omitted assignment remains compatible with latest map download
+  ---
+  duration_ms: 11.40962
+  type: 'test'
+  ...
+# Subtest: startMobilizationExpirationScheduler retries after connection failure and releases after scan failure
+ok 257 - startMobilizationExpirationScheduler retries after connection failure and releases after scan failure
+  ---
+  duration_ms: 255.509873
+  type: 'test'
+  ...
+# Subtest: startPartnerPerformanceScheduler retries after connection failure and releases after scan failure
+ok 258 - startPartnerPerformanceScheduler retries after connection failure and releases after scan failure
+  ---
+  duration_ms: 46.047365
+  type: 'test'
+  ...
+# Subtest: startOpportunityCapacityMatchingScheduler retries after connection failure and releases after scan failure
+ok 259 - startOpportunityCapacityMatchingScheduler retries after connection failure and releases after scan failure
+  ---
+  duration_ms: 72.30851
+  type: 'test'
+  ...
+# Subtest: startExecutiveCommandScheduler retries after connection failure and releases after scan failure
+ok 260 - startExecutiveCommandScheduler retries after connection failure and releases after scan failure
+  ---
+  duration_ms: 40.983394
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-05T21:13:20.609Z","category":"Event","message":"event_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"9be5b229-2d9b-4df4-af6a-dec1d78551a2","eventId":"7ee98478-c0d3-4f77-91c7-3a6bf4f3c904","eventType":"workflow_task.reassigned","aggregateType":"workflow_task","aggregateId":"10c60339-c2a9-4069-ada8-802f82ee4622"}
+# {"timestamp":"2026-10-05T21:13:20.612Z","category":"Audit","message":"audit_log_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"9be5b229-2d9b-4df4-af6a-dec1d78551a2","action":"workflow_task.reassign","entityType":"workflow_task","entityId":"10c60339-c2a9-4069-ada8-802f82ee4622"}
+# {"timestamp":"2026-10-05T21:13:20.629Z","category":"Event","message":"event_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"9be5b229-2d9b-4df4-af6a-dec1d78551a2","eventId":"643aac6d-b77f-4eb2-8c4f-ec350b373dcb","eventType":"workflow_task.escalated","aggregateType":"workflow_task","aggregateId":"10c60339-c2a9-4069-ada8-802f82ee4622"}
+# {"timestamp":"2026-10-05T21:13:20.631Z","category":"Audit","message":"audit_log_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"9be5b229-2d9b-4df4-af6a-dec1d78551a2","action":"workflow_task.escalate","entityType":"workflow_task","entityId":"10c60339-c2a9-4069-ada8-802f82ee4622"}
+# {"timestamp":"2026-10-05T21:13:20.632Z","category":"Event","message":"event_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"9be5b229-2d9b-4df4-af6a-dec1d78551a2","eventId":"5f676515-13df-47ed-82b4-29f3ecf86411","eventType":"workflow_escalation.created","aggregateType":"workflow_escalation","aggregateId":"eda9e90d-f251-454a-9c5d-a6134009f473"}
+# {"timestamp":"2026-10-05T21:13:20.633Z","category":"Audit","message":"audit_log_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"9be5b229-2d9b-4df4-af6a-dec1d78551a2","action":"workflow_escalation.create","entityType":"workflow_escalation","entityId":"eda9e90d-f251-454a-9c5d-a6134009f473"}
+# {"timestamp":"2026-10-05T21:13:20.652Z","category":"Event","message":"event_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"132f471d-adb8-4e90-9688-7e3e7174de75","eventId":"334ae5dd-28ea-4b47-9296-cb2ca3976490","eventType":"workflow_task.completed","aggregateType":"workflow_task","aggregateId":"10c60339-c2a9-4069-ada8-802f82ee4622"}
+# {"timestamp":"2026-10-05T21:13:20.654Z","category":"Audit","message":"audit_log_created","tenantId":"15a73502-c85c-4bb3-a46a-e9324c069609","actorUserId":"132f471d-adb8-4e90-9688-7e3e7174de75","action":"workflow_task.complete","entityType":"workflow_task","entityId":"10c60339-c2a9-4069-ada8-802f82ee4622"}
+# Subtest: role reassignment clears old person; unknown roles and closed-task escalation preserve state
+ok 261 - role reassignment clears old person; unknown roles and closed-task escalation preserve state
+  ---
+  duration_ms: 148.813059
+  type: 'test'
+  ...
+# Subtest: workflow notices route by owner and escalation, cancel stale recipients, and audit bounded retry
+ok 262 - workflow notices route by owner and escalation, cancel stale recipients, and audit bounded retry
+  ---
+  duration_ms: 346.601888
+  type: 'test'
+  ...
+# Subtest: history rejects malformed cursors and search arrays before querying
+ok 263 - history rejects malformed cursors and search arrays before querying
+  ---
+  duration_ms: 3.903711
+  type: 'test'
+  ...
+# Subtest: history covers more than 200 records without duplicates, handles equal timestamps and scopes cursors
+ok 264 - history covers more than 200 records without duplicates, handles equal timestamps and scopes cursors
+  ---
+  duration_ms: 78.290478
+  type: 'test'
+  ...
+# Subtest: selection paging reaches equal-name records beyond 200 and rejects foreign cursors
+ok 265 - selection paging reaches equal-name records beyond 200 and rejects foreign cursors
+  ---
+  duration_ms: 106.386024
+  type: 'test'
+  ...
+1..265
+# tests 265
+# suites 0
+# pass 265
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27504.307666

@@ -1,5 +1,5 @@
-const CACHE='syncos-offline-shell-v3';
-const ASSETS=['/syncfield/offline.html','/syncfield/offline-view.js','/syncfield/offline.css'];
+const CACHE='syncos-offline-shell-v5';
+const ASSETS=['/syncfield/offline.html','/syncfield/offline-view.js','/syncfield/offline.css','/syncfield/offline-capture.js'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([self.clients.claim(),caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('syncos-offline-shell-')&&key!==CACHE).map(key=>caches.delete(key))))])));
 self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(url.origin!==self.location.origin||event.request.method!=='GET')return;

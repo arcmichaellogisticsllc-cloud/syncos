@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 import { SetupReview } from "./setup-review";
 import { Capability, useCapability } from "../access-control";
 
@@ -224,7 +225,7 @@ export default function PartnerNetworkPage() {
           <div className="section-heading">
             <div>
               <p className="eyebrow">Partner inquiries</p>
-              <h2>Human qualification queue</h2>
+              <h2>Human qualification queue</h2><HistoryPager rows={inquiries} path="partner-invitations/inquiries" label="partner inquiries" select={v=>v.inquiries} onRows={setInquiries}/>
             </div>
             <label className="compact-field">
               <span>Status</span>
@@ -319,7 +320,7 @@ export default function PartnerNetworkPage() {
 
         <section className="workspace-panel">
           <p className="eyebrow">Invitation lifecycle</p>
-          <h2>Recent invitations</h2>
+          <h2>Recent invitations</h2><HistoryPager rows={invitations} path="partner-invitations" label="invitations" select={v=>v.invitations} onRows={setInvitations}/>
           <div className="record-list compact">
             {invitations.slice(0, 8).map((invite) => (
               <div className="record-list-row static" key={invite.id}>
@@ -341,7 +342,7 @@ export default function PartnerNetworkPage() {
 
       <section className="workspace-panel">
         <p className="eyebrow">Onboarding review</p>
-        <h2>Partner readiness and approval</h2>
+        <h2>Partner readiness and approval</h2><HistoryPager rows={partners} path="partner-invitations/onboarding-workspace" label="partner readiness" select={v=>v.partners} onRows={setPartners}/>
         <div className="partner-review-grid">
           {partners.map((partner) => (
             <div className="review-card" key={partner.organization_id}>

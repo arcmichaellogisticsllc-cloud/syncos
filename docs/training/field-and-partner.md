@@ -282,7 +282,7 @@ These instructions apply after the candidate containing migration 097 is activat
 3. If disconnected or interrupted, retain the device copy and original. Reconnect using the original account, reopen the report and choose **Retry upload**. Received parts are reused; the server checks the full original before recording evidence.
 4. Wait for **Evidence saved on the server**. Customer acceptance and readability review remain separate.
 5. If work is stopped or your assignment was removed, contact the supervisor. Retrying does not override these controls. Expired temporary sessions restart from the saved original without authorizing new work.
-6. After an online SyncField visit prepares offline recovery, reopening a SyncField route without connectivity shows **SyncField connection recovery**. It displays last-verified assignment labels and supported pending device work for at most one hour, tied to the same session. This screen cannot authorize work, edit maps, or submit records.
+6. After an online SyncField visit prepares offline recovery, reopening a SyncField route without connectivity shows **SyncField connection recovery**. It displays last-verified assignment labels and supported pending device work for at most one hour, tied to the same session. This screen cannot authorize work or edit maps. Prepared map viewing and new report drafts are described below.
 7. Choose **Reconnect and verify access** once connected. Review/retry pending work in its normal workspace. Logging out clears device context and drafts; preserve originals first.
 
 ## Assigned supplemental forms and offline answers
@@ -293,7 +293,7 @@ These instructions apply after the candidate containing migration 097 is activat
 4. If disconnected after closing the page, reopen SyncField. While the same account's one-hour offline context remains valid, expand **Edit saved form**, revise answers and select **Save edited answers on this device**.
 5. Reconnect, open **Assigned forms**, select the same assignment/version and review restored answers. Select **Submit reviewed answers**.
 6. If a work stop, removed assignment or expired authorization blocks submission, retain the draft and contact the responsible operator. Do not recreate approvals or choose another crew to bypass the restriction.
-7. This offline capability covers saved supplemental forms. Full cold-start production entry and map availability are still separate unfinished capabilities.
+7. This saved-form workflow is separate from the prepared map and new daily-report workflow below.
 
 ## Crew material use
 
@@ -313,6 +313,38 @@ These instructions apply after the candidate containing migration 097 is activat
 6. For supplemental forms, use **Edit saved form** in recovery, save, reconnect, choose the same assignment/version, review and submit. Device-saved answers are not accepted work. Unsaved-answer warnings appear before switching assignment or form.
 7. In **Assigned forms**, inspect your submitted forms and use **Older submitted forms**. In **Crew materials**, use **Older material use** or **Latest material use**. These views stay within the current assignment, crew and authorized account.
 
-The recovery screen does not provide a cached map viewer or create a new daily report from a cold offline start. Actual-phone background suspension and storage-loss acceptance remain separate from browser tests.
+Prepared PDF viewing and new daily-report drafts are available as described below. Actual-phone background suspension and storage-loss acceptance remain separate from browser tests.
 
 If **Record material use** loses its response, the original request is saved before transmission. Reopen **Crew materials**, choose the same assignment and select **Retry saved material use**. The same reference is reused so stock is deducted once. Do not enter a replacement while confirmation is pending. A confirmed validation rejection offers **Correct rejected entries**. Existing recorded movements can be reconciled during a stop; new movements remain blocked. Logout clears local pending requests, so preserve the reference first.
+
+
+## Prepare maps and create a daily report offline
+
+1. While connected, sign in as the assigned Sync or partner foreman. Visit SyncField so the current account and assignments are verified.
+2. Select **Prepare offline work**. For each required assignment, select **Prepare or refresh assignment**. Wait for **Assignment prepared**.
+3. Confirm the assignment, preparation time and expiry. Select **Open cached PDF** and check its version. Supported cached originals are PDF files up to 25 MiB, with a 75 MiB total map limit on the device. An unavailable or failed-checksum map is not ready; reconnect and retry preparation. Use **Remove cached map** when storage needs to be freed.
+4. Before disconnecting, retain the original photos and confirm applicable safety approvals with the supervisor. A downloaded map is not permission to start or resume work.
+5. Reopen SyncField without connectivity. The same verified account can use prepared context for up to one hour. Expand **Create a new report on this device**, enter the work date, weather and daily notes, then select **Save report on this device**. Wait for the saved confirmation.
+6. Reopen the screen to verify the draft survived. A never-attempted report can be edited. Expired context requires reconnecting and verifying the same account; switching accounts does not expose its drafts.
+7. Reconnect and select **Send or reconcile saved report**. SyncOS rechecks the account, current assignment, map, daily safety requirements and work stops. An uncertain response leaves the original request intact for retry. Do not enter a duplicate replacement.
+8. Wait for **Server draft confirmed**. Open **Production** to record quantities and evidence, review completeness and submit. The local report and server draft are not submitted production, internal QC approval or customer acceptance.
+9. If the assigned map changed or another report already exists for that assignment and date, keep the original notes and reconcile with the responsible operator. The app does not silently merge or discard them. An attempted request cannot be edited because it may already exist on the server.
+10. Signing out clears local recovery data. Preserve originals and reconcile uncertain requests before signing out or clearing browser storage.
+
+## Company forms and material oversight
+
+1. As the authorized partner company administrator, open **Company field oversight** from the company workspace. Internal Sync operators continue to use their authorized Forms and Material Inventory workspaces.
+2. Search assignments, choose the work and crew, and use **More assignments** as needed. Review form versions, response counts and **Submitted answers**. **Older answers** reaches earlier records; **Latest / refresh** returns to the latest page.
+3. If your account has form-delegation permission, choose another active assignment in your own company and select **Assign this form to selected crew assignment**. Each crew supplies its own answers. Delegation cannot reactivate an operator-disabled assignment or replace individual safety acknowledgments, QC or customer approvals.
+4. Review **Crew material custody** and **Material movement history**. These balances describe physical stock, not accepted production or money owed. Use **Older movements** to review earlier custody changes.
+5. To report a discrepancy, choose the material and custody location, enter the physical count, supporting count-sheet reference and description, then select **Request material review**. An unchanged retry reuses the same request. Review the resulting status under **Material discrepancies**.
+6. The authorized inventory operator opens **Material and reel inventory → Company material review queue**. Review the evidence and custody movements. If stock requires correction, use **Approve a count adjustment**, then copy the resulting movement ID into the discrepancy resolution. Otherwise explicitly confirm that the documented review needs no adjustment. Select **Record resolution**.
+7. The company administrator can review the resolution in the same assignment. Reporting a discrepancy does not change stock; resolution does not authorize production or financial acceptance.
+
+## Older records and safety history
+
+1. Open **Record history**, choose the record type and search by its name, reference, status or identifier. Use **Older matching records** and **Back to latest**.
+2. For an authorized record, expand **Complete audit activity** or **Complete timeline activity**. Search actions and use **Older actions**. Supported legacy workspaces include the related child records allowed by their existing history permissions. These are recorded events, not a replacement for reviewing the actual evidence.
+3. On **Safety reviews and work authorization**, use the older-record controls for personal safety reviews, work-order versions and shutdown authorization history. **Refresh latest safety records** returns to current records. A worker still acknowledges only their own participation.
+4. Use **Find work order** when the required order is outside the initial selection list. On **Field map setup**, search assignments and use **More assignments**.
+5. In customer QC and corrections, use **Older customer QC and corrections** to reach earlier customer decisions and unresolved corrections. Existing correction and resubmission permissions still apply.

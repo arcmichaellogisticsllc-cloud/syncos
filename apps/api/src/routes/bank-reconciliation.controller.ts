@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
@@ -807,14 +808,11 @@ export class BankReconciliationController {
       const matchIds = aggregateType === "bank_transaction" ? (await client.query("SELECT id FROM reconciliation_matches WHERE tenant_id = $1 AND bank_transaction_id = $2", [request.auth.tenantId, id])).rows.map((row) => row.id) : [];
       const transactionIds = aggregateType === "bank_account" ? (await client.query("SELECT id FROM bank_transactions WHERE tenant_id = $1 AND bank_account_id = $2", [request.auth.tenantId, id])).rows.map((row) => row.id) : [];
       const ids = [id, ...matchIds, ...transactionIds];
-      const result = await client.query(
-        `SELECT id, event_type, aggregate_type AS object_type, aggregate_id AS object_id, actor_user_id AS actor, created_at AS timestamp, audit_context AS summary
+      const result = await activityPage(client, `SELECT id AS __history_id, created_at::text AS __history_time, id, event_type, aggregate_type AS object_type, aggregate_id AS object_id, actor_user_id AS actor, created_at AS timestamp, audit_context AS summary
          FROM events
          WHERE tenant_id = $1 AND aggregate_id = ANY($2::uuid[])
          ORDER BY created_at DESC
-         LIMIT 250`,
-        [request.auth.tenantId, ids],
-      );
+         LIMIT 250`, [request.auth.tenantId, ids], request.query);
       return result.rows;
     });
   }
@@ -824,10 +822,7 @@ export class BankReconciliationController {
       if (entityType === "bank_transaction") await this.requireTransaction(client, request.auth.tenantId, id);
       if (entityType === "bank_account") await this.requireAccount(client, request.auth.tenantId, id);
       if (entityType === "reconciliation_match") await this.requireMatch(client, request.auth.tenantId, id);
-      const result = await client.query(
-        "SELECT id, actor_user_id AS actor, action, entity_type AS object, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id FROM audit_logs WHERE tenant_id = $1 AND entity_id = $2 ORDER BY created_at DESC LIMIT 250",
-        [request.auth.tenantId, id],
-      );
+      const result = await activityPage(client, "SELECT id AS __history_id, created_at::text AS __history_time, id, actor_user_id AS actor, action, entity_type AS object, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id FROM audit_logs WHERE tenant_id = $1 AND entity_id = $2 ORDER BY created_at DESC LIMIT 250", [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }

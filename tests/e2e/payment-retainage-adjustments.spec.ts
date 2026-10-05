@@ -405,3 +405,40 @@ test('finance review UI retains unmatched observations without posting payments 
 });
 
 async function approveReleaseTerms(request:APIRequestContext,bearer:string,id:string){return apiJson(request,bearer,'POST',`/payment-retainage-adjustments/retainage-releases/${id}/terms`,{payment_trigger:'release_approval',payment_days:14,payment_day_basis:'calendar_days',time_zone:'America/New_York',verified:true,source_reference:'SYNTHETIC executed retained-fund clause'});}
+
+
+test('prepared normalized posting persists partials once and retains exceptions without rewriting payments',async()=>{
+ const {PreparedPaymentPosting}=require('../../apps/api/dist/routes/prepared-payment-posting');
+ const pool=new Pool({connectionString:process.env.DATABASE_URL}),db=new Client({connectionString:process.env.DATABASE_URL});await db.connect();
+ try{
+  const f=await seedP13Fixture(db,process.env.AUTH_JWT_SECRET!);
+  const actor=JSON.parse(Buffer.from(f.internalToken.split('.')[1],'base64url').toString()).sub;
+  const req={auth:{tenantId:f.tenantA,userId:actor}},posting=new PreparedPaymentPosting(pool),customer='SYNTHETIC-'+crypto.randomUUID();
+  const connection=(await db.query("INSERT INTO passport_connections(tenant_id,customer_reference,account_reference,created_by) VALUES($1,$2,'ACCOUNT',$3) RETURNING id",[f.tenantA,customer,actor])).rows[0].id;
+  const tx={customerId:customer,accountId:'ACCOUNT',transactionId:'PARTIAL-1',payeeId:'PARTNER',direction:'outgoing',currency:'USD',amount:'30.00',status:'completed',completedDate:'2026-09-01',version:1};
+  expect((await posting.rehearse(req,connection,tx)).reason).toBe('unmatched_payment');
+  for(const [reference,amount] of [['PARTIAL-1','30.00'],['PARTIAL-2','68.70']])await db.query("INSERT INTO passport_payable_mappings(tenant_id,connection_id,transaction_reference,payee_reference,contractor_payable_id,amount,currency,evidence_reference,approved_by) VALUES($1,$2,$3,'PARTNER',$4,$5,'USD','SYNTHETIC mapping',$6)",[f.tenantA,connection,reference,f.payableId,amount,actor]);
+  const runs=await Promise.all([posting.rehearse(req,connection,tx),posting.rehearse(req,connection,tx)]);expect(runs.map((r:any)=>r.outcome).sort()).toEqual(['duplicate','recorded']);
+  expect((await posting.rehearse(req,connection,{...tx,amount:'31.00'})).reason).toBe('conflicting_same_version');
+  expect((await posting.rehearse(req,connection,{...tx,version:2,status:'returned'})).reason).toBe('recorded_payment_return_or_reversal');
+  expect((await db.query('SELECT paid_amount FROM contractor_payables WHERE id=$1',[f.payableId])).rows[0].paid_amount).toBe('30.00');
+  const second={...tx,transactionId:'PARTIAL-2',amount:'68.70'};
+  expect((await posting.rehearse(req,connection,second)).outcome).toBe('recorded');
+  expect((await db.query('SELECT paid_amount FROM contractor_payables WHERE id=$1',[f.payableId])).rows[0].paid_amount).toBe('98.70');
+  expect((await db.query('SELECT count(*)::int n FROM passport_recorded_payments WHERE tenant_id=$1',[f.tenantA])).rows[0].n).toBe(2);
+  expect((await db.query("SELECT count(*)::int n FROM audit_logs WHERE tenant_id=$1 AND action='partner_payment.external_recorded' AND entity_type='external_partner_payment'",[f.tenantA])).rows[0].n).toBe(2);
+  await expect(posting.rehearse({...req,auth:{...req.auth,tenantId:f.tenantB}},connection,tx)).rejects.toThrow('Provider account');
+  // Inject an observation persistence failure after a valid financial write: the complete transaction must roll back.
+  const g=await seedP13Fixture(db,process.env.AUTH_JWT_SECRET!);const gActor=JSON.parse(Buffer.from(g.internalToken.split('.')[1],'base64url').toString()).sub;
+  const gc=(await db.query("INSERT INTO passport_connections(tenant_id,customer_reference,account_reference,created_by) VALUES($1,$2,'ACCOUNT',$3) RETURNING id",[g.tenantA,customer+'-rollback',gActor])).rows[0].id;
+  await db.query("INSERT INTO passport_payable_mappings(tenant_id,connection_id,transaction_reference,payee_reference,contractor_payable_id,amount,currency,evidence_reference,approved_by) VALUES($1,$2,'PARTIAL-1','PARTNER',$3,30,'USD','SYNTHETIC rollback',$4)",[g.tenantA,gc,g.payableId,gActor]);
+  const failing={connect:async()=>{const client=await pool.connect();return {query:(sql:string,args:unknown[])=>{if(sql.startsWith('INSERT INTO passport_recorded_payments'))throw Error('Synthetic crash before acknowledgment');return client.query(sql,args);},release:()=>client.release()};}};
+  const input={...tx,customerId:customer+'-rollback'},gReq={auth:{tenantId:g.tenantA,userId:gActor}};
+  await expect(new PreparedPaymentPosting(failing).rehearse(gReq,gc,input)).rejects.toThrow('Synthetic crash');
+  expect((await db.query('SELECT count(*)::int n FROM external_partner_payments WHERE tenant_id=$1',[g.tenantA])).rows[0].n).toBe(0);
+  expect((await posting.rehearse(gReq,gc,input)).outcome).toBe('recorded');
+  await db.query("UPDATE contractor_payables SET hold_status='hold' WHERE id=$1",[g.payableId]);
+  await db.query("INSERT INTO passport_payable_mappings(tenant_id,connection_id,transaction_reference,payee_reference,contractor_payable_id,amount,currency,evidence_reference,approved_by) VALUES($1,$2,'HELD','PARTNER',$3,1,'USD','SYNTHETIC held',$4)",[g.tenantA,gc,g.payableId,gActor]);
+  expect((await posting.rehearse(gReq,gc,{...input,transactionId:'HELD',amount:'1.00'})).reason).toBe('financial_controls_require_review');
+ }finally{await db.end();await pool.end();}
+});

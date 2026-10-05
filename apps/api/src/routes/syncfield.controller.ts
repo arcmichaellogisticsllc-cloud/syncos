@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import {validateFormAnswers} from '@syncos/shared/form-schema';
 import {MaterialInventoryController} from './material-inventory.controller';
 import {ResumableEvidence,UPLOAD_MAX_BYTES,withEvidenceFinalization} from './resumable-evidence';
@@ -225,7 +226,7 @@ export class SyncfieldController {
   async setupAssignments(@Req() request: AuthenticatedRequest) {
     return this.withClient(async client => {
       const scope = await this.organizationScope.resolveForPermission(client,request.auth.tenantId,request.auth.userId,"syncfield_map.create");
-      const result = await client.query(`SELECT v.id,v.organization_id,v.work_order_number,v.assigned_crew_id AS crew_id,v.execution_model,
+      const result = await activityPage(client,`SELECT v.id AS __history_id,v.created_at::text AS __history_time,v.id,v.organization_id,v.work_order_number,v.assigned_crew_id AS crew_id,v.execution_model,
         c.name AS crew_name,o.name AS organization_name,m.worker_id AS foreman_worker_id,
         a.map_version_id,a.map_document_id
         FROM partner_work_order_versions v JOIN crews c ON c.tenant_id=v.tenant_id AND c.id=v.assigned_crew_id
@@ -233,7 +234,7 @@ export class SyncfieldController {
         LEFT JOIN partner_crew_memberships m ON m.tenant_id=c.tenant_id AND m.crew_id=c.id AND m.membership_role='foreman' AND m.status='active' AND m.deleted_at IS NULL
         LEFT JOIN syncfield_map_assignments a ON a.tenant_id=v.tenant_id AND a.work_order_version_id=v.id AND a.current=true AND a.assignment_status='active' AND a.deleted_at IS NULL
         WHERE v.tenant_id=$1 AND v.status='active' AND v.deleted_at IS NULL AND ($2::uuid[] IS NULL OR v.organization_id=ANY($2::uuid[]))
-        ORDER BY v.created_at DESC LIMIT 250`,[request.auth.tenantId,scope.kind==='tenant'?null:scope.organizationIds]);
+        ORDER BY v.created_at DESC LIMIT 250`,[request.auth.tenantId,scope.kind==='tenant'?null:scope.organizationIds],request.query);
       return result.rows;
     });
   }
@@ -471,6 +472,71 @@ export class SyncfieldController {
           production_start:{authorization_status:ready?"authorized":"held",work_area:assignment.primary_work_area}},
         boundary:{internal_management_clearance:true,partner_agreement_required:false}};
     });
+  }
+
+
+  @Get("partner/field-overview")
+  @RequirePermission("partner_daily_production.read_org")
+  async companyFieldOverview(@Req() request:AuthenticatedRequest,@Query() query:Record<string,string|undefined>){return this.withClient(async c=>{
+    const context=await this.requirePartnerAdmin(c,request,query.organization_id),t=context.tenant_id,o=context.organization.id;
+    for(const key of ['assignment_id','before','records_before','movements_before','discrepancies_before'])if(query[key]&&!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(query[key]!))throw new BadRequestException('Invalid history reference.');
+    if(query.q!==undefined&&(typeof query.q!=='string'||query.q.length>200))throw new BadRequestException('Search must be at most 200 characters.');
+    const search='%'+(query.q??'').replace(/[\\%_]/g,'\\$&')+'%';
+    const assignments=(await c.query(`SELECT a.id,a.crew_id,a.work_order_id,a.assignment_status,a.current,c.name AS crew_name,p.name AS project_name,w.work_order_number
+      FROM syncfield_map_assignments a JOIN crews c ON c.tenant_id=a.tenant_id AND c.id=a.crew_id JOIN projects p ON p.tenant_id=a.tenant_id AND p.id=a.project_id JOIN partner_work_order_versions w ON w.tenant_id=a.tenant_id AND w.id=a.work_order_version_id
+      WHERE a.tenant_id=$1 AND a.organization_id=$2 AND a.deleted_at IS NULL AND concat_ws(' ',c.name,p.name,w.work_order_number) ILIKE $3 AND ($4::uuid IS NULL OR a.id<$4) ORDER BY a.id DESC LIMIT 101`,[t,o,search,query.before??null])).rows;
+    const result:any={organization:context.organization,assignments:assignments.slice(0,100),next:assignments.length>100?assignments[99].id:null};
+    if(!query.assignment_id)return result;
+    const a=(await c.query('SELECT id,crew_id,work_order_id,current,assignment_status FROM syncfield_map_assignments WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 AND deleted_at IS NULL',[t,o,query.assignment_id])).rows[0];if(!a)throw new NotFoundException('Assignment unavailable.');
+    result.assignment=a;
+    result.forms=(await c.query(`SELECT v.id,v.version,v.schema,f.active,(SELECT count(*)::int FROM supplemental_form_records r WHERE r.tenant_id=f.tenant_id AND r.assignment_id=f.assignment_id AND r.version_id=f.version_id) AS submission_count FROM supplemental_form_assignments f JOIN supplemental_form_versions v ON v.tenant_id=f.tenant_id AND v.id=f.version_id WHERE f.tenant_id=$1 AND f.assignment_id=$2 ORDER BY v.created_at DESC,v.id DESC`,[t,a.id])).rows;
+    const records=(await c.query(`SELECT id,version_id,schema_snapshot,answers,created_at FROM supplemental_form_records WHERE tenant_id=$1 AND assignment_id=$2 AND ($3::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM supplemental_form_records WHERE tenant_id=$1 AND assignment_id=$2 AND id=$3)) ORDER BY created_at DESC,id DESC LIMIT 101`,[t,a.id,query.records_before??null])).rows;
+    result.records=records.slice(0,100);result.records_next=records.length>100?records[99].id:null;
+    result.balances=(await c.query(`SELECT l.id AS location_id,l.label AS location_label,m.lot_id,t.label,t.serial_number,t.unit,sum(CASE WHEN m.to_location_id=l.id THEN m.quantity ELSE 0 END)-sum(CASE WHEN m.from_location_id=l.id THEN m.quantity ELSE 0 END) AS balance FROM material_locations l JOIN material_movements m ON m.tenant_id=l.tenant_id AND (m.from_location_id=l.id OR m.to_location_id=l.id) JOIN material_lots t ON t.tenant_id=m.tenant_id AND t.id=m.lot_id WHERE l.tenant_id=$1 AND l.crew_id=$2 GROUP BY l.id,m.lot_id,t.id ORDER BY t.label,l.label`,[t,a.crew_id])).rows;
+    const movements=(await c.query(`SELECT m.id,m.kind,m.quantity,m.reference,m.reason,m.created_at,m.work_order_id,t.label,t.unit FROM material_movements m JOIN material_lots t ON t.tenant_id=m.tenant_id AND t.id=m.lot_id WHERE m.tenant_id=$1 AND EXISTS(SELECT 1 FROM material_locations l WHERE l.tenant_id=m.tenant_id AND l.crew_id=$2 AND l.id IN(m.from_location_id,m.to_location_id)) AND ($3::uuid IS NULL OR (m.created_at,m.id)<(SELECT p.created_at,p.id FROM material_movements p WHERE p.tenant_id=$1 AND p.id=$3 AND EXISTS(SELECT 1 FROM material_locations l WHERE l.tenant_id=p.tenant_id AND l.crew_id=$2 AND l.id IN(p.from_location_id,p.to_location_id)))) ORDER BY m.created_at DESC,m.id DESC LIMIT 101`,[t,a.crew_id,query.movements_before??null])).rows;
+    const discrepancies=(await c.query(`SELECT id,lot_id,location_id,reported_count,recorded_balance,reference,description,status,resolution_note,adjustment_id,created_at FROM material_discrepancies WHERE tenant_id=$1 AND organization_id=$2 AND assignment_id=$3 AND ($4::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM material_discrepancies WHERE tenant_id=$1 AND organization_id=$2 AND assignment_id=$3 AND id=$4)) ORDER BY created_at DESC,id DESC LIMIT 101`,[t,o,a.id,query.discrepancies_before??null])).rows;
+    result.discrepancies=discrepancies.slice(0,100);result.discrepancies_next=discrepancies.length>100?discrepancies[99].id:null;
+    result.movements=movements.slice(0,100);result.movements_next=movements.length>100?movements[99].id:null;return result;
+  });}
+
+  @Post("partner/material-discrepancies")
+  @RequirePermission("partner_inventory.report")
+  async reportCompanyDiscrepancy(@Req() request:AuthenticatedRequest,@Body() b:Record<string,unknown>){
+    for(const k of ['assignment_id','lot_id','location_id','request_key'])if(typeof b[k]!=='string'||!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(String(b[k])))throw new BadRequestException('Select valid assignment, material and custody.');
+    const count=String(b.reported_count??''),reference=String(b.reference??'').trim(),description=String(b.description??'').trim();
+    if(!/^\d{1,12}(\.\d{1,4})?$/.test(count)||reference.length<3||reference.length>1000||description.length<3||description.length>2000)throw new BadRequestException('Provide a nonnegative count, count-sheet reference and discrepancy description.');
+    return this.withClient(c=>this.writeWithClient(c,request,'inventory.discrepancy_reported','inventory.discrepancy_reported','material_inventory',async tx=>{
+      const context=await this.requirePartnerAdmin(tx,request,this.optionalString(b.organization_id)??undefined),t=context.tenant_id;
+      const a=(await tx.query("SELECT * FROM syncfield_map_assignments WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 AND deleted_at IS NULL FOR SHARE",[t,context.organization.id,b.assignment_id])).rows[0];
+      if(!a)throw new ForbiddenException('Assignment unavailable to your company.');
+      if(!(await tx.query('SELECT id FROM material_locations WHERE tenant_id=$1 AND id=$2 AND crew_id=$3',[t,b.location_id,a.crew_id])).rowCount)throw new ForbiddenException('Custody unavailable to your company.');
+      const lot=(await tx.query('SELECT unit FROM material_lots WHERE tenant_id=$1 AND id=$2',[t,b.lot_id])).rows[0];if(!lot||(lot.unit==='each'&&!Number.isInteger(Number(count))))throw new BadRequestException('Choose valid material and its count unit.');
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[t+':discrepancy:'+b.request_key]);
+      const old=(await tx.query('SELECT * FROM material_discrepancies WHERE tenant_id=$1 AND request_key=$2',[t,b.request_key])).rows[0];
+      if(old){if(old.reported_by!==request.auth.userId||old.assignment_id!==b.assignment_id||old.lot_id!==b.lot_id||old.location_id!==b.location_id||Number(old.reported_count)!==Number(count)||old.reference!==reference||old.description!==description)throw new BadRequestException('This request already reported different details.');return {entityType:'material_discrepancy',entityId:old.id,afterState:old,skipEventAudit:true};}
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[t+':inventory-lot:'+b.lot_id]);
+      const balance=(await tx.query('SELECT count(*)::int n,coalesce(sum(CASE WHEN to_location_id=$3 THEN quantity ELSE 0 END)-sum(CASE WHEN from_location_id=$3 THEN quantity ELSE 0 END),0)::text balance FROM material_movements WHERE tenant_id=$1 AND lot_id=$2 AND $3 IN(from_location_id,to_location_id)',[t,b.lot_id,b.location_id])).rows[0];
+      if(!balance.n)throw new ForbiddenException('This material has no custody history for the selected crew.');
+      const row=(await tx.query('INSERT INTO material_discrepancies(tenant_id,organization_id,assignment_id,lot_id,location_id,reported_count,recorded_balance,reference,description,request_key,reported_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',[t,context.organization.id,a.id,b.lot_id,b.location_id,count,balance.balance,reference,description,b.request_key,request.auth.userId])).rows[0];
+      return {entityType:'material_discrepancy',entityId:row.id,afterState:row};
+    }));
+  }
+
+  @Post("partner/delegate-form")
+  @RequirePermission("partner_form.delegate")
+  async delegateCompanyForm(@Req() request:AuthenticatedRequest,@Body() b:Record<string,unknown>){
+    const ids=[b.source_assignment_id,b.assignment_id,b.version_id];if(!ids.every(v=>typeof v==='string'&&/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(v)))throw new BadRequestException('Select a source, destination and published form.');
+    return this.withClient(c=>this.writeWithClient(c,request,'form.company_delegated','form.company_delegated','supplemental_form',async tx=>{
+      const context=await this.requirePartnerAdmin(tx,request,this.optionalString(b.organization_id)??undefined);
+      const allowed=(await tx.query(`SELECT a.id FROM syncfield_map_assignments a WHERE a.tenant_id=$1 AND a.organization_id=$2 AND a.id=ANY($3::uuid[]) AND a.current AND a.assignment_status='active' AND a.deleted_at IS NULL FOR SHARE`,[context.tenant_id,context.organization.id,[b.source_assignment_id,b.assignment_id]])).rows;
+      if(!ids.slice(0,2).every(id=>allowed.some(a=>a.id===id)))throw new ForbiddenException('Both assignments must be active within your company.');
+      const v=(await tx.query(`SELECT f.version_id FROM supplemental_form_assignments f JOIN supplemental_form_versions v ON v.tenant_id=f.tenant_id AND v.id=f.version_id WHERE f.tenant_id=$1 AND f.assignment_id=$2 AND f.version_id=$3 AND f.active AND v.status='published' FOR SHARE OF f,v`,[context.tenant_id,b.source_assignment_id,b.version_id])).rows[0];if(!v)throw new ForbiddenException('This published form has not been assigned to your company.');
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[context.tenant_id+':form-delegate:'+b.assignment_id+':'+b.version_id]);
+      const prior=(await tx.query('SELECT * FROM supplemental_form_assignments WHERE tenant_id=$1 AND assignment_id=$2 AND version_id=$3',[context.tenant_id,b.assignment_id,b.version_id])).rows[0];
+      if(prior?.active)return {entityType:'supplemental_form_assignment',entityId:String(b.assignment_id),afterState:prior,skipEventAudit:true};
+      if(prior&&!prior.active)throw new ForbiddenException('This assignment was disabled by an authorized operator; company delegation cannot reactivate it.');
+      const row=(await tx.query(`INSERT INTO supplemental_form_assignments(tenant_id,version_id,assignment_id,assigned_by,active) VALUES($1,$2,$3,$4,true) ON CONFLICT(tenant_id,version_id,assignment_id) DO UPDATE SET active=true,assigned_by=EXCLUDED.assigned_by RETURNING *`,[context.tenant_id,b.version_id,b.assignment_id,request.auth.userId])).rows[0];return {entityType:'supplemental_form_assignment',entityId:String(b.assignment_id),beforeState:prior,afterState:row};
+    }));
   }
 
   @Get("foreman/supplemental-forms")
@@ -832,20 +898,21 @@ export class SyncfieldController {
   async partnerJsas(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerAdmin(client, request, query.organization_id);
-      const result = await client.query(
+      const result = await activityPage(client,
         `
-        SELECT j.*, c.name AS crew_name, w.first_name, w.last_name, wov.work_order_number
+        SELECT j.id AS __history_id, j.created_at::text AS __history_time, j.*, c.name AS crew_name, w.first_name, w.last_name, wov.work_order_number
         FROM daily_jsas j
         JOIN crews c ON c.tenant_id = j.tenant_id AND c.id = j.crew_id
         JOIN workers w ON w.tenant_id = j.tenant_id AND w.id = j.foreman_worker_id
         JOIN partner_work_order_versions wov ON wov.tenant_id = j.tenant_id AND wov.id = j.work_order_version_id
         WHERE j.tenant_id = $1 AND j.organization_id = $2 AND j.deleted_at IS NULL
         ORDER BY j.work_date DESC, j.created_at DESC
-        LIMIT 50
+        LIMIT 100
         `,
         [context.tenant_id, context.organization.id],
+        request.query,
       );
-      return result.rows.map((row) => this.safeJsa(row));
+      return result.rows.map((row) => ({...this.safeJsa(row),_history_cursor:row._history_cursor}));
     });
   }
 
@@ -1049,19 +1116,20 @@ export class SyncfieldController {
   async partnerProductionReports(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerAdmin(client, request, query.organization_id);
-      const result = await client.query(
+      const result = await activityPage(client,
         `
-        SELECT r.*, c.name AS crew_name, wov.work_order_number
+        SELECT r.id AS __history_id, r.created_at::text AS __history_time, r.*, c.name AS crew_name, wov.work_order_number
         FROM daily_production_reports r
         JOIN crews c ON c.tenant_id = r.tenant_id AND c.id = r.crew_id
         JOIN partner_work_order_versions wov ON wov.tenant_id = r.tenant_id AND wov.id = r.work_order_version_id
         WHERE r.tenant_id = $1 AND r.organization_id = $2 AND r.deleted_at IS NULL
         ORDER BY r.work_date DESC, r.created_at DESC
-        LIMIT 50
+        LIMIT 100
         `,
         [context.tenant_id, context.organization.id],
+        request.query,
       );
-      return result.rows.map((row) => this.safeDailyProductionSummary(row));
+      return result.rows.map((row) => ({...this.safeDailyProductionSummary(row),_history_cursor:row._history_cursor}));
     });
   }
 
@@ -1095,10 +1163,25 @@ export class SyncfieldController {
       const assignment = await this.requireForemanOperationalAssignment(client, context, this.optionalString(body.assignment_id));
       const date = this.workDate(workDate ?? String(body.work_date ?? ""));
       return this.writeWithClient(client, request, "daily_report.create", "daily_report.created", "daily_report", async (writeClient) => {
-        const existing = await this.findDailyReport(writeClient, assignment, date);
-        if (existing) return { entityType: "daily_report", entityId: existing.id, afterState: await this.safeDailyProductionDetail(writeClient, existing) };
-        const gate = await this.assertProductionGate(writeClient, assignment, date);
         const mutationId = this.optionalString(body.client_mutation_id);
+        if(body.offline_capture===true){
+          if(!mutationId||!/^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(mutationId)||typeof body.prepared_map_version_id!=='string')throw new BadRequestException('Prepared offline report identity and map version are required.');
+          await writeClient.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[assignment.tenant_id+':offline-report:'+request.auth.userId+':'+mutationId]);
+          const prior=await this.findMutationReceipt(writeClient,request,mutationId,'create_daily_report');
+          if(prior&&prior.payload_hash!==createHash('sha256').update(JSON.stringify(body)).digest('hex'))throw new BadRequestException('This offline request was already received with different content. Preserve the original request and reconcile the changes.');
+        }
+        await writeClient.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[assignment.tenant_id+':daily-report:'+assignment.assignment_id+':'+date]);
+        if(body.prepared_map_version_id && body.prepared_map_version_id!==assignment.map_version_id)throw new BadRequestException('The assigned map changed. Keep your offline notes and review the current assignment before recording work.');
+        const existing = await this.findDailyReport(writeClient, assignment, date);
+        if (existing) {
+          if(body.offline_capture===true){
+            const prior=mutationId?await this.findMutationReceipt(writeClient,request,mutationId,'create_daily_report'):null;
+            const fingerprint=createHash('sha256').update(JSON.stringify(body)).digest('hex');
+            if(!prior||prior.entity_id!==existing.id||prior.payload_hash!==fingerprint)throw new BadRequestException('A report already exists for this assignment and date. Keep the local notes and reconcile them with the existing report; they have not been merged.');
+          }
+          return { entityType: "daily_report", entityId: existing.id, afterState: await this.safeDailyProductionDetail(writeClient, existing),skipEventAudit:true };
+        }
+        const gate = await this.assertProductionGate(writeClient, assignment, date);
         if (mutationId) {
           const receipt = await this.findMutationReceipt(writeClient, request, mutationId, "create_daily_report");
           if (receipt?.entity_id) {
@@ -1409,7 +1492,7 @@ export class SyncfieldController {
   @RequirePermission("daily_production.completeness_read")
   async internalFieldIncidents(@Req() request: AuthenticatedRequest) {
     return this.withClient(async client => {
-      const result=await client.query(`SELECT i.id,i.occurred_at,i.incident_type,i.location,i.description,i.immediate_action,c.name AS crew_name,w.work_order_number FROM syncfield_field_incidents i JOIN crews c ON c.tenant_id=i.tenant_id AND c.id=i.crew_id LEFT JOIN work_orders w ON w.tenant_id=i.tenant_id AND w.id=i.work_order_id WHERE i.tenant_id=$1 ORDER BY i.occurred_at DESC LIMIT 100`,[request.auth.tenantId]);
+      const result=await activityPage(client,`SELECT i.id AS __history_id,i.created_at::text AS __history_time,i.id,i.occurred_at,i.incident_type,i.location,i.description,i.immediate_action,c.name AS crew_name,w.work_order_number FROM syncfield_field_incidents i JOIN crews c ON c.tenant_id=i.tenant_id AND c.id=i.crew_id LEFT JOIN work_orders w ON w.tenant_id=i.tenant_id AND w.id=i.work_order_id WHERE i.tenant_id=$1 ORDER BY i.occurred_at DESC LIMIT 100`,[request.auth.tenantId],request.query);
       return result.rows;
     });
   }
@@ -1418,9 +1501,9 @@ export class SyncfieldController {
   @RequirePermission("daily_production.completeness_read")
   async customerQcCompletenessQueue(@Req() request: AuthenticatedRequest) {
     return this.withClient(async (client) => {
-      const result = await client.query(
+      const result = await activityPage(client,
         `
-        SELECT r.*, c.name AS crew_name, wov.work_order_number, p.name AS project_name, o.name AS partner_name,
+        SELECT r.id AS __history_id, r.created_at::text AS __history_time, r.*, c.name AS crew_name, wov.work_order_number, p.name AS project_name, o.name AS partner_name,
           COALESCE(wo.qc_authority_organization_id, p.qc_authority_organization_id, p.customer_organization_id) AS qc_authority_organization_id,
           qa.name AS qc_authority_name
         FROM daily_production_reports r
@@ -1432,11 +1515,12 @@ export class SyncfieldController {
         LEFT JOIN organizations qa ON qa.tenant_id = r.tenant_id AND qa.id = COALESCE(wo.qc_authority_organization_id, p.qc_authority_organization_id, p.customer_organization_id)
         WHERE r.tenant_id = $1 AND r.status = 'submitted' AND r.deleted_at IS NULL
         ORDER BY r.submitted_at DESC NULLS LAST, r.created_at DESC
-        LIMIT 50
+        LIMIT 100
         `,
         [request.auth.tenantId],
+        request.query,
       );
-      return result.rows.map((row) => this.safeCustomerQcReportSummary(row));
+      return result.rows.map((row) => ({...this.safeCustomerQcReportSummary(row),_history_cursor:row._history_cursor}));
     });
   }
 
@@ -1639,7 +1723,7 @@ export class SyncfieldController {
   async partnerCustomerQc(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerAdmin(client, request, query.organization_id);
-      return this.partnerCustomerQcPayload(client, context.tenant_id, context.organization.id);
+      return this.partnerCustomerQcPayload(client, context.tenant_id, context.organization.id,undefined,request.query);
     });
   }
 
@@ -1649,7 +1733,7 @@ export class SyncfieldController {
     return this.withClient(async (client) => {
       const context = await this.requirePartnerForeman(client, request);
       const crew = await this.requireForemanCrew(client, context);
-      return this.partnerCustomerQcPayload(client, context.tenant_id, context.organization.id, crew.id);
+      return this.partnerCustomerQcPayload(client, context.tenant_id, context.organization.id, crew.id,request.query);
     });
   }
 
@@ -2059,10 +2143,11 @@ export class SyncfieldController {
       ) coil ON true
       WHERE ${where.join(" AND ")}
       ORDER BY r.work_date DESC, r.submitted_at DESC NULLS LAST, pr.created_at ASC
-      LIMIT 500
+      LIMIT 10001
       `,
       values,
     );
+    if(result.rows.length>10000)throw new BadRequestException('This report exceeds 10,000 work items. Narrow its dates or assignment filters; no partial report was generated.');
     return result.rows;
   }
 
@@ -2147,7 +2232,7 @@ export class SyncfieldController {
       current.record_count = Number(current.record_count) + 1;
       reports.set(row.daily_report_id, current);
     }
-    return [...reports.values()].slice(0, 50);
+    return [...reports.values()];
   }
 
   private closeoutSummary(rows: QueryResultRow[], artifacts: QueryResultRow[]) {
@@ -2180,7 +2265,7 @@ export class SyncfieldController {
     add("daily_report_id = ?", query.daily_report_id);
     add("partner_organization_id = ?", scope.partnerOrganizationId ?? query.partner_organization_id);
     add("crew_id = ?", scope.crewId ?? query.crew_id);
-    const result = await client.query(`SELECT * FROM production_export_artifacts WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 50`, values);
+    const result = await client.query(`SELECT * FROM production_export_artifacts WHERE ${where.join(" AND ")} ORDER BY created_at DESC`, values);
     return Promise.all(result.rows.map(async row => this.safeProductionArtifact(row, await this.isArtifactStale(client,row))));
   }
 
@@ -2210,7 +2295,7 @@ export class SyncfieldController {
       coil_variance_ft: row.coil_variance_ft === null ? null : Number(row.coil_variance_ft),
       coil_types: row.coil_types,
     }));
-    return createHash("sha256").update(JSON.stringify({ artifactType, generationMode, query:Object.fromEntries(Object.entries(query).filter(([,value])=>value!==undefined).sort(([a],[b])=>a.localeCompare(b))), facts })).digest("hex");
+    return createHash("sha256").update(JSON.stringify({ renderingVersion: 2, artifactType, generationMode, query:Object.fromEntries(Object.entries(query).filter(([,value])=>value!==undefined).sort(([a],[b])=>a.localeCompare(b))), facts })).digest("hex");
   }
 
   private artifactContext(rows: QueryResultRow[]) {
@@ -2266,10 +2351,10 @@ export class SyncfieldController {
 
   private annotatedMapPdfLines(rows: QueryResultRow[], generationMode: string) {
     const lines = ["Sync Comm Systems", `Artifact Type: ${generationMode}`, `Project: ${rows[0].project_name}`, `Work Order: ${rows[0].work_order_number}`, `Map Revision: ${rows[0].map_revision_number ?? "not set"}`, "Legend: yellow planned design, red completed redline, check submitted or accepted, warning correction required"];
-    for (const row of rows.filter((candidate) => candidate.map_annotation_id).slice(0, 24)) {
+    for (const row of rows.filter((candidate) => candidate.map_annotation_id)) {
       lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} ${row.customer_decision ?? "pending_customer_qc"} ${this.annotationCoordinateLabel(row)} ${this.sequenceLabel(row)}`);
     }
-    for (const row of rows.filter((candidate) => candidate.span_completion_id).slice(0, 12)) {
+    for (const row of rows.filter((candidate) => candidate.span_completion_id)) {
       lines.push(`REDLINE ${row.span_from_asset_identifier ?? row.from_asset_identifier}->${row.span_to_asset_identifier ?? row.to_asset_identifier} design=${row.design_label ?? row.design_segment_id ?? "unmatched"} IN/OUT ${row.from_input_tick ?? ""}/${row.from_output_tick ?? ""} to ${row.to_input_tick ?? ""}/${row.to_output_tick ?? ""}`);
       if (row.coil_observation_count) lines.push(`COIL ${row.coil_asset_identifiers ?? ""} ${row.coil_types ?? ""} required=${row.required_coil_ft ?? ""} actual=${row.actual_coil_ft ?? ""} variance=${row.coil_variance_ft ?? ""}`);
     }
@@ -2285,7 +2370,7 @@ export class SyncfieldController {
     const coilActual = rows.reduce((sum, row) => sum + Number(row.actual_coil_ft ?? 0), 0);
     if (coilActual) lines.push(`Recorded coil/slack: ${Number(coilActual.toFixed(2))} FT; Commercial treatment: not configured`);
     lines.push("Production Detail");
-    for (const row of rows.slice(0, 30)) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"} ${this.sequenceLabel(row)} ${this.coilLabel(row)}`);
+    for (const row of rows) lines.push(`${row.code} ${row.reported_quantity} ${row.unit_of_measure} field=${row.field_status} customer=${row.customer_decision ?? "pending_customer_qc"} ${this.sequenceLabel(row)} ${this.coilLabel(row)}`);
     return lines;
   }
 
@@ -2320,17 +2405,33 @@ export class SyncfieldController {
   }
 
   private createSimplePdf(title: string, lines: string[]) {
-    const content = [`BT /F1 14 Tf 50 760 Td (${this.pdfEscape(title)}) Tj`];
-    for (const line of lines.slice(0, 42)) content.push(`0 -16 Td (${this.pdfEscape(line)}) Tj`);
-    content.push("ET");
-    const stream = content.join("\n");
+    // Monospaced text wraps within the printable width; every line gets a page.
+    const wrapped = lines.flatMap(line => String(line).split(/\r?\n/).flatMap(part => {
+      const result: string[] = [];
+      while (part.length > 85) {
+        const boundary = part.lastIndexOf(" ", 85);
+        const end = boundary > 0 ? boundary : 85;
+        result.push(part.slice(0, end));
+        part = part.slice(end).trimStart();
+      }
+      result.push(part);
+      return result;
+    }));
+    const pages: string[][] = [];
+    for (let start = 0; start < Math.max(1, wrapped.length); start += 42) pages.push(wrapped.slice(start, start + 42));
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
-      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-      `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`,
+      `<< /Type /Pages /Kids [${pages.map((_, i) => `${4 + i * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>",
     ];
+    pages.forEach((page, index) => {
+      const content = [`BT /F1 12 Tf 50 760 Td (${this.pdfEscape(title)}) Tj /F1 10 Tf`];
+      for (const line of page) content.push(`0 -16 Td (${this.pdfEscape(line)}) Tj`);
+      content.push(`ET BT /F1 9 Tf 50 42 Td (Page ${index + 1} of ${pages.length}) Tj ET`);
+      const stream = content.join("\n");
+      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + index * 2} 0 R >>`);
+      objects.push(`<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`);
+    });
     let pdf = "%PDF-1.4\n";
     const offsets: number[] = [0];
     for (let index = 0; index < objects.length; index += 1) {
@@ -2345,7 +2446,7 @@ export class SyncfieldController {
   }
 
   private pdfEscape(value: unknown) {
-    return String(value ?? "").replace(/[\\()]/g, "\\$&").slice(0, 180);
+    return String(value ?? "").replace(/[\\()]/g, "\\$&");
   }
 
   private async createGeneratedProductionFile(client: PoolClient, request: AuthenticatedRequest, artifact: QueryResultRow, bytes: Buffer, fileName: string, mimeType: string) {
@@ -2599,12 +2700,12 @@ export class SyncfieldController {
     return "production.customer_rejected";
   }
 
-  private async partnerCustomerQcPayload(client: PoolClient, tenantId: string, organizationId: string, crewId?: string) {
+  private async partnerCustomerQcPayload(client: PoolClient, tenantId: string, organizationId: string, crewId?: string,query:any={}) {
     const params = crewId ? [tenantId, organizationId, crewId] : [tenantId, organizationId];
     const crewClause = crewId ? "AND r.crew_id = $3" : "";
-    const result = await client.query(
+    const result = await activityPage(client,
       `
-      SELECT r.id AS report_id, r.work_date, r.customer_qc_outcome, r.completeness_status, r.revision_number,
+      SELECT COALESCE(corr.id,d.id,cyc.id,r.id) AS __history_id,COALESCE(corr.created_at,d.created_at,cyc.created_at,r.created_at)::text AS __history_time,r.id AS report_id, r.work_date, r.customer_qc_outcome, r.completeness_status, r.revision_number,
         wov.work_order_number, c.name AS crew_name, cyc.id AS cycle_id, cyc.cycle_number, cyc.status AS cycle_status,
         qa.name AS qc_authority_name, d.id AS decision_id, d.production_record_id, d.decision,
         d.reported_quantity, d.customer_accepted_quantity, d.unit_of_measure, d.customer_reason_code,
@@ -2624,9 +2725,10 @@ export class SyncfieldController {
       ORDER BY r.work_date DESC, cyc.cycle_number DESC NULLS LAST, d.created_at DESC NULLS LAST
       LIMIT 100
       `,
-      params,
+      params,query
     );
     return result.rows.map((row) => ({
+      _history_cursor:row._history_cursor,
       report_id: row.report_id,
       work_date: this.dateOnly(row.work_date),
       work_order_number: row.work_order_number,
@@ -3793,14 +3895,14 @@ export class SyncfieldController {
       SELECT u.id AS user_id, u.display_name, tu.id AS tenant_user_id, o.id AS organization_id, o.name AS organization_name,
         cp.id AS capacity_provider_id, cp.name AS capacity_provider_name
       FROM tenant_users tu
-      JOIN users u ON u.id = tu.user_id
-      JOIN user_roles ur ON ur.tenant_user_id = tu.id
-      JOIN roles r ON r.id = ur.role_id
+      JOIN users u ON u.id = tu.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+      JOIN user_roles ur ON ur.tenant_id=tu.tenant_id AND ur.tenant_user_id = tu.id
+      JOIN roles r ON r.tenant_id=tu.tenant_id AND r.id = ur.role_id AND r.deleted_at IS NULL
       JOIN organizations o ON o.tenant_id = tu.tenant_id AND o.id = ur.scope_id
       JOIN capacity_providers cp ON cp.tenant_id = o.tenant_id AND cp.organization_id = o.id AND cp.deleted_at IS NULL
       WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active'
         AND r.system_key = $3 AND ur.scope_type = 'organization'
-        AND o.deleted_at IS NULL AND cp.provider_type = ANY($4) AND cp.status <> 'archived'
+        AND tu.deleted_at IS NULL AND o.deleted_at IS NULL AND o.status NOT IN ('inactive','suspended','archived') AND cp.provider_type = ANY($4) AND cp.status NOT IN ('suspended','archived')
       ORDER BY cp.created_at ASC
       `,
       [request.auth.tenantId, request.auth.userId, roleKey, [...partnerProviderTypes]],

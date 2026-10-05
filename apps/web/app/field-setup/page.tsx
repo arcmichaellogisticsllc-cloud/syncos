@@ -4,6 +4,7 @@ import { PermissionLink as Link } from "../access-control";
 import { useEffect, useState, type FormEvent } from "react";
 import { syncosFetch } from "../intelligence/api";
 type Assignment = {
+    _history_cursor?:string;
     id: string;
     organization_id: string;
     work_order_number: string;
@@ -16,11 +17,12 @@ type Assignment = {
 };
 export default function FieldSetup() {
     const [rows, setRows] = useState<Assignment[]>([]);
+    const [next,setNext]=useState<string|null>(null),[search,setSearch]=useState('');
     const [selected, setSelected] = useState("");
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
     const [busy, setBusy] = useState(false);
-    async function load() { setRows(await syncosFetch<Assignment[]>("syncfield/setup/assignments")); }
+    async function load(before='') { const params=new URLSearchParams({history_q:search,...(before?{before}:{})});const found=await syncosFetch<Assignment[]>('syncfield/setup/assignments?'+params);setRows(old=>before?[...old,...found.filter(v=>!old.some(r=>r.id===v.id))]:found);setNext(found.length===100?found.at(-1)?._history_cursor??null:null); }
     useEffect(() => { void load().catch(e => setError(e.message)); }, []);
     async function upload(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -65,6 +67,7 @@ export default function FieldSetup() {
     }
     return <main className="workspace-page"><h1>Field map setup</h1><Link href="/work-safety">Safety scope reviews and work authorization</Link><p>Assign customer PDFs to Sync crews and partner crews. A replacement creates a new revision and preserves the original.</p><Link href="/operations">Back to operations</Link>
  {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+ <form onSubmit={e=>{e.preventDefault();setSelected('');void load().catch(e=>setError(e.message));}}><label>Find work assignments<input value={search} maxLength={200} onChange={e=>setSearch(e.target.value)}/></label><button disabled={busy}>Search assignments</button></form>{next&&<button disabled={busy} onClick={()=>void load(next).catch(e=>setError(e.message))}>More assignments</button>}
  <Capability permission="syncfield_map.version.upload"><Capability permission="syncfield_map.assignment.manage"><section className="workspace-panel"><form onSubmit={upload}><fieldset disabled={busy}><label>Work assignment<select required value={selected} onChange={e => setSelected(e.target.value)}><option value="">Choose work and crew</option>{rows.map(r => <option key={r.id} value={r.id}>{r.organization_name} · {r.work_order_number} · {r.crew_name}</option>)}</select></label><label>Map name<input name="name" required/></label><label>Revision<input name="revision" required/></label><label>Source / customer<input name="source" required/></label><label>Customer map PDF<input name="map" type="file" accept="application/pdf" required/></label><button>{busy ? 'Assigning…' : 'Upload and assign map'}</button></fieldset></form></section></Capability></Capability>
  <section className="workspace-panel"><h2>Current maps</h2>{rows.map(r => <p key={r.id}>{r.work_order_number} · {r.crew_name} · {r.map_version_id ? 'Map assigned' : 'Needs map'}{r.map_version_id && <> · <Link href={`/syncfield/design-prep?organization_id=${r.organization_id}&map_version_id=${r.map_version_id}`}>Prepare planned spans</Link></>}</p>)}</section></main>;
 }

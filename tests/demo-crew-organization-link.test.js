@@ -5,7 +5,7 @@ const { Client } = require('pg');
 
 test('demo crew repair preserves existing ownership and unrelated records', { skip: !process.env.SYNCOS_REPAIR_TEST_DATABASE_URL }, async () => {
   const url = new URL(process.env.SYNCOS_REPAIR_TEST_DATABASE_URL);
-  assert.match(url.pathname, /(?:test|rehearsal)/, 'requires a disposable test database');
+  assert.match(url.pathname, /(?:test|rehearsal|^\/syncos_synthetic_[a-z0-9_]+$)/, 'requires a disposable test database');
   const client = new Client({ connectionString: url.toString() });
   await client.connect();
   await client.query('BEGIN');

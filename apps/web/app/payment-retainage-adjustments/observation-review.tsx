@@ -1,4 +1,5 @@
 "use client";
+import {HistoryPager} from "../history-pager";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { syncosFetch } from "../intelligence/api";
 type Observation = { id:string; provider:string; transaction_reference:string; account_reference:string; payee_reference:string; amount:string; currency:string; observed_status:string; review_status:string };
@@ -20,7 +21,7 @@ export function ObservationReview({ payments }: {payments:Payment[]}) {
     } catch(e){setError(e instanceof Error?e.message:"Could not confirm the save. Keep your entries and retry.");}
     finally{gate.current=false;setBusy(false);}
   }
-  return <section className="workspace-panel"><h2>External payment review</h2>
+  return <section className="workspace-panel"><h2>External payment review</h2><HistoryPager rows={rows} path="payment-retainage-adjustments/external-payment-observations" label="observations" onRows={setRows}/>
     <p>Record non-sensitive transaction references for review. This does not connect to Priority or change payable balances. Repeated identical observations are kept once; conflicting observations remain visible.</p>
     {error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
     <details><summary>Add an observed transaction</summary><form onSubmit={e=>submit(e,'external-payment-observations')}><fieldset disabled={busy}><legend>Transaction evidence</legend>

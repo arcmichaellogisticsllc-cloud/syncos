@@ -1028,7 +1028,7 @@ function plainError(message: string) {
   if (message.includes("Unauthorized") || message.includes("Forbidden")) return "You do not have permission to perform this action.";
   if (message.includes("not found")) return "Production record not found or you do not have access.";
   if (message.includes("production eligible")) return "Work Order is not production eligible.";
-  if (message.includes("ready_for_work") || message.includes("active")) return "Project must be ready for work or active.";
+  if (message.includes("Project must be ready_for_work or active")) return "Project must be ready for work or active.";
   if (message.includes("performer")) return "Performer context is required.";
   if (message.includes("evidence")) return "Evidence is required or an override reason is needed.";
   if (message.includes("approved_quantity")) return "Approved quantity cannot exceed claimed quantity without override.";

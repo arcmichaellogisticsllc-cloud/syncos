@@ -1,0 +1,37 @@
+TAP version 13
+# {"scenario":"synthetic core history","records":12006,"pages":121,"elapsedMs":857}
+# Subtest: core history pages realistic volumes without gaps, respects literal search and tenant permissions
+ok 1 - core history pages realistic volumes without gaps, respects literal search and tenant permissions
+  ---
+  duration_ms: 1632.924713
+  type: 'test'
+  ...
+# Subtest: concurrent upload streams preserve originals and retry bounded finalization
+not ok 2 - concurrent upload streams preserve originals and retry bounded finalization
+  ---
+  duration_ms: 739.545026
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/resumable-upload-load.test.js:5:1'
+  failureType: 'testCodeFailure'
+  error: 'Finish pending uploads before starting more. Device originals are preserved.'
+  code: 'ERR_TEST_FAILURE'
+  name: 'BadRequestException'
+  stack: |-
+    /Users/User/.codex/worktrees/syncos-financial-completion/syncos/apps/api/dist/routes/resumable-evidence.js:31:23
+    process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    async ResumableEvidence.transaction (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/apps/api/dist/routes/resumable-evidence.js:68:24)
+    async /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/resumable-upload-load.test.js:9:206
+    async Promise.all (index 10)
+    async TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/resumable-upload-load.test.js:9:16)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1886.044803

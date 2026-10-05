@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: external evidence checklist cannot turn missing or altered proof into operational certification
+ok 1 - external evidence checklist cannot turn missing or altered proof into operational certification
+  ---
+  duration_ms: 37.413363
+  type: 'test'
+  ...
+# Subtest: production PDF and report selectors retain every detail beyond legacy cutoffs
+ok 2 - production PDF and report selectors retain every detail beyond legacy cutoffs
+  ---
+  duration_ms: 9.083311
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 544.712823

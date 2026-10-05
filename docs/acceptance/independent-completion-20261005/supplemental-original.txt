@@ -1,0 +1,238 @@
+
+Running 146 tests using 1 worker
+
+(node:97933) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    1 [chromium] › tests/e2e/account-onboarding-visibility.spec.ts:6:5 › saved profiles do not hide newly identified accounts (879ms)
+  ✓    2 [chromium] › tests/e2e/auth.spec.ts:8:7 › E2E auth storage state foundation › system admin storage state is generated and can open the app shell (677ms)
+  ✓    3 [chromium] › tests/e2e/bank-match-permission.spec.ts:12:7 › bank match tabs honor read-only access and lifecycle (909ms)
+  ✓    4 [chromium] › tests/e2e/bank-match-permission.spec.ts:12:7 › bank match tabs honor authorized access and lifecycle (1.1s)
+  ✓    5 [chromium] › tests/e2e/bank-match-permission.spec.ts:12:7 › bank match tabs honor archived access and lifecycle (827ms)
+  ✓    6 [chromium] › tests/e2e/boundary-assertions.spec.ts:16:7 › Boundary assertion foundation › Payment Execution route inspection does not create bank transactions (668ms)
+  ✓    7 [chromium] › tests/e2e/boundary-assertions.spec.ts:22:7 › Boundary assertion foundation › Bank Reconciliation route inspection does not create accounting exports (743ms)
+  ✓    8 [chromium] › tests/e2e/boundary-assertions.spec.ts:28:7 › Boundary assertion foundation › Accounting Export route inspection does not mutate source financial records (782ms)
+  ✓    9 [chromium] › tests/e2e/coil-policy-organization-choice.spec.ts:11:5 › policy counterparty uses organization names and preserves the nullable default (1.3s)
+  ✓   10 [chromium] › tests/e2e/coil-policy-organization-choice.spec.ts:35:5 › policy writers without organization read never load or display organization choices (1.0s)
+  ✓   11 [chromium] › tests/e2e/coil-policy-organization-choice.spec.ts:45:5 › separate production item uses named choices and a failed save preserves the policy draft (1.7s)
+  ✓   12 [chromium] › tests/e2e/dashboard-access.spec.ts:7:5 › a resource reader cannot open a dashboard or request its metrics (1.2s)
+  ✓   13 [chromium] › tests/e2e/dashboard-access.spec.ts:17:5 › dashboard requests use the signed-in identity and preserve successful metrics (2.1s)
+  ✓   14 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › / reports failed data instead of a zero dashboard (11.0s)
+  ✓   15 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /executive reports failed data instead of a zero dashboard (4.6s)
+  ✓   16 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /operations reports failed data instead of a zero dashboard (1.8s)
+  ✓   17 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /finance reports failed data instead of a zero dashboard (1.4s)
+  ✓   18 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /growth reports failed data instead of a zero dashboard (1.3s)
+  ✓   19 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /constraints-center reports failed data instead of a zero dashboard (1.1s)
+  ✓   20 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /recommendations-center reports failed data instead of a zero dashboard (982ms)
+  ✓   21 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /kpis-center reports failed data instead of a zero dashboard (946ms)
+  ✓   22 [chromium] › tests/e2e/dashboard-access.spec.ts:31:7 › /workflows-center reports failed data instead of a zero dashboard (925ms)
+  ✓   23 [chromium] › tests/e2e/dashboard-access.spec.ts:41:5 › unauthenticated requests never receive server-rendered dashboard metrics (607ms)
+  ✓   24 [chromium] › tests/e2e/dashboard-access.spec.ts:53:5 › login falls back to the permitted queue when the suggested dashboard is not authorized (1.3s)
+  ✓   25 [chromium] › tests/e2e/internal-workforce.spec.ts:10:5 › Sync management provisions a real internal crew through field production with strict readiness and access boundaries (6.7s)
+  ✓   26 [chromium] › tests/e2e/login-accessibility.spec.ts:5:5 › login submits with Enter and announces a failed attempt (707ms)
+  ✓   27 [chromium] › tests/e2e/login-accessibility.spec.ts:22:5 › login validates required fields before sending credentials (588ms)
+  ✓   28 [chromium] › tests/e2e/operator-phase10.spec.ts:26:7 › Operator UI Phase 10 mobile, accessibility, and UAT readiness › mobile shell renders without accidental horizontal overflow (804ms)
+  ✓   29 [chromium] › tests/e2e/operator-phase10.spec.ts:40:7 › Operator UI Phase 10 mobile, accessibility, and UAT readiness › tablet workbenches keep titles, queues, and controls visible (2.1s)
+  ✓   30 [chromium] › tests/e2e/operator-phase10.spec.ts:62:7 › Operator UI Phase 10 mobile, accessibility, and UAT readiness › mobile Create Signal modal keeps title and actions in viewport (969ms)
+  ✓   31 [chromium] › tests/e2e/operator-phase10.spec.ts:83:7 › Operator UI Phase 10 mobile, accessibility, and UAT readiness › keyboard focus reaches navigation, queue controls, and modal controls (879ms)
+  ✓   32 [chromium] › tests/e2e/operator-phase10.spec.ts:103:7 › Operator UI Phase 10 mobile, accessibility, and UAT readiness › representative accessibility semantics are present (997ms)
+  ✓   33 [chromium] › tests/e2e/operator-phase10.spec.ts:119:7 › Operator UI Phase 10 mobile, accessibility, and UAT readiness › read-only detail still explains view-only state on tablet (962ms)
+  ✓   34 [chromium] › tests/e2e/operator-phase11.spec.ts:13:7 › Operator UI Phase 11 account onboarding workbench › renders the account onboarding pipeline and boundary copy (1.0s)
+  ✓   35 [chromium] › tests/e2e/operator-phase11.spec.ts:31:7 › Operator UI Phase 11 account onboarding workbench › stage tabs and account lanes are interactive (1.3s)
+  ✓   36 [chromium] › tests/e2e/operator-phase11.spec.ts:51:7 › Operator UI Phase 11 account onboarding workbench › shows contract-backed prime onboarding fields instead of hardcoded UI data (1.6s)
+  ✓   37 [chromium] › tests/e2e/operator-phase3.spec.ts:6:7 › Operator UI Phase 3 command surfaces › Command Center renders daily priorities instead of redirect-only shell (1.6s)
+  ✓   38 [chromium] › tests/e2e/operator-phase3.spec.ts:24:7 › Operator UI Phase 3 command surfaces › Executive Command Center leads with decisions and risk queues (1.7s)
+  ✓   39 [chromium] › tests/e2e/operator-phase3.spec.ts:41:7 › Operator UI Phase 3 command surfaces › Operations Board renders workflow-first execution lanes (2.2s)
+  ✓   40 [chromium] › tests/e2e/operator-phase3.spec.ts:60:7 › Operator UI Phase 3 command surfaces › operations users retain execution oversight without QC mutation authority (3.6s)
+  ✓   41 [chromium] › tests/e2e/operator-phase4.spec.ts:6:7 › Operator UI Phase 4 execution queues › Work Orders page renders operator queue (2.2s)
+  ✓   42 [chromium] › tests/e2e/operator-phase4.spec.ts:24:7 › Operator UI Phase 4 execution queues › Production Board renders operator queue (2.4s)
+  ✓   43 [chromium] › tests/e2e/operator-phase4.spec.ts:41:7 › Operator UI Phase 4 execution queues › field supervisor retains production creation without approval or financial authority (4.3s)
+  ✓   44 [chromium] › tests/e2e/operator-phase4.spec.ts:54:7 › Operator UI Phase 4 execution queues › QC Review Queue renders operator queue (2.1s)
+  ✓   45 [chromium] › tests/e2e/operator-phase4.spec.ts:70:7 › Operator UI Phase 4 execution queues › developer session UI is hidden by default on execution pages (2.0s)
+  ✓   46 [chromium] › tests/e2e/operator-phase4.spec.ts:84:7 › Operator UI Phase 4 execution queues › read-only auditor can view execution queue without mutation controls (1.6s)
+  ✓   47 [chromium] › tests/e2e/operator-phase4.spec.ts:97:7 › Operator UI Phase 4 execution queues › queue tabs can be selected on execution pages (2.4s)
+  ✓   48 [chromium] › tests/e2e/operator-phase5.spec.ts:6:7 › Operator UI Phase 5 finance workbenches › Billable Workbench renders operator queue (1.0s)
+  ✓   49 [chromium] › tests/e2e/operator-phase5.spec.ts:23:7 › Operator UI Phase 5 finance workbenches › Settlement Workbench renders operator queue (975ms)
+  ✓   50 [chromium] › tests/e2e/operator-phase5.spec.ts:39:7 › Operator UI Phase 5 finance workbenches › Invoice Workbench renders operator queue (929ms)
+  ✓   51 [chromium] › tests/e2e/operator-phase5.spec.ts:55:7 › Operator UI Phase 5 finance workbenches › developer session UI is hidden by default on finance workbenches (1.2s)
+  ✓   52 [chromium] › tests/e2e/operator-phase5.spec.ts:69:7 › Operator UI Phase 5 finance workbenches › financial boundary copy appears on finance workbenches (1.1s)
+  ✓   53 [chromium] › tests/e2e/operator-phase5.spec.ts:86:7 › Operator UI Phase 5 finance workbenches › queue tabs can be selected on finance workbenches (1.7s)
+  ✓   54 [chromium] › tests/e2e/operator-phase5.spec.ts:109:7 › Operator UI Phase 5 finance workbenches › read-only auditor can view finance workbench without mutation controls (986ms)
+  ✓   55 [chromium] › tests/e2e/operator-phase6.spec.ts:6:7 › Operator UI Phase 6 cash and collections workbenches › Cash Application Workbench renders operator queue (921ms)
+  ✓   56 [chromium] › tests/e2e/operator-phase6.spec.ts:23:7 › Operator UI Phase 6 cash and collections workbenches › Collections Workbench renders operator queue (890ms)
+  ✓   57 [chromium] › tests/e2e/operator-phase6.spec.ts:40:7 › Operator UI Phase 6 cash and collections workbenches › developer session UI is hidden by default on cash and collections pages (2.3s)
+  ✓   58 [chromium] › tests/e2e/operator-phase6.spec.ts:66:7 › Operator UI Phase 6 cash and collections workbenches › cash boundary copy appears (1.1s)
+  ✓   59 [chromium] › tests/e2e/operator-phase6.spec.ts:77:7 › Operator UI Phase 6 cash and collections workbenches › collections boundary copy appears (1.2s)
+  ✓   60 [chromium] › tests/e2e/operator-phase6.spec.ts:88:7 › Operator UI Phase 6 cash and collections workbenches › queue tabs can be selected on cash and collections workbenches (4.3s)
+  ✓   61 [chromium] › tests/e2e/operator-phase6.spec.ts:112:7 › Operator UI Phase 6 cash and collections workbenches › read-only auditor can view cash workbench without create access (3.0s)
+  ✓   62 [chromium] › tests/e2e/operator-phase7.spec.ts:6:7 › Operator UI Phase 7 payout workbenches › Contractor Payables Workbench renders operator queue (3.1s)
+  ✓   63 [chromium] › tests/e2e/operator-phase7.spec.ts:23:7 › Operator UI Phase 7 payout workbenches › Payroll Readiness Workbench renders operator queue (3.1s)
+  ✓   64 [chromium] › tests/e2e/operator-phase7.spec.ts:40:7 › Operator UI Phase 7 payout workbenches › Payment Execution Workbench renders operator queue (2.8s)
+  ✓   65 [chromium] › tests/e2e/operator-phase7.spec.ts:57:7 › Operator UI Phase 7 payout workbenches › developer session UI is hidden by default on payout pages (2.4s)
+  ✓   66 [chromium] › tests/e2e/operator-phase7.spec.ts:71:7 › Operator UI Phase 7 payout workbenches › payout boundary copy appears (1.7s)
+  ✓   67 [chromium] › tests/e2e/operator-phase7.spec.ts:88:7 › Operator UI Phase 7 payout workbenches › queue tabs can be selected on payout workbenches (1.9s)
+  ✓   68 [chromium] › tests/e2e/operator-phase7.spec.ts:111:7 › Operator UI Phase 7 payout workbenches › read-only auditor can view contractor payables without create access (1.0s)
+  ✓   69 [chromium] › tests/e2e/operator-phase8.spec.ts:6:7 › Operator UI Phase 8 finance control workbenches › Bank Reconciliation Workbench renders operator queue (977ms)
+  ✓   70 [chromium] › tests/e2e/operator-phase8.spec.ts:23:7 › Operator UI Phase 8 finance control workbenches › Accounting Export Workbench renders operator queue (945ms)
+  ✓   71 [chromium] › tests/e2e/operator-phase8.spec.ts:40:7 › Operator UI Phase 8 finance control workbenches › developer session UI is hidden by default on finance control pages (1.3s)
+  ✓   72 [chromium] › tests/e2e/operator-phase8.spec.ts:54:7 › Operator UI Phase 8 finance control workbenches › finance control boundary copy appears (964ms)
+  ✓   73 [chromium] › tests/e2e/operator-phase8.spec.ts:68:7 › Operator UI Phase 8 finance control workbenches › queue tabs can be selected on finance control workbenches (1.3s)
+  ✓   74 [chromium] › tests/e2e/operator-phase8.spec.ts:86:7 › Operator UI Phase 8 finance control workbenches › read-only auditor can view bank reconciliation without create access (856ms)
+  ✓   75 [chromium] › tests/e2e/operator-phase9.spec.ts:16:7 › Operator UI Phase 9 detail and form standards › representative operational detail shows next action and boundary copy (976ms)
+  ✓   76 [chromium] › tests/e2e/operator-phase9.spec.ts:31:7 › Operator UI Phase 9 detail and form standards › representative finance detail shows boundary and danger separation (892ms)
+  ✓   77 [chromium] › tests/e2e/operator-phase9.spec.ts:47:7 › Operator UI Phase 9 detail and form standards › read-only auditor sees record context without lifecycle guidance or mutation controls (937ms)
+  ✓   78 [chromium] › tests/e2e/operator-phase9.spec.ts:64:7 › Operator UI Phase 9 detail and form standards › representative create form has purpose header and boundary notice (773ms)
+  ✓   79 [chromium] › tests/e2e/operator-phase9.spec.ts:79:7 › Operator UI Phase 9 detail and form standards › signal detail hides developer controls and shows conversion boundary (830ms)
+  ✓   80 [chromium] › tests/e2e/operator-phase9.spec.ts:93:7 › Operator UI Phase 9 detail and form standards › accounting export detail shows handoff next-action guidance (961ms)
+  ✓   81 [chromium] › tests/e2e/operator-shell.spec.ts:8:7 › Operator shell and page templates › operator shell renders compact workspace navigation (1.2s)
+  ✓   82 [chromium] › tests/e2e/operator-shell.spec.ts:35:7 › Operator shell and page templates › workspace subnavigation follows the active workspace (1.6s)
+  ✓   83 [chromium] › tests/e2e/operator-shell.spec.ts:57:7 › Operator shell and page templates › Signal Feed uses the shared queue page pattern (1.3s)
+  ✓   84 [chromium] › tests/e2e/operator-shell.spec.ts:74:7 › Operator shell and page templates › production/default UI hides developer session controls on operator pages (2.3s)
+  ✓   85 [chromium] › tests/e2e/operator-shell.spec.ts:89:7 › Operator shell and page templates › read-only auditor can view Signal Feed without mutation actions (2.0s)
+  ✓   86 [chromium] › tests/e2e/operator-shell.spec.ts:102:7 › Operator shell and page templates › ActionButton disabled reason appears for blocked Verify action (2.9s)
+  ✓   87 [chromium] › tests/e2e/operator-shell.spec.ts:117:7 › Operator shell and page templates › queue tabs expose active state changes (2.6s)
+  ✓   88 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:6:5 › authenticated Partner Admin uploads canonical Partner Compliance evidence @reviewer-fixture-upload (41ms)
+  ✓   89 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:7:5 › authenticated reviewer downloads exact evidence-linked binary artifact @authenticated-reviewer (101ms)
+  ✓   90 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:8:5 › authenticated Partner Admin downloads own-company artifact through Partner route @authenticated-reviewer (81ms)
+  ✓   91 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:9:5 › authenticated Partner Admin is denied from internal reviewer route @authenticated-reviewer (72ms)
+  ✓   92 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:10:5 › route registration smoke (66ms)
+  ✓   93 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:11:5 › unauthenticated guard smoke (87ms)
+  ✓   94 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:12:5 › invalid organization-ID validation (30ms)
+  ✓   95 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:13:5 › invalid evidence-ID validation (28ms)
+  ✓   96 [chromium] › tests/e2e/partner-domain-scope.spec.ts:41:7 › P1 Partner domain organization scope › organization-scoped list and detail are limited to the scoped Partner Organization (138ms)
+  ✓   97 [chromium] › tests/e2e/partner-domain-scope.spec.ts:52:7 › P1 Partner domain organization scope › organization-scoped mutations revalidate scope server-side (156ms)
+  ✓   98 [chromium] › tests/e2e/partner-domain-scope.spec.ts:69:7 › P1 Partner domain organization scope › guessed capacity provider and mismatched child records are denied (108ms)
+  ✓   99 [chromium] › tests/e2e/partner-domain-scope.spec.ts:99:7 › P1 Partner domain organization scope › client-supplied scope inputs cannot broaden access (81ms)
+  ✓  100 [chromium] › tests/e2e/partner-domain-scope.spec.ts:119:7 › P1 Partner domain organization scope › tenant-scoped internal access still works and unauthorized internal roles stay denied (196ms)
+  ✓  101 [chromium] › tests/e2e/partner-domain-scope.spec.ts:131:7 › P1 Partner domain organization scope › cross-tenant Partner Organization access is denied (90ms)
+  ✓  102 [chromium] › tests/e2e/partner-domain-scope.spec.ts:139:7 › P1 Partner domain organization scope › classification is provider-type constrained, idempotent, and audited only for creation (192ms)
+  ✓  103 [chromium] › tests/e2e/partner-domain-scope.spec.ts:176:7 › P1 Partner domain organization scope › near-concurrent classification does not create duplicate active linkage (119ms)
+  ✓  104 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:48:7 › P2 Partner personas, permissions, and route visibility › authentication and role gates deny unauthenticated, inactive membership, and no-role users (182ms)
+  ✓  105 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:76:7 › P2 Partner personas, permissions, and route visibility › authorized internal user assigns Partner Admin and Partner Foreman only to Partner Organizations (465ms)
+  ✓  106 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:133:7 › P2 Partner personas, permissions, and route visibility › Partner context resolves safe persona, organization, actions, and route visibility (229ms)
+  ✓  107 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:155:7 › P2 Partner personas, permissions, and route visibility › Partner users cannot broaden organization scope through headers, query, body, or guessed IDs (160ms)
+  ✓  108 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:175:7 › P2 Partner personas, permissions, and route visibility › Partner users cannot access internal routes or P1 classification mutation (106ms)
+  ✓  109 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:190:7 › P2 Partner personas, permissions, and route visibility › cross-tenant Partner users and capacity-provider guesses are denied (49ms)
+  ✓  110 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:203:7 › P2 Partner personas, permissions, and route visibility › role revocation and tenant membership deactivation revoke Partner context immediately (209ms)
+  ✓  111 [chromium] › tests/e2e/partner-personas-permissions.spec.ts:228:7 › P2 Partner personas, permissions, and route visibility › multiple active Partner organization scopes are blocked instead of selectable (101ms)
+  ✓  112 [chromium] › tests/e2e/persona-visibility.spec.ts:6:7 › Persona visibility smoke › system admin can see major governed navigation areas (2.1s)
+  ✓  113 [chromium] › tests/e2e/persona-visibility.spec.ts:14:7 › Persona visibility smoke › finance user can open finance workspaces (2.4s)
+  ✓  114 [chromium] › tests/e2e/persona-visibility.spec.ts:24:7 › Persona visibility smoke › operations user can open execution workspaces (2.0s)
+  ✓  115 [chromium] › tests/e2e/persona-visibility.spec.ts:34:7 › Persona visibility smoke › read-only auditor does not receive create permissions in stored persona state (1.4s)
+  ✘  116 [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review (0ms)
+  -  117 [chromium] › tests/e2e/qc-create-capabilities.spec.ts:93:7 › QC create supported advanced capabilities › QC Manager findings request corrections without accepting or billing production
+  -  118 [chromium] › tests/e2e/qc-create-capabilities.spec.ts:130:7 › QC create supported advanced capabilities › read-only actor cannot enumerate create choices or create a review
+(node:98712) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  119 [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment (1ms)
+  -  120 [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:110:7 › Scope preservation: financial role handoffs › accepted employee source remains customer billable but cannot create partner debt
+(node:98734) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  121 [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden (659ms)
+(node:98745) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  122 [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden (553ms)
+(node:98752) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  123 [chromium] › tests/e2e/signal-feed-operator.spec.ts:8:7 › Signal Feed operator hardening › production/default mode hides developer session controls (1.9s)
+  ✓  124 [chromium] › tests/e2e/signal-feed-operator.spec.ts:24:7 › Signal Feed operator hardening › unauthenticated state uses production-safe copy (603ms)
+  ✓  125 [chromium] › tests/e2e/signal-feed-operator.spec.ts:39:7 › Signal Feed operator hardening › authenticated Signal Feed renders priorities, tabs, and collapsed filters (1.3s)
+  ✓  126 [chromium] › tests/e2e/signal-feed-operator.spec.ts:57:7 › Signal Feed operator hardening › Create Signal opens an operator modal with modal standards (1.3s)
+  ✓  127 [chromium] › tests/e2e/signal-feed-operator.spec.ts:76:7 › Signal Feed operator hardening › Categorize opens modal, submits, and refreshes (1.7s)
+  ✓  128 [chromium] › tests/e2e/signal-feed-operator.spec.ts:91:7 › Signal Feed operator hardening › Score opens modal, submits, and refreshes (1.8s)
+  ✓  129 [chromium] › tests/e2e/signal-feed-operator.spec.ts:105:7 › Signal Feed operator hardening › Verify disabled reason appears when evidence is missing (1.7s)
+  ✓  130 [chromium] › tests/e2e/signal-feed-operator.spec.ts:114:7 › Signal Feed operator hardening › Archive opens danger modal and requires reason (2.5s)
+  ✓  131 [chromium] › tests/e2e/signal-feed-operator.spec.ts:129:7 › Signal Feed operator hardening › read-only auditor can view but cannot mutate (2.4s)
+  ✓  132 [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:38:7 › P11 accepted production exports, dashboard, and operational closeout › dashboards aggregate reported vs Customer Accepted without double counting or rates (669ms)
+  ✓  133 [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:59:7 › P11 accepted production exports, dashboard, and operational closeout › CSV export is private, formula-safe, idempotent, and financially inert (548ms)
+  ✓  134 [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:95:7 › P11 accepted production exports, dashboard, and operational closeout › annotated and daily PDFs preserve original map file and include coordinate/report proof (468ms)
+  ✓  135 [chromium] › tests/e2e/syncfield-production-exports-dashboard.spec.ts:129:7 › P11 accepted production exports, dashboard, and operational closeout › operational closeout distinguishes open QC/corrections and creates no financial records (773ms)
+  ✓  136 [chromium] › tests/e2e/ui-feedback-audit.spec.ts:6:7 › Honest queue feedback › QC failure never presents unavailable counts as an empty queue (2.9s)
+  ✓  137 [chromium] › tests/e2e/ui-feedback-audit.spec.ts:13:7 › Honest queue feedback › invoice summary agrees with a nonempty queue (3.3s)
+  ✓  138 [chromium] › tests/e2e/ui-feedback-audit.spec.ts:20:7 › Honest queue feedback › QC creation uses supported choices and no raw override JSON (1.5s)
+  ✓  139 [chromium] › tests/e2e/ui-feedback-audit.spec.ts:31:7 › Correction owner choices › authorized choices expose names rather than private user profiles (70ms)
+  ✓  140 [chromium] › tests/e2e/ui-feedback-audit.spec.ts:39:7 › Correction owner choices › read-only user cannot load correction assignment choices (31ms)
+  ✓  141 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:12:5 › QC read-only access hides create links and keeps the QC workspace active (1.3s)
+  ✓  142 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:24:5 › stored fake grants cannot grant access when the server returns no permissions (910ms)
+  ✓  143 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:35:5 › unverified identity fails closed with a recovery control (799ms)
+  ✓  144 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:43:5 › revoked create access is removed on focus without revoking the read queue (887ms)
+  ✓  145 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:55:5 › Operations Manager can inspect QC but cannot create reviews through direct URLs (1.2s)
+  ✓  146 [chromium] › tests/e2e/ui-permission-visibility.spec.ts:71:5 › finance staff without approval authority cannot see invoice submission or approval (934ms)
+
+
+  1) [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review 
+
+    Error: QC capability fixtures require a disposable local test database
+
+      12 |     const db = new URL(process.env.DATABASE_URL!);
+      13 |     if (!["localhost", "127.0.0.1", "[::1]"].includes(db.hostname) || !/test|scope|browser|release/.test(db.pathname)) {
+    > 14 |       throw new Error("QC capability fixtures require a disposable local test database");
+         |             ^
+      15 |     }
+      16 |     const client = new Client({ connectionString: process.env.DATABASE_URL });
+      17 |     await client.connect();
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/qc-create-capabilities.spec.ts:14:13
+
+    Error Context: test-results/qc-create-capabilities-QC--cc9d0-ithout-approving-the-review-chromium/error-context.md
+
+  2) [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment 
+
+    Error: Scope tests require an explicitly disposable local test database
+
+      28 |     const db = new URL(process.env.DATABASE_URL!);
+      29 |     if (!["localhost", "127.0.0.1", "[::1]"].includes(db.hostname) || !/test|scope|browser|release/.test(db.pathname)) {
+    > 30 |       throw new Error("Scope tests require an explicitly disposable local test database");
+         |             ^
+      31 |     }
+      32 |     client = new Client({ connectionString: process.env.DATABASE_URL });
+      33 |     await client.connect();
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/scope-financial-handoffs.spec.ts:30:13
+
+    Error Context: test-results/scope-financial-handoffs-S-88237-nce-backed-external-payment-chromium/error-context.md
+
+    Error Context: test-results/scope-financial-handoffs-S-88237-nce-backed-external-payment-chromium/error-context.md
+
+  3) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden 
+
+    Error: Scope tests require an explicitly disposable local test database
+
+      19 |       const marker = `Scope preservation ${actor.slug} ${Date.now()}`;
+      20 |       const database = new URL(process.env.DATABASE_URL!);
+    > 21 |       if (!["localhost", "127.0.0.1", "[::1]"].includes(database.hostname) || !/test|scope|browser|release/.test(database.pathname)) throw new Error("Scope tests require an explicitly disposable local test database");
+         |                                                                                                                                            ^
+      22 |       const workOrderId = randomUUID();
+      23 |       const fixtureDb = new Client({ connectionString: process.env.DATABASE_URL });
+      24 |       await fixtureDb.connect();
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/scope-production-roles.spec.ts:21:140
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/scope-production-roles-ops-088d6--and-money-remain-forbidden-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/scope-production-roles-ops-088d6--and-money-remain-forbidden-chromium/error-context.md
+
+  4) [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden 
+
+    Error: Scope tests require an explicitly disposable local test database
+
+      19 |       const marker = `Scope preservation ${actor.slug} ${Date.now()}`;
+      20 |       const database = new URL(process.env.DATABASE_URL!);
+    > 21 |       if (!["localhost", "127.0.0.1", "[::1]"].includes(database.hostname) || !/test|scope|browser|release/.test(database.pathname)) throw new Error("Scope tests require an explicitly disposable local test database");
+         |                                                                                                                                            ^
+      22 |       const workOrderId = randomUUID();
+      23 |       const fixtureDb = new Client({ connectionString: process.env.DATABASE_URL });
+      24 |       await fixtureDb.connect();
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/scope-production-roles.spec.ts:21:140
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/scope-production-roles-fie-9d517--and-money-remain-forbidden-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/scope-production-roles-fie-9d517--and-money-remain-forbidden-chromium/error-context.md
+
+  4 failed
+    [chromium] › tests/e2e/qc-create-capabilities.spec.ts:36:7 › QC create supported advanced capabilities › named selections and structured reasons persist without approving the review 
+    [chromium] › tests/e2e/scope-financial-handoffs.spec.ts:37:7 › Scope preservation: financial role handoffs › accepted partner quantity passes billing, cash and payables roles to one evidence-backed external payment 
+    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › ops-manager creates, edits and submits production while approval and money remain forbidden 
+    [chromium] › tests/e2e/scope-production-roles.spec.ts:13:7 › field-supervisor creates, edits and submits production while approval and money remain forbidden 
+  3 did not run
+  139 passed (3.5m)

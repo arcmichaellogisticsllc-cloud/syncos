@@ -329,6 +329,8 @@ async function seedPartnerBrowserReviewAccess(client) {
   const passwordHash = hashPassword(demoPassword);
   const rolePermissions = {
     partner_admin: [
+      "partner_form.delegate",
+  "partner_inventory.report",
       "partner_context.read",
       "partner_profile.read",
       "partner_actions.read",
