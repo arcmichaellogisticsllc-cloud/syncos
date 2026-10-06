@@ -15,17 +15,18 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: syncos_ci
+          POSTGRES_DB: syncos_synthetic_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d syncos_ci"
+          --health-cmd "pg_isready -U postgres -d syncos_synthetic_ci"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
+      SYNCOS_RESTRICTED_FILE_STORAGE_DIR: /tmp/syncos-restricted-ci
       NODE_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_ci
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_synthetic_ci
       AUTH_JWT_SECRET: syncos-isolated-ci-validation-secret-2026
       API_BASE_URL: http://127.0.0.1:3100
       PORT: 3100
@@ -49,8 +50,6 @@ jobs:
         run: npm run build -w @syncos/web
       - name: Database Verification
         run: npm run db:verify
-      - name: Regression Tests
-        run: npm test
       - name: Start API
         run: |
           npm run start -w @syncos/api &
@@ -59,6 +58,8 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Complete regression without skipped tests
+        run: npm run test:acceptance
       - name: Security Smoke
         run: npm run security:smoke
 

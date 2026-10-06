@@ -1901,7 +1901,8 @@ export class CashController {
       if (!["draft", "assembling"].includes(String(before.status))) throw new BadRequestException("invoice must be draft or assembling");
       requireString(before.invoice_number, "invoice_number is required");
       if (!before.invoice_date) throw new BadRequestException("invoice_date is required");
-      if (!before.due_date) throw new BadRequestException("due_date is required");
+      // Contractual due dates can begin at later delivery or acceptance.
+      // Review is preparatory; approval still validates accepted work and approved terms.
       const itemCount = await this.activeInvoiceItemCount(client, request.auth.tenantId, id);
       if (requireItems && itemCount === 0) throw new BadRequestException("invoice requires at least one item");
       if (itemCount === 0 && Number(before.total_amount ?? before.invoice_amount ?? 0) <= 0) throw new BadRequestException("invoice requires at least one item");
@@ -2616,7 +2617,7 @@ export class CashController {
 
   private calculateReceivableState(dueDate: unknown, originalAmount: number, paidAmount: number, status: string) {
     const balanceAmount = Math.max(0, this.roundMoney(originalAmount - paidAmount));
-    const agingDays = balanceAmount > 0 ? Math.max(0, this.daysPastDue(dueDate)) : 0;
+    const agingDays = balanceAmount > 0 && dueDate != null ? Math.max(0, this.daysPastDue(dueDate)) : 0;
     let paymentStatus = "unpaid";
     if (paidAmount > 0 && balanceAmount > 0) paymentStatus = "partially_paid";
     else if (paidAmount > 0 && balanceAmount === 0) paymentStatus = "paid";

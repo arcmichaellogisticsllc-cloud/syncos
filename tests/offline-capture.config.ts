@@ -1,2 +1,2 @@
 import {defineConfig} from '@playwright/test';
-export default defineConfig({testDir:'.',testMatch:'offline-capture.browser.ts',workers:1,timeout:30000,use:{baseURL:'http://127.0.0.1:3478',browserName:'chromium'},outputDir:'../test-results/offline-capture'});
+export default defineConfig({reporter:[['list'],['junit',{outputFile:'test-results/offline-capture-junit.xml'}]],testDir:'.',testMatch:'offline-capture.browser.ts',workers:1,timeout:30000,use:{screenshot:'only-on-failure',trace:'retain-on-failure',baseURL:process.env.WEB_BASE_URL??'http://127.0.0.1:3478',browserName:'chromium'},outputDir:'../test-results/offline-capture'});

@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "scope": "Same-host isolated file extraction and byte verification; not offsite recovery or database/file snapshot consistency",
+  "files": [
+    {
+      "bytes": 45,
+      "sha256": "6a3e257b209fca4bbfcc29374ba8c9f6f20420953bc0d67499373fe727c31262"
+    },
+    {
+      "bytes": 328,
+      "sha256": "9293fd2e79b200168ceb910e820a018e357f4b43965ef9781dff700b0e8620f4"
+    }
+  ],
+  "count": 2
+}

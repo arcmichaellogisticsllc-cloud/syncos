@@ -1,3 +1,4 @@
+import {verifyPreparedPrimeDelivery} from './prime-delivery-acceptance';
 import {expect,type APIRequestContext} from '@playwright/test';
 import type {Client} from 'pg';
 import {randomUUID} from 'node:crypto';
@@ -21,7 +22,8 @@ export async function verifyInvoicePackageLifecycle(request:APIRequestContext,be
  const packet=await post(`invoices/${invoice}/prepare`,{});const repeat=await post(`invoices/${invoice}/prepare`,{});expect(repeat.id).toBe(packet.id);
  const download=await request.get(`${base}/invoice-packages/${packet.id}/download`,{headers});expect(download.ok()).toBeTruthy();expect((await download.body()).subarray(0,2).toString()).toBe('PK');
  const early=await request.post(`${base}/invoice-packages/invoices/${invoice}/acceptance`,{headers,data:{package_id:packet.id,occurred_at:new Date().toISOString(),recipient:'Synthetic customer',proof_reference:'SYNTHETIC response',notes:'Synthetic event',verified:true,client_mutation_id:randomUUID()}});expect(early.status()).toBe(400);
- for(const event of ['delivered','rejected','resubmitted','accepted']){
+ await verifyPreparedPrimeDelivery(bearer,invoice,contract,packet);
+ for(const event of ['rejected','resubmitted','accepted']){
   const body={package_id:packet.id,event_type:event,occurred_at:new Date().toISOString(),recipient:'Synthetic customer',proof_reference:'SYNTHETIC '+event+' receipt',notes:'Synthetic event verified in controlled test',verified:true,client_mutation_id:randomUUID()};
   const path=`invoices/${invoice}/${event==='accepted'?'acceptance':'delivery'}`;const first=await post(path,body),again=await post(path,body);expect(again.id).toBe(first.id);
  }

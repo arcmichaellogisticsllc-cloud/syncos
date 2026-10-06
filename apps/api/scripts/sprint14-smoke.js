@@ -63,8 +63,9 @@ async function main() {
     throw new Error("dashboard trend placeholder was not removed");
   }
 
-  const testRun = spawnSync("npm", ["test"], { cwd: root, encoding: "utf8" });
-  if (testRun.status !== 0) throw new Error(`regression suite failed: ${testRun.stdout}\n${testRun.stderr}`);
+  // The release runner executes the full no-skip database/HTTP regression suite
+  // after the ordered smokes. Do not launch a second, partially configured suite here.
+  if (!fs.readFileSync(path.join(root,"scripts/release-validation.sh"),"utf8").includes("npm run test:acceptance")) throw new Error("Release runner must execute full acceptance regression");
 
   await verifyFreshDatabase();
 
@@ -83,65 +84,15 @@ async function main() {
   }
 
   const ci = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
-  for (const command of ["npm ci", "npm run typecheck", "npm run build -w @syncos/api", "npm run build -w @syncos/worker", "npm run build -w @syncos/web", "npm run db:verify", "npm run security:smoke", "npm test"]) {
+  for (const command of ["npm ci", "npm run typecheck", "npm run build -w @syncos/api", "npm run build -w @syncos/worker", "npm run build -w @syncos/web", "npm run db:verify", "npm run security:smoke", "npm run test:acceptance"]) {
     if (!ci.includes(command)) throw new Error(`CI configuration missing ${command}`);
   }
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   if (!packageJson.scripts["release:validate"]) throw new Error("release validation command is required");
 
   const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
-  const approvedPostRc1Migrations = new Set([
-    "016_tenant_fk_hardening.sql",
-    "017_intelligence_signal_contract_hardening.sql",
-    "018_organization_contract_hardening.sql",
-    "019_contact_contract_hardening.sql",
-    "020_relationship_contract_hardening.sql",
-    "021_opportunity_candidate_contract_hardening.sql",
-    "022_opportunity_pipeline_contract_hardening.sql",
-    "023_opportunity_approval_policy_hardening.sql",
-    "024_coverage_planning_contract_foundation.sql",
-    "025_coverage_planning_backend_hardening.sql",
-    "026_project_handoff_contract_foundation.sql",
-    "027_project_backend_contract_hardening.sql",
-    "028_work_order_contract_hardening.sql",
-    "029_production_contract_hardening.sql",
-    "030_qc_review_contract_foundation.sql",
-    "031_billable_contract_foundation.sql",
-    "032_settlement_contract_foundation.sql",
-    "033_invoice_contract_foundation.sql",
-    "034_cash_application_contract_foundation.sql",
-    "035_collections_contract_foundation.sql",
-    "036_contractor_payable_contract_foundation.sql",
-    "037_payroll_contract_foundation.sql",
-    "038_payment_execution_contract_foundation.sql",
-    "039_bank_reconciliation_contract_foundation.sql",
-    "040_accounting_export_contract_foundation.sql",
-    "041_account_onboarding_contract_foundation.sql",
-    "042_partner_compliance_onboarding_foundation.sql",
-    "043_partner_workforce_credentials_foundation.sql",
-    "044_partner_agreements_work_orders_vehicles_foundation.sql",
-    "045_partner_mobilization_readiness_foundation.sql",
-    "046_syncfield_map_jsa_foundation.sql",
-    "047_syncfield_daily_production_foundation.sql",
-    "048_syncfield_customer_qc_foundation.sql",
-    "049_syncfield_production_exports_closeout.sql",
-    "050_accepted_production_financials.sql",
-    "051_payment_retainage_adjustments.sql",
-    "052_partner_performance_capacity_intelligence.sql",
-    "053_opportunity_capacity_matching.sql",
-    "054_executive_command_throughput.sql",
-    "055_partner_onboarding_invitations.sql",
-    "056_syncfield_field_traceability.sql",
-    "057_syncfield_design_segments_redlines.sql",
-    "058_syncfield_coil_slack_observations.sql",
-    "059_syncfield_coil_commercial_policy.sql",
-    "060_partner_onboarding_submissions.sql",
-    "061_internal_workforce_and_external_payments.sql",
-    "062_internal_account_invitations.sql",
-    "063_field_billing_units.sql",
-    "064_restore_production_export_file_types.sql",
-    "065_demo_execution_permission_reconciliation.sql",
-  ]);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "packages/database/src/migration-manifest.json"), "utf8"));
+  const approvedPostRc1Migrations = new Set(manifest.filter(file => file.localeCompare("016_tenant_fk_hardening.sql") >= 0));
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));
   if (unexpectedPostRc1Migrations.length > 0) {

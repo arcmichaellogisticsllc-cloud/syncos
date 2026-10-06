@@ -1,3 +1,4 @@
+const {attachSyntheticInvoiceLineage}=require('./synthetic-invoice-lineage');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -70,13 +71,18 @@ async function main() {
     if (submit.status !== "ready_for_review" || submit.approval_status !== "pending") throw new Error("Submit review did not set pending review");
     await assertNoDownstream(client, tenantId, downstreamBefore, "submit review");
 
+    const contractId=await attachSyntheticInvoiceLineage(client,tenantId,userId,invoice.id);
     const approved = await expectStatus("approve works", "POST", `/invoices/${invoice.id}/approve`, `Bearer ${token}`, 201, { approval_note: "Approved for billing." });
     if (approved.status !== "approved" || Number(approved.original_amount) !== 950 || Number(approved.paid_amount) !== 0 || Number(approved.balance_amount) !== 950) {
       throw new Error("Approval did not lock receivable state");
     }
     await assertNoDownstream(client, tenantId, downstreamBefore, "approve");
 
-    const sent = await expectStatus("mark sent works", "POST", `/invoices/${invoice.id}/mark-sent`, `Bearer ${token}`, 201, { sent_note: "Sent manually." });
+    await expectStatus("prime requirements recorded", "POST", `/invoice-packages/contracts/${contractId}/requirements`, `Bearer ${token}`, 201, {required_documents:[],source_reference:'SYNTHETIC prime requirements',verified:true});
+    const packet=await expectStatus("complete package prepared", "POST", `/invoice-packages/invoices/${invoice.id}/prepare`, `Bearer ${token}`,201,{});
+    await expectStatus("mark sent requires delivery proof", "POST", `/invoices/${invoice.id}/mark-sent`, `Bearer ${token}`,400,{sent_note:'No proof'});
+    await expectStatus("mark sent works", "POST", `/invoices/${invoice.id}/mark-sent`, `Bearer ${token}`,201,{package_id:packet.id,occurred_at:new Date().toISOString(),recipient:'SYNTHETIC customer',proof_reference:'SYNTHETIC delivery receipt',notes:'Reviewed synthetic delivery',verified:true,client_mutation_id:crypto.randomUUID()});
+    const sent=await expectStatus("read delivered invoice", "GET", `/invoices/${invoice.id}`,`Bearer ${token}`,200);
     if (sent.status !== "sent" || sent.delivery_status !== "sent") throw new Error("Mark sent did not update delivery state");
     await assertNoDownstream(client, tenantId, downstreamBefore, "mark sent");
 
@@ -175,7 +181,7 @@ async function createInvoiceReadySettlementItem(client, tenantId, userId, marker
       gross_amount, retainage_amount, deduction_amount, chargeback_amount, net_amount, amount,
       billing_package_status, documentation_status, customer_acceptance_status, prime_acceptance_status, created_by, updated_by
     )
-    VALUES ($1, $2, $3, $4, 'customer_billable', 'invoice_ready', 100, 'ft', 10, 1000, 50, 0, 0, 950, 950, 'ready', 'ready', 'accepted', 'accepted', $5, $5)
+    VALUES ($1, $2, $3, $4, 'customer_billable', 'invoice_ready', 100, 'feet', 10, 1000, 50, 0, 0, 950, 950, 'ready', 'ready', 'accepted', 'accepted', $5, $5)
     RETURNING id
     `,
     [tenantId, settlement.rows[0].id, project.rows[0].id, organization.rows[0].id, userId],

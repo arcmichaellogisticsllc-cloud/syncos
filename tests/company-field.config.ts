@@ -1,2 +1,2 @@
 import {defineConfig} from '@playwright/test';
-export default defineConfig({testDir:'.',testMatch:'company-field.browser.ts',workers:1,timeout:30000,use:{baseURL:'http://127.0.0.1:3458',browserName:'chromium'},outputDir:'../test-results/company-field'});
+export default defineConfig({reporter:[['list'],['junit',{outputFile:'test-results/company-field-junit.xml'}]],testDir:'.',testMatch:'company-field.browser.ts',workers:1,timeout:30000,use:{screenshot:'only-on-failure',trace:'retain-on-failure',baseURL:process.env.WEB_BASE_URL??'http://127.0.0.1:3458',browserName:'chromium'},outputDir:'../test-results/company-field'});

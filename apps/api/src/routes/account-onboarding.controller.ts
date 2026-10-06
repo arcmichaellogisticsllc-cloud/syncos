@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { findTenantRecordById, insertTenantRecord, updateTenantRecord } from "@syncos/database";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -83,7 +83,7 @@ export class AccountOnboardingController {
         return { entityType: "account_onboarding_profile", entityId: profile.id, afterState: this.decorateRow(enriched ?? profile) };
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof ConflictException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -95,6 +95,9 @@ export class AccountOnboardingController {
       const values = this.profileValues(body, false);
       values.updated_by = request.auth.userId;
       return await this.write(request, "account_onboarding.update", "account_onboarding.updated", "account_onboarding_profile", async (client) => {
+        const locked = await client.query("SELECT updated_at::text AS revision FROM account_onboarding_profiles WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE", [request.auth.tenantId, id]);
+        if (!locked.rows[0]) throw new NotFoundException("account onboarding profile not found");
+        if (body.expected_revision !== undefined && body.expected_revision !== locked.rows[0].revision) throw new ConflictException("This profile changed after you opened it. Reload and review the latest changes before saving.");
         const before = await this.requireProfile(client, request.auth.tenantId, id);
         await this.validateRelations(client, request.auth.tenantId, { ...before, ...values });
         const after = await updateTenantRecord<OnboardingProfileRow>(client, "account_onboarding_profiles", request.auth.tenantId, id, values);
@@ -103,7 +106,7 @@ export class AccountOnboardingController {
         return { entityType: "account_onboarding_profile", entityId: id, beforeState: before, afterState: this.decorateRow(enriched ?? after) };
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof NotFoundException || error instanceof BadRequestException || error instanceof ConflictException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -130,6 +133,7 @@ export class AccountOnboardingController {
       `
       SELECT
         aop.*,
+        aop.updated_at::text AS revision,
         org.name AS organization_name,
         org.organization_type,
         org.type AS organization_type_legacy,

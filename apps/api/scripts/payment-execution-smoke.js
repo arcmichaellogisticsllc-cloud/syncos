@@ -1,3 +1,4 @@
+const {attachSyntheticPayableLineage}=require('./synthetic-payable-lineage');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -166,6 +167,7 @@ async function createPaymentReadyPayable(client, tenantId, userId, marker) {
     "INSERT INTO contractor_payables (tenant_id, payable_number, payable_type, payable_party_type, capacity_provider_id, net_payable_amount, created_by, updated_by) VALUES ($1, $2, 'subcontractor', 'capacity_provider', $3, 150, $4, $4) RETURNING id",
     [tenantId, `PAY-NOTREADY-${marker}-${crypto.randomUUID().slice(0, 6)}`, provider.rows[0].id, userId],
   );
+  await attachSyntheticPayableLineage(client,tenantId,userId,ready.rows[0].id);
   return { providerId: provider.rows[0].id, payableId: ready.rows[0].id, notReadyPayableId: notReady.rows[0].id };
 }
 

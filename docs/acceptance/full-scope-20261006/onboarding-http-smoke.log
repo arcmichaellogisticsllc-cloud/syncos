@@ -1,0 +1,9 @@
+
+> syncos@0.1.0 account-onboarding:smoke
+> npm run smoke:account-onboarding -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:account-onboarding
+> node scripts/account-onboarding-smoke.js
+
+account onboarding smoke passed

@@ -17,6 +17,8 @@ export type AuthTokenClaims = {
   exp?: number;
   iat?: number;
   auth_version?: number;
+  sso_link_id?: string;
+  sso_connection_version?: number;
 };
 
 function base64UrlEncode(value: Buffer | string): string {

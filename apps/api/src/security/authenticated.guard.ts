@@ -46,6 +46,12 @@ export class AuthenticatedGuard implements CanActivate {
     }
 
     if((claims.auth_version??0)!==membership.rows[0].auth_version)throw new UnauthorizedException('Session expired. Sign in again.');
+    if ('sso_link_id' in claims && claims.sso_link_id) {
+      const link=await this.pool.query(`SELECT 1 FROM oidc_identity_links l JOIN oidc_connections c ON c.id=l.connection_id
+        WHERE l.id=$1 AND l.user_id=$2 AND l.tenant_id=$3 AND l.active AND c.enabled AND c.version=$4`,
+        [claims.sso_link_id,claims.sub,claims.tenant_id,claims.sso_connection_version]);
+      if(process.env.SSO_ENABLED!=='true'||!link.rows.length)throw new UnauthorizedException('SSO access has changed. Sign in again.');
+    }
     request.auth = {
       tenantId: membership.rows[0].tenant_id,
       userId: membership.rows[0].user_id,

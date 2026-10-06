@@ -87,6 +87,22 @@ export class AuthController {
     };
   }
 
+  // Alternate sign-in methods must resolve the same server-owned permissions and routing.
+  async sessionFor(userId:string,tenantId:string,expectedVersion:number,sso?:{linkId:string;connectionVersion:number}) {
+    const user=(await this.pool.query(`SELECT u.id,u.email,u.display_name,u.auth_version,t.slug FROM users u
+      JOIN tenant_users tu ON tu.user_id=u.id JOIN tenants t ON t.id=tu.tenant_id
+      WHERE u.id=$1 AND t.id=$2 AND u.auth_version=$3 AND u.status='active' AND tu.status='active' AND t.status='active'
+      AND u.deleted_at IS NULL AND tu.deleted_at IS NULL AND t.deleted_at IS NULL`,[userId,tenantId,expectedVersion])).rows[0];
+    if(!user)throw new UnauthorizedException('Account access has changed. Sign in again.');
+    const secret=process.env.AUTH_JWT_SECRET;
+    if(!secret||secret.length<AUTH_JWT_SECRET_MIN_LENGTH)throw new UnauthorizedException('Sign in is unavailable');
+    const context=await this.identityContextFor(tenantId,userId);
+    const token=createAuthToken({sub:userId,tenant_id:tenantId,email:user.email,auth_version:user.auth_version,
+      ...(sso?{sso_link_id:sso.linkId,sso_connection_version:sso.connectionVersion}:{}),exp:Math.floor(Date.now()/1000)+3600},secret);
+    return {token,user:{id:userId,email:user.email,display_name:user.display_name},tenant_id:tenantId,tenant_slug:user.slug,
+      context:{...context,routing:{workspace:this.workspaceFor(context.roles,context.permissions,context.partner_context,context.is_linked_worker),policy:'server_trusted_workspace_routing_v1'}}};
+  }
+
   @Get("me")
   @AuthenticatedOnly()
   async me(@Req() request: AuthenticatedRequest) {

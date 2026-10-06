@@ -1,0 +1,399 @@
+{
+  "scope": "Static leads only, not a defect count or acceptance. These checks do not recognize every custom component or layout.",
+  "items": [
+    {
+      "file": "apps/web/app/activate-employee/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/payment-retainage-adjustments/observation-review.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/payment-retainage-adjustments/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/accepted-production-financials/commercial-terms.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/accepted-production-financials/invoice-packages.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/accepted-production-financials/financial-workflow.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/payments/payment-execution-workspace.tsx",
+      "review": [
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/internal-workforce/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/work-orders/work-order-workspace.tsx",
+      "review": [
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/opportunities/candidates/candidate-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/opportunities/pipeline/opportunity-pipeline-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/opportunities/coverage/coverage-planning-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/forms/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/material-inventory/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/material-inventory/discrepancies.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/record-workflow-actions.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/organizations/organization-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/contacts/contact-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/signals/signal-feed.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/signals/[id]/signal-detail.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/account-onboarding/[id]/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/intelligence/relationship-maps/relationship-map-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/settlements/settlement-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/cash/cash-workspace.tsx",
+      "review": [
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/projects/project-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/work-safety/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/sign-in-link/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/customer-qc/correction-deadlines.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/customer-qc/quantity-review.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/customer-qc/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/accounting-exports/accounting-export-workspace.tsx",
+      "review": [
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/customer-inquiries/intake-controls.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/customer-inquiries/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/field-setup/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/passport/intake.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/record-history/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/search/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner/field-evidence.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner/partner-shell.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner/onboarding-editor.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner/field-oversight/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner/field-oversight/discrepancies.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/identity-settings/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/forgot-password/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/request-service/[slug]/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/bank-reconciliation/bank-reconciliation-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/billable/billable-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/production/production-workspace.tsx",
+      "review": [
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/reset-password/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/access-administration/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/project-handoffs/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/payroll/payroll-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/collections/collections-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this.",
+        "Check readable detail context for users without mutation authority."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner-network/setup-review.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/partner-network/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/login/sso-sign-in.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/login/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/qc/qc-workspace.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this.",
+        "Check destructive action separation; alternate grouping may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/production-dashboard/production-exports.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/syncfield/materials/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/syncfield/forms/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    },
+    {
+      "file": "apps/web/app/syncfield/design-prep/page.tsx",
+      "review": [
+        "Check task-specific purpose, prerequisites, required fields and after-save guidance; alternate custom guidance may already satisfy this."
+      ]
+    }
+  ]
+}

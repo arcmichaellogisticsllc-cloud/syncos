@@ -1,0 +1,1119 @@
+{
+  "updated": "2026-10-06",
+  "pilotHold": true,
+  "meaning": "Every historical ID found in the five listed sources is retained, including narrative additions. Passing representative automation is not universal UI, provider, device or deployment acceptance. Open statuses are intentional.",
+  "items": [
+    {
+      "id": "E2E-AUDIT-001",
+      "title": "Expand audit matrix across every major module",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/timeline-audit/representative-events.spec.ts",
+        "apps/api/src/routes/record-history.controller.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-BOUNDARY-001",
+      "title": "Add action-level forbidden count assertions for every modal",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-CI-001",
+      "title": "Add actual CI workflow wiring",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "implemented_remote_verification_blocked",
+      "evidence": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/nightly.yml",
+        ".github/workflows/release.yml",
+        "scripts/acceptance/run-regression.js"
+      ],
+      "note": "Workflow wiring exists and now prevents skipped regression acceptance; full main and supplemental browser suites are wired. Remote execution is blocked by the GitHub account billing lock, observed on run 37443569200."
+    },
+    {
+      "id": "E2E-GATE-001",
+      "title": "Require full E2E certification before external integrations",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "implemented_acceptance_outstanding",
+      "evidence": [
+        "scripts/acceptance/check-completion-gate.js",
+        "docs/deployment/engineering-completion-gate.json"
+      ],
+      "note": "The gate rejects incomplete evidence and cannot authorize a pilot. Actual integration/device/business/recovery/deployment evidence remains outstanding."
+    },
+    {
+      "id": "E2E-MODAL-001",
+      "title": "Complete full modal matrix certification",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-MODAL-002",
+      "title": "Add deterministic action-created records",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-MODAL-003",
+      "title": "Add Submit Execution modal checkpoint",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-PERSONA-001",
+      "title": "Certify all 10 personas",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-personas.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "tests/e2e/persona-visibility.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-SEED-001",
+      "title": "Add action-specific checkpoint copies",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "E2E-SELECTOR-001",
+      "title": "Add stable data-testid selectors where accessible labels are insufficient",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "resolved_design",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts"
+      ],
+      "note": "Accessible role/label selectors cover the implemented forms; add stable test IDs only where semantic selectors are insufficient, rather than replacing working accessible selectors."
+    },
+    {
+      "id": "E2E-TIME-001",
+      "title": "Seed or action-create lifecycle event history",
+      "source": "docs/product/e2e-certification-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/timeline-audit/representative-events.spec.ts",
+        "apps/api/src/routes/record-history.controller.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-001",
+      "title": "Submit-path modal certification",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-002",
+      "title": "Cross-persona denial matrix",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-003",
+      "title": "Sub-item dedicated routes",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "resolved_design",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts"
+      ],
+      "note": "Line items remain managed inside their parent financial records. Existing parent-route mutation tests preserve that application design; separate standalone line-item pages are not required by the approved workflow."
+    },
+    {
+      "id": "GAP-AS-004",
+      "title": "Modal required field exact-match",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-005",
+      "title": "Accounting Export aexGenerated expectedStatus",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-006",
+      "title": "Bank account archivable \u2014 account belongs to a different bank account",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-007",
+      "title": "Collection action cancel vs completed collision",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "GAP-AS-008",
+      "title": "Screenshot certification for action state modals",
+      "source": "docs/product/e2e-action-state-gap-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "tests/e2e/action-states/action-state-submit.spec.ts",
+        "tests/e2e/action-states/action-state-modals.spec.ts",
+        "tests/e2e/action-states/application-permission-denials.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Relevant scenarios passed in the 870-test browser run. Remote CI and deployment acceptance remain separate. This closes the local test gap only."
+    },
+    {
+      "id": "OUX-001",
+      "title": "Signal Feed / global auth",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-002",
+      "title": "Global navigation",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-shell.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-003",
+      "title": "Signal Feed",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-004",
+      "title": "Dashboards",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase3.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-005",
+      "title": "All workspaces",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase3.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-006",
+      "title": "Queue/list pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase4.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-007",
+      "title": "Queue/list pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase4.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-008",
+      "title": "Many pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase9.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-009",
+      "title": "All action pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase9.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-010",
+      "title": "All action pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/ui-permission-visibility.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-011",
+      "title": "All pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/ui-feedback-audit.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-012",
+      "title": "All pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/ui-feedback-audit.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-013",
+      "title": "Mobile/compact",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase10.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-014",
+      "title": "Command Center",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase3.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-015",
+      "title": "Global",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-shell.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-016",
+      "title": "Payment Execution",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase7.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-017",
+      "title": "Payroll",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase7.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-018",
+      "title": "Accounting Export",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase8.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-019",
+      "title": "Bank Reconciliation",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase8.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-020",
+      "title": "Signal Feed",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-021",
+      "title": "Signal Feed",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-022",
+      "title": "Signal Feed",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-023",
+      "title": "Work Orders",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase4.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-024",
+      "title": "Production",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase4.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-025",
+      "title": "QC",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/qc-create-capabilities.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-026",
+      "title": "Billing",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase5.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-027",
+      "title": "Collections",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase6.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-028",
+      "title": "Payables",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase7.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-029",
+      "title": "Reconciliation",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase8.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-030",
+      "title": "Audit",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/ui-feedback-audit.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-031",
+      "title": "All create/edit pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase9.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-032",
+      "title": "Admin",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/api/src/routes/access-administration.controller.ts",
+        "apps/web/app/access-administration/page.tsx",
+        "tests/access-administration-database.test.js",
+        "tests/e2e/history-search-and-admin.spec.ts"
+      ],
+      "note": "Implemented tenant member status and internal role-bundle administration; guards prevent self-change, excess grants and last-administrator lockout. Crew/partner grants remain in their established onboarding flows."
+    },
+    {
+      "id": "OUX-033",
+      "title": "Read-only",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase9.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-034",
+      "title": "E2E",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/operator-phase10.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-035",
+      "title": "Content",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/boundary-assertions.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-036",
+      "title": "Signal Feed",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-037",
+      "title": "Signal Feed",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx",
+        "apps/web/app/operator-actions.tsx",
+        "tests/e2e/signal-feed-operator.spec.ts"
+      ],
+      "note": "Mapped to current shared implementation and domain browser checks. Closure is limited to the historical requirement; whole-product completion still requires the separate full gate."
+    },
+    {
+      "id": "OUX-038",
+      "title": "Payment item attention and execution summaries",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "implementation_review",
+      "evidence": [
+        "apps/api/src/routes/payment-execution.controller.ts"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-039",
+      "title": "Reconciliation and export item attention summaries",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "implementation_review",
+      "evidence": [
+        "apps/api/src/routes/accounting-export.controller.ts"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-040",
+      "title": "Guided structure across every create and edit form",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "coverage_review_required",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-041",
+      "title": "Read-only context across readable detail pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "coverage_review_required",
+      "evidence": [
+        "apps/web/app/operator-page-templates.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-042",
+      "title": "Separation of destructive actions across detail pages",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "coverage_review_required",
+      "evidence": [
+        "apps/web/app/operator-actions.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-043",
+      "title": "Role-specific operational acceptance scripts",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/training/README.md"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-044",
+      "title": "Cross-domain demonstration scripts",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "docs/training/README.md"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-045",
+      "title": "Full contrast, screen-reader and keyboard acceptance",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "manual_accessibility_required",
+      "evidence": [
+        "docs/product/operator-ui-gap-backlog.md"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-046",
+      "title": "Account onboarding profile detail",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/intelligence/account-onboarding/[id]/page.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-047",
+      "title": "Prime and contractor onboarding lanes",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/intelligence/account-onboarding/account-onboarding-workbench.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-048",
+      "title": "First-class account document and program policies",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "requirements_and_engineering_open",
+      "evidence": [
+        "apps/api/src/routes/account-onboarding.controller.ts"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-049",
+      "title": "Onboarding financial and work-authorization boundaries",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/intelligence/account-onboarding/[id]/page.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-050",
+      "title": "Approved controlled staging data entry",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/product/operator-ui-gap-backlog.md"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OUX-051",
+      "title": "Guarded account onboarding lifecycle controls",
+      "source": "docs/product/operator-ui-gap-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/intelligence/account-onboarding/[id]/page.tsx"
+      ],
+      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+    },
+    {
+      "id": "OWB-001",
+      "title": "Add Browser Automation For Operator Click-Through QA",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "playwright.config.ts",
+        "packages/database/scripts/seed-e2e-demo.js",
+        "tests/e2e/fixtures/personas.ts",
+        "tests/e2e/route-matrix.spec.ts"
+      ],
+      "note": "Existing implementation/test evidence must be reconciled with the final candidate; presence alone is not a pass."
+    },
+    {
+      "id": "OWB-002",
+      "title": "Create A Canonical Seeded Cross-Domain Demo Path",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "playwright.config.ts",
+        "packages/database/scripts/seed-e2e-demo.js",
+        "tests/e2e/fixtures/personas.ts",
+        "tests/e2e/route-matrix.spec.ts"
+      ],
+      "note": "Existing implementation/test evidence must be reconciled with the final candidate; presence alone is not a pass."
+    },
+    {
+      "id": "OWB-003",
+      "title": "First-Class Browser Login / Persona Switching",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "apps/web/app/login/page.tsx",
+        "apps/api/src/routes/auth.controller.ts",
+        "tests/e2e/helpers/auth.ts"
+      ],
+      "note": "Product uses real sign-in and trusted server routing. Persona switching exists only in isolated test fixtures, not as an operator privilege switch."
+    },
+    {
+      "id": "OWB-004",
+      "title": "Document Canonical Role-to-Permission Bundles For Operator QA",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "playwright.config.ts",
+        "packages/database/scripts/seed-e2e-demo.js",
+        "tests/e2e/fixtures/personas.ts",
+        "tests/e2e/route-matrix.spec.ts"
+      ],
+      "note": "Existing implementation/test evidence must be reconciled with the final candidate; presence alone is not a pass."
+    },
+    {
+      "id": "OWB-005",
+      "title": "Add Stable IDs Or Discoverable Fixtures For Dynamic Route QA",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "playwright.config.ts",
+        "packages/database/scripts/seed-e2e-demo.js",
+        "tests/e2e/fixtures/personas.ts",
+        "tests/e2e/route-matrix.spec.ts"
+      ],
+      "note": "Existing implementation/test evidence must be reconciled with the final candidate; presence alone is not a pass."
+    },
+    {
+      "id": "OWB-006",
+      "title": "Add Finance Demo States For Paid, Partially Paid, Unpaid, Failed, And Reconciled Scenarios",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "playwright.config.ts",
+        "packages/database/scripts/seed-e2e-demo.js",
+        "tests/e2e/fixtures/personas.ts",
+        "tests/e2e/route-matrix.spec.ts"
+      ],
+      "note": "Existing implementation/test evidence must be reconciled with the final candidate; presence alone is not a pass."
+    },
+    {
+      "id": "OWB-007",
+      "title": "Add Browser-Level Assertions For Boundary Placeholder Copy",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "candidate_revalidation",
+      "evidence": [
+        "playwright.config.ts",
+        "packages/database/scripts/seed-e2e-demo.js",
+        "tests/e2e/fixtures/personas.ts",
+        "tests/e2e/route-matrix.spec.ts"
+      ],
+      "note": "Existing implementation/test evidence must be reconciled with the final candidate; presence alone is not a pass."
+    },
+    {
+      "id": "OWB-008",
+      "title": "Add Global Search Browser QA",
+      "source": "docs/product/operator-workflow-hardening-backlog.md",
+      "status": "local_automation_passed",
+      "evidence": [
+        "apps/api/src/routes/search.controller.ts",
+        "apps/web/app/search/page.tsx",
+        "tests/global-search-database.test.js",
+        "tests/e2e/history-search-and-admin.spec.ts",
+        "docs/acceptance/full-scope-20261006/browser-870.log"
+      ],
+      "note": "Global search UI and database authorization/pagination checks passed locally; deployed acceptance remains open."
+    },
+    {
+      "id": "STG-001",
+      "title": "Hosting",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-002",
+      "title": "Database",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-003",
+      "title": "Secrets",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-004",
+      "title": "Tenant",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-005",
+      "title": "Admin",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-006",
+      "title": "Roles",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-007",
+      "title": "Tenant isolation",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-008",
+      "title": "Smoke tests",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-009",
+      "title": "CI",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "GitHub check annotation on run 37443569200: job did not start because the account is locked due to a billing issue. Local tests do not close this."
+    },
+    {
+      "id": "STG-010",
+      "title": "Branch protection",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Read-only GitHub branch protection lookup returned Branch not protected. Required checks must be configured and verified after remote CI becomes available."
+    },
+    {
+      "id": "STG-011",
+      "title": "Backup/restore",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-012",
+      "title": "Mobile/tablet",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-013",
+      "title": "Accessibility",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Local emulated keyboard, semantics and layout evidence exists; final deployed accessibility acceptance remains separate."
+    },
+    {
+      "id": "STG-014",
+      "title": "UAT tracking",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-015",
+      "title": "Production",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-016",
+      "title": "Integrations",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-017",
+      "title": "Logs/monitoring",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    },
+    {
+      "id": "STG-018",
+      "title": "Worker",
+      "source": "docs/product/staging-readiness-gap-backlog.md",
+      "status": "external_evidence_required",
+      "evidence": [
+        "docs/deployment/candidate-106-readiness.md"
+      ],
+      "note": "Reverify on exact deployed candidate. Historical provider-planning text is superseded by the existing Hostinger staging environment, not by a claim that current deployment acceptance passed."
+    }
+  ]
+}

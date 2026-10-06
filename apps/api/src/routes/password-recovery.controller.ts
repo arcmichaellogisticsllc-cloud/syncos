@@ -81,8 +81,8 @@ export class PasswordRecoveryController implements OnModuleInit,OnModuleDestroy 
   const message={from:process.env.EMAIL_FROM??'',to,subject:'Reset your SyncOS password',text:`Use this link within 15 minutes to reset your password:\n\n${url}\n\nIf you did not request this, you can ignore this email.`};
   if(process.env.EMAIL_PROVIDER==='smtp_relay'){await sendSmtpRelayEmail(message);return;}
   if(process.env.EMAIL_PROVIDER==='generic_http'){
-   const endpoint=new URL(process.env.EMAIL_HTTP_ENDPOINT??'');if(endpoint.protocol!=='https:')throw new Error('HTTPS email endpoint required');
-   const result=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${process.env.EMAIL_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(message),signal:AbortSignal.timeout(10000)});if(!result.ok)throw new Error('Email delivery failed');return;
+   const endpoint=new URL(process.env.EMAIL_HTTP_ENDPOINT??'');if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||!process.env.EMAIL_API_KEY||!message.from)throw new Error('HTTPS email endpoint required');
+   const result=await fetch(endpoint,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${process.env.EMAIL_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(message),signal:AbortSignal.timeout(10000)});if(!result.ok)throw new Error('Email delivery failed');return;
   }
   throw new Error('Email delivery is not configured');
  }

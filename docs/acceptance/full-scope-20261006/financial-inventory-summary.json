@@ -1,0 +1,25 @@
+{
+  "status": "inventory_only",
+  "capturedAt": "2026-10-06T20:05:11.787Z",
+  "source": "staging-backup-20261006T021015Z",
+  "scope": "Missing provenance inventory, not business reconciliation or verification of executed agreements. No amounts, links, statuses or approvals changed.",
+  "recordsReviewed": 12,
+  "recordsRequiringReview": 12,
+  "missingApprovedTerms": 12,
+  "missingItems": 7,
+  "missingAcceptedWorkLinks": 5,
+  "statusCounts": {
+    "invoice:approved": 1,
+    "invoice:draft": 1,
+    "invoice:under_review": 1,
+    "invoice:partially_paid_later": 1,
+    "invoice:voided": 1,
+    "invoice:disputed": 1,
+    "partner_payable:payment_ready": 1,
+    "partner_payable:draft": 1,
+    "partner_payable:disputed": 1,
+    "partner_payable:voided": 1,
+    "partner_payable:approved": 1,
+    "partner_payable:under_review": 1
+  }
+}

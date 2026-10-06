@@ -1,0 +1,163 @@
+{
+  "candidate": "2560b1bd844fe2d753724f867c7890941afe1938a7525591d743471e95cab56d",
+  "operationalPilot": "On hold until every agreed completion gate passes",
+  "unresolvedEngineeringBlockers": [
+    "Historical application-wide UI standards and manual accessibility remain unclosed; account document/program policies still include summary-only behavior.",
+    "Actual SSO, email, prime delivery, public channel and Passport integration acceptance remain open; provider-specific engineering may still be required.",
+    "Executed agreements, prime policies, real user/owner configuration, stock reconciliation and the 12 historical financial exceptions need supported evidence and decisions.",
+    "Physical-phone engineering acceptance for both workforce types is outstanding.",
+    "Independent disaster recovery, retention and monitoring remain outstanding; specific approval for a sensitive actual-data transfer to this Mac is pending after automatic review rejected it.",
+    "GitHub remote CI is blocked by account billing lock; required branch/release controls are not verified.",
+    "Representative infrastructure load, actual monitoring recipients and exact-candidate staging activation are outstanding."
+  ],
+  "features": {
+    "status": "partial",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "integrations": {
+    "status": "blocked",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "historicalBacklog": {
+    "status": "partial",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "businessConfiguration": {
+    "status": "blocked",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "deviceAcceptance": {
+    "status": "blocked",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "security": {
+    "status": "locally_verified_not_deployed",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "offsiteRecovery": {
+    "status": "blocked",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "deployment": {
+    "status": "blocked",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "performance": {
+    "status": "local_baseline_only",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  },
+  "training": {
+    "status": "locally_verified_not_deployed",
+    "reviewer": "Codex \u2014 local technical evidence review, not business acceptance",
+    "reviewedAt": "2026-10-06T21:02:15.289078+00:00",
+    "evidence": [
+      {
+        "file": "../acceptance/full-scope-engineering-20261006.md",
+        "sha256": "817585bfa4d2be722b837c81e4c3551f51c8a071918d029e1439257efb7c6295"
+      },
+      {
+        "file": "../acceptance/full-scope-20261006/source-manifest.json",
+        "sha256": "8408119a929387d30b43b2029a6d0db0615759e718e3a5fd8129f0795dada417"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+"use client";
+import {useEffect,useRef,useState,type FormEvent} from 'react';
+import Link from 'next/link';
+import {clearAuthContext,saveToken,syncosFetch,workspaceRouteFor,type AuthContext} from '../intelligence/api';
+export default function SignInLink(){
+ const [available,setAvailable]=useState<boolean|null>(null);
+ const [token,setToken]=useState(''),[loaded,setLoaded]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState('');const gate=useRef(false),initialized=useRef(false);
+ useEffect(()=>{if(initialized.current)return;initialized.current=true;setToken(new URLSearchParams(location.hash.slice(1)).get('token')??'');history.replaceState(null,'',location.pathname);setLoaded(true);void syncosFetch<{enabled:boolean}>('auth/magic-link/availability',{token:''}).then(r=>setAvailable(r.enabled)).catch(()=>{setAvailable(false);setError('Could not check email sign-in availability. Use password sign-in or try again.');});},[]);
+ async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(gate.current)return;gate.current=true;setBusy(true);setError('');const form=new FormData(event.currentTarget);
+  try{if(token){const result=await syncosFetch<{token:string;context:AuthContext}>('auth/magic-link/complete',{method:'POST',token:'',body:{token}});clearAuthContext();saveToken(result.token);location.assign(workspaceRouteFor(result.context));}
+   else{const result=await syncosFetch<{message:string}>('auth/magic-link/request',{method:'POST',token:'',body:{email:form.get('email'),tenant_slug:form.get('tenant_slug')}});setMessage(result.message);}
+  }catch(e){setError(e instanceof Error?e.message:'Sign in could not be completed.');}finally{gate.current=false;setBusy(false);}
+ }
+ return <main className="login-shell"><section className="login-panel"><h1>Sign in by email</h1>{!loaded||available===null?<p role="status">Checking link…</p>:!available?<p>Email sign-in is not enabled for this environment. Use password sign-in or contact your administrator.</p>:<form onSubmit={submit} aria-busy={busy}><fieldset disabled={busy} style={{border:0,minWidth:0}}>{token?<p>Continue only if you requested this sign-in link. It can be used once and expires after 15 minutes.</p>:<><label className="form-field">Email<input name="email" type="email" required autoComplete="email" maxLength={254} style={{minHeight:44}}/></label><label className="form-field">Workspace code (if you belong to more than one)<input name="tenant_slug" maxLength={100} autoCapitalize="none" autoCorrect="off" style={{minHeight:44}}/></label></>}<button type="submit" className="primary-button" style={{minHeight:44}}>{busy?'Please wait…':token?'Continue to my workspace':'Send sign-in link'}</button></fieldset></form>}{message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}<p><Link href="/login">Return to password sign-in</Link></p>{token&&<p><Link href="/sign-in-link" onClick={()=>{setToken('');setError('');}}>Request a new link</Link></p>}</section></main>;
+}

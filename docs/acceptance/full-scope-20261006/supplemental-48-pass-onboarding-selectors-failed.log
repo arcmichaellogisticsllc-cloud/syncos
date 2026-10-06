@@ -1,0 +1,166 @@
+
+> syncos@0.1.0 e2e:supplemental
+> playwright test --config tests/backlog-ui/playwright.config.ts && playwright test --config tests/passport-ui/playwright.config.ts && playwright test --config tests/company-field.config.ts && playwright test --config tests/offline-capture.config.ts && playwright test --config tests/identity-ui/playwright.config.ts && playwright test --config tests/onboarding-ui/playwright.config.ts
+
+
+Running 14 tests using 1 worker
+
+(node:56693) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/backlog-ui/workspaces.spec.ts:5:5 › read-only roles see records without form, stock or inquiry mutation controls (1.8s)
+  ✓   2 tests/backlog-ui/workspaces.spec.ts:10:5 › form designer publishes a revision and records a rendered answer (1.6s)
+  ✓   3 tests/backlog-ui/workspaces.spec.ts:20:5 › inquiry failure preserves entries and retries the same request (1.2s)
+  ✓   4 tests/backlog-ui/workspaces.spec.ts:25:5 › inventory separates ordinary movements from approved count adjustments on a phone-sized viewport (833ms)
+  ✓   5 tests/backlog-ui/workspaces.spec.ts:29:5 › saved form answers survive reload and preserve retry identity (1.7s)
+  ✓   6 tests/backlog-ui/workspaces.spec.ts:35:5 › form drafts do not cross users or published versions (1.9s)
+  ✓   7 tests/backlog-ui/workspaces.spec.ts:39:5 › offline cold navigation exposes only matching unexpired saved context and logout removes it (1.4s)
+  ✓   8 tests/backlog-ui/workspaces.spec.ts:45:5 › public intake keeps a stable receipt reference across a lost response without sign-in (3.1s)
+  ✓   9 tests/backlog-ui/workspaces.spec.ts:51:5 › saved field form answers remain editable after cold offline navigation and preserve scope (2.3s)
+  ✓  10 tests/backlog-ui/workspaces.spec.ts:55:5 › cold offline production edits survive reload but attempted requests remain immutable (3.2s)
+  ✓  11 tests/backlog-ui/workspaces.spec.ts:59:5 › workflow delivery retries are hidden without update authority and preserve failed status on error (4.6s)
+  ✓  12 tests/backlog-ui/workspaces.spec.ts:63:5 › history searches all matching pages and opens existing guarded detail routes (4.6s)
+  ✓  13 tests/backlog-ui/workspaces.spec.ts:67:5 › field material use preserves the exact pending request across failure and reload (3.9s)
+  ✓  14 tests/backlog-ui/workspaces.spec.ts:71:5 › organization-scoped grants do not expose tenant-wide history or notification actions (1.8s)
+
+  14 passed (36.6s)
+
+Running 23 tests using 1 worker
+
+(node:56852) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/passport-ui/capacity-feedback.spec.ts:2:5 › capacity matching validates input, reports errors and completes recalculation (3.2s)
+  ✓   2 tests/passport-ui/customer-qc.spec.ts:10:5 › customer decision failure preserves form and retry identity; phone layout fits (1.9s)
+  ✓   3 tests/passport-ui/customer-qc.spec.ts:15:5 › completeness reader sees incidents but no unapproved decisions or completeness actions (1.1s)
+  ✓   4 tests/passport-ui/customer-qc.spec.ts:18:5 › QC report navigation reaches older reports, preserves the applied search and stops at the last page (1.9s)
+  ✓   5 tests/passport-ui/design-prep.spec.ts:2:5 › design prep uses explicit measured geometry and retains input after failed save (1.8s)
+  ✓   6 tests/passport-ui/finance-workflow.spec.ts:20:5 › accepted finance buttons use canonical endpoints, filter employee debt and preserve retry key (2.8s)
+  ✓   7 tests/passport-ui/finance-workflow.spec.ts:37:5 › read-only finance sees metrics without any financial action controls (3.1s)
+  ✓   8 tests/passport-ui/finance-workflow.spec.ts:42:5 › retainage-only reviewer loads scoped release data without payment execution calls (3.5s)
+  ✓   9 tests/passport-ui/finance-workflow.spec.ts:55:5 › each financial handoff form sends its intended canonical action (9.2s)
+  ✓  10 tests/passport-ui/finance-workflow.spec.ts:73:5 › retainage authorization and reduced-acceptance review use selected record lineage (4.4s)
+  ✓  11 tests/passport-ui/partner-setup.spec.ts:13:5 › company edits retain entries on failure and hide unauthorized actions (4.1s)
+  ✓  12 tests/passport-ui/partner-setup.spec.ts:31:5 › read-only partner cannot see company submit or declaration controls (2.2s)
+  ✓  13 tests/passport-ui/partner-setup.spec.ts:37:5 › worker creation uses scoped endpoint and never submits approval (2.4s)
+  ✓  14 tests/passport-ui/production-exports.spec.ts:2:5 › authorized operator generates scoped exports and downloads privately; failures are recoverable (2.6s)
+  ✓  15 tests/passport-ui/production-exports.spec.ts:11:5 › dashboard reader does not see unauthorized export actions (1.5s)
+  ✓  16 tests/passport-ui/project-handoffs.spec.ts:2:5 › handoff follows named coverage source, explicit review, approval and planning project gates (4.0s)
+  ✓  17 tests/passport-ui/qualification.spec.ts:2:5 › qualification resets company and checks, preserves failed notes, and sends only confirmed facts (4.2s)
+  ✓  18 tests/passport-ui/training.spec.ts:2:5 › training provides searchable role guides, clear limitations and downloads (7.6s)
+  ✓  19 tests/passport-ui/workspace.spec.ts:8:5 › finance sees simulation, filters and details without any write actions (5.9s)
+  ✓  20 tests/passport-ui/workspace.spec.ts:20:5 › unapproved server identity overrides forged stored permissions and never requests preview (1.3s)
+  ✓  21 tests/passport-ui/workspace.spec.ts:23:5 › failed preview provides retry and recovers (1.5s)
+  ✓  22 tests/passport-ui/workspace.spec.ts:27:5 › saved preparation is distinct from preview, requires admin for accounts and never posts money (2.2s)
+  ✓  23 tests/passport-ui/workspace.spec.ts:43:5 › finance without administrator permission cannot prepare accounts (1.5s)
+
+  23 passed (1.3m)
+
+Running 3 tests using 1 worker
+
+(node:57194) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/company-field.browser.ts:12:5 › company reader sees coverage and custody without unauthorized actions (1.3s)
+  ✓  2 tests/company-field.browser.ts:15:5 › authorized company admin delegates exact version and reports a stock discrepancy without adjusting stock (1.9s)
+  ✓  3 tests/company-field.browser.ts:20:5 › failed stock report retains count and stable request key for retry (1.7s)
+
+  3 passed (7.0s)
+
+Running 4 tests using 1 worker
+
+(node:57236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/offline-capture.browser.ts:14:5 › cold navigation restores map and new report, exact retry after ambiguous response (4.7s)
+  ✓  2 tests/offline-capture.browser.ts:19:5 › shutdown rejection preserves report; another account cannot see it (2.4s)
+  ✓  3 tests/offline-capture.browser.ts:20:5 › corrupt map cannot replace a verified download and expired context is denied (2.0s)
+  ✓  4 tests/offline-capture.browser.ts:22:5 › an interrupted replacement map removes the outdated link and can be prepared again (2.5s)
+
+  4 passed (14.9s)
+
+Running 4 tests using 1 worker
+
+(node:57284) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/identity-ui/sign-in.spec.ts:2:5 › email sign-in preserves inputs on failure and works at phone width (2.2s)
+  ✓  2 tests/identity-ui/sign-in.spec.ts:3:5 › opening a magic link removes its token from the URL and waits for an explicit action (2.3s)
+  ✓  3 tests/identity-ui/sign-in.spec.ts:4:5 › SSO provider failure keeps a usable password return path and clears browser binding (2.2s)
+  ✓  4 tests/identity-ui/sign-in.spec.ts:5:5 › SSO callback strips code and state and clears the one-time binding on failure (1.6s)
+
+  4 passed (11.3s)
+
+Running 3 tests using 1 worker
+
+(node:57310) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision (30.4s)
+(node:57450) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 tests/onboarding-ui/onboarding.spec.ts:8:5 › onboarding reader sees the profile without editing controls (1.5s)
+  ✘  3 tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review (30.3s)
+
+
+  1) tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByLabel('Onboarding stage', { exact: true })
+
+
+      4 |  await page.setViewportSize({width:390,height:844});await setup(page);let writes:any[]=[];let profile={id:'synthetic',organization_name:'Synthetic prime',lane:'prime',onboarding_stage:'identified',revision:'2026-10-06 12:00:00.000001+00',updated_at:'2026-10-06T12:00:00Z',required_documents:['Executed agreement'],missing_documents:['Executed agreement']};
+      5 |  await page.route('**/api/syncos/account-onboarding/synthetic',r=>{if(r.request().method()==='PATCH'){writes.push(r.request().postDataJSON());if(writes.length===1)return r.fulfill({status:503,json:{message:'Temporary service failure'}});profile={...profile,...writes[1],revision:'new-revision',updated_at:'2026-10-06T12:01:00Z'};}return r.fulfill({json:profile});});
+    > 6 |  await page.goto('/intelligence/account-onboarding/synthetic');await page.getByLabel('Onboarding stage',{exact:true}).selectOption('initial_outreach');await page.getByLabel('Next action',{exact:true}).fill('Call prime');await page.getByRole('button',{name:'Review changes'}).click();expect(writes).toHaveLength(0);await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.getByLabel('Next action',{exact:true})).toHaveValue('Call prime');await page.getByRole('button',{name:'Review changes'}).click();await page.getByRole('button',{name:'Confirm tracking update'}).click();await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Temporary service failure');await page.getByRole('button',{name:'Confirm tracking update'}).click();await expect(page.getByRole('status').filter({hasText:'Onboarding tracking updated'})).toBeVisible();expect(writes[0]).toEqual(writes[1]);expect(writes[0].expected_revision).toBe('2026-10-06 12:00:00.000001+00');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        |                                                                                                                       ^
+      7 | });
+      8 | test('onboarding reader sees the profile without editing controls',async({page})=>{await setup(page,false);await page.route('**/api/syncos/account-onboarding/synthetic',r=>r.fulfill({json:{organization_name:'Synthetic prime',lane:'prime',onboarding_stage:'identified'}}));await page.goto('/intelligence/account-onboarding/synthetic');await expect(page.getByText('Read-only onboarding review.',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Review changes'})).toHaveCount(0);});
+      9 | test('starting onboarding saves the chosen organization and lane only after review',async({page})=>{
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/onboarding-ui/onboarding.spec.ts:6:119
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/onboarding-ui/onboarding-onboarding-edit-40e03-sends-the-reviewed-revision/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/onboarding-ui/onboarding-onboarding-edit-40e03-sends-the-reviewed-revision/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-ui/onboarding-onboarding-edit-40e03-sends-the-reviewed-revision/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-ui/onboarding-onboarding-edit-40e03-sends-the-reviewed-revision/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByLabel('Account lane', { exact: true })
+
+
+       8 | test('onboarding reader sees the profile without editing controls',async({page})=>{await setup(page,false);await page.route('**/api/syncos/account-onboarding/synthetic',r=>r.fulfill({json:{organization_name:'Synthetic prime',lane:'prime',onboarding_stage:'identified'}}));await page.goto('/intelligence/account-onboarding/synthetic');await expect(page.getByText('Read-only onboarding review.',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Review changes'})).toHaveCount(0);});
+       9 | test('starting onboarding saves the chosen organization and lane only after review',async({page})=>{
+    > 10 |  await page.addInitScript(()=>localStorage.setItem('syncos.apiToken','synthetic-onboarding-token'));const permissions=['account_onboarding.read','account_onboarding.create','account_onboarding.update','organization.read'];await page.route('**/api/syncos/auth/me',r=>r.fulfill({json:{user_id:'synthetic',tenant_id:'synthetic',roles:['system_admin'],permissions,tenant_permissions:permissions}}));await page.route('**/api/syncos/organizations/synthetic-org',r=>r.fulfill({json:{id:'synthetic-org',name:'Synthetic contractor'}}));const writes:any[]=[];await page.route('**/api/syncos/account-onboarding',r=>{writes.push(r.request().postDataJSON());return r.fulfill({status:201,json:{id:'saved-profile'}});});await page.route('**/api/syncos/account-onboarding/saved-profile',r=>r.fulfill({json:{id:'saved-profile',organization_name:'Synthetic contractor',lane:'contractor',onboarding_stage:'identified'}}));await page.goto('/intelligence/account-onboarding/new?organization_id=synthetic-org');await page.getByLabel('Account lane',{exact:true}).selectOption('contractor');await page.getByRole('button',{name:'Review changes'}).click();expect(writes).toHaveLength(0);await page.getByRole('button',{name:'Confirm tracking update'}).click();await expect(page).toHaveURL(/account-onboarding\/saved-profile$/);expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({organization_id:'synthetic-org',lane:'contractor',onboarding_stage:'identified'});
+         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 ^
+      11 | });
+      12 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/onboarding-ui/onboarding.spec.ts:10:1041
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/onboarding-ui/onboarding-starting-onboar-c42f9--and-lane-only-after-review/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/onboarding-ui/onboarding-starting-onboar-c42f9--and-lane-only-after-review/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-ui/onboarding-starting-onboar-c42f9--and-lane-only-after-review/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-ui/onboarding-starting-onboar-c42f9--and-lane-only-after-review/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision
+    tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review
+  1 passed (1.1m)

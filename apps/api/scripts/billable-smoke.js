@@ -1,3 +1,4 @@
+const {createCustomerAcceptanceFixture}=require('./customer-acceptance-fixture');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -208,15 +209,7 @@ async function createBase(client, tenantId, userId, options = {}) {
     [tenantId, production.rows[0].id, workOrder.rows[0].id, project.rows[0].id, userId, approvedQuantity, Math.max(0, 100 - approvedQuantity), billableCandidateQuantity],
   );
   if (userId && options.customerAccepted !== false) {
-    // A separate customer decision is required; internal QC is never financial acceptance.
-    const worker = (await client.query("INSERT INTO workers (tenant_id,capacity_provider_id,crew_id,first_name,last_name) VALUES ($1,$2,$3,'Billing','Fixture') RETURNING id", [tenantId,provider.rows[0].id,crew.rows[0].id])).rows[0];
-    const version = (await client.query("INSERT INTO partner_work_order_versions (tenant_id,organization_id,capacity_provider_id,project_id,work_order_id,assigned_crew_id,work_order_number,scope_summary,map_work_package_ref,production_unit,execution_model) VALUES ($1,$2,$3,$4,$5,$6,$7,'Billing fixture','fixture-map','feet','internal') RETURNING id", [tenantId,organization.rows[0].id,provider.rows[0].id,project.rows[0].id,workOrder.rows[0].id,crew.rows[0].id,`BILL-${suffix}`])).rows[0];
-    const common = [tenantId,project.rows[0].id,workOrder.rows[0].id,version.id,organization.rows[0].id,provider.rows[0].id,crew.rows[0].id,worker.id,userId];
-    const jsa = (await client.query("INSERT INTO daily_jsas (tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,work_location) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,current_date,'Billing fixture') RETURNING id", common)).rows[0];
-    const report = (await client.query("INSERT INTO daily_production_reports (tenant_id,project_id,work_order_id,work_order_version_id,organization_id,capacity_provider_id,crew_id,foreman_worker_id,foreman_user_id,work_date,daily_jsa_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,current_date,$10) RETURNING id", [...common,jsa.id])).rows[0];
-    const revision = (await client.query("INSERT INTO daily_production_report_revisions (tenant_id,daily_report_id,revision_number,snapshot_json) VALUES ($1,$2,1,'{}') RETURNING id", [tenantId,report.id])).rows[0];
-    const cycle = (await client.query("INSERT INTO customer_qc_cycles (tenant_id,project_id,work_order_id,work_order_version_id,daily_report_id,daily_report_revision_id,partner_organization_id,crew_id,qc_authority_organization_id,cycle_number,status,source_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,1,'accepted','customer-fixture-evidence') RETURNING id", [tenantId,project.rows[0].id,workOrder.rows[0].id,version.id,report.id,revision.id,organization.rows[0].id,crew.rows[0].id])).rows[0];
-    await client.query("INSERT INTO customer_qc_decisions (tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,recorded_by_user_id,source_reference) VALUES ($1,$2,$3,'accepted',100,$4,'feet',$5,'customer-fixture-evidence')", [tenantId,cycle.id,production.rows[0].id,approvedQuantity,userId]);
+    await createCustomerAcceptanceFixture(client,{tenantId,userId,organizationId:organization.rows[0].id,providerId:provider.rows[0].id,crewId:crew.rows[0].id,projectId:project.rows[0].id,workOrderId:workOrder.rows[0].id,productionId:production.rows[0].id,quantity:approvedQuantity,unit:'feet'});
   }
   return {
     projectId: project.rows[0].id,

@@ -1,3 +1,4 @@
+const {attachSyntheticPayableLineage}=require('./synthetic-payable-lineage');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -94,6 +95,7 @@ async function main() {
     if (submitted.status !== "ready_for_review" || submitted.approval_status !== "pending") throw new Error("Submit review did not set statuses");
     const reviewing = await expectStatus("start review works", "POST", `/contractor-payables/${payable.id}/start-review`, `Bearer ${token}`, 201);
     if (reviewing.status !== "under_review") throw new Error("Start review did not set under_review");
+    await attachSyntheticPayableLineage(client,tenantId,userId,payable.id);
     const approved = await expectStatus("approve requires valid payable and creates no payment", "POST", `/contractor-payables/${payable.id}/approve`, `Bearer ${token}`, 201, {
       approval_note: "Smoke approval.",
     });

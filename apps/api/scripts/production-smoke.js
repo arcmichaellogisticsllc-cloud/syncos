@@ -1,3 +1,4 @@
+const {authorizeSyntheticWork}=require('./synthetic-work-authorization');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -31,6 +32,8 @@ async function main() {
     const limitedToken = createToken({ sub: limitedUserId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
     const base = await createBase(client, tenantId, userId, "ready_for_work", "in_progress");
     const planningBase = await createBase(client, tenantId, userId, "planning", "in_progress");
+    await authorizeSyntheticWork(client,tenantId,userId,base.workOrderId,"2026-09-05");
+    await authorizeSyntheticWork(client,tenantId,userId,base.workOrderId,new Date().toISOString().slice(0,10));
     const outside = await createOutsideTenant(client);
 
     await expectStatus("unauthorized blocked", "GET", "/production-records", undefined, 401);

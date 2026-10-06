@@ -1,0 +1,91 @@
+
+> syncos@0.1.0 security:smoke
+> npm run smoke:security -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:security
+> node scripts/security-smoke.js
+
+security smoke passed
+
+> syncos@0.1.0 sprint1:smoke
+> npm run smoke:sprint1 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint1
+> node scripts/sprint1-smoke.js
+
+sprint1 smoke passed
+
+> syncos@0.1.0 sprint2:smoke
+> npm run smoke:sprint2 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint2
+> node scripts/sprint2-smoke.js
+
+sprint2 smoke passed
+
+> syncos@0.1.0 sprint3:smoke
+> npm run smoke:sprint3 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint3
+> node scripts/sprint3-smoke.js
+
+sprint3 smoke passed
+
+> syncos@0.1.0 sprint4:smoke
+> npm run smoke:sprint4 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint4
+> node scripts/sprint4-smoke.js
+
+sprint4 smoke passed
+
+> syncos@0.1.0 sprint5:smoke
+> npm run smoke:sprint5 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint5
+> node scripts/sprint5-smoke.js
+
+sprint5 smoke passed
+
+> syncos@0.1.0 sprint6:smoke
+> npm run smoke:sprint6 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint6
+> node scripts/sprint6-smoke.js
+
+sprint6 smoke passed
+
+> syncos@0.1.0 sprint7:smoke
+> npm run smoke:sprint7 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint7
+> node scripts/sprint7-smoke.js
+
+sprint7 smoke passed
+
+> syncos@0.1.0 sprint8:smoke
+> npm run smoke:sprint8 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint8
+> node scripts/sprint8-smoke.js
+
+Error: legacy invoice submit creates no AR: expected 201, got 400: {"message":"due_date is required","error":"Bad Request","statusCode":400}
+    at expectStatus (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/apps/api/scripts/sprint8-smoke.js:250:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async main (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/apps/api/scripts/sprint8-smoke.js:58:21)
+npm error Lifecycle script `smoke:sprint8` failed with error:
+npm error code 1
+npm error path /Users/User/.codex/worktrees/syncos-financial-completion/syncos/apps/api
+npm error workspace @syncos/api@0.1.0
+npm error location /Users/User/.codex/worktrees/syncos-financial-completion/syncos/apps/api
+npm error command failed
+npm error command sh -c node scripts/sprint8-smoke.js

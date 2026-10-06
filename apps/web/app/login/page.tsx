@@ -1,7 +1,8 @@
 "use client";
 
+import { SsoSignIn } from "./sso-sign-in";
 import { PermissionLink as Link } from "../access-control";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { clearAuthContext, saveToken, syncosFetch, workspaceRouteFor, type AuthContext } from "../intelligence/api";
 
 type LoginResult = {
@@ -10,6 +11,10 @@ type LoginResult = {
 };
 
 export default function LoginPage() {
+  const [ssoEnabled,setSsoEnabled]=useState(false);
+  useEffect(()=>{void syncosFetch<{enabled:boolean}>("auth/sso/availability",{token:""}).then(r=>setSsoEnabled(r.enabled)).catch(()=>{});},[]);
+  const [magicEnabled,setMagicEnabled]=useState(false);
+  useEffect(()=>{void syncosFetch<{enabled:boolean}>("auth/magic-link/availability",{token:""}).then(r=>setMagicEnabled(r.enabled)).catch(()=>{});},[]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("Enter your email and password to continue.");
@@ -77,6 +82,8 @@ export default function LoginPage() {
             <button className="primary-button login-submit" type="submit" disabled={loading}>{loading ? "Signing In..." : "Sign In"}</button>
           </div>
           </form>
+          {ssoEnabled && <SsoSignIn/>}
+          {magicEnabled && <p><Link href="/sign-in-link">Email me a sign-in link</Link></p>}
           <p><Link href="/forgot-password">Forgot your password?</Link></p>
           <div className="new-partner-cta">
             <span>New Partner?</span>

@@ -20,7 +20,6 @@ npm run typecheck
 npm run build -w @syncos/api
 npm run build -w @syncos/worker
 npm run build -w @syncos/web
-npm test
 npm run db:verify
 
 node apps/api/dist/main.js &
@@ -79,5 +78,7 @@ npm run payroll:smoke
 npm run payment-execution:smoke
 npm run bank-reconciliation:smoke
 npm run accounting-export:smoke
+
+npm run test:acceptance
 
 echo "release validation passed"

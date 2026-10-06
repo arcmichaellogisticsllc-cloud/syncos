@@ -14,6 +14,7 @@ export type ActionState = {
   expectedModalTitle: RegExp;
   persona: string;
   requiredFields: RegExp[];
+  visibleFields?: RegExp[];
   forbiddenTables: string[];
   submitCertificationStatus: SubmitCertificationStatus;
   notes?: string;
@@ -47,7 +48,8 @@ export const actionStates: ActionState[] = [
     expectedActionLabel: /Submit/i,
     expectedModalTitle: /Submit/i,
     persona: "system-admin",
-    requiredFields: [/Submission Note|Submit Note/i],
+    requiredFields: [],
+    visibleFields: [/Submission Note|Submit Note/i],
     forbiddenTables: PROD_FORBIDDEN,
     submitCertificationStatus: "certified",
   },
@@ -401,7 +403,8 @@ export const actionStates: ActionState[] = [
     expectedActionLabel: /Mark Sent/i,
     expectedModalTitle: /Mark Sent/i,
     persona: "finance-user",
-    requiredFields: [/Invoice package selection/i],
+    requiredFields: [],
+    visibleFields: [/Invoice package selection/i],
     forbiddenTables: INVOICE_FORBIDDEN,
     submitCertificationStatus: "certified",
   },
@@ -448,7 +451,7 @@ export const actionStates: ActionState[] = [
     expectedActionLabel: /Apply.*Invoice|Apply Payment/i,
     expectedModalTitle: /Apply.*Invoice/i,
     persona: "finance-user",
-    requiredFields: [/Invoice|Applied Amount/i],
+    requiredFields: [/^Invoice ID$/, /^Applied Amount$/],
     forbiddenTables: CASH_FORBIDDEN,
     submitCertificationStatus: "certified",
   },
@@ -525,7 +528,8 @@ export const actionStates: ActionState[] = [
     expectedActionLabel: /Assign Owner/i,
     expectedModalTitle: /Assign Owner/i,
     persona: "collections-specialist",
-    requiredFields: [/Assignment Note/i],
+    requiredFields: [/^Assigned owner user ID$/],
+    visibleFields: [/Assignment Note/i],
     forbiddenTables: COLLECTIONS_FORBIDDEN,
     submitCertificationStatus: "certified",
   },
@@ -555,7 +559,8 @@ export const actionStates: ActionState[] = [
     expectedActionLabel: /Complete/i,
     expectedModalTitle: /Complete Action/i,
     persona: "collections-specialist",
-    requiredFields: [/Completion Note|Outcome/i],
+    requiredFields: [],
+    visibleFields: [/Completion Note|Outcome/i],
     forbiddenTables: COLLECTIONS_FORBIDDEN,
     submitCertificationStatus: "certified",
   },

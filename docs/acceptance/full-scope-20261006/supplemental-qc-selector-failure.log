@@ -1,0 +1,98 @@
+
+> syncos@0.1.0 e2e:supplemental
+> playwright test --config tests/backlog-ui/playwright.config.ts && playwright test --config tests/passport-ui/playwright.config.ts && playwright test --config tests/company-field.config.ts && playwright test --config tests/offline-capture.config.ts && playwright test --config tests/identity-ui/playwright.config.ts && playwright test --config tests/onboarding-ui/playwright.config.ts
+
+
+Running 14 tests using 1 worker
+
+(node:56248) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/backlog-ui/workspaces.spec.ts:5:5 › read-only roles see records without form, stock or inquiry mutation controls (3.1s)
+  ✓   2 tests/backlog-ui/workspaces.spec.ts:10:5 › form designer publishes a revision and records a rendered answer (2.4s)
+  ✓   3 tests/backlog-ui/workspaces.spec.ts:20:5 › inquiry failure preserves entries and retries the same request (2.1s)
+  ✓   4 tests/backlog-ui/workspaces.spec.ts:25:5 › inventory separates ordinary movements from approved count adjustments on a phone-sized viewport (1.2s)
+  ✓   5 tests/backlog-ui/workspaces.spec.ts:29:5 › saved form answers survive reload and preserve retry identity (2.3s)
+  ✓   6 tests/backlog-ui/workspaces.spec.ts:35:5 › form drafts do not cross users or published versions (1.8s)
+  ✓   7 tests/backlog-ui/workspaces.spec.ts:39:5 › offline cold navigation exposes only matching unexpired saved context and logout removes it (1.1s)
+  ✓   8 tests/backlog-ui/workspaces.spec.ts:45:5 › public intake keeps a stable receipt reference across a lost response without sign-in (1.1s)
+  ✓   9 tests/backlog-ui/workspaces.spec.ts:51:5 › saved field form answers remain editable after cold offline navigation and preserve scope (1.0s)
+  ✓  10 tests/backlog-ui/workspaces.spec.ts:55:5 › cold offline production edits survive reload but attempted requests remain immutable (1.0s)
+  ✓  11 tests/backlog-ui/workspaces.spec.ts:59:5 › workflow delivery retries are hidden without update authority and preserve failed status on error (1.0s)
+  ✓  12 tests/backlog-ui/workspaces.spec.ts:63:5 › history searches all matching pages and opens existing guarded detail routes (949ms)
+  ✓  13 tests/backlog-ui/workspaces.spec.ts:67:5 › field material use preserves the exact pending request across failure and reload (1.2s)
+  ✓  14 tests/backlog-ui/workspaces.spec.ts:71:5 › organization-scoped grants do not expose tenant-wide history or notification actions (782ms)
+
+  14 passed (25.2s)
+
+Running 23 tests using 1 worker
+
+(node:56315) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/passport-ui/capacity-feedback.spec.ts:2:5 › capacity matching validates input, reports errors and completes recalculation (1.3s)
+  ✘   2 tests/passport-ui/customer-qc.spec.ts:10:5 › customer decision failure preserves form and retry identity; phone layout fits (1.2s)
+(node:56327) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   3 tests/passport-ui/customer-qc.spec.ts:15:5 › completeness reader sees incidents but no unapproved decisions or completeness actions (1.9s)
+  ✓   4 tests/passport-ui/customer-qc.spec.ts:18:5 › QC report navigation reaches older reports, preserves the applied search and stops at the last page (2.0s)
+  ✓   5 tests/passport-ui/design-prep.spec.ts:2:5 › design prep uses explicit measured geometry and retains input after failed save (1.9s)
+  ✓   6 tests/passport-ui/finance-workflow.spec.ts:20:5 › accepted finance buttons use canonical endpoints, filter employee debt and preserve retry key (3.2s)
+  ✓   7 tests/passport-ui/finance-workflow.spec.ts:37:5 › read-only finance sees metrics without any financial action controls (2.6s)
+  ✓   8 tests/passport-ui/finance-workflow.spec.ts:42:5 › retainage-only reviewer loads scoped release data without payment execution calls (2.0s)
+  ✓   9 tests/passport-ui/finance-workflow.spec.ts:55:5 › each financial handoff form sends its intended canonical action (4.6s)
+  ✓  10 tests/passport-ui/finance-workflow.spec.ts:73:5 › retainage authorization and reduced-acceptance review use selected record lineage (1.6s)
+  ✓  11 tests/passport-ui/partner-setup.spec.ts:13:5 › company edits retain entries on failure and hide unauthorized actions (1.4s)
+  ✓  12 tests/passport-ui/partner-setup.spec.ts:31:5 › read-only partner cannot see company submit or declaration controls (1.1s)
+  ✓  13 tests/passport-ui/partner-setup.spec.ts:37:5 › worker creation uses scoped endpoint and never submits approval (1.2s)
+  ✓  14 tests/passport-ui/production-exports.spec.ts:2:5 › authorized operator generates scoped exports and downloads privately; failures are recoverable (1.4s)
+  ✓  15 tests/passport-ui/production-exports.spec.ts:11:5 › dashboard reader does not see unauthorized export actions (857ms)
+  ✓  16 tests/passport-ui/project-handoffs.spec.ts:2:5 › handoff follows named coverage source, explicit review, approval and planning project gates (2.1s)
+  ✓  17 tests/passport-ui/qualification.spec.ts:2:5 › qualification resets company and checks, preserves failed notes, and sends only confirmed facts (1.6s)
+  ✓  18 tests/passport-ui/training.spec.ts:2:5 › training provides searchable role guides, clear limitations and downloads (2.5s)
+  ✓  19 tests/passport-ui/workspace.spec.ts:8:5 › finance sees simulation, filters and details without any write actions (3.4s)
+  ✓  20 tests/passport-ui/workspace.spec.ts:20:5 › unapproved server identity overrides forged stored permissions and never requests preview (907ms)
+  ✓  21 tests/passport-ui/workspace.spec.ts:23:5 › failed preview provides retry and recovers (1.7s)
+  ✓  22 tests/passport-ui/workspace.spec.ts:27:5 › saved preparation is distinct from preview, requires admin for accounts and never posts money (2.6s)
+  ✓  23 tests/passport-ui/workspace.spec.ts:43:5 › finance without administrator permission cannot prepare accounts (1.3s)
+
+
+  1) tests/passport-ui/customer-qc.spec.ts:10:5 › customer decision failure preserves form and retry identity; phone layout fits
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: getByRole('status')
+    Expected: "Customer decision recorded."
+    Error: strict mode violation: getByRole('status') resolved to 2 elements:
+        1) <p role="status">Customer decision recorded.</p> aka getByText('Customer decision recorded.')
+        2) <p role="status">Loading correction policy…</p> aka getByText('Loading correction policy…')
+
+    Call log:
+      - Expect "toHaveText" getByRole('status') with timeout 5000ms
+      - waiting for getByRole('status')
+
+
+      11 |  await setup(page,['daily_production.completeness_read','customer_qc.decision_record']);let fail=true;const bodies:any[]=[];
+      12 |  await page.route('**/api/syncos/syncfield/customer-qc/cycles/cycle/decisions',r=>{bodies.push(r.request().postDataJSON());return r.fulfill({status:fail?503:200,json:fail?{message:'Service temporarily unavailable'}:{id:'decision'}});});
+    > 13 |  await page.setViewportSize({width:390,height:844});await page.goto('/customer-qc');await expect(page.getByText('Unsubmitted report incident')).toBeVisible();await page.getByLabel('Submitted daily report').selectOption('report');await page.getByLabel('Production record',{exact:true}).selectOption('record');await page.getByLabel('Customer decision',{exact:true}).selectOption('correction_required');await page.getByLabel('Customer reason',{exact:true}).fill('Incorrect marker');await page.getByLabel('Customer comments / crew-safe correction instructions').fill('Replace marker and provide photo');await page.getByRole('button',{name:'Record customer decision',exact:true}).click();await expect(page.locator('p[role=alert]')).toContainText('Service temporarily unavailable');await expect(page.getByLabel('Customer reason',{exact:true})).toHaveValue('Incorrect marker');fail=false;await page.getByRole('button',{name:'Record customer decision',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Customer decision recorded.');expect(bodies[0].client_mutation_id).toBe(bodies[1].client_mutation_id);expect(bodies[1].decision).toBe('correction_required');expect(bodies[1]).not.toHaveProperty('customer_accepted_quantity');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'/private/tmp/syncos-customer-qc-phone.png',fullPage:true});
+         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             ^
+      14 | });
+      15 | test('completeness reader sees incidents but no unapproved decisions or completeness actions',async({page})=>{
+      16 |  await setup(page,['daily_production.completeness_read']);await page.goto('/customer-qc');await page.getByLabel('Submitted daily report').selectOption('report');await expect(page.getByText('Unsubmitted report incident')).toBeVisible();await expect(page.getByRole('button',{name:'Confirm completeness'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Record customer decision'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Open customer inspection cycle'})).toHaveCount(0);
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/passport-ui/customer-qc.spec.ts:13:1005
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/passport-ui/customer-qc-customer-decis-b5733--identity-phone-layout-fits/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/passport-ui/customer-qc-customer-decis-b5733--identity-phone-layout-fits/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/passport-ui/customer-qc-customer-decis-b5733--identity-phone-layout-fits/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/passport-ui/customer-qc-customer-decis-b5733--identity-phone-layout-fits/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/passport-ui/customer-qc.spec.ts:10:5 › customer decision failure preserves form and retry identity; phone layout fits
+  22 passed (49.5s)

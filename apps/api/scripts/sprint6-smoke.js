@@ -103,7 +103,7 @@ async function main() {
   const stopped = await createAcceptedProduction(client, tenantId, base, marker, 10, 8);
   const stopBefore = await counts(client);
   const stopWork = await expectStatus("stop work issued", "POST", `/production-records/${stopped.id}/stop-work`, `Bearer ${token}`, 201, {
-    reason: `Safety hold ${marker}`,
+    reason: `Safety hold ${marker}`, utility_strike:false,
   });
   if (stopWork.stop_work_status !== "active") throw new Error("stop work not active");
   await expectWrite(client, stopBefore, "production_record.stop_work_issued", "stop work issue");
@@ -111,11 +111,14 @@ async function main() {
     approved_quantity: 5,
   });
   await expectStatus("stop work authority enforced", "POST", `/production-records/${stopped.id}/stop-work`, `Bearer ${nonAuthorityToken}`, 403, {
-    reason: "no authority",
+    reason: "no authority", utility_strike:false,
   });
   await expectStatus("release stop work authority enforced", "POST", `/production-records/${stopped.id}/release-stop-work`, `Bearer ${nonAuthorityToken}`, 403, {
-    release_reason: "no authority",
+    release_reason: "no authority", utility_strike:false,
   });
+  await expectStatus("single release cannot bypass restart approvals", "POST", `/production-records/${stopped.id}/release-stop-work`, `Bearer ${token}`, 400, {release_reason:"SYNTHETIC premature restart"});
+  const control=(await client.query("SELECT id FROM work_safety_controls WHERE tenant_id=$1 AND source_production_record_id=$2 AND status='active'",[tenantId,stopped.id])).rows[0];
+  for(const kind of ['safety','operations'])await expectStatus(`record ${kind} restart approval`,"POST",`/work-safety/controls/${control.id}/approvals`,`Bearer ${token}`,201,{approval_kind:kind,approved_at:new Date().toISOString(),approver_name:'SYNTHETIC '+kind,evidence_reference:'SYNTHETIC restart approval',verified:true});
   const releaseBefore = await counts(client);
   const released = await expectStatus("stop work released", "POST", `/production-records/${stopped.id}/release-stop-work`, `Bearer ${token}`, 201, {
     release_reason: `Released ${marker}`,

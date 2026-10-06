@@ -68,6 +68,14 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): Envir
   if (!env.DATABASE_URL) errors.push("DATABASE_URL is required");
   if (!env.AUTH_JWT_SECRET) errors.push("AUTH_JWT_SECRET is required");
   if (env.AUTH_JWT_SECRET && env.AUTH_JWT_SECRET.length < authJwtSecretMinLength) errors.push(`AUTH_JWT_SECRET must be at least ${authJwtSecretMinLength} characters`);
+  for(const flag of ['SSO_ENABLED','MAGIC_LINK_ENABLED','PRIME_DELIVERY_ENABLED'])requireBoolean(errors,flag,env[flag]);
+  if(hostedNodeEnvs.has(nodeEnv)){
+    if(env.MAGIC_LINK_ENABLED==='true'&&!['generic_http','smtp_relay'].includes(env.EMAIL_PROVIDER??''))errors.push('Magic-link sign-in requires a configured email provider');
+    for(const [flag,hosts] of [['SSO_ENABLED','SSO_ALLOWED_HOSTS'],['PRIME_DELIVERY_ENABLED','PRIME_DELIVERY_ALLOWED_HOSTS']]){
+      if(env[flag]==='true'&&!csv(env[hosts]).length)errors.push(`${hosts} is required when ${flag}=true`);
+      for(const host of csv(env[hosts]))if(!/^[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(host)||host.includes('*'))errors.push(`${hosts} must contain explicit provider hosts`);
+    }
+  }
   requireBoolean(errors,"PASSWORD_RECOVERY_ENABLED",env.PASSWORD_RECOVERY_ENABLED);
   requireBoolean(errors,"INQUIRY_NOTIFICATION_DELIVERY_ENABLED",env.INQUIRY_NOTIFICATION_DELIVERY_ENABLED);
   requireBoolean(errors,"WORKFLOW_NOTIFICATION_DELIVERY_ENABLED",env.WORKFLOW_NOTIFICATION_DELIVERY_ENABLED);

@@ -19,6 +19,9 @@ const resources: Record<string, string> = {
   "/opportunities/candidates": "opportunity_candidate", "/opportunities/coverage": "coverage_plan", "/opportunities": "opportunity",
 };
 const pages: Record<string, string[]> = {
+  "/access-administration": ["admin.manage_users"],
+  "/identity-settings": ["admin.manage_users"],
+  "/search": ["search.read"],
   "/record-history": ["bank_account.read", "reconciliation_match.read", "project_handoff.read", "coverage_plan.read", "relationship_map.read", "opportunity_candidate.read", "payment_application.read", "collection_action.read", "ar_record.read", "rate_schedule.read", "rate_code.read", "project.read", "work_order.read", "production_record.read", "qc_review.read", "invoice.read", "contractor_payable.read", "payroll_run.read", "payment_batch.read", "cash_receipt.read", "collection_case.read", "accounting_export_batch.read", "workflow_task.read", "workflow_instance.read", "organization.read", "contact.read", "opportunity.read", "signal.read", "billable_item.read", "settlement.read", "bank_transaction.read"],
   "/customer-inquiries": ["customer_inquiry.read"],
   "/material-inventory": ["inventory.read"],
@@ -38,7 +41,7 @@ const pages: Record<string, string[]> = {
   "/recommendations-center": ["dashboard.recommendations.read"], "/kpis-center": ["dashboard.kpis.read"], "/workflows-center": ["dashboard.workflows.read"], "/workflow-notifications": ["workflow_task.read"],
   "/intelligence": ["signal.read", "organization.read"],
 };
-function publicRoute(path: string) { return path.startsWith("/request-service/") || path === "/login" || path === "/forgot-password" || path === "/reset-password" || path === "/activate-employee" || path.startsWith("/partner/invite/"); }
+function publicRoute(path: string) { return path.startsWith("/request-service/") || path === "/sign-in-link" || path === "/sso/callback" || path === "/login" || path === "/forgot-password" || path === "/reset-password" || path === "/activate-employee" || path.startsWith("/partner/invite/"); }
 export function routeAllowed(path: string, context: AuthContext | null): boolean {
   const route = path.split(/[?#]/)[0];
   if (publicRoute(route)) return true;
@@ -51,7 +54,7 @@ export function routeAllowed(path: string, context: AuthContext | null): boolean
   if (route.startsWith("/syncfield/") || route === "/partner" || route.startsWith("/partner/")) return context.permissions.includes("partner_context.read");
   if (route === "/internal-workforce" && !context.roles.some(role => ["system_admin", "executive", "operations_manager"].includes(role))) return false;
   let required = pages[route];
-  if (["/record-history", "/workflow-notifications"].includes(route)) return Boolean(required?.some(permission => context.tenant_permissions?.includes(permission)));
+  if (["/search", "/access-administration", "/identity-settings", "/record-history", "/workflow-notifications"].includes(route)) return Boolean(required?.some(permission => context.tenant_permissions?.includes(permission)));
   if (!required) {
     const resource = Object.keys(resources).sort((a,b) => b.length-a.length).find(prefix => route === prefix || route.startsWith(`${prefix}/`));
     if (resource) required = [`${resources[resource]}.${route.endsWith("/new") ? "create" : route.endsWith("/edit") ? "update" : "read"}`];

@@ -1,0 +1,26 @@
+TAP version 13
+# {"timestamp":"2026-10-06T20:52:26.771Z","category":"Event","message":"event_created","tenantId":"f138fd3b-16ef-4862-9d91-7c844a892b49","actorUserId":"3c5760b9-d05f-4f81-b401-af1d22b1bd98","eventId":"783ea07c-d325-4979-8c85-dbe92722cf83","eventType":"account_onboarding.created","aggregateType":"account_onboarding_profile","aggregateId":"1cd5b075-3a58-48d9-8f0c-628e41371b03"}
+# {"timestamp":"2026-10-06T20:52:26.779Z","category":"Audit","message":"audit_log_created","tenantId":"f138fd3b-16ef-4862-9d91-7c844a892b49","actorUserId":"3c5760b9-d05f-4f81-b401-af1d22b1bd98","action":"account_onboarding.create","entityType":"account_onboarding_profile","entityId":"1cd5b075-3a58-48d9-8f0c-628e41371b03"}
+# {"timestamp":"2026-10-06T20:52:26.833Z","category":"Event","message":"event_created","tenantId":"f138fd3b-16ef-4862-9d91-7c844a892b49","actorUserId":"3c5760b9-d05f-4f81-b401-af1d22b1bd98","eventId":"8ca977fe-26e6-4556-94a1-2743a3c61fea","eventType":"account_onboarding.updated","aggregateType":"account_onboarding_profile","aggregateId":"1cd5b075-3a58-48d9-8f0c-628e41371b03"}
+# {"timestamp":"2026-10-06T20:52:26.838Z","category":"Audit","message":"audit_log_created","tenantId":"f138fd3b-16ef-4862-9d91-7c844a892b49","actorUserId":"3c5760b9-d05f-4f81-b401-af1d22b1bd98","action":"account_onboarding.update","entityType":"account_onboarding_profile","entityId":"1cd5b075-3a58-48d9-8f0c-628e41371b03"}
+# Subtest: onboarding edits reject stale revisions and preserve finance and work authorization
+ok 1 - onboarding edits reject stale revisions and preserve finance and work authorization
+  ---
+  duration_ms: 309.101582
+  type: 'test'
+  ...
+# Subtest: historical register retains all IDs, including narrative-only later additions
+ok 2 - historical register retains all IDs, including narrative-only later additions
+  ---
+  duration_ms: 33.212069
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1691.941356

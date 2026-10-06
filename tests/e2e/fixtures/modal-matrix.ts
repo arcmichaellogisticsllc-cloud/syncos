@@ -34,7 +34,8 @@ export const modalMatrix = [
     expectedText: "AEX-ACT-002",
     action: /Mark Submitted/i,
     title: /mark submitted/i,
-    requiredFields: [/External Batch Reference|Submit Note/i],
+    requiredFields: [],
+    optionalFields: [/External Batch Reference/i, /Submit Note/i],
     boundaryCopy: /does not call an external accounting API/i,
   },
 ];

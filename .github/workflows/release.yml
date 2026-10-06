@@ -17,17 +17,18 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: syncos_release
+          POSTGRES_DB: syncos_synthetic_release
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d syncos_release"
+          --health-cmd "pg_isready -U postgres -d syncos_synthetic_release"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
+      SYNCOS_RESTRICTED_FILE_STORAGE_DIR: /tmp/syncos-restricted-ci
       NODE_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_release
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_synthetic_release
       AUTH_JWT_SECRET: syncos-isolated-ci-validation-secret-2026
       PORT: 3120
       API_BASE_URL: http://127.0.0.1:3120
@@ -111,6 +112,15 @@ jobs:
           curl -fsS http://127.0.0.1:3138
       - name: E2E release certification suite
         run: npm run e2e:ci:release
+      - name: Supplemental offline, product and identity browser checks
+        run: npm run e2e:supplemental
+      - name: Upload supplemental evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplemental-browser-${{ github.run_id }}
+          path: test-results/
+          retention-days: 30
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
@@ -128,15 +138,17 @@ jobs:
           if-no-files-found: ignore
       - name: Post certification summary
         if: always()
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           E2E_STATUS="${{ job.status }}"
-          VERSION="${{ inputs.version }}"
+          VERSION="$RELEASE_VERSION"
           DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           if [ "$E2E_STATUS" = "success" ]; then
-            OVERALL="✅ CERTIFIED"
+            OVERALL="✅ AUTOMATED CHECKS PASSED — FULL COMPLETION GATE STILL REQUIRED"
             E2E_CELL="✅"
           else
-            OVERALL="❌ NOT CERTIFIED"
+            OVERALL="❌ AUTOMATED CHECKS FAILED"
             E2E_CELL="❌"
           fi
           {
@@ -155,8 +167,9 @@ jobs:
             echo "| E2E seed smoke | ✅ |"
             echo "| E2E full suite (\`e2e:ci:release\`) | ${E2E_CELL} |"
             echo ""
-            echo "Certified at: \`${DATE}\`"
+            echo "Automated run completed at: \`${DATE}\`"
             echo ""
+            echo "Operational pilot remains blocked until integration, business, device, security, offsite recovery and deployment evidence also pass."
             echo "**Artifacts (90-day retention)**"
             echo "- Playwright HTML report: \`playwright-release-${VERSION}-${{ github.run_id }}\`"
             echo "- JUnit XML: \`junit-release-${VERSION}-${{ github.run_id }}\`"

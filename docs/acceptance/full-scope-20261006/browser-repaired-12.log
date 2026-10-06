@@ -1,0 +1,19 @@
+
+Running 12 tests using 1 worker
+
+(node:46046) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/lifecycle/high-risk-modals.spec.ts:12:9 › High-risk lifecycle modal certification › Payment Execution: /Mark Executed/i modal opens with required fields and boundary copy (3.1s)
+  ✓   2 [chromium] › tests/e2e/lifecycle/high-risk-modals.spec.ts:12:9 › High-risk lifecycle modal certification › Bank Reconciliation: /Open Exception/i modal opens with required fields and boundary copy (3.1s)
+  ✓   3 [chromium] › tests/e2e/lifecycle/high-risk-modals.spec.ts:12:9 › High-risk lifecycle modal certification › Accounting Export: /Generate/i modal opens with required fields and boundary copy (3.0s)
+  ✓   4 [chromium] › tests/e2e/lifecycle/high-risk-modals.spec.ts:12:9 › High-risk lifecycle modal certification › Accounting Export: /Mark Submitted/i modal opens with required fields and boundary copy (3.8s)
+  ✓   5 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:6:5 › authenticated Partner Admin uploads canonical Partner Compliance evidence @reviewer-fixture-upload (53ms)
+  ✓   6 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:7:5 › authenticated reviewer downloads exact evidence-linked binary artifact @authenticated-reviewer (167ms)
+  ✓   7 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:8:5 › authenticated Partner Admin downloads own-company artifact through Partner route @authenticated-reviewer (106ms)
+  ✓   8 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:9:5 › authenticated Partner Admin is denied from internal reviewer route @authenticated-reviewer (107ms)
+  ✓   9 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:10:5 › route registration smoke (66ms)
+  ✓  10 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:11:5 › unauthenticated guard smoke (65ms)
+  ✓  11 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:12:5 › invalid organization-ID validation (45ms)
+  ✓  12 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:13:5 › invalid evidence-ID validation (63ms)
+
+  12 passed (22.2s)

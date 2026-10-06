@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: completion gate blocks missing proof and cannot authorize a pilot even with complete evidence
+ok 1 - completion gate blocks missing proof and cannot authorize a pilot even with complete evidence
+  ---
+  duration_ms: 13.515293
+  type: 'test'
+  ...
+# Subtest: historical register retains all IDs, including narrative-only later additions
+ok 2 - historical register retains all IDs, including narrative-only later additions
+  ---
+  duration_ms: 11.090458
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 162.338144

@@ -22,7 +22,7 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
   test.use({ storageState: personas.systemAdmin.storageState });
 
   for (const state of actionStates) {
-    test(`[${state.domain}] ${state.stateKey}: modal opens and cancels cleanly`, async ({ page }) => {
+    test(`[${state.domain}] ${state.stateKey}: modal opens and cancels cleanly`, async ({ page }, testInfo) => {
       // Modals run mid-suite under sustained load; triple timeout for resilience
       test.slow();
       await installStoredSession(page, Object.values(personas).find(persona => persona.slug === state.persona)!.storageState);
@@ -34,14 +34,17 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
       await openAction(page, state.expectedActionLabel);
       await expectModal(page, state.expectedModalTitle);
 
+      for(const label of state.visibleFields??[])await expect(page.getByLabel(label).first()).toBeVisible();
       if (state.requiredFields.length > 0) {
         await expectRequiredFields(page, state.requiredFields);
       }
 
+      await testInfo.attach(`${state.stateKey}-open`,{body:await page.screenshot(),contentType:'image/png'});
       await cancelModal(page);
 
       // Modal must close — no residual dialog
       await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 10_000 });
+      await testInfo.attach(`${state.stateKey}-cancelled`,{body:await page.screenshot(),contentType:'image/png'});
     });
   }
 });

@@ -30,12 +30,14 @@ These manuals describe the current implementation. They retain incomplete requir
 | Touch and reading | Open each field section used that day; tap controls without zooming; rotate the phone; open the keyboard in quantity/notes fields. Labels, errors and save actions must remain readable and reachable. |
 | Already-loaded connection loss | Load the assignment online, then enable airplane mode. Enter a designated test draft and attempt only the documented operation. Record the visible offline/error state and whether the draft survives. Do not assume a queued save unless it is explicitly shown. |
 | Reconnect and duplicate protection | Restore connectivity and retry the same failed submission. Reopen the record and verify one submission/revision, unchanged totals and clear confirmation. |
-| Offline cold start | Close the browser tab, enable airplane mode, and open the application afresh. Record the actual result separately from the loaded-session test. Offline startup is not certified. |
+| Offline cold start | Close the browser tab, enable airplane mode, and open the application afresh. Record the actual result separately from the loaded-session test. Prepared-context cold-start behavior has browser automation coverage; actual-phone startup is not yet certified. |
 | Corrections | On a designated rejected test item, open the correction, edit a supported field, submit, and confirm original history remains. An authorized reviewer then opens **Customer QC**, records the documented reinspection decision, and verifies that the inspected correction resolves. Do not substitute general internal QC approval. |
-| Evidence | Upload a camera JPEG/PNG, PDF or MP4 under **Photos and evidence** (up to 20 MB), verify download integrity, then record a designated test incident from Today. Confirm the internal incident queue receives it even before daily submission. Record any phone format or size incompatibility. |
+| Evidence | Upload a supported JPEG, PNG, HEIC, HEIF, PDF, MP4 or MOV under **Photos and evidence** (up to 100 MiB in the current local candidate), verify download integrity, then record a designated test incident from Today. Confirm the internal incident queue receives it even before daily submission. Record any phone format or size incompatibility. |
 
 Record device model, OS/browser version, workforce, role, test record IDs, connection condition, expected/actual outcome, time, evidence and retest result. Do not include passwords, tokens or private document contents.
 
 ## Maintain the in-app manuals
 
-The three chapter files are authoritative training sources. Run `node scripts/build-training-manuals.js` after editing them to regenerate `apps/web/app/training/manuals.json`, then rebuild and verify the training screen. Keep this index, route inventory and verification report aligned with the candidate actually tested.
+The four chapter files are authoritative training sources. Run `node scripts/build-training-manuals.js` after editing them to regenerate `apps/web/app/training/manuals.json`, then rebuild and verify the training screen. Keep this index, route inventory and verification report aligned with the candidate actually tested.
+
+- [Sign-in methods and automatic prime-package delivery](identity-and-prime-delivery.md) — disabled-until-configured alternatives, destination approval and uncertain-delivery review.

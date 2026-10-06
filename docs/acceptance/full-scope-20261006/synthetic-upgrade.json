@@ -1,0 +1,1009 @@
+{
+  "status": "passed",
+  "scope": "Synthetic forward schema upgrade; not a production rollback or offsite restoration",
+  "from": 102,
+  "to": 109,
+  "preservedTables": 218,
+  "existingRows": 264,
+  "existingTableHashes": {
+    "accepted_production_financial_sources": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "account_onboarding_profiles": {
+      "n": "11",
+      "digest": "e3bd6504651e8d005605c7b3e9e57c52"
+    },
+    "accounting_export_batches": {
+      "n": "7",
+      "digest": "0237e381a4f1da2fb5f1ea66c7a28f19"
+    },
+    "accounting_export_items": {
+      "n": "6",
+      "digest": "51c504669bca8a2225bf73c5b45e0dbd"
+    },
+    "administrative_production_corrections": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "approvals": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "ar_records": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "audit_logs": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "bank_accounts": {
+      "n": "2",
+      "digest": "bdf1425aa9ed0e7bd02dab03570eacac"
+    },
+    "bank_transactions": {
+      "n": "7",
+      "digest": "c47ab77a02d157836de990b50a9ff2c5"
+    },
+    "billable_items": {
+      "n": "5",
+      "digest": "8e6e960097e5eecf763b8527a620ccc1"
+    },
+    "candidate_signals": {
+      "n": "1",
+      "digest": "dd44986eaeb4d2399a159c86b9a3d639"
+    },
+    "capacity_gap_analyses": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "capacity_providers": {
+      "n": "1",
+      "digest": "5c0e82997c44d8d931c83342d3248d52"
+    },
+    "capacity_records": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "cash_receipts": {
+      "n": "4",
+      "digest": "70e5bea6f5e7ddbbb77850d8616b6d30"
+    },
+    "collection_actions": {
+      "n": "3",
+      "digest": "37d55a6c50837a16a9f1b90f03f14dc0"
+    },
+    "collection_cases": {
+      "n": "3",
+      "digest": "d993b442b587030d2feb4302ff9e35b3"
+    },
+    "commercial_terms_revisions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "compliance_documents": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "constraints": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "contact_relationships": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "contacts": {
+      "n": "13",
+      "digest": "e11b2a0e8fe5c9dfc6c2a22178f24ee2"
+    },
+    "contractor_payable_eligibility_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "contractor_payable_items": {
+      "n": "3",
+      "digest": "245864333b0259d6cfe841dfe914f04a"
+    },
+    "contractor_payables": {
+      "n": "6",
+      "digest": "e8246330d7158c2919483dbe823ed426"
+    },
+    "contracts": {
+      "n": "2",
+      "digest": "9bfb3b1c6fb77b617fc574ae45984c4f"
+    },
+    "coverage_gaps": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "coverage_plans": {
+      "n": "1",
+      "digest": "420bc505373663e4bdd07471c79db7a7"
+    },
+    "coverage_requirements": {
+      "n": "1",
+      "digest": "dd0873a3cab3b1d431ba2f9f8a9297f4"
+    },
+    "coverage_sources": {
+      "n": "1",
+      "digest": "e8473dbbdf75fe42956fdcea7d758758"
+    },
+    "crews": {
+      "n": "1",
+      "digest": "d2cfb0da5c494822a36dccedc61cf6f2"
+    },
+    "customer_inquiry_files": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "customer_intake_channels": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "customer_payment_stats": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "customer_qc_cycles": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "customer_qc_decisions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "customer_qc_evidence_links": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "customer_service_inquiries": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "daily_jsa_participants": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "daily_jsas": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "daily_production_report_revisions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "daily_production_reports": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "equipment": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "event_payloads": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "events": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "executive_actions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "executive_blocker_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "executive_command_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "external_partner_payments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "external_payment_observations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "field_evidence_policies": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "field_evidence_reviews": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "field_mutation_receipts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "field_upload_chunks": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "field_upload_sessions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "file_links": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "files": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "financial_adjustments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "financial_exceptions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "inquiry_follow_up_notifications": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "inquiry_notification_attempts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "internal_account_invitations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "internal_field_clearances": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "invoice_delivery_events": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "invoice_items": {
+      "n": "2",
+      "digest": "c99500c674aa7cf47d5c03a759002d39"
+    },
+    "invoice_package_documents": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "invoice_package_policies": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "invoice_packages": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "invoices": {
+      "n": "6",
+      "digest": "aa9f7b172bf4a1b87a0af02e3a810d3c"
+    },
+    "kpi_alerts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "kpi_definitions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "kpi_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "learning_events": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "learning_scores": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "map_annotations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "material_locations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "material_lots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "material_movements": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "mobilization_context_requirements": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "mobilization_decisions": {
+      "n": "1",
+      "digest": "ebd483c38650f0ca56da62b9e8c00ecb"
+    },
+    "mobilization_overrides": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "mobilization_readiness_check_results": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "mobilization_readiness_evaluations": {
+      "n": "1",
+      "digest": "65e16e4833c7e6944df84460bc970a95"
+    },
+    "mobilization_requirement_policies": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "mobilization_source_event_invalidations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "notice_acknowledgments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "notice_to_proceed_versions": {
+      "n": "1",
+      "digest": "96e66aa26015ad21121b8bb41057f2cd"
+    },
+    "opportunities": {
+      "n": "1",
+      "digest": "8fba3e94d7463095e30b6e0b0a145814"
+    },
+    "opportunity_candidates": {
+      "n": "1",
+      "digest": "40a54176b10911ba3aae2ce00ea32869"
+    },
+    "opportunity_capacity_requirements": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "opportunity_coverage_options": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "opportunity_crew_match_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "opportunity_match_decisions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "opportunity_partner_match_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "opportunity_partner_shortlists": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "opportunity_requirement_profiles": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "organization_relationships": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "organizations": {
+      "n": "14",
+      "digest": "caf077fe798c615fa37bf0f20080472b"
+    },
+    "partner_agreement_versions": {
+      "n": "1",
+      "digest": "e4db0175e515d7989595b95e57462168"
+    },
+    "partner_capacity_intelligence_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_company_profiles": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_company_submission_items": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_company_submission_reviews": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_company_submissions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_crew_memberships": {
+      "n": "1",
+      "digest": "348d59f57bb13521610ded62d0dc4407"
+    },
+    "partner_document_signatories": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_document_signatures": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_inquiries": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_inquiry_qualification_events": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_insurance_policies": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_lifecycle_recommendations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_onboarding_invitations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_payment_attempts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_payment_instructions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_payment_profiles": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_payment_trigger_events": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_performance_score_components": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_performance_snapshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_restricted_evidence": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_restricted_file_objects": {
+      "n": "1",
+      "digest": "7e72032e4094c28c2d742a7a220c683c"
+    },
+    "partner_risk_flags": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_setup_requests": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_tax_profiles": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_vehicle_assignments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_vehicle_condition_records": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_vehicle_operator_authorizations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_work_order_crew_assignments": {
+      "n": "1",
+      "digest": "b16ecb555f7f942d00edffe46487dbfe"
+    },
+    "partner_work_order_versions": {
+      "n": "1",
+      "digest": "233f27889b770f52f582390299c171ff"
+    },
+    "partner_worker_credentials": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_worker_headshots": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_worker_profiles": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "partner_worker_user_links": {
+      "n": "1",
+      "digest": "d8d9a7c377458d88f205bd159925ab67"
+    },
+    "partner_workforce_attestations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "passport_connections": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "passport_observations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "passport_payable_mappings": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "passport_poll_checkpoints": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "passport_reconciliation_exceptions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "passport_refresh_jobs": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "password_recovery_audit": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "password_recovery_limits": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "password_recovery_requests": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "payment_application_allocations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "payment_applications": {
+      "n": "3",
+      "digest": "637dd4aedca2a98b6c4570682283e1c9"
+    },
+    "payment_batches": {
+      "n": "9",
+      "digest": "bd0eb6c74f29a0c09ce622acbb46d57f"
+    },
+    "payment_items": {
+      "n": "4",
+      "digest": "e21220df76273db151a1a2f5fb89be0f"
+    },
+    "payments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "payroll_items": {
+      "n": "3",
+      "digest": "16b4fc88c54c114b429fe22ab707a349"
+    },
+    "payroll_runs": {
+      "n": "6",
+      "digest": "f41f801f3aa1a6457b835e6e7e2352a0"
+    },
+    "prime_correction_policies": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "production_corrections": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "production_evidence": {
+      "n": "3",
+      "digest": "49628d1fd254c484496b27b52cad623c"
+    },
+    "production_export_artifacts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "production_quantity_reviews": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "production_records": {
+      "n": "7",
+      "digest": "21dbfc11623fb0eb8ba658bbe04dc00c"
+    },
+    "production_start_authorizations": {
+      "n": "1",
+      "digest": "22030d76464758a97c1f69ff58e17c6f"
+    },
+    "production_work_item_registry": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "project_handoff_approvals": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "project_handoff_checklist_items": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "project_handoff_risks": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "project_handoffs": {
+      "n": "1",
+      "digest": "4dc002ec7bb1c0bd84dfe0b5d81419c9"
+    },
+    "projects": {
+      "n": "1",
+      "digest": "5d7ec02d84777987496a9670e3fc19d3"
+    },
+    "public_intake_limits": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "public_intake_receipts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "qc_reviews": {
+      "n": "5",
+      "digest": "dedce46afd92036275534b095110d688"
+    },
+    "rate_codes": {
+      "n": "1",
+      "digest": "14e602c178f75f753b1150289ab6bbcb"
+    },
+    "rate_schedules": {
+      "n": "1",
+      "digest": "f578a6877202fdeaa3dba56507e866d8"
+    },
+    "recommendation_evidence": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "recommendation_outcomes": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "recommendations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "reconciliation_matches": {
+      "n": "2",
+      "digest": "a711c5b143ea3bbcda2245b9e0762697"
+    },
+    "relationship_maps": {
+      "n": "1",
+      "digest": "20fb281741b56b68decb5cdd8d62711f"
+    },
+    "relationship_paths": {
+      "n": "1",
+      "digest": "7555673e7ea5732bae78873f3320f080"
+    },
+    "retainage_releases": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "retained_fund_release_terms": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "roles": {
+      "n": "36",
+      "digest": "d9c6208127bdb9e08e8074be44d1b848"
+    },
+    "score_history": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "settlement_items": {
+      "n": "4",
+      "digest": "9732e1a7ffbbe71b0de3f6beb3e030bd"
+    },
+    "settlements": {
+      "n": "6",
+      "digest": "b84df816011576f3162d034d7c9f45f0"
+    },
+    "signal_entities": {
+      "n": "1",
+      "digest": "ca6b252aed71d9618a180f520eb1017b"
+    },
+    "signal_evidence": {
+      "n": "1",
+      "digest": "ea64dcd14cdece2edc504ab9a88d1a7d"
+    },
+    "signals": {
+      "n": "1",
+      "digest": "ea407309c288c17245eb0af54beb8f50"
+    },
+    "supplemental_form_assignments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "supplemental_form_records": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "supplemental_form_versions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_asset_observations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_coil_commercial_policies": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_coil_observations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_design_segments": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_field_evidence": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_field_incidents": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_map_assignments": {
+      "n": "1",
+      "digest": "434f39a5de9f2be6f35d37798812f2ec"
+    },
+    "syncfield_map_documents": {
+      "n": "1",
+      "digest": "7b2a76a8e2d28481a51e829379bd0ca2"
+    },
+    "syncfield_map_pages": {
+      "n": "1",
+      "digest": "386e11538cfc3174c08aac23d53482c7"
+    },
+    "syncfield_map_versions": {
+      "n": "1",
+      "digest": "24cc1473b9df1cc026ad050c624de35c"
+    },
+    "syncfield_map_work_zones": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_production_codes": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_span_completions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "syncfield_work_order_production_codes": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "system_actions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "tenant_users": {
+      "n": "15",
+      "digest": "e1d1629dbf778165f228d728093ef9af"
+    },
+    "tenants": {
+      "n": "2",
+      "digest": "395f8e1725eba5fe4445c20ddf3886e2"
+    },
+    "territories": {
+      "n": "2",
+      "digest": "a19df2fb13df15f3763d1efc58565b8d"
+    },
+    "test_objects": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "user_roles": {
+      "n": "15",
+      "digest": "67a43b89c93131f93499a0b17abbf5fa"
+    },
+    "users": {
+      "n": "15",
+      "digest": "42bd518ece2276311c3476b323fedfa0"
+    },
+    "work_orders": {
+      "n": "1",
+      "digest": "49257f61b7993b8c3667d2345dcb61cf"
+    },
+    "work_safety_approvals": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "work_safety_controls": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workers": {
+      "n": "1",
+      "digest": "9d1d82d724569e159b4e3bf7d69ba606"
+    },
+    "workflow_definitions": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workflow_escalations": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workflow_instances": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workflow_notification_attempts": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workflow_notifications": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workflow_steps": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "workflow_tasks": {
+      "n": "0",
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  },
+  "newTables": [
+    "identity_audit",
+    "identity_rate_limits",
+    "magic_link_requests",
+    "material_discrepancies",
+    "oidc_connections",
+    "oidc_identity_links",
+    "oidc_login_requests",
+    "passport_receivable_mappings",
+    "passport_recorded_payments",
+    "passport_recorded_receipts",
+    "prime_delivery_attempts",
+    "prime_delivery_destination_revocations",
+    "prime_delivery_destinations",
+    "prime_delivery_jobs"
+  ],
+  "migrations": [
+    "001_tenants_users_roles_permissions.sql",
+    "002_territories_organizations.sql",
+    "003_contacts_relationships.sql",
+    "004_signals_evidence.sql",
+    "005_relationship_maps_paths.sql",
+    "006_opportunity_candidates_opportunities.sql",
+    "007_capacity_providers_crews_workers_equipment.sql",
+    "008_compliance_documents_capacity_records.sql",
+    "009_projects_work_orders_production.sql",
+    "010_contracts_rates_settlements_invoices_payments.sql",
+    "011_constraints_recommendations.sql",
+    "012_events_actions_approvals_audit.sql",
+    "013_workflows_tasks_escalations.sql",
+    "014_kpis_learning.sql",
+    "015_files_file_links.sql",
+    "016_tenant_fk_hardening.sql",
+    "017_intelligence_signal_contract_hardening.sql",
+    "018_organization_contract_hardening.sql",
+    "019_contact_contract_hardening.sql",
+    "020_relationship_contract_hardening.sql",
+    "021_opportunity_candidate_contract_hardening.sql",
+    "022_opportunity_pipeline_contract_hardening.sql",
+    "023_opportunity_approval_policy_hardening.sql",
+    "024_coverage_planning_contract_foundation.sql",
+    "025_coverage_planning_backend_hardening.sql",
+    "026_project_handoff_contract_foundation.sql",
+    "027_project_backend_contract_hardening.sql",
+    "028_work_order_contract_hardening.sql",
+    "029_production_contract_hardening.sql",
+    "030_qc_review_contract_foundation.sql",
+    "031_billable_contract_foundation.sql",
+    "032_settlement_contract_foundation.sql",
+    "033_invoice_contract_foundation.sql",
+    "034_cash_application_contract_foundation.sql",
+    "035_collections_contract_foundation.sql",
+    "036_contractor_payable_contract_foundation.sql",
+    "037_payroll_contract_foundation.sql",
+    "038_payment_execution_contract_foundation.sql",
+    "039_bank_reconciliation_contract_foundation.sql",
+    "040_accounting_export_contract_foundation.sql",
+    "041_account_onboarding_contract_foundation.sql",
+    "042_partner_compliance_onboarding_foundation.sql",
+    "043_partner_workforce_credentials_foundation.sql",
+    "044_partner_agreements_work_orders_vehicles_foundation.sql",
+    "045_partner_mobilization_readiness_foundation.sql",
+    "046_syncfield_map_jsa_foundation.sql",
+    "047_syncfield_daily_production_foundation.sql",
+    "048_syncfield_customer_qc_foundation.sql",
+    "049_syncfield_production_exports_closeout.sql",
+    "050_accepted_production_financials.sql",
+    "051_payment_retainage_adjustments.sql",
+    "052_partner_performance_capacity_intelligence.sql",
+    "053_opportunity_capacity_matching.sql",
+    "054_executive_command_throughput.sql",
+    "055_partner_onboarding_invitations.sql",
+    "056_syncfield_field_traceability.sql",
+    "057_syncfield_design_segments_redlines.sql",
+    "058_syncfield_coil_slack_observations.sql",
+    "059_syncfield_coil_commercial_policy.sql",
+    "060_partner_onboarding_submissions.sql",
+    "061_internal_workforce_and_external_payments.sql",
+    "062_internal_account_invitations.sql",
+    "063_field_billing_units.sql",
+    "064_restore_production_export_file_types.sql",
+    "065_demo_execution_permission_reconciliation.sql",
+    "066_finance_workflow_idempotency.sql",
+    "067_syncfield_evidence_incidents.sql",
+    "068_partner_setup_requests.sql",
+    "069_demo_crew_organization_link.sql",
+    "070_pre_payment_evidence_limits.sql",
+    "071_jsa_revision_provenance.sql",
+    "072_external_payment_review_inbox.sql",
+    "073_work_safety_authorization.sql",
+    "074_field_evidence_readiness.sql",
+    "075_production_quantity_review.sql",
+    "076_prime_correction_deadlines.sql",
+    "077_customer_acceptance_quantity_provenance.sql",
+    "078_approved_commercial_terms.sql",
+    "079_invoice_packages_delivery.sql",
+    "080_partner_contract_payment_terms.sql",
+    "081_legacy_correction_export_provenance.sql",
+    "082_invoice_event_order.sql",
+    "083_commercial_precision_calendars.sql",
+    "084_payment_installment_schedule.sql",
+    "085_payable_schedule_freshness.sql",
+    "086_passport_durable_intake.sql",
+    "087_installment_paid_balance_due.sql",
+    "088_passport_refresh_generations.sql",
+    "089_retained_fund_release_terms.sql",
+    "090_retained_fund_source_links.sql",
+    "091_workflow_action_retry_keys.sql",
+    "092_password_recovery.sql",
+    "093_supplemental_forms.sql",
+    "094_material_inventory.sql",
+    "095_customer_service_inquiries.sql",
+    "096_product_workspace_admin_grants.sql",
+    "097_resumable_field_evidence.sql",
+    "098_resumable_evidence_original_limit.sql",
+    "099_public_intake_follow_up.sql",
+    "100_field_form_assignments.sql",
+    "101_workflow_notifications.sql",
+    "102_record_history_indexes.sql",
+    "103_company_field_delegation.sql",
+    "104_prepared_payment_posting.sql",
+    "105_prepared_customer_receipts.sql",
+    "106_company_material_discrepancies.sql",
+    "107_alternative_sign_in.sql",
+    "108_prime_delivery_outbox.sql",
+    "109_identity_audit_integrity.sql"
+  ]
+}

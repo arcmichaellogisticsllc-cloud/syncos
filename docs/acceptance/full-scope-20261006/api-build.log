@@ -1,0 +1,31 @@
+
+> @syncos/api@0.1.0 build
+> npm run clean && npm run build:deps && nest build
+
+
+> @syncos/api@0.1.0 clean
+> node -e "require('fs').rmSync('dist', { recursive: true, force: true })"
+
+
+> @syncos/api@0.1.0 build:deps
+> npm run build -w @syncos/auth && npm run build -w @syncos/database && npm run build -w @syncos/events && npm run build -w @syncos/permissions && npm run build -w @syncos/shared
+
+
+> @syncos/auth@0.1.0 build
+> tsc
+
+
+> @syncos/database@0.1.0 build
+> tsc
+
+
+> @syncos/events@0.1.0 build
+> tsc
+
+
+> @syncos/permissions@0.1.0 build
+> tsc
+
+
+> @syncos/shared@0.1.0 build
+> tsc

@@ -1,0 +1,10 @@
+
+Running 3 tests using 1 worker
+
+(node:57742) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision (2.1s)
+  ✓  2 tests/onboarding-ui/onboarding.spec.ts:8:5 › onboarding reader sees the profile without editing controls (1.0s)
+  ✓  3 tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review (1.4s)
+
+  3 passed (7.3s)

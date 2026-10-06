@@ -10,16 +10,21 @@ test('company safety, production and customer QC history reach older records wit
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Temporary copies exercise the real controller joins without adding business records.
+    // Build session-local typed fixtures so the test also works on a freshly migrated CI database.
+    const tenant=randomUUID(),organization=randomUUID(),crew=randomUUID(),worker=randomUUID(),version=randomUUID(),project=randomUUID(),order=randomUUID();
+    for(const table of ['crews','workers','partner_work_order_versions','work_orders','projects','organizations','daily_jsas','daily_production_reports'])await client.query(`CREATE TEMP TABLE ${table} AS SELECT * FROM public.${table} WITH NO DATA`);
+    await client.query("INSERT INTO crews(id,tenant_id,name) VALUES($1,$2,'Synthetic history crew')",[crew,tenant]);
+    await client.query("INSERT INTO workers(id,tenant_id,first_name,last_name) VALUES($1,$2,'Synthetic','Foreman')",[worker,tenant]);
+    await client.query("INSERT INTO partner_work_order_versions(id,tenant_id,work_order_number) VALUES($1,$2,'SYNTHETIC-HISTORY')",[version,tenant]);
+    await client.query('INSERT INTO work_orders(id,tenant_id) VALUES($1,$2)',[order,tenant]);
+    await client.query("INSERT INTO projects(id,tenant_id,name) VALUES($1,$2,'Synthetic history project')",[project,tenant]);
+    await client.query("INSERT INTO organizations(id,tenant_id,name) VALUES($1,$2,'Synthetic history partner')",[organization,tenant]);
     for (const table of ['daily_jsas','daily_production_reports']) {
-      const sample = (await client.query(`SELECT * FROM public.${table} WHERE deleted_at IS NULL LIMIT 1`)).rows[0];
-      assert.ok(sample, `Seed a synthetic ${table} fixture first`);
-      await client.query(`CREATE TEMP TABLE ${table} AS SELECT * FROM public.${table} WITH NO DATA`);
-      const columns = Object.keys(sample);
-      const replacements = {id:'gen_random_uuid()', created_at:"'2026-01-01'::timestamptz + (n % 3)*interval '1 microsecond'"};
-      // Preserve native enum types by selecting the original typed row.
-      const selected = columns.map(column => replacements[column] || `source."${column}"`).join(',');
-      await client.query(`INSERT INTO ${table} SELECT ${selected} FROM public.${table} source CROSS JOIN generate_series(1,205) n WHERE source.id=$1`,[sample.id]);
+      const sample={tenant_id:tenant,organization_id:organization};
+      const common='id,tenant_id,organization_id,crew_id,work_order_version_id,work_date,created_at';
+      const values="gen_random_uuid(),$1,$2,$3,$4,'2026-01-01'::date,'2026-01-01'::timestamptz+(n % 3)*interval '1 microsecond'";
+      if(table==='daily_jsas')await client.query(`INSERT INTO daily_jsas(${common},foreman_worker_id) SELECT ${values},$5 FROM generate_series(1,205)n`,[tenant,organization,crew,version,worker]);
+      else await client.query(`INSERT INTO daily_production_reports(${common},work_order_id,project_id) SELECT ${values},$5,$6 FROM generate_series(1,205)n`,[tenant,organization,crew,version,order,project]);
       if(table === 'daily_production_reports') await client.query("UPDATE daily_production_reports SET status='submitted',general_notes='History % literal'");
       const controller = new SyncfieldController(pool,{});
       controller.withClient = operation => operation(client);

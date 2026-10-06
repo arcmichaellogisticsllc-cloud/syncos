@@ -1,24 +1,32 @@
-import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import type { Pool } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
-import { RequirePermission } from "../security/require-permission.decorator";
+import { RequirePermission, TenantPermissionOnly } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 
 @Controller("search")
+@TenantPermissionOnly()
 export class SearchController {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
 
   @Get()
   @RequirePermission("search.read")
-  async search(@Req() request: AuthenticatedRequest, @Query("q") q?: string, @Query("archived") archived?: string) {
+  async search(@Req() request: AuthenticatedRequest, @Query("q") q?: string, @Query("archived") archived?: string, @Query("after") after?: string) {
+    if (q !== undefined && (typeof q !== "string" || q.length > 200)) throw new BadRequestException("Search must be text up to 200 characters");
+    let position: string[] | null = null;
+    if (after) { try { position = JSON.parse(Buffer.from(after, "base64url").toString("utf8")); } catch { throw new BadRequestException("Invalid search position"); }
+      if (!Array.isArray(position) || position.length !== 2 || !/^[a-z_]+$/.test(position[0]) || !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(position[1]) || after.length > 256) throw new BadRequestException("Invalid search position");
+    }
     const query = typeof q === "string" ? q.trim() : "";
     if (!query) return [];
-    const search = `%${query}%`;
+    const search = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
     const includeArchived = archived === "true";
     const client = await this.pool.connect();
     try {
+      const permissions = (await client.query(`SELECT DISTINCT p.key FROM tenant_users tu JOIN users u ON u.id=tu.user_id AND u.status='active' AND u.deleted_at IS NULL JOIN tenants t ON t.id=tu.tenant_id AND t.status='active' AND t.deleted_at IS NULL JOIN user_roles ur ON ur.tenant_user_id=tu.id AND ur.tenant_id=tu.tenant_id AND ur.scope_type='tenant' JOIN roles r ON r.id=ur.role_id AND r.tenant_id=ur.tenant_id AND r.deleted_at IS NULL JOIN role_permissions rp ON rp.role_id=r.id AND rp.tenant_id=r.tenant_id JOIN permissions p ON p.id=rp.permission_id WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL`, [request.auth.tenantId, request.auth.userId])).rows.map(row => row.key);
       const result = await client.query(
         `
+        SELECT * FROM (
         SELECT 'territory' AS object_type, id, name AS title, status, name AS snippet
         FROM territories
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (name ILIKE $2 OR code ILIKE $2)
@@ -398,11 +406,16 @@ export class SearchController {
         WHERE tenant_id = $1 AND deleted_at IS NULL AND (
           score_type ILIKE $2 OR object_type ILIKE $2 OR entity_type ILIKE $2 OR status ILIKE $2
         )
+        ) matches
+        WHERE (object_type || '.read') = ANY($4::text[])
+          AND ($3::boolean OR status IS DISTINCT FROM 'archived')
+          AND ($5::text IS NULL OR (object_type,id)>($5::text,$6::uuid))
+        ORDER BY object_type,id
         LIMIT 50
         `,
-        [request.auth.tenantId, search, includeArchived],
+        [request.auth.tenantId, search, includeArchived, permissions, position?.[0] ?? null, position?.[1] ?? null],
       );
-      return result.rows;
+      return result.rows.map(row => ({...row, _cursor: Buffer.from(JSON.stringify([row.object_type,row.id])).toString("base64url")}));
     } finally {
       client.release();
     }

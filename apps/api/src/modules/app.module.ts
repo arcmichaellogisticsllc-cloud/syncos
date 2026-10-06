@@ -16,6 +16,10 @@ import { InternalWorkforceController } from "../routes/internal-workforce.contro
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
+import { AccessAdministrationController } from "../routes/access-administration.controller";
+import { PrimeDeliveryController } from "../routes/prime-delivery.controller";
+import { SsoController } from "../routes/sso.controller";
+import { MagicLinkController } from "../routes/magic-link.controller";
 import { PasswordRecoveryController } from "../routes/password-recovery.controller";
 import { AuthController } from "../routes/auth.controller";
 import { AccountingExportController } from "../routes/accounting-export.controller";
@@ -79,6 +83,10 @@ import { DatabaseModule } from "./database.module";
     AccountOnboardingController,
     AuthController,
     PasswordRecoveryController,
+    MagicLinkController,
+    SsoController,
+    PrimeDeliveryController,
+    AccessAdministrationController,
     BankReconciliationController,
     SecurityTestController,
     TestObjectsController,

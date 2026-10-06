@@ -45,6 +45,7 @@ type OnboardingData = {
 
 type AccountOnboardingRecord = {
   id: string;
+  profileId?: string;
   organization: SyncRecord;
   accountType: "Prime / Customer" | "Contractor / Vendor";
   company: string;
@@ -256,6 +257,7 @@ function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
               <td>
                 <div className="row-actions">
                   <Link className="table-link" href={`/intelligence/organizations/${row.id}`}>Open Account</Link>
+                  {row.profileId ? <Link className="table-link" href={`/intelligence/account-onboarding/${row.profileId}`}>Review Onboarding</Link> : <Link className="table-link" href={`/intelligence/account-onboarding/new?organization_id=${row.id}`}>Start Onboarding</Link>}
                   {row.candidates[0]?.id ? <Link className="table-link" href={`/opportunities/candidates/${row.candidates[0].id}`}>Open Candidate</Link> : null}
                 </div>
               </td>
@@ -364,6 +366,7 @@ function buildContractRecord(profile: SyncRecord, data: OnboardingData): Account
   const contactTitle = profile.contact_title ?? profile.primary_contact_title ?? profile.primary_contact_role;
   return {
     id: organizationId,
+    profileId: String(profile.id),
     organization,
     accountType,
     company: textValue(profile.organization_name ?? organization.name),

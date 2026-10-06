@@ -1,3 +1,4 @@
+const {authorizeSyntheticWork}=require('./synthetic-work-authorization');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -105,6 +106,7 @@ async function main() {
   });
   if (assigned.status !== "assigned") throw new Error("work order not assigned");
 
+  await authorizeSyntheticWork(client,tenantId,userId,workOrder.id,"2026-08-01");
   const productionBefore = await counts(client);
   const draft = await expectStatus("production record create", "POST", "/production-records", `Bearer ${token}`, 201, {
     project_id: project.id,

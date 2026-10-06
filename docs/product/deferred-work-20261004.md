@@ -1,10 +1,20 @@
+# October 6 full-completion continuation
+
+The user has superseded the earlier pilot-first boundary: every agreed feature, required provider, historical backlog item, device/security/recovery/deployment check and engineering blocker must be resolved before proposing an operational pilot. No pilot is authorized by a test result alone.
+
+Current work adds SSO/OIDC account linking, single-use magic-link sign-in, and controlled generic HTTPS prime-package delivery through migration 109. These are local engineering implementations under verification, not activated integrations. Refer to `historical-backlog-register.json` for retained historical IDs and `../deployment/engineering-completion-gate.json` for the blocking completion gate. The records below remain historical evidence; their earlier “future capability” and “not needed for pilot” wording no longer defines the current completion scope.
+
 # Work set aside — updated October 5, 2026
 
 The user authorized recording work that cannot be completed now separately. This register is not a statement that all engineering is complete. It distinguishes unfinished implementation from unavailable external acceptance. No item is silently removed from scope.
 
+## User release gate — October 6, 2026
+
+The user has put all crew pilots on hold until end-to-end engineering is complete. Earlier statements that broader capabilities are not pilot prerequisites do not authorize proceeding with a pilot. Keep SSO, magic-link login and automatic prime-package delivery visible in the full engineering scope; do not silently defer them to declare completion. Separate confirmed unimplemented features, unfinished provider/environment integration, and validation or business-evidence requirements. Reconcile historical backlog entries against current code and tests before claiming application-wide closure. Physical-device engineering acceptance may precede an operational crew pilot, but requires actual devices and must not be represented by browser emulation. No staging activation or pilot is authorized by this backlog-outline request.
+
 ## Latest candidate — October 5, through migration 106
 
-This checkpoint supersedes the older implementation gaps below. Cold-offline new reports and PDF maps, company-admin forms/delegation and material discrepancy routing, expanded accessible history, and synthetic transaction-safe incoming/outgoing posting are implemented in the isolated candidate. Final candidate verification is in progress; see `docs/acceptance/independent-completion-20261005.md`. This does not claim staging deployment, actual-phone acceptance, configured delivery, provider acceptance or offsite disaster recovery.
+This checkpoint supersedes the older implementation gaps below. Cold-offline new reports and PDF maps, company-admin forms/delegation and material discrepancy routing, expanded accessible history, and synthetic transaction-safe incoming/outgoing posting are implemented in the isolated candidate. The approved eight-area independent engineering scope is complete and locally verified at checkpoint `f94719a`; see `docs/acceptance/independent-completion-20261005.md` for passing evidence and rerun details. This does not claim staging deployment, actual-phone acceptance, configured delivery, provider acceptance or offsite disaster recovery.
 
 The remaining external evidence is tracked in `docs/deployment/external-evidence-template.json`. SSO, magic-link login and optional automated prime delivery remain future product capabilities. Self-service password recovery, public inquiry intake, configurable forms and the inventory ledger exist in the candidate; delivery configuration, real stock counts and operational acceptance remain distinct.
 

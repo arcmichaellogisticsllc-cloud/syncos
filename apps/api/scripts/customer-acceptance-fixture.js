@@ -1,8 +1,10 @@
 // Synthetic smoke data only. Do not call against a shared staging or production database.
 const crypto = require('node:crypto');
+const {productionQuantitySource,productionQuantityFingerprint}=require('../dist/routes/production-quantity-integrity');
 
 async function createCustomerAcceptanceFixture(client, input) {
   const { tenantId, userId, organizationId, providerId, crewId, projectId, workOrderId, productionId, quantity, unit } = input;
+  if(!/^syncos_synthetic_/.test((await client.query('SELECT current_database() name')).rows[0].name))throw new Error('Use an isolated synthetic database for acceptance fixtures');
   const suffix = crypto.randomUUID().slice(0, 8);
   const provider = (await client.query('SELECT provider_type FROM capacity_providers WHERE tenant_id=$1 AND id=$2', [tenantId, providerId])).rows[0];
   if (!provider || !userId) throw new Error('Customer acceptance fixture requires a provider and recording user');
@@ -22,6 +24,11 @@ async function createCustomerAcceptanceFixture(client, input) {
   const revision = (await client.query("INSERT INTO daily_production_report_revisions (tenant_id,daily_report_id,revision_number,snapshot_json) VALUES ($1,$2,1,'{}') RETURNING id", [tenantId,report.id])).rows[0];
   const cycle = (await client.query("INSERT INTO customer_qc_cycles (tenant_id,project_id,work_order_id,work_order_version_id,daily_report_id,daily_report_revision_id,partner_organization_id,crew_id,qc_authority_organization_id,cycle_number,status,source_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7,1,'accepted','synthetic-customer-evidence') RETURNING id", [tenantId,projectId,workOrderId,version.id,report.id,revision.id,organizationId,crewId])).rows[0];
   const decision = (await client.query("INSERT INTO customer_qc_decisions (tenant_id,qc_cycle_id,production_record_id,decision,reported_quantity,customer_accepted_quantity,unit_of_measure,recorded_by_user_id,source_reference) VALUES ($1,$2,$3,'accepted',$4,$4,$5,$6,'synthetic-customer-evidence') RETURNING id", [tenantId,cycle.id,productionId,quantity,unit,userId])).rows[0];
+  const record=await productionQuantitySource(client,tenantId,productionId);
+  const fingerprint=productionQuantityFingerprint(record);
+  const review=(await client.query("INSERT INTO production_quantity_reviews(tenant_id,production_record_id,disposition,canonical_reference,source_fingerprint,source_reference,review_notes,reviewed_by,client_mutation_id) VALUES($1,$2,'primary_work',$6,$3,'SYNTHETIC source review','SYNTHETIC distinct work',$4,$5) RETURNING id",[tenantId,productionId,fingerprint,userId,crypto.randomUUID(),productionId])).rows[0];
+  await client.query('UPDATE production_records SET quantity_review_id=$3 WHERE tenant_id=$1 AND id=$2',[tenantId,productionId,review.id]);
+  await client.query('UPDATE customer_qc_decisions SET accepted_quantity_review_id=$3,accepted_quantity_fingerprint=$4 WHERE tenant_id=$1 AND id=$2',[tenantId,decision.id,review.id,fingerprint]);
   return decision.id;
 }
 module.exports = { createCustomerAcceptanceFixture };

@@ -1,0 +1,297 @@
+
+> syncos@0.1.0 sprint8:smoke
+> npm run smoke:sprint8 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint8
+> node scripts/sprint8-smoke.js
+
+sprint8 smoke passed
+
+> syncos@0.1.0 sprint9:smoke
+> npm run smoke:sprint9 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint9
+> node scripts/sprint9-smoke.js
+
+sprint9 smoke passed
+
+> syncos@0.1.0 sprint10:smoke
+> npm run smoke:sprint10 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint10
+> node scripts/sprint10-smoke.js
+
+sprint10 smoke passed
+
+> syncos@0.1.0 sprint11:smoke
+> npm run smoke:sprint11 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint11
+> node scripts/sprint11-smoke.js
+
+sprint11 smoke passed
+
+> syncos@0.1.0 sprint12:smoke
+> npm run smoke:sprint12 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint12
+> node scripts/sprint12-smoke.js
+
+sprint12 smoke passed
+
+> syncos@0.1.0 sprint13:smoke
+> npm run smoke:sprint13 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint13
+> node scripts/sprint13-smoke.js
+
+sprint13 smoke passed
+
+> syncos@0.1.0 sprint14:smoke
+> npm run smoke:sprint14 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint14
+> node scripts/sprint14-smoke.js
+
+sprint14 smoke passed
+
+> syncos@0.1.0 sprint15:smoke
+> npm run smoke:sprint15 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint15
+> node scripts/sprint15-smoke.js
+
+sprint15 smoke passed
+
+> syncos@0.1.0 sprint16:smoke
+> npm run smoke:sprint16 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint16
+> node scripts/sprint16-smoke.js
+
+sprint16 smoke passed
+
+> syncos@0.1.0 sprint17:smoke
+> npm run smoke:sprint17 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint17
+> node scripts/sprint17-smoke.js
+
+sprint17 smoke passed
+
+> syncos@0.1.0 intelligence:smoke
+> npm run smoke:intelligence -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:intelligence
+> node scripts/intelligence-smoke.js
+
+intelligence smoke passed
+
+> syncos@0.1.0 organization:smoke
+> npm run smoke:organization -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:organization
+> node scripts/organization-smoke.js
+
+organization smoke passed
+
+> syncos@0.1.0 account-onboarding:smoke
+> npm run smoke:account-onboarding -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:account-onboarding
+> node scripts/account-onboarding-smoke.js
+
+account onboarding smoke passed
+
+> syncos@0.1.0 contact:smoke
+> npm run smoke:contact -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:contact
+> node scripts/contact-smoke.js
+
+contact smoke passed
+
+> syncos@0.1.0 relationship:smoke
+> npm run smoke:relationship -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:relationship
+> node scripts/relationship-smoke.js
+
+relationship smoke passed
+
+> syncos@0.1.0 candidate:smoke
+> npm run smoke:candidate -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:candidate
+> node scripts/candidate-smoke.js
+
+candidate smoke passed
+
+> syncos@0.1.0 opportunity:smoke
+> npm run smoke:opportunity -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:opportunity
+> node scripts/opportunity-smoke.js
+
+opportunity smoke passed
+
+> syncos@0.1.0 coverage:smoke
+> npm run smoke:coverage -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:coverage
+> node scripts/coverage-smoke.js
+
+coverage smoke passed
+
+> syncos@0.1.0 project-handoff:smoke
+> npm run smoke:project-handoff -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:project-handoff
+> node scripts/project-handoff-smoke.js
+
+project handoff smoke passed
+
+> syncos@0.1.0 project:smoke
+> npm run smoke:project -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:project
+> node scripts/project-smoke.js
+
+project smoke passed
+
+> syncos@0.1.0 work-order:smoke
+> npm run smoke:work-order -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:work-order
+> node scripts/work-order-smoke.js
+
+work order smoke passed
+
+> syncos@0.1.0 production:smoke
+> npm run smoke:production -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:production
+> node scripts/production-smoke.js
+
+production smoke passed
+
+> syncos@0.1.0 qc:smoke
+> npm run smoke:qc -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:qc
+> node scripts/qc-smoke.js
+
+qc smoke passed
+
+> syncos@0.1.0 billable:smoke
+> npm run smoke:billable -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:billable
+> node scripts/billable-smoke.js
+
+billable smoke passed
+
+> syncos@0.1.0 settlement:smoke
+> npm run smoke:settlement -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:settlement
+> node scripts/settlement-smoke.js
+
+settlement smoke passed
+
+> syncos@0.1.0 invoice:smoke
+> npm run smoke:invoice -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:invoice
+> node scripts/invoice-smoke.js
+
+invoice smoke passed
+
+> syncos@0.1.0 cash-application:smoke
+> npm run smoke:cash-application -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:cash-application
+> node scripts/cash-application-smoke.js
+
+cash application smoke passed
+
+> syncos@0.1.0 collections:smoke
+> npm run smoke:collections -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:collections
+> node scripts/collections-smoke.js
+
+collections smoke passed
+
+> syncos@0.1.0 contractor-payable:smoke
+> npm run smoke:contractor-payable -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:contractor-payable
+> node scripts/contractor-payable-smoke.js
+
+contractor payable smoke passed
+
+> syncos@0.1.0 payroll:smoke
+> npm run smoke:payroll -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:payroll
+> node scripts/payroll-smoke.js
+
+payroll smoke passed
+
+> syncos@0.1.0 payment-execution:smoke
+> npm run smoke:payment-execution -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:payment-execution
+> node scripts/payment-execution-smoke.js
+
+payment execution smoke passed
+
+> syncos@0.1.0 bank-reconciliation:smoke
+> npm run smoke:bank-reconciliation -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:bank-reconciliation
+> node scripts/bank-reconciliation-smoke.js
+
+bank reconciliation smoke passed
+
+> syncos@0.1.0 accounting-export:smoke
+> npm run smoke:accounting-export -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:accounting-export
+> node scripts/accounting-export-smoke.js
+
+accounting export smoke passed

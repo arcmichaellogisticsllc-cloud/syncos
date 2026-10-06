@@ -1,0 +1,19 @@
+{
+  "candidate": "2560b1bd844fe2d753724f867c7890941afe1938a7525591d743471e95cab56d",
+  "status": "pilot_blocked",
+  "pilotAuthorized": false,
+  "scope": "Checks evidence completeness and integrity only. Never constitutes business sign-off or starts an operational pilot.",
+  "missing": [
+    "features: not passed",
+    "integrations: not passed",
+    "historicalBacklog: not passed",
+    "businessConfiguration: not passed",
+    "deviceAcceptance: not passed",
+    "security: not passed",
+    "offsiteRecovery: not passed",
+    "deployment: not passed",
+    "performance: not passed",
+    "training: not passed",
+    "Unresolved engineering blockers must be an explicitly empty list"
+  ]
+}

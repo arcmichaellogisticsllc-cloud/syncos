@@ -23,6 +23,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      SYNCOS_RESTRICTED_FILE_STORAGE_DIR: /tmp/syncos-restricted-ci
       NODE_ENV: test
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_e2e
       AUTH_JWT_SECRET: syncos-isolated-ci-validation-secret-2026
@@ -74,6 +75,15 @@ jobs:
           curl -fsS http://127.0.0.1:3138
       - name: E2E full suite
         run: npm run e2e:ci:nightly
+      - name: Supplemental offline, product and identity browser checks
+        run: npm run e2e:supplemental
+      - name: Upload supplemental evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplemental-browser-${{ github.run_id }}
+          path: test-results/
+          retention-days: 30
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

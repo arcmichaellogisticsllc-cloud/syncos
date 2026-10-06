@@ -80,6 +80,10 @@ export class InvoicePackagesController {
    const prior=(await c.query('SELECT * FROM invoice_delivery_events WHERE tenant_id=$1 AND recorded_by=$2 AND client_mutation_id=$3',[r.auth.tenantId,r.auth.userId,mutation])).rows[0];
    if(prior){if(prior.invoice_id!==id||prior.package_id!==b.package_id||prior.event_type!==type||new Date(prior.occurred_at).toISOString()!==new Date(time).toISOString()||prior.recipient!==recipient||prior.proof_reference!==proof||prior.notes!==notes)throw new BadRequestException('Request identifier already belongs to another event');return {entityType:'invoice_delivery_event',entityId:prior.id,afterState:prior,skipEventAudit:true};}
    const facts=await invoicePackageFacts(c,r.auth.tenantId,id);
+   if(['delivered','resubmitted'].includes(type)){
+    const pending=(await c.query("SELECT id FROM prime_delivery_jobs WHERE tenant_id=$1 AND invoice_id=$2 AND status IN ('queued','processing')",[r.auth.tenantId,id])).rows[0];
+    if(pending&&pending.id!==mutation)throw new BadRequestException('An automatic delivery is pending. Cancel the unsent job or resolve its receipt before recording a separate delivery.');
+   }
    const packet=(await c.query('SELECT * FROM invoice_packages WHERE tenant_id=$1 AND invoice_id=$2 AND id=$3',[r.auth.tenantId,id,b.package_id])).rows[0];
    if(!packet||packet.source_fingerprint!==facts.source_fingerprint)throw new BadRequestException('Prepare and deliver the current complete invoice package before recording its customer event');
    if(new Date(time)<new Date(packet.created_at))throw new BadRequestException('The event cannot precede preparation of this package');

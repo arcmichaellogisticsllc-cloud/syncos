@@ -1,0 +1,23 @@
+
+Running 16 tests using 1 worker
+
+(node:56851) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/account-onboarding-visibility.spec.ts:6:5 › saved profiles do not hide newly identified accounts (3.0s)
+  ✓   2 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for system-admin (411ms)
+  ✓   3 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for growth-operator (23.3s)
+  ✓   4 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for ops-manager (22.6s)
+  ✓   5 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for field-supervisor (21.0s)
+  ✓   6 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for qc-reviewer (10.0s)
+  ✓   7 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for finance-user (16.3s)
+  ✓   8 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for collections-specialist (13.5s)
+  ✓   9 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for payables-payroll-admin (11.9s)
+  ✓  10 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for accounting-manager (11.4s)
+  ✓  11 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for read-only-auditor (13.2s)
+  ✓  12 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for qc-manager (11.6s)
+  ✓  13 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for billing-manager (10.6s)
+  ✓  14 [chromium] › tests/e2e/operator-phase11.spec.ts:13:7 › Operator UI Phase 11 account onboarding workbench › renders the account onboarding pipeline and boundary copy (1.5s)
+  ✓  15 [chromium] › tests/e2e/operator-phase11.spec.ts:31:7 › Operator UI Phase 11 account onboarding workbench › stage tabs and account lanes are interactive (1.7s)
+  ✓  16 [chromium] › tests/e2e/operator-phase11.spec.ts:51:7 › Operator UI Phase 11 account onboarding workbench › shows contract-backed prime onboarding fields instead of hardcoded UI data (1.4s)
+
+  16 passed (3.1m)
