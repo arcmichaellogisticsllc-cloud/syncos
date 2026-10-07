@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: root wrapper rejects legacy without stopping writers
+ok 1 - root wrapper rejects legacy without stopping writers
+  ---
+  duration_ms: 9282.896973
+  type: 'test'
+  ...
+# Subtest: root wrapper rejects dirty without stopping writers
+ok 2 - root wrapper rejects dirty without stopping writers
+  ---
+  duration_ms: 15114.145488
+  type: 'test'
+  ...
+# Subtest: root wrapper rejects build-failed without stopping writers
+ok 3 - root wrapper rejects build-failed without stopping writers
+  ---
+  duration_ms: 8222.822995
+  type: 'test'
+  ...
+# Subtest: root wrapper fails closed on checkpoint-failed
+ok 4 - root wrapper fails closed on checkpoint-failed
+  ---
+  duration_ms: 8931.751879
+  type: 'test'
+  ...
+# Subtest: root wrapper fails closed on migration-failed
+ok 5 - root wrapper fails closed on migration-failed
+  ---
+  duration_ms: 10535.636976
+  type: 'test'
+  ...
+# Subtest: root wrapper fails closed on service-failed
+ok 6 - root wrapper fails closed on service-failed
+  ---
+  duration_ms: 21185.736156
+  type: 'test'
+  ...
+# Subtest: root wrapper fails closed on health-failed
+ok 7 - root wrapper fails closed on health-failed
+  ---
+  duration_ms: 12782.976701
+  type: 'test'
+  ...
+# Subtest: root wrapper checkpoints stopped writers, migrates as service user and publishes exact metadata after health
+ok 8 - root wrapper checkpoints stopped writers, migrates as service user and publishes exact metadata after health
+  ---
+  duration_ms: 14501.34131
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 100980.487579

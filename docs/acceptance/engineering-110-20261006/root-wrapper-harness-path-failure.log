@@ -1,0 +1,168 @@
+TAP version 13
+# Subtest: root wrapper rejects legacy without stopping writers
+not ok 1 - root wrapper rejects legacy without stopping writers
+  ---
+  duration_ms: 41.63571
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:21:53'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-ENakie/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:21:127)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: root wrapper rejects dirty without stopping writers
+not ok 2 - root wrapper rejects dirty without stopping writers
+  ---
+  duration_ms: 17.555757
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:21:53'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-OKlk4f/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:21:127)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: root wrapper rejects build-failed without stopping writers
+not ok 3 - root wrapper rejects build-failed without stopping writers
+  ---
+  duration_ms: 17.128028
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:21:53'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-0wbP2G/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:21:127)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: root wrapper fails closed on checkpoint-failed
+not ok 4 - root wrapper fails closed on checkpoint-failed
+  ---
+  duration_ms: 19.406286
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:93'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-GvgaWA/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:147)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: root wrapper fails closed on migration-failed
+not ok 5 - root wrapper fails closed on migration-failed
+  ---
+  duration_ms: 17.862844
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:93'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-ktVwWs/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:147)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: root wrapper fails closed on service-failed
+not ok 6 - root wrapper fails closed on service-failed
+  ---
+  duration_ms: 19.788795
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:93'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-OoXRYO/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:147)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: root wrapper fails closed on health-failed
+not ok 7 - root wrapper fails closed on health-failed
+  ---
+  duration_ms: 16.904348
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:93'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-l3vBTn/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:22:147)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: root wrapper checkpoints stopped writers, migrates as service user and publishes exact metadata after health
+not ok 8 - root wrapper checkpoints stopped writers, migrates as service user and publishes exact metadata after health
+  ---
+  duration_ms: 29.846488
+  type: 'test'
+  location: '/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:23:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, open '/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-root-deploy-IACIkf/calls'"
+  code: 'ENOENT'
+  stack: |-
+    Object.readFileSync (node:fs:441:20)
+    scenario (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:19:230)
+    TestContext.<anonymous> (/Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/hostinger-root-deploy.test.js:23:129)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 0
+# fail 8
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 409.347171

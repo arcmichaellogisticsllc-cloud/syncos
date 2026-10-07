@@ -59,3 +59,7 @@ Provider setup is an operator action until a hosted observability account is sel
 The supplied `infra/systemd/syncos-staging-monitor.service` and timer run every five minutes and write `/opt/syncos/staging/shared/monitoring/current.json` plus the system journal. Create that report directory before enabling the hardened unit. Missing backups or backups older than 36 hours, disk use of at least 85%, unavailable services and failed/overdue queues produce a nonzero result. These are technical defaults for daily-backup staging; they do not establish approved operational policies.
 
 A successful file-age check does not verify backup contents or offsite recovery. External alert delivery, recipients and acknowledgment are deliberately not represented as configured. Provider/APM latency and 5xx monitoring remain separate from this local probe.
+
+## Hostinger activation account
+
+The running application account is `syncos`; it has no sudo rights. The existing `deploy` account may invoke only `/usr/local/sbin/syncos-staging-deploy`. Install the reviewed `scripts/hostinger-staging-deploy-root.sh` there, root-owned and mode 0755, and `scripts/checkpoint-staging.sh` as `/usr/local/libexec/syncos/checkpoint-staging.sh`, also root-owned and mode 0755. Preserve the previous wrapper for recovery. The wrapper accepts only a full SHA reachable from its explicitly configured branch. It builds as `deploy` and migrates as `syncos`; no package lifecycle runs as root. The generic non-root script is not the Hostinger entry point under this restricted sudo policy.

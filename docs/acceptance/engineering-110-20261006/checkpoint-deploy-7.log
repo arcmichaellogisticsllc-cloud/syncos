@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: deployment rejects dirty before migrations or service shutdown
+ok 1 - deployment rejects dirty before migrations or service shutdown
+  ---
+  duration_ms: 3875.761266
+  type: 'test'
+  ...
+# Subtest: deployment rejects legacy before migrations or service shutdown
+ok 2 - deployment rejects legacy before migrations or service shutdown
+  ---
+  duration_ms: 8793.22476
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on checkpoint-failed
+ok 3 - deployment leaves services stopped without publishing on checkpoint-failed
+  ---
+  duration_ms: 6407.325242
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on migration-failed
+ok 4 - deployment leaves services stopped without publishing on migration-failed
+  ---
+  duration_ms: 4887.785564
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on health-failed
+ok 5 - deployment leaves services stopped without publishing on health-failed
+  ---
+  duration_ms: 5562.150522
+  type: 'test'
+  ...
+# Subtest: deployment leaves services stopped without publishing on worker-failed
+ok 6 - deployment leaves services stopped without publishing on worker-failed
+  ---
+  duration_ms: 8604.460742
+  type: 'test'
+  ...
+# Subtest: healthy deployment stops writers before migrating and publishes after verification
+ok 7 - healthy deployment stops writers before migrating and publishes after verification
+  ---
+  duration_ms: 19856.621951
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 58402.875211
