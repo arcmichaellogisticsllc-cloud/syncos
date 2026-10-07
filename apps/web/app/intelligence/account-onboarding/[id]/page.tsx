@@ -3,6 +3,7 @@ import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useParams,useRouter} from "next/navigation";
 import {PermissionLink,useTenantCapability} from "../../../access-control";
 import {syncosFetch,type SyncRecord} from "../../api";
+import {ProgramPolicies} from "../program-policies";
 const stages=["identified","contact_discovered","initial_outreach","application_submitted","documents_requested","compliance_review","operational_interview","rate_negotiation","approved","market_assigned","mobilized"];
 const label=(s:string)=>s.replaceAll("_"," ");
 export default function OnboardingProfile(){
@@ -21,6 +22,7 @@ export default function OnboardingProfile(){
  <dl>{["account_owner_name","primary_contact_name","rate_sheet_status","approval_status","next_action","next_action_deadline","required_documents","missing_documents","customer_programs","market_availability","notes"].map(key=><div key={key}><dt>{label(key)}</dt><dd>{Array.isArray(record[key])?(record[key] as string[]).join(", ")||"None recorded":String(record[key]??"Not recorded")}</dd></div>)}</dl>
  <p>Document and program summaries are tracking information. Verify originals and the applicable approved compliance policy before treating an account as ready.</p>
  {editable&&<form key={String(record.updated_at)} onSubmit={review}><fieldset disabled={busy}><legend>Update tracking and follow-up</legend>{creating&&<label>Account lane<select name="lane" defaultValue="prime"><option value="prime">Prime / Customer</option><option value="contractor">Contractor / Vendor</option></select></label>}<label>Onboarding stage<select name="onboarding_stage" required defaultValue={String(record.onboarding_stage)}>{stages.map(s=><option key={s} value={s}>{label(s)}</option>)}</select></label><label>Next action<input name="next_action" maxLength={2000} defaultValue={String(record.next_action??"")}/></label><label>Next action deadline<input type="date" name="next_action_deadline" defaultValue={record.next_action_deadline?new Date(String(record.next_action_deadline)).toISOString().slice(0,10):""}/></label><label>Tracking notes<textarea name="notes" maxLength={10000} defaultValue={String(record.notes??"")}/></label><button style={{minHeight:44}}>Review changes</button></fieldset></form>}
+ {!creating&&<ProgramPolicies profileId={id}/>}
  </>}
  <dialog ref={dialog} aria-labelledby="onboarding-confirm-title" onCancel={e=>{e.preventDefault();if(!busy)setPending(null);}} style={{maxWidth:560,width:"calc(100% - 32px)"}}><h2 id="onboarding-confirm-title">Confirm onboarding update</h2><p>New tracking stage: {label(String(pending?.onboarding_stage??""))}</p><p>This records progress only. It creates no contract, assignment, invoice, payable or payment. The change is recorded in the audit history.</p>{error&&<p role="alert">{error}</p>}<button disabled={busy} onClick={()=>setPending(null)} style={{minHeight:44}}>Keep editing</button><button disabled={busy} onClick={()=>void save()} style={{minHeight:44}}>{busy?"Saving…":"Confirm tracking update"}</button></dialog>
  </main>;

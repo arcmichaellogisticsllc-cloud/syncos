@@ -4,7 +4,7 @@ import { actionStates } from "../fixtures/action-states";
 import { installStoredSession } from "../helpers/auth";
 import { openAction, expectModal, expectRequiredFields, cancelModal } from "../helpers/modal";
 import { expectRouteHealthy } from "../helpers/page-assertions";
-import { expectActionButtonVisible } from "../helpers/action-state-actions";
+import { actionButtonForLabel, expectActionButtonVisible } from "../helpers/action-state-actions";
 
 /**
  * For each action state:
@@ -31,6 +31,7 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
       // Ensure action button is present before clicking
       await expectActionButtonVisible(page, state, { timeout: 60_000 });
 
+      const trigger = await actionButtonForLabel(page, state.expectedActionLabel, { requireEnabled: true });
       await openAction(page, state.expectedActionLabel);
       await expectModal(page, state.expectedModalTitle);
 
@@ -39,11 +40,27 @@ test.describe("Action-state modals — open, inspect, cancel", () => {
         await expectRequiredFields(page, state.requiredFields);
       }
 
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toHaveCount(1);
+      await expect(dialog).toHaveAccessibleName(state.expectedModalTitle);
+      await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+      const controls = dialog.locator('button:visible:not(:disabled),input:visible:not(:disabled),select:visible:not(:disabled),textarea:visible:not(:disabled),a[href]:visible').filter({visible:true});
+      await controls.last().focus();
+      await page.keyboard.press("Tab");
+      await expect(controls.first()).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(controls.last()).toBeFocused();
       await testInfo.attach(`${state.stateKey}-open`,{body:await page.screenshot(),contentType:'image/png'});
       await cancelModal(page);
 
       // Modal must close — no residual dialog
       await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 10_000 });
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(trigger).toBeFocused();
       await testInfo.attach(`${state.stateKey}-cancelled`,{body:await page.screenshot(),contentType:'image/png'});
     });
   }

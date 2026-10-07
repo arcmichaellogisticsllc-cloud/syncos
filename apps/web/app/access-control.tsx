@@ -100,7 +100,7 @@ export function AccessProvider({ children }: { children: ReactNode }) {
       .catch(error => {
         const denied=error instanceof SyncosApiError&&[401,403].includes(error.status);
         if(denied)localStorage.removeItem("syncos.offlineContext");
-        if(alive)setState(previous=>!denied&&!navigator.onLine&&pathname.startsWith('/syncfield/')&&previous?.path===pathname&&previous.token===token&&token===readToken()&&previous.context?previous:{path:pathname,context:null,error:"We could not verify your access. Sign in again or retry."});
+        if(alive)setState(previous=>!denied&&!navigator.onLine&&pathname.startsWith('/syncfield/')&&previous?.path===pathname&&previous.token===token&&token===readToken()&&previous.context?previous:{path:pathname,context:null,error:error instanceof Error && error.name === "AccessVerificationTimeout" ? "Access verification timed out. Check your connection and retry." : "We could not verify your access. Sign in again or retry."});
       });
     return () => { alive = false; };
   }, [pathname, revision]);

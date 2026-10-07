@@ -206,8 +206,8 @@ Rules:
 
 ## Deferred Gaps
 
-- Detail pages for onboarding profiles are not yet implemented in the web app.
-- Dedicated document-type policy per prime/customer program is not yet modeled.
-- Customer program records are stored as onboarding summary text arrays, not first-class program objects.
+- Profile detail/review/edit pages are implemented; see current acceptance evidence.
+- Migration 110 adds account programs, immutable policy revisions, preserved originals and document review history. Actual governing requirements still require approved source documents.
+- Historical customer program summary arrays are preserved alongside first-class account programs. They do not automatically create policies or approved evidence.
 - Rate negotiation remains status-only unless tied to existing rate schedules.
 - Email/password onboarding is not implemented.

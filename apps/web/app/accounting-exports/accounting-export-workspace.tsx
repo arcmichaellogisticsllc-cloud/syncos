@@ -1,4 +1,7 @@
 "use client";
+import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -79,9 +82,9 @@ export function AccountingExportQueue() {
     setLoading(true);
     setError("");
     try {
-      const batches = await syncosFetch<SyncRecord[]>(`/accounting-export-batches?${accountingExportQuery(filters).toString()}`, { token: session.token });
+      const batches = await completeDirectory(`/accounting-export-batches?${accountingExportQuery(filters).toString()}`, session.token);
       setRows(batches);
-      const items = (await Promise.all(batches.slice(0, 25).map((batch) => optionalList(`/accounting-export-batches/${batch.id}/items`, session.token)))).flat();
+      const items = hasPermission(session.permissions, "accounting_export_item.read") ? await completeBatchItems(batches, "/accounting-export-batches", session.token) : [];
       setExportItems(items);
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
@@ -122,7 +125,7 @@ export function AccountingExportQueue() {
               <Link className="primary-button" href="/accounting-exports/new" allowed={hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</Link>
             </div>
             <div className="summary-grid">
-              {exportQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countExportQueue(rows, exportItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
+              {exportQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "accounting_export_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countExportQueue(rows, exportItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
@@ -135,7 +138,7 @@ export function AccountingExportQueue() {
               <button type="button" onClick={() => { setActiveQueue("submitted"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
             <div className="tab-row" role="tablist" aria-label="Accounting export queues">
-              {exportQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
+              {exportQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "accounting_export_item.read")).map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
               <summary aria-label="Advanced filters drawer">Advanced filters</summary>
@@ -174,7 +177,7 @@ export function AccountingExportQueue() {
             </div>
             {!rows.length ? <div className="empty-state">No accounting export batches yet. Create a batch and add source objects as export items.</div> : visible.length ? <AccountingExportBatchTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
-          <section className="workspace-panel">
+          {hasPermission(session.permissions, "accounting_export_item.read") ? <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
                 <h2>Accounting Export Item Visibility</h2>
@@ -183,7 +186,7 @@ export function AccountingExportQueue() {
               <span>{visibleItems.length} items needing attention</span>
             </div>
             {visibleItems.length ? <AccountingExportItemVisibilityTable rows={visibleItems} /> : <div className="empty-state">No accounting export items need attention.</div>}
-          </section>
+          </section> : null}
           <FuturePlaceholders />
         </>
       ) : null}
@@ -363,14 +366,16 @@ export function AccountingExportDetail({ accountingExportBatchId }: { accounting
                 <ActionButton permission="accounting_export_batch.submit_review" session={session} disabled={batchArchived(batch)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="accounting_export_batch.start_review" session={session} disabled={batchArchived(batch)} onClick={() => openAction("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="accounting_export_batch.approve" session={session} disabled={batchArchived(batch)} onClick={() => openAction("approve")}>Approve</ActionButton>
-                <ActionButton permission="accounting_export_batch.reject" session={session} disabled={batchArchived(batch)} onClick={() => openAction("reject")}>Reject</ActionButton>
                 <ActionButton permission="accounting_export_batch.mark_submitted" session={session} disabled={batchArchived(batch)} onClick={() => openAction("mark_submitted")}>Mark Submitted</ActionButton>
                 <ActionButton permission="accounting_export_batch.mark_accepted" session={session} disabled={batchArchived(batch)} onClick={() => openAction("mark_accepted")}>Mark Accepted</ActionButton>
                 <ActionButton permission="accounting_export_batch.mark_failed" session={session} disabled={batchArchived(batch)} onClick={() => openAction("mark_failed")}>Mark Failed</ActionButton>
-                <ActionButton permission="accounting_export_batch.cancel" session={session} disabled={batch.status === "accepted_later" || batch.status === "archived"} onClick={() => openAction("cancel")}>Cancel</ActionButton>
-                <ActionButton permission="accounting_export_batch.archive" session={session} disabled={batch.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["accounting_export_batch.reject", "accounting_export_batch.cancel", "accounting_export_batch.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="accounting_export_batch.reject" session={session} disabled={batchArchived(batch)} onClick={() => openAction("reject")}>Reject</ActionButton>
+              <ActionButton permission="accounting_export_batch.cancel" session={session} disabled={batch.status === "accepted_later" || batch.status === "archived"} onClick={() => openAction("cancel")}>Cancel</ActionButton>
+              <ActionButton permission="accounting_export_batch.archive" session={session} disabled={batch.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Item Count" value={formatCell(batch.item_count ?? items.length)} />
               <Metric label="Total Debit Amount" value={money(batch.total_debit_amount)} />
@@ -458,9 +463,11 @@ export function AccountingExportItemDetail({ accountingExportItemId }: { account
               </div>
               <div className="form-actions">
                 <ActionButton permission="accounting_export_item.update" session={session} disabled={item.export_status === "archived"} onClick={() => setModal("edit_item")}>Edit Item</ActionButton>
-                <ActionButton permission="accounting_export_item.archive" session={session} disabled={item.export_status === "archived"} onClick={() => setModal("archive_item")}>Archive Item</ActionButton>
               </div>
             </div>
+            {["accounting_export_item.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="accounting_export_item.archive" session={session} disabled={item.export_status === "archived"} onClick={() => setModal("archive_item")}>Archive Item</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Source Object" value={`${formatAction(item.source_object_type)} ${textValue(item.source_object_id)}`} />
               <Metric label="Mapping Status" value={formatAction(item.mapping_status)} />
@@ -583,7 +590,7 @@ function AccountingExportModal({ type, accountingExportBatchId, batch, item, rel
 
   const isPatch = type === "edit_item";
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-card" onSubmit={(event) => isPatch ? void submitPatch(event) : void submit(event)}>
         <div className="section-toolbar"><h2>{formatAction(type)}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -600,7 +607,7 @@ function AccountingExportModal({ type, accountingExportBatchId, batch, item, rel
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Accounting Export backend only. It creates no QuickBooks/ERP/API, GL, tax, payment, bank, file download, source mutation, or accounting close records.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

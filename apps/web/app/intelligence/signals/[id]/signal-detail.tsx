@@ -1,10 +1,11 @@
 "use client";
+import { ModalBoundary } from "../../../modal-boundary";
 
 import { PermissionLink as Link } from "../../../access-control";
 import { FormEvent, useEffect, useState } from "react";
 import { dateValue, defaultSignalPermissions, hasPermission, numberValue, readPermissions, savePermissions, syncosFetch, textValue, type SyncRecord } from "../../api";
 import { IntelligenceShell } from "../../intelligence-shell";
-import { DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../../../operator-page-templates";
+import { DangerZone, DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../../../operator-page-templates";
 
 const evidenceTypes = ["source_url", "document", "screenshot", "email_note", "call_note", "meeting_note", "public_record", "procurement_notice", "permit_record", "funding_notice", "relationship_note", "other"];
 const archiveReasons = ["duplicate", "stale", "false_signal", "out_of_territory", "not_telecom_work", "insufficient_evidence", "no_longer_relevant", "other"];
@@ -272,7 +273,8 @@ function LifecycleActions({ signal, permissions, ready, activeEvidenceCount, onA
   if (archived) return <div className="action-bar"><span className="muted">This signal is archived. Actions are limited.</span></div>;
   return (
     <>
-      <div className="action-bar">{actions.map((action) => (hasPermission(permissions, action.permission) ? <button key={action.label} type="button" disabled={action.disabled || !hasPermission(permissions, action.permission)} onClick={action.run}>{action.label}</button> : null))}</div>
+      <div className="action-bar">{actions.filter((action) => action.permission !== "signal.archive").map((action) => (hasPermission(permissions, action.permission) ? <button key={action.label} type="button" disabled={action.disabled || !hasPermission(permissions, action.permission)} onClick={action.run}>{action.label}</button> : null))}</div>
+      {actions.some((action) => action.permission === "signal.archive") && hasPermission(permissions, "signal.archive") ? <DangerZone><button type="button" onClick={() => setModal("archive")}>Archive</button></DangerZone> : null}
       {modal ? <SignalActionModal action={modal} signalId={String(signal.id)} onClose={() => setModal(null)} onSaved={onReload} /> : null}
     </>
   );
@@ -320,7 +322,7 @@ function SignalActionModal({ action, signalId, onClose, onSaved }: { action: Sig
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={submit}>
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -343,7 +345,7 @@ function SignalActionModal({ action, signalId, onClose, onSaved }: { action: Sig
           <button type="button" onClick={onClose} disabled={submitting}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -364,7 +366,7 @@ function EvidenceModal({ signalId, onClose, onSaved }: { signalId: string; onClo
     }
   }
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={submit}>
         <div className="section-toolbar"><h2>Add Evidence</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -374,7 +376,7 @@ function EvidenceModal({ signalId, onClose, onSaved }: { signalId: string; onClo
         <label>Trust level<SelectInput name="trust_level" options={["unverified", "low", "medium", "high", "verified"]} defaultValue="unverified" /></label>
         <button className="primary-button" type="submit">Add Evidence</button>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -393,7 +395,7 @@ function AttachEntityModal({ signalId, entityType, organizations, territories, c
     }
   }
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={submit}>
         <div className="section-toolbar"><h2>Attach {entityType}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -401,7 +403,7 @@ function AttachEntityModal({ signalId, entityType, organizations, territories, c
         {entityType !== "contact" ? <label className="checkbox-row"><input name="is_primary" type="checkbox" defaultChecked /> Primary</label> : null}
         <button className="primary-button" type="submit">Attach</button>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -434,7 +436,7 @@ function CandidateModal({ signal, onClose, onSaved }: { signal: SyncRecord; onCl
     }
   }
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={submit}>
         <div className="section-toolbar"><h2>Create Opportunity Candidate</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -447,7 +449,7 @@ function CandidateModal({ signal, onClose, onSaved }: { signal: SyncRecord; onCl
         <label className="checkbox-row"><input name="confirm" type="checkbox" /> This signal has enough evidence to become an opportunity candidate.</label>
         <button className="primary-button" type="submit">Create Candidate</button>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -374,16 +376,18 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
                 <ActionButton permission="contractor_payable.submit_review" session={session} disabled={payableInactive(payable)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="contractor_payable.start_review" session={session} disabled={payableInactive(payable)} onClick={() => openAction("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="contractor_payable.approve" session={session} disabled={payableInactive(payable)} onClick={() => openAction("approve")}>Approve</ActionButton>
-                <ActionButton permission="contractor_payable.reject" session={session} disabled={payableInactive(payable)} onClick={() => openAction("reject")}>Reject</ActionButton>
                 <ActionButton permission="contractor_payable.mark_payment_ready" session={session} disabled={payableInactive(payable)} onClick={() => openAction("payment_ready")}>Mark Payment Ready</ActionButton>
                 <ActionButton permission="contractor_payable.place_hold" session={session} disabled={payableInactive(payable)} onClick={() => openAction("place_hold")}>Place Hold</ActionButton>
                 <ActionButton permission="contractor_payable.release_hold" session={session} disabled={payableInactive(payable)} onClick={() => openAction("release_hold")}>Release Hold</ActionButton>
-                <ActionButton permission="contractor_payable.dispute" session={session} disabled={payableInactive(payable)} onClick={() => openAction("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="contractor_payable.resolve_dispute" session={session} disabled={payableInactive(payable)} onClick={() => openAction("resolve_dispute")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="contractor_payable.void" session={session} disabled={payable.status === "voided" || payable.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
-                <ActionButton permission="contractor_payable.archive" session={session} disabled={payable.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["contractor_payable.reject", "contractor_payable.dispute", "contractor_payable.void", "contractor_payable.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="contractor_payable.reject" session={session} disabled={payableInactive(payable)} onClick={() => openAction("reject")}>Reject</ActionButton>
+              <ActionButton permission="contractor_payable.dispute" session={session} disabled={payableInactive(payable)} onClick={() => openAction("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="contractor_payable.void" session={session} disabled={payable.status === "voided" || payable.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
+              <ActionButton permission="contractor_payable.archive" session={session} disabled={payable.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Payable Amount" value={money(payable.gross_payable_amount)} />
               <Metric label="Deduction Amount" value={money(payable.deduction_amount)} />
@@ -535,7 +539,7 @@ function PayableModal({ type, payableId, payable, item, related, session, onClos
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -553,7 +557,7 @@ function PayableModal({ type, payableId, payable, item, related, session, onClos
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Contractor Payable backend and creates no payment, payroll, bank, tax, or accounting records.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

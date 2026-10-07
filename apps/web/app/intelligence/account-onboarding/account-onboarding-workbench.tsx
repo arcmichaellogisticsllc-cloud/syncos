@@ -187,28 +187,28 @@ export function AccountOnboardingWorkbench() {
         {loading ? <div className="empty-state">Loading account onboarding records...</div> : null}
         {!loading && records.length === 0 ? <div className="empty-state">No prime, customer, contractor, vendor, equipment provider, or staffing partner organizations are available for onboarding review yet.</div> : null}
         {!loading && records.length > 0 && visible.length === 0 ? <div className="empty-state">{emptyMessage(activeStage)}</div> : null}
-        {visible.length > 0 ? <OnboardingTable rows={visible} /> : null}
+        {visible.length > 0 ? <OnboardingTable rows={visible} permissions={permissions} /> : null}
       </section>
 
       {data.onboardingProfiles.length === 0 ? <section className="workspace-panel">
         <div className="section-toolbar">
           <div>
-            <h2>Current schema gaps</h2>
-            <p className="muted">These fields are part of the desired onboarding process but are not explicit first-class onboarding fields in the current API response.</p>
+            <h2>Start an onboarding profile</h2>
+            <p className="muted">Open an account to create its onboarding profile, capture follow-up ownership and define program document requirements.</p>
           </div>
         </div>
         <div className="detail-grid">
-          <GapCard title="Explicit onboarding stage" body="Current workbench infers the stage from organization, contact, candidate, provider, contract, rate, and territory fields." />
-          <GapCard title="Required and missing documents" body="Compliance document summary by account is not exposed here yet, so document fields are shown as schema gaps instead of hardcoded counts." />
-          <GapCard title="Customer programs and rate sheet detail" body="Current contracts and rate schedules expose partial commercial context, but program membership and rate sheet readiness need dedicated fields." />
-          <GapCard title="Deadline and probability" body="Deadlines are approximated from candidate or opportunity review dates when present. Probability uses current scores and should become an explicit onboarding field later." />
+          <GapCard title="Explicit onboarding stage" body="Accounts without a profile show an inferred stage. Create a profile to record and review its actual onboarding progress." />
+          <GapCard title="Required and missing documents" body="A saved profile supports governing originals, versioned program policies and reviewed document requirements." />
+          <GapCard title="Customer programs and rate sheet detail" body="Review program documents on the profile. Agreements and approved rate schedules remain the commercial source of truth." />
+          <GapCard title="Deadline and probability" body="Capture the actual next action and deadline in the profile. Inferred account scores are not a commitment of work." />
         </div>
       </section> : null}
     </IntelligenceShell>
   );
 }
 
-function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
+function OnboardingTable({ rows, permissions }: { rows: AccountOnboardingRecord[]; permissions: string[] }) {
   return (
     <div className="wide-table">
       <table>
@@ -237,7 +237,7 @@ function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              <td><Link className="table-link" href={`/intelligence/organizations/${row.id}`}>{row.company}</Link></td>
+              <td>{hasPermission(permissions, "organization.read") ? <Link className="table-link" href={`/intelligence/organizations/${row.id}`}>{row.company}</Link> : <span>{row.company}</span>}</td>
               <td>{row.accountType}</td>
               <td>{row.stateRegion}</td>
               <td>{row.accountOwner}</td>
@@ -322,9 +322,22 @@ async function loadOnboardingData(): Promise<OnboardingData> {
 
 async function optionalList(path: string, unavailable: Record<string, string>, key: string) {
   try {
-    return await syncosFetch<SyncRecord[]>(path);
+    if (!["/account-onboarding", "/organizations", "/contacts", "/opportunity-candidates", "/opportunities"].includes(path)) return await syncosFetch<SyncRecord[]>(path);
+    const rows: SyncRecord[] = [];
+    const seen = new Set<string>();
+    for (let offset = 0; ; offset += 200) {
+      const page = await syncosFetch<SyncRecord[]>(`${path}?limit=200&offset=${offset}`);
+      if (!Array.isArray(page)) throw new Error("Invalid list response");
+      for (const row of page) {
+        const id = String(row.id ?? "");
+        if (!id || seen.has(id)) throw new Error("Account list changed while loading. Reload to obtain a complete list.");
+        seen.add(id);
+        rows.push(row);
+      }
+      if (page.length < 200) return rows;
+    }
   } catch {
-    unavailable[key] = "Current API or permissions do not expose this onboarding slice.";
+    unavailable[key] = "This account information could not be loaded completely. Check your access and reload before making a readiness decision.";
     return [];
   }
 }
@@ -378,8 +391,8 @@ function buildContractRecord(profile: SyncRecord, data: OnboardingData): Account
     lastInteraction: dateValue(profile.last_interaction_at ?? profile.primary_contact_last_contacted_at ?? profile.updated_at),
     nextAction: textValue(profile.next_action_label ?? profile.next_action, nextActionText(stage, organization, contacts, candidates, capacityProviders, contracts, rateSchedules)),
     deadline: dateValue(profile.next_action_deadline),
-    requiredDocuments: listText(profile.required_documents, "No required documents captured"),
-    missingDocuments: listText(profile.missing_documents, Number(profile.missing_document_count ?? 0) > 0 ? `${profile.missing_document_count} missing document(s)` : "No missing documents captured"),
+    requiredDocuments: Number(profile.program_count) > 0 ? `${profile.program_required_count} requirements across ${profile.program_count} programs` : listText(profile.required_documents, "No required documents captured"),
+    missingDocuments: Number(profile.program_count) > 0 ? `${profile.program_unresolved_count} documents unresolved; ${profile.program_policy_gap_count} programs need a current policy` : listText(profile.missing_documents, Number(profile.missing_document_count ?? 0) > 0 ? `${profile.missing_document_count} missing document(s)` : "No missing documents captured"),
     marketAvailability: listText(profile.market_summary ?? profile.market_availability, "Market not assigned"),
     customerPrograms: listText(profile.customer_programs, "Not captured yet"),
     rateSheet: profile.rate_schedule_name ? `${textValue(profile.rate_schedule_name)} (${textValue(profile.rate_sheet_status ?? profile.rate_schedule_current_status)})` : formatLabel(profile.rate_sheet_status ?? "not_captured"),
@@ -517,13 +530,12 @@ function deadlineText(candidates: SyncRecord[], opportunities: SyncRecord[]) {
 }
 
 function requiredDocumentsText(accountType: AccountOnboardingRecord["accountType"], providers: SyncRecord[]) {
-  if (providers.some((provider) => ["verification_pending", "contract_pending"].includes(String(provider.status)))) return "Compliance packet, contract packet";
-  return accountType === "Contractor / Vendor" ? "Schema gap: W-9, insurance, safety, rate packet" : "Schema gap: vendor packet, insurance, safety, program terms";
+  return "Requirements not configured; review the governing program policy";
 }
 
 function missingDocumentsText(providers: SyncRecord[]) {
   if (providers.some((provider) => ["verified", "contracted", "activated"].includes(String(provider.status)))) return "No missing document summary exposed";
-  return "Schema gap: missing document summary required";
+  return "Document readiness not reviewed";
 }
 
 function programsText(opportunities: SyncRecord[]) {

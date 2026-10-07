@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
 import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
 import { permittedRecordTabs } from "../../intelligence/api";
 
@@ -446,13 +448,15 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
                 {hasPermission(session.permissions, "opportunity.proposal") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.proposal") || opportunity.backendStatus !== "pursuing"} onClick={() => setModal("proposal")}>Move to Proposal</button> : null}
                 {hasPermission(session.permissions, "opportunity.negotiation") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.productStatus !== "proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button> : null}
                 {hasPermission(session.permissions, "opportunity.award") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.award") || opportunity.backendStatus !== "negotiation"} onClick={() => setModal("award")}>Mark Awarded</button> : null}
-                {hasPermission(session.permissions, "opportunity.lost") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button> : null}
                 {hasPermission(session.permissions, "opportunity.defer") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.defer") || opportunity.backendStatus === "archived"} onClick={() => setModal("defer")}>Defer</button> : null}
-                {hasPermission(session.permissions, "opportunity.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.archive") || opportunity.backendStatus === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
                 {hasPermission(session.permissions, "opportunity.score") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.score") || opportunity.backendStatus === "archived"} onClick={() => void scoreOpportunity(opportunity, load, setError)}>Score Opportunity</button> : null}
                 {hasPermission(session.permissions, "capacity_requirement.create") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_requirement.create") || opportunity.backendStatus === "archived"} onClick={() => setModal("capacity")}>Add Capacity Requirement</button> : null}
                 <button type="button" onClick={() => setModal("research")}>Analyze Pursuit</button>
               </div>
+              {(hasPermission(session.permissions, "opportunity.lost") || hasPermission(session.permissions, "opportunity.archive")) ? <DangerZone>
+                {hasPermission(session.permissions, "opportunity.lost") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button> : null}
+                {hasPermission(session.permissions, "opportunity.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.archive") || opportunity.backendStatus === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <SummaryMetric label="Estimated Value" value={moneyValue(opportunity.estimatedValue)} />
@@ -1121,7 +1125,7 @@ function Checklist({ title, items }: { title: string; items: [string, boolean][]
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -1129,7 +1133,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 

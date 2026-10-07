@@ -1,4 +1,7 @@
 "use client";
+import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -77,9 +80,9 @@ export function PaymentBatchQueue() {
     setError("");
     try {
       const query = paymentQuery(filters);
-      const batches = await syncosFetch<SyncRecord[]>(`/payment-batches?${query.toString()}`, { token: session.token });
+      const batches = await completeDirectory(`/payment-batches?${query.toString()}`, session.token);
       setRows(batches);
-      const batchItems = (await Promise.all(batches.slice(0, 25).map((batch) => optionalList(`/payment-batches/${batch.id}/items`, session.token)))).flat();
+      const batchItems = hasPermission(session.permissions, "payment_item.read") ? await completeBatchItems(batches, "/payment-batches", session.token) : [];
       setPaymentItems(batchItems);
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
@@ -120,7 +123,7 @@ export function PaymentBatchQueue() {
               <Link className="primary-button" href="/payments/new" allowed={hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</Link>
             </div>
             <div className="summary-grid">
-              {paymentQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPaymentQueue(rows, paymentItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
+              {paymentQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "payment_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPaymentQueue(rows, paymentItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
@@ -133,7 +136,7 @@ export function PaymentBatchQueue() {
               <button type="button" onClick={() => { setActiveQueue("submitted"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
             <div className="tab-row" role="tablist" aria-label="Payment execution queues">
-              {paymentQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
+              {paymentQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "payment_item.read")).map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
               <summary aria-label="Advanced filters drawer">Advanced filters</summary>
@@ -170,7 +173,7 @@ export function PaymentBatchQueue() {
             </div>
             {!rows.length ? <div className="empty-state">No payment batches yet. Create a batch and add payment-ready sources.</div> : visible.length ? <PaymentBatchTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
-          <section className="workspace-panel">
+          {hasPermission(session.permissions, "payment_item.read") ? <section className="workspace-panel">
             <div className="section-toolbar">
               <div>
                 <h2>Payment Items Visibility</h2>
@@ -179,7 +182,7 @@ export function PaymentBatchQueue() {
               <span>{visibleItems.length} items needing attention</span>
             </div>
             {visibleItems.length ? <PaymentItemVisibilityTable rows={visibleItems} /> : <div className="empty-state">No payment items need attention.</div>}
-          </section>
+          </section> : null}
           <FuturePlaceholders />
         </>
       ) : null}
@@ -360,16 +363,18 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
                 <ActionButton permission="payment_batch.submit_review" session={session} disabled={batchInactive(batch)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="payment_batch.start_review" session={session} disabled={batchInactive(batch)} onClick={() => openAction("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="payment_batch.approve" session={session} disabled={batchInactive(batch)} onClick={() => openAction("approve")}>Approve</ActionButton>
-                <ActionButton permission="payment_batch.reject" session={session} disabled={batchInactive(batch)} onClick={() => openAction("reject")}>Reject</ActionButton>
                 <ActionButton permission="payment_batch.schedule" session={session} disabled={batchInactive(batch)} onClick={() => openAction("schedule")}>Schedule</ActionButton>
                 <ActionButton permission="payment_batch.submit_execution" session={session} disabled={batchInactive(batch)} onClick={() => openAction("submit_execution")}>Submit Execution</ActionButton>
                 <ActionButton permission="payment_batch.mark_executed" session={session} disabled={batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("mark_executed")}>Mark Executed</ActionButton>
                 <ActionButton permission="payment_batch.mark_failed" session={session} disabled={batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("mark_failed")}>Mark Failed</ActionButton>
-                <ActionButton permission="payment_batch.cancel" session={session} disabled={batch.status === "executed_later" || batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("cancel")}>Cancel</ActionButton>
-                <ActionButton permission="payment_batch.void" session={session} disabled={batch.status === "voided" || batch.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
-                <ActionButton permission="payment_batch.archive" session={session} disabled={batch.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["payment_batch.reject", "payment_batch.cancel", "payment_batch.void", "payment_batch.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payment_batch.reject" session={session} disabled={batchInactive(batch)} onClick={() => openAction("reject")}>Reject</ActionButton>
+              <ActionButton permission="payment_batch.cancel" session={session} disabled={batch.status === "executed_later" || batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("cancel")}>Cancel</ActionButton>
+              <ActionButton permission="payment_batch.void" session={session} disabled={batch.status === "voided" || batch.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
+              <ActionButton permission="payment_batch.archive" session={session} disabled={batch.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Total Payment Amount" value={money(batch.total_payment_amount)} />
               <Metric label="Item Count" value={formatCell(batch.item_count ?? items.length)} />
@@ -454,10 +459,12 @@ export function PaymentItemDetail({ paymentItemId }: { paymentItemId: string }) 
               </div>
               <div className="form-actions">
                 <ActionButton permission="payment_item.update" session={session} disabled={itemInactive(item)} onClick={() => setModal("edit_item")}>Edit Item</ActionButton>
-                <ActionButton permission="payment_item.void" session={session} disabled={itemInactive(item)} onClick={() => setModal("void_item")}>Void Item</ActionButton>
-                <ActionButton permission="payment_item.archive" session={session} disabled={item.status === "archived"} onClick={() => setModal("archive_item")}>Archive Item</ActionButton>
               </div>
             </div>
+            {["payment_item.void", "payment_item.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payment_item.void" session={session} disabled={itemInactive(item)} onClick={() => setModal("void_item")}>Void Item</ActionButton>
+              <ActionButton permission="payment_item.archive" session={session} disabled={item.status === "archived"} onClick={() => setModal("archive_item")}>Archive Item</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Payment Amount" value={money(item.payment_amount)} />
               <Metric label="Payment Method" value={formatAction(item.payment_method)} />
@@ -585,7 +592,7 @@ function PaymentModal({ type, paymentBatchId, item, related, session, onClose, o
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose} disabled={submitting}>Close</button></div>
         {error ? <div className="error-banner" role="alert">{error}</div> : null}
@@ -604,7 +611,7 @@ function PaymentModal({ type, paymentBatchId, item, related, session, onClose, o
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Payment Execution backend only. It creates no ACH, card, check, wire, provider, bank, tax, accounting, reconciliation, or real money movement records.</div> : null}
         <div className="form-actions" data-testid="modal-actions"><button className={["reject", "cancel", "void", "void_item", "archive", "archive_item", "mark_failed"].includes(type) ? "danger-button" : "primary-button"} type="submit" disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button><button type="button" onClick={onClose} disabled={submitting}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

@@ -23,6 +23,7 @@ import { MagicLinkController } from "../routes/magic-link.controller";
 import { PasswordRecoveryController } from "../routes/password-recovery.controller";
 import { AuthController } from "../routes/auth.controller";
 import { AccountingExportController } from "../routes/accounting-export.controller";
+import { AccountProgramsController } from "../routes/account-programs.controller";
 import { AccountOnboardingController } from "../routes/account-onboarding.controller";
 import { AcceptedProductionFinancialsController } from "../routes/accepted-production-financials.controller";
 import { BankReconciliationController } from "../routes/bank-reconciliation.controller";
@@ -81,6 +82,7 @@ import { DatabaseModule } from "./database.module";
     AcceptedProductionFinancialsController,
     AccountingExportController,
     AccountOnboardingController,
+    AccountProgramsController,
     AuthController,
     PasswordRecoveryController,
     MagicLinkController,

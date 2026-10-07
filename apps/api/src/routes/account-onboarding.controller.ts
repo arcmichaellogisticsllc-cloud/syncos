@@ -51,8 +51,8 @@ export class AccountOnboardingController {
       const rows = await this.profileRows(client, request.auth.tenantId);
       const filtered = rows.filter((row) => this.matchesFilters(row, query));
       const sorted = this.sortRows(filtered, query.sort);
-      const limit = Math.min(Math.max(Number(query.limit ?? 100), 1), 200);
-      const offset = Math.max(Number(query.offset ?? 0), 0);
+      const limit = pageInteger(query.limit, 100, 1, 200, "limit");
+      const offset = pageInteger(query.offset, 0, 0, Number.MAX_SAFE_INTEGER, "offset");
       return sorted.slice(offset, offset + limit).map((row) => this.decorateRow(row));
     });
   }
@@ -99,7 +99,18 @@ export class AccountOnboardingController {
         if (!locked.rows[0]) throw new NotFoundException("account onboarding profile not found");
         if (body.expected_revision !== undefined && body.expected_revision !== locked.rows[0].revision) throw new ConflictException("This profile changed after you opened it. Reload and review the latest changes before saving.");
         const before = await this.requireProfile(client, request.auth.tenantId, id);
+        if (values.organization_id !== undefined && values.organization_id !== before.organization_id) throw new BadRequestException("An onboarding profile cannot be moved to another account.");
         await this.validateRelations(client, request.auth.tenantId, { ...before, ...values });
+        if (["approved", "market_assigned", "mobilized"].includes(String(values.onboarding_stage)) || values.approval_status === "approved") {
+          const blocked = await client.query(`SELECT p.id FROM account_programs p
+            LEFT JOIN LATERAL (SELECT policy.* FROM account_program_policies policy WHERE policy.tenant_id=p.tenant_id AND policy.program_id=p.id AND policy.effective_from <= (now() AT TIME ZONE 'UTC')::date ORDER BY revision DESC LIMIT 1) policy ON true
+            WHERE p.tenant_id=$1 AND p.profile_id=$2 AND (policy.id IS NULL OR policy.effective_until < (now() AT TIME ZONE 'UTC')::date OR EXISTS (
+              SELECT 1 FROM jsonb_array_elements(policy.requirements) requirement
+              LEFT JOIN LATERAL (SELECT review.* FROM account_program_reviews review WHERE review.tenant_id=p.tenant_id AND review.policy_id=policy.id AND review.requirement_key=requirement->>'key' ORDER BY reviewed_at DESC,id DESC LIMIT 1) review ON true
+              WHERE review.id IS NULL OR review.decision <> 'approved' OR review.expires_on < (now() AT TIME ZONE 'UTC')::date
+            )) LIMIT 1`, [request.auth.tenantId, id]);
+          if (blocked.rowCount) throw new BadRequestException("Complete the current program document requirements before marking onboarding approved or mobilized.");
+        }
         const after = await updateTenantRecord<OnboardingProfileRow>(client, "account_onboarding_profiles", request.auth.tenantId, id, values);
         if (!after) throw new NotFoundException("account onboarding profile not found");
         const enriched = await this.profileRow(client, request.auth.tenantId, id);
@@ -134,6 +145,10 @@ export class AccountOnboardingController {
       SELECT
         aop.*,
         aop.updated_at::text AS revision,
+        COALESCE(program_counts.program_count,0)::int AS program_count,
+        COALESCE(program_counts.required_count,0)::int AS program_required_count,
+        COALESCE(program_counts.unresolved_count,0)::int AS program_unresolved_count,
+        COALESCE(program_counts.policy_gap_count,0)::int AS program_policy_gap_count,
         org.name AS organization_name,
         org.organization_type,
         org.type AS organization_type_legacy,
@@ -163,6 +178,17 @@ export class AccountOnboardingController {
         COALESCE(document_counts.missing_document_count, 0)::int AS missing_document_count,
         COALESCE(document_counts.approved_document_count, 0)::int AS approved_document_count
       FROM account_onboarding_profiles aop
+      LEFT JOIN LATERAL (
+        SELECT count(*) AS program_count,
+          sum(jsonb_array_length(policy.requirements)) AS required_count,
+          count(*) FILTER (WHERE policy.id IS NULL OR policy.effective_until < (now() AT TIME ZONE 'UTC')::date) AS policy_gap_count,
+          sum((SELECT count(*) FROM jsonb_array_elements(policy.requirements) requirement
+            LEFT JOIN LATERAL (SELECT review.* FROM account_program_reviews review WHERE review.tenant_id=p.tenant_id AND review.policy_id=policy.id AND review.requirement_key=requirement->>'key' ORDER BY reviewed_at DESC,id DESC LIMIT 1) review ON true
+            WHERE review.id IS NULL OR review.decision <> 'approved' OR review.expires_on < (now() AT TIME ZONE 'UTC')::date)) AS unresolved_count
+        FROM account_programs p
+        LEFT JOIN LATERAL (SELECT policy.* FROM account_program_policies policy WHERE policy.tenant_id=p.tenant_id AND policy.program_id=p.id AND policy.effective_from <= (now() AT TIME ZONE 'UTC')::date ORDER BY revision DESC LIMIT 1) policy ON true
+        WHERE p.tenant_id=aop.tenant_id AND p.profile_id=aop.id
+      ) program_counts ON true
       JOIN organizations org ON org.tenant_id = aop.tenant_id AND org.id = aop.organization_id AND org.deleted_at IS NULL
       LEFT JOIN territories t ON t.tenant_id = org.tenant_id AND t.id = org.territory_id AND t.deleted_at IS NULL
       LEFT JOIN users owner ON owner.id = aop.account_owner_user_id
@@ -240,11 +266,12 @@ export class AccountOnboardingController {
 
   private sortRows(rows: OnboardingProfileRow[], sort = "default") {
     return [...rows].sort((a, b) => {
-      if (sort === "deadline_asc") return dateNumber(a.next_action_deadline) - dateNumber(b.next_action_deadline);
-      if (sort === "probability_desc") return Number(b.probability_of_work ?? -1) - Number(a.probability_of_work ?? -1);
-      if (sort === "relationship_desc") return Number(b.relationship_strength_score ?? -1) - Number(a.relationship_strength_score ?? -1);
-      if (sort === "company_asc") return String(a.organization_name ?? "").localeCompare(String(b.organization_name ?? ""));
-      return stageIndex(a.onboarding_stage) - stageIndex(b.onboarding_stage) || dateNumber(b.updated_at) - dateNumber(a.updated_at);
+      const tie = String(a.id).localeCompare(String(b.id));
+      if (sort === "deadline_asc") return dateNumber(a.next_action_deadline) - dateNumber(b.next_action_deadline) || tie;
+      if (sort === "probability_desc") return Number(b.probability_of_work ?? -1) - Number(a.probability_of_work ?? -1) || tie;
+      if (sort === "relationship_desc") return Number(b.relationship_strength_score ?? -1) - Number(a.relationship_strength_score ?? -1) || tie;
+      if (sort === "company_asc") return String(a.organization_name ?? "").localeCompare(String(b.organization_name ?? "")) || tie;
+      return stageIndex(a.onboarding_stage) - stageIndex(b.onboarding_stage) || dateNumber(b.updated_at) - dateNumber(a.updated_at) || tie;
     });
   }
 
@@ -284,7 +311,10 @@ export class AccountOnboardingController {
   private async validateRelations(client: PoolClient, tenantId: string, values: Record<string, unknown>) {
     await this.requireRecord(client, "organizations", tenantId, values.organization_id, "organization not found in tenant");
     await this.validateOptional(client, "users", tenantId, values.account_owner_user_id, "account owner not found in tenant");
-    await this.validateOptional(client, "contacts", tenantId, values.primary_contact_id, "primary contact not found in tenant");
+    if (values.primary_contact_id) {
+      const contact = await client.query("SELECT id FROM contacts WHERE tenant_id=$1 AND id=$2 AND organization_id=$3 AND deleted_at IS NULL", [tenantId, values.primary_contact_id, values.organization_id]);
+      if (!contact.rows.length) throw new BadRequestException("Primary contact must belong to this account.");
+    }
     await this.validateOptional(client, "rate_schedules", tenantId, values.rate_schedule_id, "rate schedule not found in tenant");
   }
 
@@ -296,7 +326,7 @@ export class AccountOnboardingController {
   private async requireRecord(client: PoolClient, table: string, tenantId: string, id: unknown, message: string) {
     if (typeof id !== "string" || !id) throw new BadRequestException(message);
     if (table === "users") {
-      const result = await client.query("SELECT 1 FROM tenant_users WHERE tenant_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1", [tenantId, id]);
+      const result = await client.query("SELECT 1 FROM tenant_users tu JOIN users u ON u.id=tu.user_id WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active' AND tu.deleted_at IS NULL AND u.status='active' AND u.deleted_at IS NULL LIMIT 1", [tenantId, id]);
       if (!result.rows[0]) throw new NotFoundException(message);
       return;
     }
@@ -375,4 +405,11 @@ function defaultNextAction(stage: string) {
   if (stage === "approved") return "Assign market and customer program context.";
   if (stage === "market_assigned") return "Confirm mobilization readiness and first-work path.";
   return "Monitor readiness and keep relationship current.";
+}
+
+function pageInteger(value: string | undefined, fallback: number, min: number, max: number, name: string) {
+  if (value === undefined) return fallback;
+  const number = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(number) || number < min || number > max) throw new BadRequestException(`${name} must be an integer between ${min} and ${max}`);
+  return number;
 }

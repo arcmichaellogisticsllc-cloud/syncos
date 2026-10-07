@@ -1,4 +1,5 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
 
 import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
@@ -1056,7 +1057,7 @@ function RecordModal({ title, children, onClose, onSubmit, error: externalError 
     }
   }
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -1069,7 +1070,7 @@ function RecordModal({ title, children, onClose, onSubmit, error: externalError 
           <button className="primary-button" disabled={saving} type="submit">{saving ? "Saving..." : "Save"}</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

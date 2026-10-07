@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -198,9 +200,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 <ActionButton permission="project.release_hold" session={session} disabled={String(project.status) !== "on_hold"} onClick={() => setModal("release")}>Release Hold</ActionButton>
                 <ActionButton permission="project.complete" session={session} disabled={!["active", "ready_for_work"].includes(String(project.status))} onClick={() => setModal("complete")}>Complete</ActionButton>
                 <ActionButton permission="project.close" session={session} disabled={String(project.status) === "archived"} onClick={() => setModal("close")}>Close</ActionButton>
-                <ActionButton permission="project.archive" session={session} disabled={String(project.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["project.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="project.archive" session={session} disabled={String(project.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Project Readiness" value={scoreValue(project.project_readiness_score)} />
               <Metric label="Coverage Readiness" value={scoreValue(project.coverage_readiness_score)} />
@@ -481,7 +485,7 @@ function LifecycleModal({ type, projectId, project, detail, session, onClose, on
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -494,7 +498,7 @@ function LifecycleModal({ type, projectId, project, detail, session, onClose, on
         {["recalculate", "start"].includes(type) ? <div className="warning-box">This action does not create work orders or production records.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit" disabled={blocked}>{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

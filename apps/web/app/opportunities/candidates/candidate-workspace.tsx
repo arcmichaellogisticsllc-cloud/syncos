@@ -1,5 +1,7 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
 import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
+import {DangerZone,ReadOnlyBanner} from "../../operator-page-templates";
 import { permittedRecordTabs } from "../../intelligence/api";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -417,8 +419,6 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
                 {hasPermission(session.permissions, "opportunity_candidate.monitor") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.monitor") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "monitor", load, setError)}>Monitor</button> : null}
                 {hasPermission(session.permissions, "opportunity_candidate.investigate") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.investigate") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "investigate", load, setError)}>Investigate</button> : null}
                 {hasPermission(session.permissions, "opportunity_candidate.qualify") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.qualify") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "qualify", load, setError)}>Qualify</button> : null}
-                {hasPermission(session.permissions, "opportunity_candidate.reject") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.reject") || candidate.status === "archived"} onClick={() => setModal("reject")}>Reject</button> : null}
-                {hasPermission(session.permissions, "opportunity_candidate.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.archive") || candidate.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
                 {hasPermission(session.permissions, "opportunity_candidate.assign_owner") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.assign_owner") || candidate.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button> : null}
                 {hasPermission(session.permissions, "opportunity_candidate.link_relationship_map") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.link_relationship_map") || candidate.status === "archived"} onClick={() => setModal("relationship")}>{candidate.relationshipMap ? "Change Relationship Map" : "Link Relationship Map"}</button> : null}
                 {hasPermission(session.permissions, "candidate_signal.create") ? <button type="button" disabled={!hasPermission(session.permissions, "candidate_signal.create") || candidate.status === "archived"} onClick={() => setModal("signal")}>Attach Signal</button> : null}
@@ -426,6 +426,11 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
                 <button type="button" onClick={() => setModal("research")}>Research Candidate</button>
               </div>
             </div>
+            {!session.permissions.some(permission => permission.startsWith("opportunity_candidate.") && !permission.endsWith(".read")) && <ReadOnlyBanner>Review this candidate and its evidence. Your role has no candidate mutation authority.</ReadOnlyBanner>}
+            {["opportunity_candidate.reject","opportunity_candidate.archive"].some(permission => hasPermission(session.permissions,permission)) && <DangerZone description="Rejecting or archiving changes this candidate's lifecycle. Review the reason before confirming.">
+              {hasPermission(session.permissions, "opportunity_candidate.reject") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.reject") || candidate.status === "archived"} onClick={() => setModal("reject")}>Reject</button> : null}
+              {hasPermission(session.permissions, "opportunity_candidate.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.archive") || candidate.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+            </DangerZone>}
             <div className="summary-grid">
               <SummaryMetric label="Candidate Score" value={scoreValue(candidate.candidateScore)} />
               <SummaryMetric label="Confidence Score" value={scoreValue(candidate.confidenceScore)} />
@@ -1033,7 +1038,7 @@ function Checklist({ title, items }: { title: string; items: [string, boolean][]
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -1041,7 +1046,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 

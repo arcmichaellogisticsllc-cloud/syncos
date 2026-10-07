@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -368,10 +370,12 @@ export function CashReceiptDetail({ receiptId }: { receiptId: string }) {
               <div className="form-actions">
                 <Link className="link-button" href={`/cash/receipts/${receiptId}/edit`} allowed={hasPermission(session.permissions, "cash_receipt.update")}>Edit Receipt</Link>
                 <ActionButton permission="cash_receipt.apply" session={session} disabled={receiptViewOnly(receipt) || numberValue(receipt.unapplied_amount, 0) <= 0} onClick={() => setModal("apply")}>Apply To Invoice</ActionButton>
-                <ActionButton permission="cash_receipt.void" session={session} disabled={receiptViewOnly(receipt) || activeApplications(applications) > 0} onClick={() => setModal("void_receipt")}>Void</ActionButton>
-                <ActionButton permission="cash_receipt.archive" session={session} disabled={String(receipt.receipt_status) === "archived"} onClick={() => setModal("archive_receipt")}>Archive</ActionButton>
               </div>
             </div>
+            {["cash_receipt.void", "cash_receipt.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="cash_receipt.void" session={session} disabled={receiptViewOnly(receipt) || activeApplications(applications) > 0} onClick={() => setModal("void_receipt")}>Void</ActionButton>
+              <ActionButton permission="cash_receipt.archive" session={session} disabled={String(receipt.receipt_status) === "archived"} onClick={() => setModal("archive_receipt")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Amount" value={money(receipt.gross_received_amount)} />
               <Metric label="Applied Amount" value={money(receipt.applied_amount)} />
@@ -547,10 +551,12 @@ export function PaymentApplicationDetail({ applicationId }: { applicationId: str
                 </div>
               </div>
               <div className="form-actions">
-                <ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(application)} onClick={() => setModal("void_application")}>Void Application</ActionButton>
-                <ActionButton permission="payment_application.archive" session={session} disabled={String(application.application_status) === "archived"} onClick={() => setModal("archive_application")}>Archive Application</ActionButton>
               </div>
             </div>
+            {["payment_application.void", "payment_application.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(application)} onClick={() => setModal("void_application")}>Void Application</ActionButton>
+              <ActionButton permission="payment_application.archive" session={session} disabled={String(application.application_status) === "archived"} onClick={() => setModal("archive_application")}>Archive Application</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Applied Amount" value={money(application.applied_amount)} />
               <Metric label="Application Date" value={dateValue(application.application_date)} />
@@ -663,7 +669,7 @@ function CashReceiptModal({ type, receiptId, receipt, applications, related, app
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -680,7 +686,7 @@ function CashReceiptModal({ type, receiptId, receipt, applications, related, app
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -698,7 +704,7 @@ function PaymentApplicationModal({ type, applicationId, session, onClose, onSave
       setError(plainError((nextError as Error).message));
     }
   }
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "void_application" ? <><label>Void Reason<textarea value={form.void_reason ?? ""} onChange={(event) => setForm({ ...form, void_reason: event.target.value })} required /></label><label>Void Note<textarea value={form.void_note ?? ""} onChange={(event) => setForm({ ...form, void_note: event.target.value })} /></label></> : <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></div>;
+  return <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "void_application" ? <><label>Void Reason<textarea value={form.void_reason ?? ""} onChange={(event) => setForm({ ...form, void_reason: event.target.value })} required /></label><label>Void Note<textarea value={form.void_note ?? ""} onChange={(event) => setForm({ ...form, void_note: event.target.value })} /></label></> : <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></ModalBoundary>;
 }
 
 function ApplyFields({ form, setForm, invoices, receipt, applications }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; invoices: SyncRecord[]; receipt: SyncRecord; applications: SyncRecord[] }) {

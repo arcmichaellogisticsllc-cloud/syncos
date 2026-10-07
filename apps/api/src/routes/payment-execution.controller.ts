@@ -1,3 +1,4 @@
+import {directoryPage} from './directory-pagination';
 import {activityPage} from './activity-pagination';
 import { requireFreshSchedule } from './payable-schedule-freshness';
 import { requirePartnerPayableLineage } from "./partner-financial-lineage";
@@ -25,6 +26,7 @@ export class PaymentExecutionController {
   @Get("payment-batches")
   @RequirePermission("payment_batch.read")
   async listBatches(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["pb.tenant_id = $1"];
@@ -67,8 +69,8 @@ export class PaymentExecutionController {
         SELECT pb.*
         FROM payment_batches pb
         WHERE ${where.join(" AND ")}
-        ORDER BY ${this.batchOrder(query.sort)}
-        LIMIT 250
+        ORDER BY ${this.batchOrder(query.sort)}, pb.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );

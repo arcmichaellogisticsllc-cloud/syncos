@@ -1,4 +1,7 @@
 "use client";
+import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -432,9 +435,11 @@ export function BankAccountDetail({ accountId }: { accountId: string }) {
               </div>
               <div className="form-actions">
                 <Link className="link-button" href={`/bank-reconciliation/accounts/${accountId}/edit`} allowed={hasPermission(session.permissions, "bank_account.update")}>Edit Account</Link>
-                <ActionButton permission="bank_account.archive" session={session} disabled={account.status === "archived"} onClick={() => setModal("archive_account")}>Archive Account</ActionButton>
               </div>
             </div>
+            {["bank_account.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="bank_account.archive" session={session} disabled={account.status === "archived"} onClick={() => setModal("archive_account")}>Archive Account</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Opening Balance" value={money(account.opening_balance)} />
               <Metric label="Current Balance Snapshot" value={money(account.current_balance_snapshot)} />
@@ -532,9 +537,11 @@ export function BankTransactionDetail({ transactionId }: { transactionId: string
                 <ActionButton permission="bank_transaction.open_exception" session={session} disabled={transactionInactive(transaction)} onClick={() => setModal("open_exception")}>Open Exception</ActionButton>
                 <ActionButton permission="bank_transaction.resolve_exception" session={session} disabled={transactionInactive(transaction)} onClick={() => setModal("resolve_exception")}>Resolve Exception</ActionButton>
                 <ActionButton permission="bank_transaction.ignore" session={session} disabled={transactionInactive(transaction)} onClick={() => setModal("ignore_transaction")}>Ignore Transaction</ActionButton>
-                <ActionButton permission="bank_transaction.archive" session={session} disabled={transaction.reconciliation_status === "archived"} onClick={() => setModal("archive_transaction")}>Archive Transaction</ActionButton>
               </div>
             </div>
+            {["bank_transaction.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="bank_transaction.archive" session={session} disabled={transaction.reconciliation_status === "archived"} onClick={() => setModal("archive_transaction")}>Archive Transaction</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Direction" value={formatAction(transaction.direction)} />
               <Metric label="Amount" value={money(transaction.amount)} />
@@ -619,11 +626,13 @@ export function ReconciliationMatchDetail({ matchId }: { matchId: string }) {
               <div className="form-actions">
                 <ActionButton permission="reconciliation_match.review" session={session} disabled={matchInactive(match)} onClick={() => setModal("review_match")}>Review</ActionButton>
                 <ActionButton permission="reconciliation_match.approve" session={session} disabled={matchInactive(match)} onClick={() => setModal("approve_match")}>Approve</ActionButton>
-                <ActionButton permission="reconciliation_match.reject" session={session} disabled={matchInactive(match)} onClick={() => setModal("reject_match")}>Reject</ActionButton>
-                <ActionButton permission="reconciliation_match.void" session={session} disabled={matchInactive(match)} onClick={() => setModal("void_match")}>Void</ActionButton>
-                <ActionButton permission="reconciliation_match.archive" session={session} disabled={match.match_status === "archived"} onClick={() => setModal("archive_match")}>Archive</ActionButton>
               </div>
             </div>
+            {["reconciliation_match.reject", "reconciliation_match.void", "reconciliation_match.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="reconciliation_match.reject" session={session} disabled={matchInactive(match)} onClick={() => setModal("reject_match")}>Reject</ActionButton>
+              <ActionButton permission="reconciliation_match.void" session={session} disabled={matchInactive(match)} onClick={() => setModal("void_match")}>Void</ActionButton>
+              <ActionButton permission="reconciliation_match.archive" session={session} disabled={match.match_status === "archived"} onClick={() => setModal("archive_match")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Matched Amount" value={money(match.matched_amount)} />
               <Metric label="Variance Amount" value={money(match.variance_amount)} />
@@ -780,7 +789,7 @@ function BankModal({ type, id, related = emptyRelatedOptions, session, onClose, 
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose} disabled={submitting}>Close</button></div>
         {error ? <div className="error-banner" role="alert">{error}</div> : null}
@@ -799,7 +808,7 @@ function BankModal({ type, id, related = emptyRelatedOptions, session, onClose, 
         <div className="warning-box">This action uses hardened Bank Reconciliation backend routes only. It creates no bank feed, statement import, payment execution, cash receipt, payment application, invoice balance change, accounting export, GL entry, tax filing, treasury workflow, or money movement.</div>
         <div className="form-actions" data-testid="modal-actions"><button className={["reject_match", "void_match", "archive_match", "archive_account", "archive_transaction", "ignore_transaction"].includes(type) ? "danger-button" : "primary-button"} type="submit" disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button><button type="button" onClick={onClose} disabled={submitting}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -886,11 +895,11 @@ const emptyRelatedOptions: RelatedOptions = { paymentBatches: [], paymentItems: 
 
 async function loadRelatedOptions(token: string): Promise<RelatedOptions> {
   const [paymentBatches, cashReceipts, paymentApplications] = await Promise.all([
-    optionalList("/payment-batches?execution_status=executed_later&archived=false", token),
+    hasPermission(readPermissions(), "payment_batch.read") ? completeDirectory("/payment-batches?execution_status=executed_later&archived=false", token) : Promise.resolve([]),
     optionalList("/cash-receipts?archived=false", token),
     optionalList("/payment-applications?archived=false", token),
   ]);
-  const paymentItems = (await Promise.all(paymentBatches.slice(0, 25).map((batch) => optionalList(`/payment-batches/${batch.id}/items`, token)))).flat();
+  const paymentItems = hasPermission(readPermissions(), "payment_item.read") ? await completeBatchItems(paymentBatches, "/payment-batches", token) : [];
   return { paymentBatches, paymentItems, cashReceipts, paymentApplications };
 }
 

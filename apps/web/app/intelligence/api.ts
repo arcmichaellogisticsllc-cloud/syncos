@@ -343,7 +343,15 @@ export function hasPermission(permissions: string[], permission: string) {
 }
 
 export async function loadAuthContext(token = readToken()) {
-  const context = await syncosFetch<AuthContext>("auth/me", { token });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  let context: AuthContext;
+  try {
+    context = await syncosFetch<AuthContext>("auth/me", { token, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) { const timeoutError = new Error("Access verification timed out. Check your connection and retry."); timeoutError.name = "AccessVerificationTimeout"; throw timeoutError; }
+    throw error;
+  } finally { clearTimeout(timeout); }
   context.permissions = context.permissions.filter(permission => {
     const roles = actionRoleAuthority[permission];
     return !roles || (context.role_names ?? []).some(role => roles.includes(role));
@@ -389,10 +397,11 @@ export class SyncosApiError extends Error {
   }
 }
 
-export async function syncosFetch<T>(path: string, options: { method?: string; body?: unknown; token?: string } = {}): Promise<T> {
+export async function syncosFetch<T>(path: string, options: { method?: string; body?: unknown; token?: string; signal?: AbortSignal } = {}): Promise<T> {
   const token = options.token ?? readToken();
   const response = await fetch(`/api/syncos/${path.replace(/^\//, "")}`, {
     method: options.method ?? "GET",
+    signal: options.signal,
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),

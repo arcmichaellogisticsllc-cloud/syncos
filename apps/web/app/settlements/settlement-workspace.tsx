@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -331,17 +333,19 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
                 <ActionButton permission="settlement.submit_review" session={session} disabled={viewOnly(record) || !items.length || blockers.length > 0} onClick={() => setModal("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="settlement.start_review" session={session} disabled={String(record.status) !== "ready_for_review"} onClick={() => setModal("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="settlement.approve" session={session} disabled={viewOnly(record) || blockers.length > 0} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permission="settlement.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
                 <ActionButton permission="settlement.mark_invoice_ready" session={session} disabled={String(record.status) !== "approved" || Boolean(record.invoice_ready)} onClick={() => setModal("invoice_ready")}>Mark Invoice Ready</ActionButton>
                 <ActionButton permission="settlement.mark_payable_ready" session={session} disabled={String(record.status) !== "approved" || Boolean(record.payable_ready)} onClick={() => setModal("payable_ready")}>Mark Payable Ready</ActionButton>
                 <ActionButton permission="settlement.place_hold" session={session} disabled={viewOnly(record) || String(record.status) === "held"} onClick={() => setModal("hold")}>Place Hold</ActionButton>
                 <ActionButton permission="settlement.release_hold" session={session} disabled={String(record.status) !== "held"} onClick={() => setModal("release")}>Release Hold</ActionButton>
-                <ActionButton permission="settlement.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="settlement.resolve_dispute" session={session} disabled={String(record.status) !== "disputed"} onClick={() => setModal("resolve")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="settlement.void" session={session} disabled={viewOnly(record) || Boolean(record.invoice_ready || record.payable_ready)} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permission="settlement.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["settlement.reject", "settlement.dispute", "settlement.void", "settlement.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="settlement.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
+              <ActionButton permission="settlement.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="settlement.void" session={session} disabled={viewOnly(record) || Boolean(record.invoice_ready || record.payable_ready)} onClick={() => setModal("void")}>Void</ActionButton>
+              <ActionButton permission="settlement.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Billable Amount" value={money(record.gross_billable_amount)} />
               <Metric label="Contractor Payable Amount" value={money(record.contractor_payable_amount)} />
@@ -561,7 +565,7 @@ function SettlementLifecycleModal({ type, settlementId, settlement, related, blo
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -587,7 +591,7 @@ function SettlementLifecycleModal({ type, settlementId, settlement, related, blo
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

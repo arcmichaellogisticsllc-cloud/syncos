@@ -1,4 +1,5 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
 import { InvoicePackages } from "../accepted-production-financials/invoice-packages";
 import { permittedRecordTabs } from "../intelligence/api";
 
@@ -357,13 +358,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 <ActionButton permission="invoice.recalculate_totals" session={session} disabled={viewOnly(record)} onClick={() => setModal("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="invoice.submit_review" session={session} disabled={viewOnly(record) || !items.length} onClick={() => setModal("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="invoice.approve" session={session} disabled={viewOnly(record) || !items.length || blockers.length > 0} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permission="invoice.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
                 <ActionButton permission="invoice.mark_sent" session={session} disabled={viewOnly(record) || String(record.approval_status) !== "approved"} onClick={() => setModal("mark_sent")}>Mark Sent</ActionButton>
                 <ActionButton permission="invoice.mark_ready_for_cash_application" session={session} disabled={viewOnly(record) || !["approved", "sent"].includes(String(record.status)) || String(record.cash_application_status) === "ready_for_cash_application"} onClick={() => setModal("cash_ready")}>Mark Ready For Cash Application</ActionButton>
-                <ActionButton permission="invoice.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="invoice.resolve_dispute" session={session} disabled={String(record.status) !== "disputed"} onClick={() => setModal("resolve")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="invoice.void" session={session} disabled={viewOnly(record) || ["paid_later", "fully_applied_later"].includes(String(record.cash_application_status))} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permission="invoice.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
             <div className="summary-grid">
@@ -379,10 +376,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               <Metric label="Delivery Status" value={formatAction(record.delivery_status)} />
               <Metric label="Item Count" value={formatCell(record.item_count ?? items.length)} />
             </div>
-            <div className="warning-box">Invoice owns receivable state. Ready for Cash Application does not create cash. Payments and cash application are future workflows.</div>
-            <DangerZone description="Reject, dispute, void, and archive actions change lifecycle state and should stay separated from routine invoice review work. Existing modals continue to control the actual submit behavior.">
-              <span>Danger actions available in the action bar: Reject, Dispute, Void, Archive.</span>
-            </DangerZone>
+            <div className="warning-box">Invoice owns receivable state. Ready for Cash Application does not create cash. Record received funds and apply them through their separate, authorized workflows.</div>
+            {["invoice.reject", "invoice.dispute", "invoice.void", "invoice.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change the invoice lifecycle. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="invoice.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
+              <ActionButton permission="invoice.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="invoice.void" session={session} disabled={viewOnly(record) || ["paid_later", "fully_applied_later"].includes(String(record.cash_application_status))} onClick={() => setModal("void")}>Void</ActionButton>
+              <ActionButton permission="invoice.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
           </section>
 
           <div className="organization-layout">
@@ -572,10 +572,10 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
     }
   }
 
-  if(type==='mark_sent')return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Mark Sent"><div className="modal-card"><div className="section-toolbar"><h2>Mark Sent</h2><button type="button" onClick={()=>{void onSaved();onClose();}}>Close</button></div><p>Prepare the complete package, then record its actual delivery receipt. A note alone does not establish delivery.</p><InvoicePackages initialInvoiceId={invoiceId}/></div></div>;
+  if(type==='mark_sent')return <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Mark Sent"><div className="modal-card"><div className="section-toolbar"><h2>Mark Sent</h2><button type="button" onClick={()=>{void onSaved();onClose();}}>Close</button></div><p>Prepare the complete package, then record its actual delivery receipt. A note alone does not establish delivery.</p><InvoicePackages initialInvoiceId={invoiceId}/></div></ModalBoundary>;
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -600,7 +600,7 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

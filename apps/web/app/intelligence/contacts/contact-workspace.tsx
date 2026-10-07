@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
 import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
 import { permittedRecordTabs } from "../api";
 
@@ -373,10 +375,12 @@ export function ContactDetail({ contactId }: { contactId: string }) {
                 {hasPermission(session.permissions, "contact.update") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("engaged")}>Mark Engaged</button> : null}
                 {hasPermission(session.permissions, "contact.mark_relationship_active") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_relationship_active") || contact.status === "archived"} onClick={() => setModal("active")}>Relationship Active</button> : null}
                 {hasPermission(session.permissions, "contact.update") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("dormant")}>Mark Dormant</button> : null}
-                {hasPermission(session.permissions, "contact.mark_invalid") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_invalid") || contact.status === "archived"} onClick={() => setModal("invalid")}>Mark Invalid</button> : null}
                 <AddContactToRelationship contactId={contact.id}/>
-                {hasPermission(session.permissions, "contact.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.archive") || contact.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
               </div>
+              {(hasPermission(session.permissions, "contact.mark_invalid") || hasPermission(session.permissions, "contact.archive")) ? <DangerZone>
+                {hasPermission(session.permissions, "contact.mark_invalid") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_invalid") || contact.status === "archived"} onClick={() => setModal("invalid")}>Mark Invalid</button> : null}
+                {hasPermission(session.permissions, "contact.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.archive") || contact.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <SummaryMetric label="Influence" value={scoreText(contact.influenceScore, "contact influence")} />
@@ -1019,7 +1023,7 @@ function SessionPanel({ session }: { session: ReturnType<typeof useSession>[0] }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel">
         <div className="section-header">
           <h2>{title}</h2>
@@ -1027,7 +1031,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 

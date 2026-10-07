@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
 import { permittedRecordTabs } from "../api";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -524,8 +526,10 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
             {hasPermission(session.permissions, "opportunity_candidate.create") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.create")} onClick={() => setModal("candidate")}>Create Candidate</button> : null}
             {hasActorRole(dossier, "capacity_provider") ? (hasPermission(session.permissions, "capacity_provider.create") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Add Capacity Provider</button> : null) : null}
             <button type="button" onClick={() => setModal("research")}>Research Organization</button>
-            {hasPermission(session.permissions, "organization.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "organization.archive") || dossier.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
           </div>
+          {(hasPermission(session.permissions, "organization.archive")) ? <DangerZone>
+            {hasPermission(session.permissions, "organization.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "organization.archive") || dossier.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+          </DangerZone> : null}
         </div>
       </section>
 
@@ -892,7 +896,7 @@ function ResearchModal({ organization, onClose }: { organization: EnrichedOrgani
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -900,7 +904,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 

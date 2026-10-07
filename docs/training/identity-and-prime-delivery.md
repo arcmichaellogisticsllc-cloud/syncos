@@ -69,3 +69,19 @@ The generic HTTPS receiver contract is documented in `docs/deployment/identity-a
 7. A service failure keeps your entries. If another reviewer changed the profile, save is rejected; retain your intended changes separately, reload the page, compare the latest profile and re-enter only the changes still appropriate.
 
 There is no automatic progression from an onboarding label to field mobilization or financial authorization. Those controls remain in their respective workflows.
+
+
+## Account program originals and document readiness
+
+1. Open **Intelligence → Account onboarding**, then open a saved profile.
+2. Under **Program document requirements**, enter the approved program name and choose **Add program**. Choose it from **Review program**.
+3. Use **Original file → Preserve original** for the governing requirements and submitted evidence. Supported originals are PDF, JPEG, PNG and WebP up to 10 MiB. Identical-file retries reuse the preserved original.
+4. Download and inspect the originals. Uploading alone does not establish readability, approval or completeness.
+5. Expand **Record a governing policy revision**. Select the governing original, its effective dates, required documents (one per line), and the approval reason. Confirm the requirements against the original, then choose **Record policy revision**. Dates use the UTC calendar.
+6. For each requirement, choose its evidence original, decision, expiry (if applicable) and review reason. Approval requires confirming readability and compliance with that requirement. Choose **Record document review**.
+7. Resolve missing, rejected, submitted or expired requirements. Configured programs prevent advancing onboarding to approved, market-assigned or mobilized while their current requirements are unsatisfied.
+8. Use **Policy and review history** to inspect earlier decisions. A new governing policy requires fresh review; it does not overwrite the previous policy or its evidence.
+9. If another reviewer changed the record, reload and inspect the latest decision before resubmitting. Failed requests preserve the entered fields.
+10. Read-only users can inspect requirements, history and originals, but cannot create programs, upload, approve policies or record reviews. Access requires tenant-wide onboarding permission.
+
+Document readiness never creates a contract, work assignment, customer acceptance, invoice or payment. Older summary fields remain historical tracking information and are not converted into approved program policies automatically. Original files are stored with the database and must be included in coordinated database backups and restore verification.

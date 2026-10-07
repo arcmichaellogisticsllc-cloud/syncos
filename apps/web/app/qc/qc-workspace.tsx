@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -246,7 +248,7 @@ export function QcReviewEdit({ qcReviewId }: { qcReviewId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!review ? <div className="empty-state">QC review not found or you do not have access.</div> : (
         <section className="workspace-panel">
-          <div className="warning-box">The hardened QC backend does not expose a direct PATCH route in this sprint. Use lifecycle actions for approval, rejection, correction, void, or archive decisions.</div>
+          <div className="warning-box">Use the review actions for approval, rejection, correction, void or archive decisions; each records the decision and its history.</div>
           <dl className="detail-list">
             <dt>Review type</dt><dd>{formatAction(review.review_type)}</dd>
             <dt>Review status</dt><dd>{formatAction(review.review_status)}</dd>
@@ -338,13 +340,15 @@ export function QcReviewDetail({ qcReviewId }: { qcReviewId: string }) {
                 <Link className="link-button" href={`/qc/${qcReviewId}/edit`} allowed={hasPermission(session.permissions, "qc_review.update")}>Edit QC Review</Link>
                 <ActionButton permission="qc_review.start" session={session} disabled={!["pending", "corrected"].includes(String(review.review_status))} onClick={() => setModal("start")}>Start Review</ActionButton>
                 <ActionButton permission="qc_review.approve" session={session} disabled={["approved", "voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permission="qc_review.reject" session={session} disabled={["rejected", "voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("reject")}>Reject</ActionButton>
                 <ActionButton permission="qc_review.request_correction" session={session} disabled={["voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("correction")}>Request Correction</ActionButton>
                 <ActionButton permission="qc_review.mark_corrected" session={session} disabled={String(review.review_status) !== "correction_required"} onClick={() => setModal("corrected")}>Mark Corrected</ActionButton>
-                <ActionButton permission="qc_review.void" session={session} disabled={["voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permission="qc_review.archive" session={session} disabled={String(review.review_status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["qc_review.reject", "qc_review.void", "qc_review.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="qc_review.reject" session={session} disabled={["rejected", "voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("reject")}>Reject</ActionButton>
+              <ActionButton permission="qc_review.void" session={session} disabled={["voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("void")}>Void</ActionButton>
+              <ActionButton permission="qc_review.archive" session={session} disabled={String(review.review_status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Claimed Quantity" value={quantity(review.claimed_quantity, review.unit)} />
               <Metric label="Approved Quantity" value={quantity(review.approved_quantity, review.unit)} />
@@ -478,7 +482,7 @@ function QcTab({ tab, detail, review }: { tab: string; detail: QcDetailShape; re
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view QC audit details.</div>}</Panel>;
   if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Billable Workspace is not available in this sprint. QC may create billable candidate quantity only." columns={["billable_item", "status", "quantity", "unit", "rate", "readiness"]} />;
-  return <PlaceholderPanel title="Future Settlement" message="Settlement is not available in this sprint. QC does not create settlement, invoice, AR, payment, cash, payroll, or tax records." columns={["settlement_item", "invoice_item", "AR", "payment", "cash", "status"]} />;
+  return <PlaceholderPanel title="Future Settlement" message="Use the authorized settlement workflow after accepted-work and agreement checks pass. QC does not create settlement, invoice, AR, payment, cash, payroll, or tax records." columns={["settlement_item", "invoice_item", "AR", "payment", "cash", "status"]} />;
 }
 
 function QcLifecycleModal({ type, qcReviewId, review, session, onClose, onSaved }: { type: string; qcReviewId: string; review: SyncRecord; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -521,7 +525,7 @@ function QcLifecycleModal({ type, qcReviewId, review, session, onClose, onSaved 
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -535,7 +539,7 @@ function QcLifecycleModal({ type, qcReviewId, review, session, onClose, onSaved 
         <div className="warning-box">This decision is recorded in the review history. Customer acceptance is reviewed separately before work becomes billable.</div>
         <div className="form-actions"><button className="primary-button" type="submit">{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

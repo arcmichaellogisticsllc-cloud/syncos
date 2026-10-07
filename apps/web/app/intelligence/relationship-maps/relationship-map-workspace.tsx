@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
 import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
 import { permittedRecordTabs } from "../api";
 
@@ -374,9 +376,11 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
                 {hasPermission(session.permissions, "relationship_path.create") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_path.create") || map.status === "archived"} onClick={() => setModal("path")}>Add Path</button> : null}
                 {hasPermission(session.permissions, "relationship_map.status") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("status")}>Update Status</button> : null}
                 {hasPermission(session.permissions, "relationship_map.status") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("introduction")}>Request Introduction</button> : null}
-                {hasPermission(session.permissions, "relationship_map.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.archive") || map.status === "archived"} onClick={() => setModal("archive")}>Archive Map</button> : null}
                 <button type="button" onClick={() => setModal("analysis")}>Analyze Relationship</button>
               </div>
+              {(hasPermission(session.permissions, "relationship_map.archive")) ? <DangerZone>
+                {hasPermission(session.permissions, "relationship_map.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.archive") || map.status === "archived"} onClick={() => setModal("archive")}>Archive Map</button> : null}
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <SummaryMetric label="Relationship Access Score" value={`${map.accessScore}`} />
@@ -957,7 +961,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -965,7 +969,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 

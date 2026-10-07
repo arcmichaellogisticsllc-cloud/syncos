@@ -1,3 +1,4 @@
+import {directoryPage} from './directory-pagination';
 import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
@@ -26,6 +27,7 @@ export class AccountingExportController {
   @Get("accounting-export-batches")
   @RequirePermission("accounting_export_batch.read")
   async listBatches(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["aeb.tenant_id = $1", "aeb.deleted_at IS NULL"];
@@ -50,8 +52,8 @@ export class AccountingExportController {
         `SELECT aeb.*
          FROM accounting_export_batches aeb
          WHERE ${where.join(" AND ")}
-         ORDER BY ${this.batchOrder(query.sort)}
-         LIMIT 250`,
+         ORDER BY ${this.batchOrder(query.sort)}, aeb.id DESC
+         LIMIT ${page.limit} OFFSET ${page.offset}`,
         values,
       );
       return result.rows.map((row) => this.withBatchGuidance(row));

@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -394,11 +396,13 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
                 <ActionButton permission="work_order.mark_billable" session={session} disabled={closedStatus(workOrder)} onClick={() => setModal("billable")}>Mark Billable</ActionButton>
                 <ActionButton permission="work_order.place_hold" session={session} disabled={closedStatus(workOrder) || String(workOrder.status) === "on_hold"} onClick={() => setModal("hold")}>Place On Hold</ActionButton>
                 <ActionButton permission="work_order.release_hold" session={session} disabled={String(workOrder.status) !== "on_hold"} onClick={() => setModal("release")}>Release Hold</ActionButton>
-                <ActionButton permission="work_order.cancel" session={session} disabled={!["draft", "ready_to_assign", "assigned", "scheduled", "on_hold"].includes(String(workOrder.status))} onClick={() => setModal("cancel")}>Cancel</ActionButton>
                 <ActionButton permission="work_order.close" session={session} disabled={!["approved", "billable"].includes(String(workOrder.status))} onClick={() => setModal("close")}>Close</ActionButton>
-                <ActionButton permission="work_order.archive" session={session} disabled={String(workOrder.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["work_order.cancel", "work_order.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="work_order.cancel" session={session} disabled={!["draft", "ready_to_assign", "assigned", "scheduled", "on_hold"].includes(String(workOrder.status))} onClick={() => setModal("cancel")}>Cancel</ActionButton>
+              <ActionButton permission="work_order.archive" session={session} disabled={String(workOrder.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Work Order Readiness" value={scoreValue(workOrder.readiness_score)} />
               <Metric label="Readiness Status" value={formatAction(workOrder.readiness_status)} />
@@ -599,7 +603,7 @@ function LifecycleModal({ type, workOrderId, workOrder, detail, related, session
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -620,7 +624,7 @@ function LifecycleModal({ type, workOrderId, workOrder, detail, related, session
         {type === "recalculate" ? <div className="warning-box">Readiness recalculation updates Work Order readiness only.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit" disabled={blocked}>{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

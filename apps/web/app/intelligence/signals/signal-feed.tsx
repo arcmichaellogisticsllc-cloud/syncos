@@ -1,4 +1,5 @@
 "use client";
+import { ModalBoundary } from "../../modal-boundary";
 
 import { PermissionLink as Link } from "../../access-control";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -366,7 +367,7 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-signal-title" onSubmit={submit}>
         <div className="section-toolbar">
           <h2 id="create-signal-title">Create Signal</h2>
@@ -399,7 +400,7 @@ function CreateSignalModal({ organizations, territories, onClose, onCreated }: {
         </div>
         <ModalActions submitLabel="Create Signal" submitting={busy} onCancel={onClose} />
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -427,7 +428,7 @@ function SignalActionModal({ modal, onClose, onSubmit }: { modal: NonNullable<Ac
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className={`modal-panel ${action === "archive" ? "danger-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="signal-action-title" onSubmit={submit}>
         <div className="section-toolbar">
           <div>
@@ -456,7 +457,7 @@ function SignalActionModal({ modal, onClose, onSubmit }: { modal: NonNullable<Ac
         </div>
         <ModalActions submitLabel={actionSubmitLabel(action)} danger={action === "archive"} submitting={busy} onCancel={onClose} />
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 

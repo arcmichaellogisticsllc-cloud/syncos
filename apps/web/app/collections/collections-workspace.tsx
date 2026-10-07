@@ -1,4 +1,6 @@
 "use client";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
@@ -364,9 +366,11 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
                 <ActionButton permission="collection_case.assign_owner" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("assign_owner")}>Assign Owner</ActionButton>
                 <ActionButton permission="collection_action.create" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("add_action")}>Add Action</ActionButton>
                 <ActionButton permission="collection_case.close" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("close_case")}>Close Case</ActionButton>
-                <ActionButton permission="collection_case.archive" session={session} disabled={collectionCase.case_status === "archived"} onClick={() => openAction("archive_case")}>Archive Case</ActionButton>
               </div>
             </div>
+            {["collection_case.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="collection_case.archive" session={session} disabled={collectionCase.case_status === "archived"} onClick={() => openAction("archive_case")}>Archive Case</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Current Balance" value={money(collectionCase.current_balance)} />
               <Metric label="Original Invoice Amount" value={money(collectionCase.original_invoice_amount)} />
@@ -558,10 +562,12 @@ export function CollectionActionDetail({ actionId }: { actionId: string }) {
               </div>
               <div className="form-actions">
                 <ActionButton permission="collection_action.complete" session={session} disabled={actionInactive(action)} onClick={() => setModal("complete_action")}>Complete Action</ActionButton>
-                <ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(action)} onClick={() => setModal("cancel_action")}>Cancel Action</ActionButton>
-                <ActionButton permission="collection_action.archive" session={session} disabled={action.action_status === "archived"} onClick={() => setModal("archive_action")}>Archive Action</ActionButton>
               </div>
             </div>
+            {["collection_action.cancel", "collection_action.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(action)} onClick={() => setModal("cancel_action")}>Cancel Action</ActionButton>
+              <ActionButton permission="collection_action.archive" session={session} disabled={action.action_status === "archived"} onClick={() => setModal("archive_action")}>Archive Action</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Action Type" value={formatAction(action.action_type)} />
               <Metric label="Status" value={formatAction(action.action_status)} />
@@ -683,7 +689,7 @@ function CollectionCaseModal({ type, caseId, collectionCase, action, session, on
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -703,7 +709,7 @@ function CollectionCaseModal({ type, caseId, collectionCase, action, session, on
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -723,7 +729,7 @@ function CollectionActionModal({ type, actionId, session, onClose, onSaved }: { 
       setError(plainError((nextError as Error).message));
     }
   }
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "complete_action" ? <><Select label="Outcome" value={form.outcome ?? ""} options={["", ...outcomes]} onChange={(outcome) => setForm({ ...form, outcome })} /><label>Note<textarea value={form.note ?? ""} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label><label><input type="checkbox" checked={form.follow_up_required === "true"} onChange={(event) => setForm({ ...form, follow_up_required: event.target.checked ? "true" : "" })} /> Follow-up Required</label><label>Follow-Up Due At<input type="date" value={form.follow_up_due_at ?? ""} onChange={(event) => setForm({ ...form, follow_up_due_at: event.target.value })} /></label></> : type === "cancel_action" ? <><label>Cancel Reason<textarea value={form.cancel_reason ?? ""} onChange={(event) => setForm({ ...form, cancel_reason: event.target.value })} required /></label><label>Cancel Note<textarea value={form.cancel_note ?? ""} onChange={(event) => setForm({ ...form, cancel_note: event.target.value })} /></label></> : <ArchiveFields form={form} setForm={setForm} />}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></div>;
+  return <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "complete_action" ? <><Select label="Outcome" value={form.outcome ?? ""} options={["", ...outcomes]} onChange={(outcome) => setForm({ ...form, outcome })} /><label>Note<textarea value={form.note ?? ""} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label><label><input type="checkbox" checked={form.follow_up_required === "true"} onChange={(event) => setForm({ ...form, follow_up_required: event.target.checked ? "true" : "" })} /> Follow-up Required</label><label>Follow-Up Due At<input type="date" value={form.follow_up_due_at ?? ""} onChange={(event) => setForm({ ...form, follow_up_due_at: event.target.value })} /></label></> : type === "cancel_action" ? <><label>Cancel Reason<textarea value={form.cancel_reason ?? ""} onChange={(event) => setForm({ ...form, cancel_reason: event.target.value })} required /></label><label>Cancel Note<textarea value={form.cancel_note ?? ""} onChange={(event) => setForm({ ...form, cancel_note: event.target.value })} /></label></> : <ArchiveFields form={form} setForm={setForm} />}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></ModalBoundary>;
 }
 
 function ActionFields({ form, setForm, currentBalance }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; currentBalance: number }) {

@@ -107,5 +107,6 @@
   "106_company_material_discrepancies.sql",
   "107_alternative_sign_in.sql",
   "108_prime_delivery_outbox.sql",
-  "109_identity_audit_integrity.sql"
+  "109_identity_audit_integrity.sql",
+  "110_account_program_evidence.sql"
 ]
