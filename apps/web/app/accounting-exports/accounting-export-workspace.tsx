@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
 import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
@@ -6,7 +8,7 @@ import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
@@ -56,7 +58,7 @@ type RelatedData = {
 
 const emptyRelated: RelatedData = { invoices: [], cashReceipts: [], paymentApplications: [], contractorPayables: [], payrollRuns: [], paymentBatches: [], bankTransactions: [], reconciliationMatches: [] };
 
-type ExportQueueKey = "draft" | "submitted" | "approved" | "markedSubmitted" | "accepted" | "canceled" | "itemsAttention" | "archived";
+type ExportQueueKey = "draft" | "submitted" | "approved" | "markedSubmitted" | "accepted" | "canceled" | "failed" | "itemsAttention" | "archived";
 
 const exportQueueDefinitions: Array<{ key: ExportQueueKey; label: string; helper: string; empty: string }> = [
   { key: "draft", label: "Draft", helper: "Export batches still being prepared.", empty: "No draft accounting exports need attention." },
@@ -65,12 +67,14 @@ const exportQueueDefinitions: Array<{ key: ExportQueueKey; label: string; helper
   { key: "markedSubmitted", label: "Marked Submitted", helper: "Export batches recorded as submitted manually or externally.", empty: "No submitted exports in this queue." },
   { key: "accepted", label: "Accepted", helper: "Export batches recorded as accepted by an external/manual accounting process.", empty: "No accepted exports in this queue." },
   { key: "canceled", label: "Canceled", helper: "Export batches canceled inside SyncOS.", empty: "No canceled exports in this queue." },
+  { key: "failed", label: "Failed / Rejected", helper: "Export batches requiring correction before another handoff.", empty: "No failed or rejected export batches in this queue." },
   { key: "itemsAttention", label: "Items Need Attention", helper: "Export items archived, blocked, rejected, or requiring review if supported by current data.", empty: "No accounting export items need attention." },
   { key: "archived", label: "Archived", helper: "Closed or removed export records.", empty: "No archived export records in this queue." },
 ];
 
 export function AccountingExportQueue() {
   const session = useSession();
+  const [summary, setSummary] = useState<SyncRecord>({});
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [exportItems, setExportItems] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
@@ -78,28 +82,34 @@ export function AccountingExportQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const requestGeneration = useRef(0);
   async function load() {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError("");
     try {
+      const nextSummary = await syncosFetch<SyncRecord>(`/accounting-export-batches/queue-summary?${accountingExportQuery(filters).toString()}`, {token: session.token});
+      if (!nextSummary || Array.isArray(nextSummary) || typeof nextSummary.draft !== "number") throw new Error("Could not load queue totals. Retry the refresh.");
       const batches = await completeDirectory(`/accounting-export-batches?${accountingExportQuery(filters).toString()}`, session.token);
-      setRows(batches);
       const items = hasPermission(session.permissions, "accounting_export_item.read") ? await completeBatchItems(batches, "/accounting-export-batches", session.token) : [];
+      if (generation !== requestGeneration.current) return;
+      setRows(batches);
+      setSummary(nextSummary);
       setExportItems(items);
     } catch (nextError) {
-      setError(plainError((nextError as Error).message));
+      if (generation === requestGeneration.current) setError(plainError((nextError as Error).message));
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (session.token) void load();
-    else setLoading(false);
-  }, [session.token, filters.archived]);
+    const timer = setTimeout(() => { if (session.token) void load(); else setLoading(false); }, 200);
+    return () => { clearTimeout(timer); requestGeneration.current += 1; };
+  }, [session.token, JSON.stringify(filters), session.permissions.join(",")]);
 
   const visible = useMemo(() => sortBatches(rows.filter((row) => exportQueueMatches(row, activeQueue)), filters.sort), [rows, activeQueue, filters.sort]);
-  const visibleItems = useMemo(() => exportItems.filter((item) => exportItemNeedsAttention(item) || activeQueue === "itemsAttention"), [exportItems, activeQueue]);
+  const visibleItems = useMemo(() => exportItems.filter((item) => exportItemNeedsAttention(item)), [exportItems, activeQueue]);
   const selectedQueue = exportQueueDefinitions.find((queue) => queue.key === activeQueue) ?? exportQueueDefinitions[1];
 
   function selectQueue(queue: ExportQueueKey) {
@@ -111,12 +121,12 @@ export function AccountingExportQueue() {
     <AccountingExportShell title="Accounting Export Workbench" purpose="Prepare and track internal accounting handoff batches and export items without posting to QuickBooks, ERP, GL, tax, payroll, or banking systems.">
       <SessionPanel session={session} />
       <div className="warning-box">Accounting Export prepares internal accounting handoff status only. SyncOS does not post to QuickBooks, ERP, GL, tax systems, payroll systems, banks, or accounting close.</div>
-      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {error ? <div className="error-banner" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading accounting exports...</div> : null}
-      {session.token && !loading && !error ? (
+      {session.token ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Today&apos;s accounting handoff work</h2>
@@ -125,7 +135,7 @@ export function AccountingExportQueue() {
               <Link className="primary-button" href="/accounting-exports/new" allowed={hasPermission(session.permissions, "accounting_export_batch.create")}>Create Accounting Export Batch</Link>
             </div>
             <div className="summary-grid">
-              {exportQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "accounting_export_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countExportQueue(rows, exportItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
+              {exportQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "accounting_export_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={summary[queue.key] ?? "Unavailable"} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
@@ -148,7 +158,7 @@ export function AccountingExportQueue() {
                 <button type="button" onClick={() => setFilters({ ...filters, has_mapping_errors: "true" })}>Mapping Errors</button>
               </div>
               <div className="filter-grid">
-                <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, target, account, reference, error" />
+                <input aria-label="Search batches" value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, target, account, reference, error" />
                 <Select label="Export Type" value={filters.export_type ?? ""} options={["", ...exportTypes]} onChange={(export_type) => setFilters({ ...filters, export_type })} />
                 <Select label="Target System" value={filters.target_system ?? ""} options={["", ...targetSystems]} onChange={(target_system) => setFilters({ ...filters, target_system })} />
                 <Select label="Export Format" value={filters.export_format ?? ""} options={["", ...exportFormats]} onChange={(export_format) => setFilters({ ...filters, export_format })} />
@@ -167,7 +177,7 @@ export function AccountingExportQueue() {
             </details>
           </section>
 
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>{selectedQueue.label}</h2>
@@ -177,7 +187,7 @@ export function AccountingExportQueue() {
             </div>
             {!rows.length ? <div className="empty-state">No accounting export batches yet. Create a batch and add source objects as export items.</div> : visible.length ? <AccountingExportBatchTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
-          {hasPermission(session.permissions, "accounting_export_item.read") ? <section className="workspace-panel">
+          {hasPermission(session.permissions, "accounting_export_item.read") ? <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Accounting Export Item Visibility</h2>
@@ -271,6 +281,7 @@ export function AccountingExportEdit({ accountingExportBatchId }: { accountingEx
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Accounting export batch not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Accounting Export" purpose="Check the reporting period, target format and source records for the accounting handoff." afterSave="Review item mappings and totals before generating and delivering the package." />
           <div className="warning-box">Status transitions use lifecycle actions. This form cannot call external APIs, post GL, generate taxes, create payments, create bank transactions, or mutate source records.</div>
           <BatchFormFields form={form} setForm={setForm} disabled={readonly} />
           <div className="form-actions">
@@ -451,6 +462,7 @@ export function AccountingExportItemDetail({ accountingExportItemId }: { account
   return (
     <AccountingExportShell title="Accounting Export Item Detail" purpose="Show export item source, mapping, status, error, and boundary context without item-level external export actions.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["accounting_export_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!item ? <div className="empty-state">Accounting export item not found or no access.</div> : (
@@ -525,11 +537,11 @@ function AccountingExportShell({ title, purpose, children }: { title: string; pu
 }
 
 function AccountingExportBatchTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Export Batch", "Export Type / Scope", "Source Period", "Item Count", "Total Amount", "Review Status", "Submission Status", "Acceptance Status", "Created / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.export_batch_number)}<div className="muted">{formatAction(row.export_format)} / {formatAction(row.target_system)}</div></td><td>{formatAction(row.export_type)}</td><td>{dateValue(row.period_start)} - {dateValue(row.period_end)}</td><td>{formatCell(row.item_count)}</td><td>{money(row.total_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{formatAction(row.export_status)}<div className="muted">{dateValue(row.submitted_at)}</div></td><td>{dateValue(row.accepted_at)}<div className="muted">{textValue(row.external_batch_reference)}</div></td><td>{dateValue(row.created_at)}<div className="muted">{dateValue(row.updated_at)}</div></td><td>{exportBatchNextAction(row)}</td><td><Link className="table-link" href={`/accounting-exports/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Export Batch", "Export Type / Scope", "Source Period", "Item Count", "Total Amount", "Review Status", "Submission Status", "Acceptance Status", "Created / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.export_batch_number)}<div className="muted">{formatAction(row.export_format)} / {formatAction(row.target_system)}</div></td><td>{formatAction(row.export_type)}</td><td>{dateValue(row.period_start)} - {dateValue(row.period_end)}</td><td>{formatCell(row.item_count)}</td><td>{money(row.total_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{formatAction(row.export_status)}<div className="muted">{dateValue(row.submitted_at)}</div></td><td>{dateValue(row.accepted_at)}<div className="muted">{textValue(row.external_batch_reference)}</div></td><td>{dateValue(row.created_at)}<div className="muted">{dateValue(row.updated_at)}</div></td><td>{exportBatchNextAction(row)}</td><td><Link className="table-link" href={`/accounting-exports/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function AccountingExportItemVisibilityTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Export Item", "Source Record Type", "Source Record", "Amount", "Item Status", "Export Batch", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.memo ?? row.export_item_type ?? row.id)}<div className="muted">{formatAction(row.export_item_type)}</div></td><td>{formatAction(row.source_object_type)}</td><td>{sourceLink(row)}</td><td>{money(row.amount ?? row.debit_amount ?? row.credit_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.export_status)}<div className="muted">{formatAction(row.mapping_status)}</div></td><td>{batchLink(row.accounting_export_batch_id, row.accounting_export_batch_number ?? row.accounting_export_batch_id)}</td><td>{exportItemNextAction(row)}</td><td><Link className="table-link" href={`/accounting-export-items/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Export Item", "Source Record Type", "Source Record", "Amount", "Item Status", "Export Batch", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.memo ?? row.export_item_type ?? row.id)}<div className="muted">{formatAction(row.export_item_type)}</div></td><td>{formatAction(row.source_object_type)}</td><td>{sourceLink(row)}</td><td>{money(row.amount ?? row.debit_amount ?? row.credit_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.export_status)}<div className="muted">{formatAction(row.mapping_status)}</div></td><td>{batchLink(row.accounting_export_batch_id, row.accounting_export_batch_number ?? row.accounting_export_batch_id)}</td><td>{exportItemNextAction(row)}</td><td><Link className="table-link" href={`/accounting-export-items/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function AccountingExportTab({ tab, detail, batch, items, session, onAction }: { tab: string; detail: DetailShape; batch: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -556,7 +568,7 @@ function AccountingExportTab({ tab, detail, batch, items, session, onAction }: {
 
 function ExportItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No export items yet.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Source Object Type", "Source Object ID", "Export Item Type", "Export Status", "Mapping Status", "Target Account Code", "Target Account Name", "Target Entity Reference", "Target Item Reference", "Target Class Reference", "Target Location Reference", "Debit Amount", "Credit Amount", "Amount", "Currency", "Transaction Date", "External Reference", "Error Message", "Notes", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.source_object_type)}</td><td>{sourceLink(row)}</td><td>{formatAction(row.export_item_type)}</td><td>{formatAction(row.export_status)}</td><td>{formatAction(row.mapping_status)}</td><td>{textValue(row.target_account_code)}</td><td>{textValue(row.target_account_name)}</td><td>{textValue(row.target_entity_reference)}</td><td>{textValue(row.target_item_reference)}</td><td>{textValue(row.target_class_reference)}</td><td>{textValue(row.target_location_reference)}</td><td>{money(row.debit_amount)}</td><td>{money(row.credit_amount)}</td><td>{money(row.amount)}</td><td>{textValue(row.currency)}</td><td>{dateValue(row.transaction_date)}</td><td>{textValue(row.external_reference)}</td><td>{textValue(row.error_message)}</td><td>{textValue(row.notes)}</td><td><div className="form-actions"><Link className="table-link" href={`/accounting-export-items/${row.id}`}>Open</Link><ActionButton permission="accounting_export_item.update" session={session} disabled={row.export_status === "archived"} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="accounting_export_item.archive" session={session} disabled={row.export_status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Source Object Type", "Source Object ID", "Export Item Type", "Export Status", "Mapping Status", "Target Account Code", "Target Account Name", "Target Entity Reference", "Target Item Reference", "Target Class Reference", "Target Location Reference", "Debit Amount", "Credit Amount", "Amount", "Currency", "Transaction Date", "External Reference", "Error Message", "Notes", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.source_object_type)}</td><td>{sourceLink(row)}</td><td>{formatAction(row.export_item_type)}</td><td>{formatAction(row.export_status)}</td><td>{formatAction(row.mapping_status)}</td><td>{textValue(row.target_account_code)}</td><td>{textValue(row.target_account_name)}</td><td>{textValue(row.target_entity_reference)}</td><td>{textValue(row.target_item_reference)}</td><td>{textValue(row.target_class_reference)}</td><td>{textValue(row.target_location_reference)}</td><td>{money(row.debit_amount)}</td><td>{money(row.credit_amount)}</td><td>{money(row.amount)}</td><td>{textValue(row.currency)}</td><td>{dateValue(row.transaction_date)}</td><td>{textValue(row.external_reference)}</td><td>{textValue(row.error_message)}</td><td>{textValue(row.notes)}</td><td><div className="form-actions"><Link className="table-link" href={`/accounting-export-items/${row.id}`}>Open</Link><ActionButton permission="accounting_export_item.update" session={session} disabled={row.export_status === "archived"} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="accounting_export_item.archive" session={session} disabled={row.export_status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function AccountingExportModal({ type, accountingExportBatchId, batch, item, related, session, onClose, onSaved }: { type: string; accountingExportBatchId: string; batch: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -793,17 +805,16 @@ function countExportQueue(rows: SyncRecord[], items: SyncRecord[], queue: Export
 }
 
 function exportQueueMatches(row: SyncRecord, queue: ExportQueueKey) {
-  const status = String(row.status ?? "");
-  const approvalStatus = String(row.approval_status ?? "");
-  const exportStatus = String(row.export_status ?? "");
-  if (queue === "draft") return ["draft", "assembling"].includes(status) || approvalStatus === "not_submitted";
-  if (queue === "submitted") return ["ready_for_review", "under_review"].includes(status) || approvalStatus === "pending";
-  if (queue === "approved") return status === "approved" || approvalStatus === "approved" || exportStatus === "generated";
-  if (queue === "markedSubmitted") return status === "submitted_later" || exportStatus === "submitted_later";
-  if (queue === "accepted") return status === "accepted_later" || exportStatus === "accepted_later" || Boolean(row.accepted_at);
-  if (queue === "canceled") return status === "cancelled" || exportStatus === "cancelled";
-  if (queue === "archived") return status === "archived" || Boolean(row.archived_at);
-  return false;
+  const status = String(row.status ?? ""), approval = String(row.approval_status ?? ""), exported = String(row.export_status ?? "");
+  // Terminal and external handoff states take precedence over retained approval history.
+  if (status === "archived" || row.archived_at) return queue === "archived";
+  if (status === "cancelled" || exported === "cancelled") return queue === "canceled";
+  if (["failed", "rejected_later"].includes(status) || ["failed", "rejected_later"].includes(exported) || approval === "rejected") return queue === "failed";
+  if (status === "accepted_later" || exported === "accepted_later" || row.accepted_at) return queue === "accepted";
+  if (status === "submitted_later" || exported === "submitted_later") return queue === "markedSubmitted";
+  if (["ready_for_review", "under_review"].includes(status) || approval === "pending") return queue === "submitted";
+  if (status === "approved" || approval === "approved" || exported === "generated") return queue === "approved";
+  return queue === "draft" && (["draft", "assembling"].includes(status) || approval === "not_submitted");
 }
 
 function exportItemNeedsAttention(item: SyncRecord) {
@@ -930,7 +941,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function batchLink(id: unknown, label: unknown) {

@@ -1,0 +1,17 @@
+
+Running 10 tests using 1 worker
+
+(node:99943) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/accessibility/routes.spec.ts:7:6 › desktop /projects (4.9s)
+  ✓   2 tests/accessibility/routes.spec.ts:7:6 › desktop /payments (4.7s)
+  ✓   3 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation (4.2s)
+  ✓   4 tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-exports (3.7s)
+  ✓   5 tests/accessibility/routes.spec.ts:7:6 › desktop /forms (2.2s)
+  ✓   6 tests/accessibility/routes.spec.ts:7:6 › mobile /projects (2.5s)
+  ✓   7 tests/accessibility/routes.spec.ts:7:6 › mobile /payments (2.6s)
+  ✓   8 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation (2.2s)
+  ✓   9 tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-exports (2.4s)
+  ✓  10 tests/accessibility/routes.spec.ts:7:6 › mobile /forms (1.8s)
+
+  10 passed (34.1s)

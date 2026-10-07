@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
+
 import { ModalBoundary } from "../../modal-boundary";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -235,7 +237,7 @@ export function SignalFeed() {
 
 function SignalTable({ signals, permissions, openAction }: { signals: SyncRecord[]; permissions: string[]; openAction: (action: SignalAction, signal: SyncRecord) => void }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -301,7 +303,7 @@ function SignalTable({ signals, permissions, openAction }: { signals: SyncRecord
           })}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 

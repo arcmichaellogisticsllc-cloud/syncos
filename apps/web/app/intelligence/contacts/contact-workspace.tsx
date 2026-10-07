@@ -1,4 +1,5 @@
 "use client";
+import {ReadOnlyBanner} from "../../operator-page-templates";
 import { ModalBoundary } from "../../modal-boundary";
 import { DangerZone } from "../../operator-page-templates";
 import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
@@ -351,6 +352,7 @@ export function ContactDetail({ contactId }: { contactId: string }) {
   return (
     <IntelligenceShell title="Contact Detail" purpose="Understand the human access point, organization context, authority, relationship strength, and next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["contact","constraint"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error">{error}</div> : null}
       {!contact ? (
         <section className="workspace-panel"><div className="empty-state">Contact not found or you do not have access.</div></section>

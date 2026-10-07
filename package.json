@@ -93,10 +93,12 @@
     "training:build": "node scripts/build-training-manuals.js",
     "training:test": "playwright test --config tests/passport-ui/playwright.config.ts training.spec.ts",
     "test:acceptance": "node scripts/acceptance/run-regression.js",
-    "e2e:supplemental": "playwright test --config tests/backlog-ui/playwright.config.ts && playwright test --config tests/passport-ui/playwright.config.ts && playwright test --config tests/company-field.config.ts && playwright test --config tests/offline-capture.config.ts && playwright test --config tests/identity-ui/playwright.config.ts && playwright test --config tests/onboarding-ui/playwright.config.ts"
+    "e2e:supplemental": "playwright test --config tests/backlog-ui/playwright.config.ts && playwright test --config tests/passport-ui/playwright.config.ts && playwright test --config tests/company-field.config.ts && playwright test --config tests/offline-capture.config.ts && playwright test --config tests/identity-ui/playwright.config.ts && playwright test --config tests/onboarding-ui/playwright.config.ts",
+    "e2e:accessibility": "playwright test --config tests/accessibility/playwright.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "axe-core": "4.14.0",
     "typescript": "^5.5.4"
   },
   "overrides": {

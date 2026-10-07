@@ -1,0 +1,13 @@
+
+Running 6 tests using 1 worker
+
+(node:82824) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision (2.0s)
+  ✓  2 tests/onboarding-ui/onboarding.spec.ts:8:5 › onboarding reader sees the profile without editing controls (1.3s)
+  ✓  3 tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review (1.5s)
+  ✓  4 tests/onboarding-ui/program-policies.spec.ts:4:5 › policy form preserves input on failure and requires source confirmation (1.5s)
+  ✓  5 tests/onboarding-ui/program-policies.spec.ts:5:5 › read-only program review hides all mutation controls (1.2s)
+  ✓  6 tests/onboarding-ui/program-policies.spec.ts:7:5 › stalled access checks fail closed and offer a safe retry (16.2s)
+
+  6 passed (24.7s)

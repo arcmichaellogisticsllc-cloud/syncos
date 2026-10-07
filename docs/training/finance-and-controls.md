@@ -197,6 +197,8 @@ The forms retain inputs on failure, show results, and block repeated clicks whil
 5. Click **Schedule**, enter **Scheduled Payment Date** and **Schedule Note**, then **Submit**. Scheduling does not move funds.
 6. If an external/manual handoff actually occurred, click **Submit Execution**, enter **Submit Note** and **External Reference**, then **Submit**. This is a status/reference operation, not an ACH/wire/check/API submission.
 7. Only after external completion, use **Mark Executed**, enter **Execution Reference**, **Execution Note** and supported execution date, then **Submit**. Confirm the recorded state and source evidence. For a failed external attempt use **Mark Failed** with **Failure Reason** and **Failure Note**.
+8. Return to **Payment Execution** and open **Failed / Cancelled** to find unsuccessful batches. Open the batch and inspect the failure reason and execution reference before taking another action. Historical approval does not place a failed batch in **Approved**. A partially executed batch total is not proof that the full amount was paid.
+
 
 **Recovery:** Edit Batch → Save Payment Batch before lifecycle locks; item Open/Edit/Void/Archive; batch Reject, Cancel, Void or Archive with reason. These older batch states do not substitute for F09's accepted-production external-payment ledger. Avoid recording one payment twice across separate workflows.
 
@@ -230,6 +232,8 @@ The forms retain inputs on failure, show results, and block repeated clicks whil
 7. Click **Generate**, enter **Generate Note**, and **Submit** when allowed. Review status/file-reference metadata. Generation here does not guarantee a downloadable file or call an accounting API.
 8. After a real external handoff, click **Mark Submitted**, enter **External Batch Reference** and **Submit Note**, then **Submit**.
 9. After external acknowledgement, use **Mark Accepted** with **Acceptance Note**, or **Mark Failed** with **Failure Reason/Failure Note**. Confirm state and references.
+10. Return to **Accounting Exports** and select **Failed / Rejected** to find batches requiring correction. Open the batch and inspect the rejection/failure reason before preparing the next handoff. A retained approval or acceptance timestamp does not make a currently failed export accepted.
+
 
 **Other paths:** Edit Batch → Save Accounting Export Batch; item Archive; batch Cancel or Archive with reason. Source links open the source record when available. The workflow does not post general-ledger entries, file tax, complete an accounting close or establish a QuickBooks/Sage/NetSuite integration.
 

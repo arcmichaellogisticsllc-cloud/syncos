@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: financial directories expose older batches with stable paging, tenant isolation and validated bounds
+ok 1 - financial directories expose older batches with stable paging, tenant isolation and validated bounds
+  ---
+  duration_ms: 973.373736
+  type: 'test'
+  ...
+# Subtest: bank directories page all accounts, transactions and matches without losing older records
+ok 2 - bank directories page all accounts, transactions and matches without losing older records
+  ---
+  duration_ms: 2630.454899
+  type: 'test'
+  ...
+# Subtest: accounting export filters honor date bounds and mapping/error flags
+ok 3 - accounting export filters honor date bounds and mapping/error flags
+  ---
+  duration_ms: 243.553736
+  type: 'test'
+  ...
+# Subtest: financial queue summaries use all matching rows, separate currencies and restrict item attention
+ok 4 - financial queue summaries use all matching rows, separate currencies and restrict item attention
+  ---
+  duration_ms: 737.966061
+  type: 'test'
+  ...
+# Subtest: export queues prioritize current lifecycle over retained approval and acceptance history
+ok 5 - export queues prioritize current lifecycle over retained approval and acceptance history
+  ---
+  duration_ms: 199.367481
+  type: 'test'
+  ...
+# Subtest: payment queues exclude terminal batches from scheduled and executed currency totals
+ok 6 - payment queues exclude terminal batches from scheduled and executed currency totals
+  ---
+  duration_ms: 177.578955
+  type: 'test'
+  ...
+# Subtest: cash receipt and allocation directories retain older reconciliation sources with stable pages
+ok 7 - cash receipt and allocation directories retain older reconciliation sources with stable pages
+  ---
+  duration_ms: 1891.180982
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9134.018668

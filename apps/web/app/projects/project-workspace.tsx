@@ -1,4 +1,8 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -175,6 +179,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   return (
     <ProjectShell title="Project Detail" purpose="Review readiness, ownership, source context, risk, lifecycle status, timeline, and audit.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["project"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Project Detail.</div> : null}
       {!project && session.token && !error ? <div className="empty-state">Project not found or you do not have access.</div> : null}
@@ -320,6 +325,7 @@ export function ProjectEdit({ projectId }: { projectId: string }) {
       {loading ? <div className="empty-state">Loading project...</div> : null}
       {!loading ? (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Project" purpose="Keep the scope, dates, responsible people and customer requirements aligned with the approved project." afterSave="Review project readiness on the detail page; work orders and field authorization have their own approval steps." />
           <div className="warning-box">Status changes use lifecycle actions from Project Detail. This edit form does not create work orders or production records.</div>
           <div className="form-grid">
             <label>Project name<input value={form.project_name ?? ""} onChange={(event) => setForm({ ...form, project_name: event.target.value })} /></label>
@@ -379,7 +385,7 @@ function ProjectShell({ title, purpose, children }: { title: string; purpose: st
 
 function ProjectTable({ projects }: { projects: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -412,7 +418,7 @@ function ProjectTable({ projects }: { projects: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -551,7 +557,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -572,7 +578,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildSummary(projects: SyncRecord[]) {

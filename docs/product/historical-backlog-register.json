@@ -697,9 +697,12 @@
       "source": "docs/product/operator-ui-gap-backlog.md",
       "status": "implementation_review",
       "evidence": [
-        "apps/api/src/routes/payment-execution.controller.ts"
+        "apps/api/src/routes/payment-execution.controller.ts",
+        "apps/web/app/intelligence/complete-directory.ts",
+        "tests/financial-directory-pagination.test.js",
+        "tests/onboarding-ui/financial-directories.spec.ts"
       ],
-      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+      "note": "Removed 25-batch item cutoffs in payment/export views and payment-item reconciliation choices; batch directories support validated paging. Complete loading fails visibly instead of reporting a false empty exception queue. Broader aggregate summary requirements remain under review."
     },
     {
       "id": "OUX-039",
@@ -707,9 +710,12 @@
       "source": "docs/product/operator-ui-gap-backlog.md",
       "status": "implementation_review",
       "evidence": [
-        "apps/api/src/routes/accounting-export.controller.ts"
+        "apps/api/src/routes/accounting-export.controller.ts",
+        "apps/web/app/intelligence/complete-directory.ts",
+        "tests/financial-directory-pagination.test.js",
+        "tests/onboarding-ui/financial-directories.spec.ts"
       ],
-      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+      "note": "Removed 25-batch item cutoffs in payment/export views and payment-item reconciliation choices; batch directories support validated paging. Complete loading fails visibly instead of reporting a false empty exception queue. Broader aggregate summary requirements remain under review."
     },
     {
       "id": "OUX-040",
@@ -737,9 +743,11 @@
       "source": "docs/product/operator-ui-gap-backlog.md",
       "status": "coverage_review_required",
       "evidence": [
-        "apps/web/app/operator-actions.tsx"
+        "apps/web/app/operator-actions.tsx",
+        "docs/acceptance/engineering-110-20261006.md",
+        "tests/e2e/action-states/action-state-modals.spec.ts"
       ],
-      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+      "note": "Destructive controls separated in 20 reviewed workspaces. Comprehensive remaining contextual actions still require review; local dialog acceptance does not certify every page."
     },
     {
       "id": "OUX-043",
@@ -767,9 +775,11 @@
       "source": "docs/product/operator-ui-gap-backlog.md",
       "status": "manual_accessibility_required",
       "evidence": [
-        "docs/product/operator-ui-gap-backlog.md"
+        "docs/product/operator-ui-gap-backlog.md",
+        "apps/web/app/modal-boundary.tsx",
+        "tests/e2e/action-states/action-state-modals.spec.ts"
       ],
-      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+      "note": "29 legacy dialog boundaries now provide accessible names, focus containment, Escape and return-focus behavior. Browser keyboard verification is being repeated against production build; actual screen-reader and device acceptance are still required."
     },
     {
       "id": "OUX-046",
@@ -795,11 +805,15 @@
       "id": "OUX-048",
       "title": "First-class account document and program policies",
       "source": "docs/product/operator-ui-gap-backlog.md",
-      "status": "requirements_and_engineering_open",
+      "status": "implemented_candidate_verification",
       "evidence": [
-        "apps/api/src/routes/account-onboarding.controller.ts"
+        "apps/api/src/routes/account-programs.controller.ts",
+        "packages/database/migrations/110_account_program_evidence.sql",
+        "apps/web/app/intelligence/account-onboarding/program-policies.tsx",
+        "tests/account-programs.test.js",
+        "tests/onboarding-ui/program-policies.spec.ts"
       ],
-      "note": "Recovered from later narrative updates, not the original backlog table. An implementation reference alone does not close application-wide acceptance."
+      "note": "First-class account programs, immutable originals/policy revisions/reviews and derived readiness implemented. Actual executed source documents and final deployed acceptance remain outstanding; legacy summaries are preserved."
     },
     {
       "id": "OUX-049",

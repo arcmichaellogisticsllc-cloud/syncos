@@ -1,0 +1,14 @@
+
+Running 7 tests using 1 worker
+
+(node:82955) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/e2e/account-onboarding-visibility.spec.ts:6:5 › saved profiles do not hide newly identified accounts (1.7s)
+  ✓  2 [chromium] › tests/e2e/action-states/action-state-modals.spec.ts:25:9 › Action-state modals — open, inspect, cancel › [Invoice] invoiceDraft: modal opens and cancels cleanly (1.7s)
+  ✓  3 [chromium] › tests/e2e/action-states/action-state-modals.spec.ts:25:9 › Action-state modals — open, inspect, cancel › [Invoice] invoiceItemDraft: modal opens and cancels cleanly (1.7s)
+  ✓  4 [chromium] › tests/e2e/action-states/action-state-modals.spec.ts:25:9 › Action-state modals — open, inspect, cancel › [Invoice] invoiceUnderReview: modal opens and cancels cleanly (1.8s)
+  ✓  5 [chromium] › tests/e2e/action-states/action-state-modals.spec.ts:25:9 › Action-state modals — open, inspect, cancel › [Invoice] invoiceApproved: modal opens and cancels cleanly (1.8s)
+  ✓  6 [chromium] › tests/e2e/action-states/action-state-modals.spec.ts:25:9 › Action-state modals — open, inspect, cancel › [Invoice] invoiceDisputed: modal opens and cancels cleanly (2.2s)
+  ✓  7 [chromium] › tests/e2e/action-states/action-state-modals.spec.ts:25:9 › Action-state modals — open, inspect, cancel › [Invoice] invoiceVoid: modal opens and cancels cleanly (2.6s)
+
+  7 passed (16.2s)

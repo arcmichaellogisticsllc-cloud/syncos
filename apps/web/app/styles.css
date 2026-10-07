@@ -1567,6 +1567,7 @@ input:disabled {
   opacity: 0.55;
 }
 
+[tabindex="0"]:focus-visible,
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -1684,6 +1685,10 @@ textarea:focus-visible {
 }
 
 .table-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  min-width: 24px;
   color: var(--accent);
   font-weight: 700;
   text-decoration: underline;
@@ -3930,3 +3935,7 @@ th {
 .completion-workspace article { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .completion-workspace p, .completion-workspace dd { overflow-wrap: anywhere; }
 @media(max-width:600px) { .completion-workspace input,.completion-workspace select,.completion-workspace textarea { font-size:16px; } }
+
+@media (max-width: 640px) {
+  .table-link { min-height: 44px; }
+}

@@ -1,0 +1,22 @@
+
+Running 15 tests using 1 worker
+
+(node:10521) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/onboarding-ui/financial-directories.spec.ts:4:6 › payments displays attention items beyond 25 batches and reports incomplete loading (2.7s)
+  ✓   2 tests/onboarding-ui/financial-directories.spec.ts:4:6 › accounting-exports displays attention items beyond 25 batches and reports incomplete loading (2.4s)
+  ✓   3 tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision (3.6s)
+  ✓   4 tests/onboarding-ui/onboarding.spec.ts:8:5 › onboarding reader sees the profile without editing controls (3.7s)
+  ✓   5 tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review (8.2s)
+  ✓   6 tests/onboarding-ui/program-policies.spec.ts:4:5 › policy form preserves input on failure and requires source confirmation (5.6s)
+  ✓   7 tests/onboarding-ui/program-policies.spec.ts:5:5 › read-only program review hides all mutation controls (1.9s)
+  ✓   8 tests/onboarding-ui/program-policies.spec.ts:7:5 › stalled access checks fail closed and offer a safe retry (16.1s)
+  ✓   9 tests/onboarding-ui/program-policies.spec.ts:15:5 › onboarding board includes accounts beyond its first page (762ms)
+  ✓  10 tests/onboarding-ui/queue-filters.spec.ts:4:6 › payments filters refresh without losing input focus and attention excludes healthy items (2.5s)
+  ✓  11 tests/onboarding-ui/queue-filters.spec.ts:4:6 › accounting-exports filters refresh without losing input focus and attention excludes healthy items (2.5s)
+  ✓  12 tests/onboarding-ui/queue-filters.spec.ts:23:5 › reconciliation includes transactions beyond the former 250-record cutoff (1.7s)
+  ✓  13 tests/onboarding-ui/queue-filters.spec.ts:35:59 › payments terminal queue preserves history without appearing approved (968ms)
+  ✓  14 tests/onboarding-ui/queue-filters.spec.ts:35:59 › accounting-exports terminal queue preserves history without appearing approved (1.0s)
+  ✓  15 tests/onboarding-ui/queue-filters.spec.ts:47:5 › cash workbench exposes receipts beyond its former 100-record cutoff (1.1s)
+
+  15 passed (57.7s)

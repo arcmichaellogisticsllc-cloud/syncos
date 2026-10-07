@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
 import {HistoryPager} from "../history-pager";
 import { InvoicePackages } from "./invoice-packages";
 import { CommercialTerms } from "./commercial-terms";
@@ -230,21 +232,21 @@ export default function AcceptedProductionFinancialsPage() {
         {saveError ? <p role="alert">{saveError}</p> : null}
         {saveMessage ? <p role="status">{saveMessage}</p> : null}
         <button className="primary-button" type="button" disabled={saving || !form.work_order_id || (form.treatment === "separate_pay_item" && (codeState !== "ready" || !form.separate_production_code_id))} onClick={createPolicy}>{saving ? "Saving..." : "Save Coil Policy"}</button></> }</Capability>
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr><th>Party</th><th>Coil Type</th><th>Easement</th><th>Treatment</th><th>Version</th><th>Source</th></tr></thead>
             <tbody>{(state.policies ?? []).map((policy) => <tr key={String(policy.id)}><td>{label(policy.party_type)}</td><td>{label(policy.coil_type)}</td><td>{label(policy.easement_type)}</td><td>{label(policy.treatment)}</td><td>{String(policy.version ?? "")}</td><td>{String(policy.source_reference ?? "")}</td></tr>)}</tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       </section>
       <section className="workspace-panel">
         <h2>Coil Commercial Review</h2><HistoryPager rows={state.coils??[]} path="accepted-production-financials/coil-commercial-summary" label="coil reviews" onRows={coils=>setState(s=>({...s,coils}))}/>
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr><th>Work Order</th><th>Pole / Asset</th><th>Coil Type</th><th>Actual</th><th>Customer Treatment</th><th>Partner Treatment</th></tr></thead>
             <tbody>{(state.coils ?? []).map((coil) => <tr key={String(coil.id)}><td>{String(coil.work_order_id ?? "")}</td><td>{String(coil.asset_identifier ?? "")}</td><td>{label(coil.coil_type)}</td><td>{quantity(coil.actual_length_ft)}</td><td>{label(coil.customer_treatment)}</td><td>{label(coil.partner_treatment)}</td></tr>)}</tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       </section>
     </main>
   );

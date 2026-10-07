@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
 import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
@@ -6,7 +8,7 @@ import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
@@ -52,7 +54,7 @@ type RelatedData = {
 };
 
 const emptyRelated: RelatedData = { contractorPayables: [], payrollRuns: [], providers: [], crews: [], workers: [] };
-type PaymentQueueKey = "draft" | "submitted" | "approved" | "scheduled" | "submittedExecution" | "executed" | "voided" | "itemsAttention" | "archived";
+type PaymentQueueKey = "draft" | "submitted" | "approved" | "scheduled" | "submittedExecution" | "executed" | "voided" | "failed" | "itemsAttention" | "archived";
 
 const paymentQueueDefinitions: Array<{ key: PaymentQueueKey; label: string; helper: string; empty: string }> = [
   { key: "draft", label: "Draft", helper: "Payment batches still being prepared.", empty: "No draft payment batches need attention." },
@@ -62,12 +64,14 @@ const paymentQueueDefinitions: Array<{ key: PaymentQueueKey; label: string; help
   { key: "submittedExecution", label: "Submitted Execution", helper: "Batches recorded as submitted manually or externally.", empty: "No payment batches have submitted-execution status in this queue." },
   { key: "executed", label: "Executed", helper: "Batches marked executed based on manual/external confirmation.", empty: "No executed payment batches in this queue." },
   { key: "voided", label: "Voided", helper: "Voided batches retained for audit.", empty: "No voided payment batches in this queue." },
+  { key: "failed", label: "Failed / Cancelled", helper: "Payment batches with failed or cancelled execution that require review.", empty: "No failed or cancelled payment batches in this queue." },
   { key: "itemsAttention", label: "Items Need Attention", helper: "Payment items blocked, archived, voided, or requiring review if supported by current data.", empty: "No payment items need attention." },
   { key: "archived", label: "Archived", helper: "Closed or removed payment batches/items.", empty: "No archived payment batches/items in this queue." },
 ];
 
 export function PaymentBatchQueue() {
   const session = useSession();
+  const [summary, setSummary] = useState<SyncRecord>({});
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [paymentItems, setPaymentItems] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
@@ -75,29 +79,35 @@ export function PaymentBatchQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const requestGeneration = useRef(0);
   async function load() {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError("");
     try {
+      const nextSummary = await syncosFetch<SyncRecord>(`/payment-batches/queue-summary?${paymentQuery(filters).toString()}`, {token: session.token});
+      if (!nextSummary || Array.isArray(nextSummary) || typeof nextSummary.draft !== "number") throw new Error("Could not load queue totals. Retry the refresh.");
       const query = paymentQuery(filters);
       const batches = await completeDirectory(`/payment-batches?${query.toString()}`, session.token);
-      setRows(batches);
       const batchItems = hasPermission(session.permissions, "payment_item.read") ? await completeBatchItems(batches, "/payment-batches", session.token) : [];
+      if (generation !== requestGeneration.current) return;
+      setRows(batches);
+      setSummary(nextSummary);
       setPaymentItems(batchItems);
     } catch (nextError) {
-      setError(plainError((nextError as Error).message));
+      if (generation === requestGeneration.current) setError(plainError((nextError as Error).message));
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (session.token) void load();
-    else setLoading(false);
-  }, [session.token, filters.archived]);
+    const timer = setTimeout(() => { if (session.token) void load(); else setLoading(false); }, 200);
+    return () => { clearTimeout(timer); requestGeneration.current += 1; };
+  }, [session.token, JSON.stringify(filters), session.permissions.join(",")]);
 
   const visible = useMemo(() => sortBatches(rows.filter((row) => paymentQueueMatches(row, activeQueue)), filters.sort), [rows, activeQueue, filters.sort]);
-  const visibleItems = useMemo(() => paymentItems.filter((item) => itemNeedsAttention(item) || activeQueue === "itemsAttention"), [paymentItems, activeQueue]);
+  const visibleItems = useMemo(() => paymentItems.filter((item) => itemNeedsAttention(item)), [paymentItems, activeQueue]);
   const selectedQueue = paymentQueueDefinitions.find((queue) => queue.key === activeQueue) ?? paymentQueueDefinitions[1];
 
   function selectQueue(queue: PaymentQueueKey) {
@@ -109,12 +119,12 @@ export function PaymentBatchQueue() {
     <PaymentShell title="Payment Execution Workbench" purpose="Track internal payment batch approval, scheduling, submission, and manual/external execution status without moving money inside SyncOS.">
       <SessionPanel session={session} />
       <div className="warning-box">Payment Execution records internal payment workflow status only. SyncOS does not move money, initiate ACH, send wires, issue card payouts, print checks, submit payroll, or connect to a bank.</div>
-      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {error ? <div className="error-banner" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading payment batches...</div> : null}
-      {session.token && !loading && !error ? (
+      {session.token ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Today&apos;s payment execution work</h2>
@@ -123,8 +133,10 @@ export function PaymentBatchQueue() {
               <Link className="primary-button" href="/payments/new" allowed={hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</Link>
             </div>
             <div className="summary-grid">
-              {paymentQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "payment_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPaymentQueue(rows, paymentItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
+              {paymentQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "payment_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={summary[queue.key] ?? "Unavailable"} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
+            {Array.isArray(summary.currency_totals) ? <ObjectTable rows={summary.currency_totals as SyncRecord[]} columns={["currency", "scheduled_amount", "executed_amount", "partially_executed_batch_amount"]} /> : null}
+            <p className="muted">Totals reflect the current filters. Partially executed batch amounts are shown separately and do not represent settled funds.</p>
           </section>
 
           <section className="workspace-panel">
@@ -145,7 +157,7 @@ export function PaymentBatchQueue() {
               {["ach", "check", "manual"].map((payment_method) => <button key={payment_method} type="button" onClick={() => setFilters({ ...filters, payment_method })}>{formatAction(payment_method)}</button>)}
               </div>
               <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, reference, payee, source, failure" />
+              <input aria-label="Search batches" value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, reference, payee, source, failure" />
               <Select label="Batch Type" value={filters.batch_type ?? ""} options={["", ...batchTypes]} onChange={(batch_type) => setFilters({ ...filters, batch_type })} />
               <Select label="Payment Method" value={filters.payment_method ?? ""} options={["", ...paymentMethods]} onChange={(payment_method) => setFilters({ ...filters, payment_method })} />
               <Select label="Status" value={filters.status ?? ""} options={["", ...batchStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
@@ -163,7 +175,7 @@ export function PaymentBatchQueue() {
             </details>
           </section>
 
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>{selectedQueue.label}</h2>
@@ -173,7 +185,7 @@ export function PaymentBatchQueue() {
             </div>
             {!rows.length ? <div className="empty-state">No payment batches yet. Create a batch and add payment-ready sources.</div> : visible.length ? <PaymentBatchTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
-          {hasPermission(session.permissions, "payment_item.read") ? <section className="workspace-panel">
+          {hasPermission(session.permissions, "payment_item.read") ? <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Payment Items Visibility</h2>
@@ -269,6 +281,7 @@ export function PaymentBatchEdit({ paymentBatchId }: { paymentBatchId: string })
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Payment batch not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Payment Batch" purpose="Check the payees, payment method, schedule and payment-ready sources before saving." afterSave="Review and approve the batch separately. Saving records details; execution still requires verified external payment evidence." />
           <div className="warning-box">Cannot move money, create bank transactions, submit providers, mark paid, reconcile, file taxes, or export accounting from this form.</div>
           <PaymentFormFields form={form} setForm={setForm} disabled={readonly} />
           <div className="form-actions">
@@ -447,6 +460,7 @@ export function PaymentItemDetail({ paymentItemId }: { paymentItemId: string }) 
   return (
     <PaymentShell title="Payment Item Detail" purpose="Show payment item instruction context without item-level execution controls or external money movement.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["payment_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!item ? <div className="empty-state">Payment item not found or no access.</div> : (
@@ -521,11 +535,11 @@ function PaymentShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PaymentBatchTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payment Batch", "Source Type / Items", "Total Amount", "Review Status", "Schedule Status", "Execution Status", "Submitted / Executed", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.payment_batch_number ?? row.id)}<div className="muted">{formatAction(row.payment_method)}</div></td><td>{formatAction(row.batch_type)}<div className="muted">{formatCell(row.item_count)} items</div></td><td>{money(row.total_payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{dateValue(row.scheduled_payment_date)}</td><td>{formatAction(row.execution_status)}<div className="muted">{textValue(row.execution_reference)}</div></td><td>{dateValue(row.submitted_at)} / {dateValue(row.executed_at)}</td><td>{nextPaymentAction(row)}</td><td><Link className="link-button" href={`/payments/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payment Batch", "Source Type / Items", "Total Amount", "Review Status", "Schedule Status", "Execution Status", "Submitted / Executed", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.payment_batch_number ?? row.id)}<div className="muted">{formatAction(row.payment_method)}</div></td><td>{formatAction(row.batch_type)}<div className="muted">{formatCell(row.item_count)} items</div></td><td>{money(row.total_payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{dateValue(row.scheduled_payment_date)}</td><td>{formatAction(row.execution_status)}<div className="muted">{textValue(row.execution_reference)}</div></td><td>{dateValue(row.submitted_at)} / {dateValue(row.executed_at)}</td><td>{nextPaymentAction(row)}</td><td><Link className="link-button" href={`/payments/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentItemVisibilityTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payment Item", "Source", "Payee", "Amount", "Item Status", "Batch", "Next Action"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-items/${row.id}`}>{textValue(row.id)}</Link></td><td>{formatAction(row.source_type)}<div className="muted">{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)} {payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</div></td><td>{textValue(row.payee_name ?? row.worker_name ?? row.capacity_provider_name ?? row.crew_name)}</td><td>{money(row.payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.execution_status)}</div></td><td>{batchLink(row.payment_batch_id, row.payment_batch_number ?? row.payment_batch_id)}</td><td>{paymentItemNextAction(row)}</td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payment Item", "Source", "Payee", "Amount", "Item Status", "Batch", "Next Action"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-items/${row.id}`}>{textValue(row.id)}</Link></td><td>{formatAction(row.source_type)}<div className="muted">{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)} {payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</div></td><td>{textValue(row.payee_name ?? row.worker_name ?? row.capacity_provider_name ?? row.crew_name)}</td><td>{money(row.payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.execution_status)}</div></td><td>{batchLink(row.payment_batch_id, row.payment_batch_number ?? row.payment_batch_id)}</td><td>{paymentItemNextAction(row)}</td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentTab({ tab, detail, batch, items, session, onAction }: { tab: string; detail: DetailShape; batch: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -551,7 +565,7 @@ function PaymentTab({ tab, detail, batch, items, session, onAction }: { tab: str
 
 function PaymentItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payment items in this batch.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Source Type", "Status", "Execution Status", "Payee Type", "Payee Name", "Contractor Payable", "Contractor Payable Item", "Payroll Run", "Payroll Item", "Worker", "Provider", "Crew", "Payment Method", "Payment Amount", "Currency", "Payment Date", "Execution Reference", "Failure Reason", "Notes", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.source_type)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.execution_status)}</td><td>{formatAction(row.payee_type)}</td><td>{textValue(row.payee_name)}</td><td>{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)}</td><td>{textValue(row.contractor_payable_item_id)}</td><td>{payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</td><td>{textValue(row.payroll_item_id)}</td><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{formatAction(row.payment_method)}</td><td>{money(row.payment_amount)}</td><td>{textValue(row.currency)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.execution_reference)}</td><td>{textValue(row.failure_reason)}</td><td>{textValue(row.notes)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-items/${row.id}`}>Open</Link><ActionButton permission="payment_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payment_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payment_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Source Type", "Status", "Execution Status", "Payee Type", "Payee Name", "Contractor Payable", "Contractor Payable Item", "Payroll Run", "Payroll Item", "Worker", "Provider", "Crew", "Payment Method", "Payment Amount", "Currency", "Payment Date", "Execution Reference", "Failure Reason", "Notes", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.source_type)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.execution_status)}</td><td>{formatAction(row.payee_type)}</td><td>{textValue(row.payee_name)}</td><td>{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)}</td><td>{textValue(row.contractor_payable_item_id)}</td><td>{payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</td><td>{textValue(row.payroll_item_id)}</td><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{formatAction(row.payment_method)}</td><td>{money(row.payment_amount)}</td><td>{textValue(row.currency)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.execution_reference)}</td><td>{textValue(row.failure_reason)}</td><td>{textValue(row.notes)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-items/${row.id}`}>Open</Link><ActionButton permission="payment_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payment_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payment_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentModal({ type, paymentBatchId, item, related, session, onClose, onSaved }: { type: string; paymentBatchId: string; batch: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -831,17 +845,17 @@ function countPaymentQueue(rows: SyncRecord[], items: SyncRecord[], queue: Payme
 }
 
 function paymentQueueMatches(row: SyncRecord, queue: PaymentQueueKey) {
-  const status = String(row.status ?? "");
-  const execution = String(row.execution_status ?? "");
-  if (queue === "draft") return ["draft", "assembling"].includes(status);
-  if (queue === "submitted") return ["ready_for_review", "under_review"].includes(status) || String(row.approval_status ?? "") === "pending";
-  if (queue === "approved") return status === "approved";
-  if (queue === "scheduled") return status === "scheduled";
-  if (queue === "submittedExecution") return status === "submitted" || execution === "submitted_later";
-  if (queue === "executed") return status === "executed_later" || execution === "executed_later" || status === "partially_executed_later";
-  if (queue === "voided") return status === "voided";
-  if (queue === "itemsAttention") return false;
-  return status === "archived";
+  const status = String(row.status ?? ""), execution = String(row.execution_status ?? "");
+  if (status === "archived") return queue === "archived";
+  if (status === "voided") return queue === "voided";
+  if (["failed", "cancelled"].includes(status) || ["failed", "cancelled"].includes(execution)) return queue === "failed";
+  if (["draft", "assembling"].includes(status)) return queue === "draft";
+  if (["ready_for_review", "under_review"].includes(status) || String(row.approval_status ?? "") === "pending") return queue === "submitted";
+  if (status === "approved") return queue === "approved";
+  if (status === "scheduled") return queue === "scheduled";
+  if (status === "submitted" || execution === "submitted_later") return queue === "submittedExecution";
+  if (["executed_later", "partially_executed_later"].includes(status) || execution === "executed_later") return queue === "executed";
+  return false;
 }
 
 function itemNeedsAttention(item: SyncRecord) {
@@ -954,7 +968,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function batchLink(id: unknown, label: unknown) {

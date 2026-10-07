@@ -1,4 +1,7 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
+
+import {ReadOnlyBanner} from "../../operator-page-templates";
 import { ModalBoundary } from "../../modal-boundary";
 import { DangerZone } from "../../operator-page-templates";
 import { permittedRecordTabs } from "../api";
@@ -499,6 +502,7 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
   return (
     <IntelligenceShell title="Organization Profile" purpose="Understand this telecom actor, its role, related work, constraints, recommendations, and next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["organization","contact","signal","opportunity_candidate","capacity_provider"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       <section className="panel workspace-panel">
         <div className="organization-header">
@@ -654,7 +658,7 @@ function TabPanel({
 
 function OrganizationTable({ rows, permissions }: { rows: EnrichedOrganization[]; permissions: string[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -707,7 +711,7 @@ function OrganizationTable({ rows, permissions }: { rows: EnrichedOrganization[]
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -777,7 +781,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {rows.length === 0 ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead>
               <tr>{columns.map((column) => <th key={column}>{column.replace(/_/g, " ")}</th>)}</tr>
@@ -790,7 +794,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );

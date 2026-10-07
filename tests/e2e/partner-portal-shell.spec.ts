@@ -1,3 +1,4 @@
+import {assertAccessible} from "./helpers/accessibility";
 import crypto from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { Client } from "pg";
@@ -48,6 +49,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByRole("heading", { name: "P7 Partner A", level: 1 })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { name: "Dashboard", level: 2 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Needs Attention" })).toBeVisible();
+    await assertAccessible(page,"partner-admin-dashboard-accessibility");
     await expect(page.getByText("Needs Your Action")).toBeVisible();
     await expect(page.getByText("Crew / Foreman Action")).toBeVisible();
     await expect(page.getByText("Waiting / Informational")).toBeVisible();
@@ -127,6 +129,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await expect(page.getByRole("link", { name: "Company" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Compliance" })).toHaveCount(0);
     await expect(page.getByText("P7-0 Worker")).toBeVisible();
+    await assertAccessible(page,"partner-foreman-tablet-accessibility");
     await expect(page.getByText("Partner Rate")).toHaveCount(0);
     await expect(page.getByText("W-9")).toHaveCount(0);
     await page.getByRole("link", {name: "Training", exact: true}).click();
@@ -146,6 +149,7 @@ test.describe.serial("P7 Partner Portal shell", () => {
     await page.goto("/partner/field/today");
     await expect(page).toHaveURL(/\/syncfield\/today$/);
     await expect(page.getByText("Initial Work Area", { exact: true })).toBeVisible();
+    await assertAccessible(page,"partner-foreman-phone-accessibility");
     await page.getByRole("button", { name: "Acknowledge Notice" }).first().click();
     await expect(page.getByText("Notice acknowledgment recorded as receipt only.")).toBeVisible();
   });

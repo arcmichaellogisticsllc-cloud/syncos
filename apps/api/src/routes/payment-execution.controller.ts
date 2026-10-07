@@ -6,7 +6,7 @@ import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, 
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
-import { RequirePermission } from "../security/require-permission.decorator";
+import { RequirePermission, TenantPermissionOnly } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick } from "./intelligence.types";
 
@@ -28,42 +28,7 @@ export class PaymentExecutionController {
   async listBatches(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
     const page = directoryPage(query);
     return this.withClient(async (client) => {
-      const values: unknown[] = [request.auth.tenantId];
-      const where = ["pb.tenant_id = $1"];
-      if (query.archived !== "true") where.push("pb.deleted_at IS NULL", "pb.status <> 'archived'");
-      this.addFilter(where, values, "pb.batch_type", query.batch_type);
-      this.addFilter(where, values, "pb.payment_method", query.payment_method);
-      this.addFilter(where, values, "pb.status", query.status);
-      this.addFilter(where, values, "pb.approval_status", query.approval_status);
-      this.addFilter(where, values, "pb.execution_status", query.execution_status);
-      if (query.scheduled_payment_date_from) {
-        values.push(query.scheduled_payment_date_from);
-        where.push(`pb.scheduled_payment_date >= $${values.length}`);
-      }
-      if (query.scheduled_payment_date_to) {
-        values.push(query.scheduled_payment_date_to);
-        where.push(`pb.scheduled_payment_date <= $${values.length}`);
-      }
-      if (query.submitted_from) {
-        values.push(query.submitted_from);
-        where.push(`pb.submitted_at >= $${values.length}`);
-      }
-      if (query.submitted_to) {
-        values.push(query.submitted_to);
-        where.push(`pb.submitted_at <= $${values.length}`);
-      }
-      if (query.executed_from) {
-        values.push(query.executed_from);
-        where.push(`pb.executed_at >= $${values.length}`);
-      }
-      if (query.executed_to) {
-        values.push(query.executed_to);
-        where.push(`pb.executed_at <= $${values.length}`);
-      }
-      if (query.q) {
-        values.push(`%${query.q}%`);
-        where.push(`(pb.payment_batch_number ILIKE $${values.length} OR pb.execution_reference ILIKE $${values.length} OR pb.failure_reason ILIKE $${values.length} OR pb.notes ILIKE $${values.length})`);
-      }
+      const {values, where} = this.batchFilters(request.auth.tenantId, query);
       const result = await client.query(
         `
         SELECT pb.*
@@ -75,6 +40,37 @@ export class PaymentExecutionController {
         values,
       );
       return result.rows.map((row) => this.withBatchGuidance(row));
+    });
+  }
+
+
+  @Get("payment-batches/queue-summary")
+  @RequirePermission("payment_batch.read")
+  @TenantPermissionOnly()
+  async queueSummary(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const {values, where} = this.batchFilters(request.auth.tenantId, query);
+      const allowed = await client.query(`SELECT 1 FROM tenant_users tu
+        JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id
+        JOIN roles active_role ON active_role.id = ur.role_id AND active_role.tenant_id = tu.tenant_id AND active_role.deleted_at IS NULL
+        JOIN role_permissions rp ON rp.role_id = ur.role_id AND rp.tenant_id = tu.tenant_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active' AND tu.deleted_at IS NULL
+          AND ur.scope_type = 'tenant' AND p.key = $3 LIMIT 1`, [request.auth.tenantId, request.auth.userId, "payment_item.read"]);
+      const attentionExpression = allowed.rowCount ? `(SELECT count(*)::int FROM payment_items i JOIN chosen b ON b.tenant_id = i.tenant_id AND b.id = i.payment_batch_id WHERE i.deleted_at IS NULL AND (i.status IN ('failed','cancelled','voided','archived') OR i.execution_status IN ('failed','cancelled')))` : 'NULL::int';
+      const result = await client.query(`WITH chosen AS (SELECT pb.* FROM payment_batches pb WHERE ${where.join(" AND ")}), classified AS (SELECT chosen.*, CASE WHEN status = 'archived' THEN 'archived' WHEN status = 'voided' THEN 'voided' WHEN status IN ('failed','cancelled') OR execution_status IN ('failed','cancelled') THEN 'failed' WHEN status IN ('draft','assembling') THEN 'draft' WHEN status IN ('ready_for_review','under_review') OR approval_status = 'pending' THEN 'submitted' WHEN status = 'approved' THEN 'approved' WHEN status = 'scheduled' THEN 'scheduled' WHEN status = 'submitted' OR execution_status = 'submitted_later' THEN 'submittedExecution' WHEN status IN ('executed_later','partially_executed_later') OR execution_status = 'executed_later' THEN 'executed' ELSE 'other' END AS queue FROM chosen)
+        SELECT count(*) FILTER (WHERE queue = 'archived')::int AS "archived",
+          count(*) FILTER (WHERE queue = 'voided')::int AS "voided",
+          count(*) FILTER (WHERE queue = 'failed')::int AS "failed",
+          count(*) FILTER (WHERE queue = 'draft')::int AS "draft",
+          count(*) FILTER (WHERE queue = 'submitted')::int AS "submitted",
+          count(*) FILTER (WHERE queue = 'approved')::int AS "approved",
+          count(*) FILTER (WHERE queue = 'scheduled')::int AS "scheduled",
+          count(*) FILTER (WHERE queue = 'submittedExecution')::int AS "submittedExecution",
+          count(*) FILTER (WHERE queue = 'executed')::int AS "executed",
+          ${attentionExpression} AS "itemsAttention", (SELECT COALESCE(jsonb_agg(t), '[]'::jsonb) FROM (SELECT currency, COALESCE(sum(total_payment_amount) FILTER (WHERE queue = 'scheduled'),0)::text AS scheduled_amount, COALESCE(sum(total_payment_amount) FILTER (WHERE queue = 'executed' AND (status = 'executed_later' OR execution_status = 'executed_later')),0)::text AS executed_amount, COALESCE(sum(total_payment_amount) FILTER (WHERE queue = 'executed' AND status = 'partially_executed_later' AND execution_status <> 'executed_later'),0)::text AS partially_executed_batch_amount FROM classified GROUP BY currency ORDER BY currency) t) AS currency_totals
+        FROM classified`, values);
+      return result.rows[0];
     });
   }
 
@@ -899,4 +895,44 @@ export class PaymentExecutionController {
       client.release();
     }
   }
+  private batchFilters(tenantId: string, query: Record<string, string | undefined>) {
+      const values: unknown[] = [tenantId];
+      const where = ["pb.tenant_id = $1"];
+      if (query.archived !== "true") where.push("pb.deleted_at IS NULL", "pb.status <> 'archived'");
+      this.addFilter(where, values, "pb.batch_type", query.batch_type);
+      this.addFilter(where, values, "pb.payment_method", query.payment_method);
+      this.addFilter(where, values, "pb.status", query.status);
+      this.addFilter(where, values, "pb.approval_status", query.approval_status);
+      this.addFilter(where, values, "pb.execution_status", query.execution_status);
+      if (query.scheduled_payment_date_from) {
+        values.push(query.scheduled_payment_date_from);
+        where.push(`pb.scheduled_payment_date >= $${values.length}`);
+      }
+      if (query.scheduled_payment_date_to) {
+        values.push(query.scheduled_payment_date_to);
+        where.push(`pb.scheduled_payment_date <= $${values.length}`);
+      }
+      if (query.submitted_from) {
+        values.push(query.submitted_from);
+        where.push(`pb.submitted_at >= $${values.length}`);
+      }
+      if (query.submitted_to) {
+        values.push(query.submitted_to);
+        where.push(`pb.submitted_at <= $${values.length}`);
+      }
+      if (query.executed_from) {
+        values.push(query.executed_from);
+        where.push(`pb.executed_at >= $${values.length}`);
+      }
+      if (query.executed_to) {
+        values.push(query.executed_to);
+        where.push(`pb.executed_at <= $${values.length}`);
+      }
+      if (query.q) {
+        values.push(`%${query.q}%`);
+        where.push(`(pb.payment_batch_number ILIKE $${values.length} OR pb.execution_reference ILIKE $${values.length} OR pb.failure_reason ILIKE $${values.length} OR pb.notes ILIKE $${values.length})`);
+      }
+      return {values, where};
+  }
+
 }

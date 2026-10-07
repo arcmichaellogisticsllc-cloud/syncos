@@ -1,0 +1,54 @@
+TAP version 13
+# {"timestamp":"2026-10-06T23:57:06.361Z","category":"Event","message":"event_created","tenantId":"5fcfe4ea-a782-4ba4-8f90-01d2bb3e7b93","actorUserId":"fb9d2c36-18cf-496f-a99f-fe3a3fab6072","eventId":"5dee1739-8717-439c-ad3c-e6cb61cef31a","eventType":"account_onboarding.created","aggregateType":"account_onboarding_profile","aggregateId":"a8bcdd31-6893-4b12-a960-a861495ac8d2"}
+# {"timestamp":"2026-10-06T23:57:06.370Z","category":"Audit","message":"audit_log_created","tenantId":"5fcfe4ea-a782-4ba4-8f90-01d2bb3e7b93","actorUserId":"fb9d2c36-18cf-496f-a99f-fe3a3fab6072","action":"account_onboarding.create","entityType":"account_onboarding_profile","entityId":"a8bcdd31-6893-4b12-a960-a861495ac8d2"}
+# {"timestamp":"2026-10-06T23:57:06.422Z","category":"Event","message":"event_created","tenantId":"5fcfe4ea-a782-4ba4-8f90-01d2bb3e7b93","actorUserId":"fb9d2c36-18cf-496f-a99f-fe3a3fab6072","eventId":"c33b8b3d-0260-4d21-ab8f-ec7f11162590","eventType":"account_onboarding.updated","aggregateType":"account_onboarding_profile","aggregateId":"a8bcdd31-6893-4b12-a960-a861495ac8d2"}
+# {"timestamp":"2026-10-06T23:57:06.429Z","category":"Audit","message":"audit_log_created","tenantId":"5fcfe4ea-a782-4ba4-8f90-01d2bb3e7b93","actorUserId":"fb9d2c36-18cf-496f-a99f-fe3a3fab6072","action":"account_onboarding.update","entityType":"account_onboarding_profile","entityId":"a8bcdd31-6893-4b12-a960-a861495ac8d2"}
+# Subtest: onboarding edits reject stale revisions and preserve finance and work authorization
+ok 1 - onboarding edits reject stale revisions and preserve finance and work authorization
+  ---
+  duration_ms: 298.070727
+  type: 'test'
+  ...
+# Subtest: onboarding rejects foreign account contacts, deleted owners and malformed paging
+ok 2 - onboarding rejects foreign account contacts, deleted owners and malformed paging
+  ---
+  duration_ms: 155.865121
+  type: 'test'
+  ...
+# {"timestamp":"2026-10-06T23:57:06.375Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"726cde05-6f10-4287-8aec-f144ffec1d2e","eventType":"account_onboarding.created","aggregateType":"account_onboarding_profile","aggregateId":"1309c149-f235-451a-a45d-b912fccec632"}
+# {"timestamp":"2026-10-06T23:57:06.381Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_onboarding.create","entityType":"account_onboarding_profile","entityId":"1309c149-f235-451a-a45d-b912fccec632"}
+# {"timestamp":"2026-10-06T23:57:06.415Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"f8bdea97-5345-48e5-9324-13d6fad7406c","eventType":"account_program.created","aggregateType":"account_program","aggregateId":"9ac4623d-b750-4698-b93f-1b5b34e9e25d"}
+# {"timestamp":"2026-10-06T23:57:06.423Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_program.created","entityType":"account_program","entityId":"9ac4623d-b750-4698-b93f-1b5b34e9e25d"}
+# {"timestamp":"2026-10-06T23:57:06.474Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"e5b3ab7d-d763-42d4-b61a-e5c8c6922f39","eventType":"account_program.original_added","aggregateType":"account_program","aggregateId":"ce46771a-5087-47f5-b141-7e2cdcad5efe"}
+# {"timestamp":"2026-10-06T23:57:06.478Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_program.original_added","entityType":"account_program","entityId":"ce46771a-5087-47f5-b141-7e2cdcad5efe"}
+# {"timestamp":"2026-10-06T23:57:06.508Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"df0708b9-dbcd-4af5-9de5-cce3f545e465","eventType":"account_program.policy_approved","aggregateType":"account_program","aggregateId":"db8e396b-8a3c-41ec-87c2-c2134cebc9b1"}
+# {"timestamp":"2026-10-06T23:57:06.511Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_program.policy_approved","entityType":"account_program","entityId":"db8e396b-8a3c-41ec-87c2-c2134cebc9b1"}
+# {"timestamp":"2026-10-06T23:57:06.539Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"8a275a14-2294-4d84-ad81-5a9a3ca80d05","eventType":"account_program.document_reviewed","aggregateType":"account_program","aggregateId":"81a374aa-38bf-445a-850b-0d68f58cd294"}
+# {"timestamp":"2026-10-06T23:57:06.543Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_program.document_reviewed","entityType":"account_program","entityId":"81a374aa-38bf-445a-850b-0d68f58cd294"}
+# {"timestamp":"2026-10-06T23:57:06.571Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"adf50685-f02d-4bcf-a462-9b6546530e67","eventType":"account_program.document_reviewed","aggregateType":"account_program","aggregateId":"36927af2-06cc-4947-8573-2353e70fa0a0"}
+# {"timestamp":"2026-10-06T23:57:06.573Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_program.document_reviewed","entityType":"account_program","entityId":"36927af2-06cc-4947-8573-2353e70fa0a0"}
+# {"timestamp":"2026-10-06T23:57:06.608Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"062d03c2-714c-4d06-8de9-a75a6e6db948","eventType":"account_onboarding.updated","aggregateType":"account_onboarding_profile","aggregateId":"1309c149-f235-451a-a45d-b912fccec632"}
+# {"timestamp":"2026-10-06T23:57:06.612Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_onboarding.update","entityType":"account_onboarding_profile","entityId":"1309c149-f235-451a-a45d-b912fccec632"}
+# {"timestamp":"2026-10-06T23:57:06.625Z","category":"Event","message":"event_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","eventId":"900d2ef1-f43f-4db5-b206-d3f57533db34","eventType":"account_program.policy_approved","aggregateType":"account_program","aggregateId":"c0d629c2-97d3-4691-b38f-7eebc4cb0f75"}
+# {"timestamp":"2026-10-06T23:57:06.627Z","category":"Audit","message":"audit_log_created","tenantId":"c9712c46-60b4-45c0-8dfc-ff56dbb349de","actorUserId":"fad5f9c8-b171-461d-a785-3236e8ada739","action":"account_program.policy_approved","entityType":"account_program","entityId":"c0d629c2-97d3-4691-b38f-7eebc4cb0f75"}
+# Subtest: program policies preserve originals, enforce current evidence, isolate accounts and retain history
+ok 3 - program policies preserve originals, enforce current evidence, isolate accounts and retain history
+  ---
+  duration_ms: 458.5086
+  type: 'test'
+  ...
+# Subtest: program HTTP endpoints require tenant-wide grants and accept bounded real originals
+ok 4 - program HTTP endpoints require tenant-wide grants and accept bounded real originals
+  ---
+  duration_ms: 426.590926
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1653.180517

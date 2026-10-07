@@ -1,0 +1,19 @@
+
+Running 12 tests using 1 worker
+
+(node:85236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for system-admin (146ms)
+  ✓   2 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for growth-operator (7.6s)
+  ✓   3 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for ops-manager (12.8s)
+  ✓   4 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for field-supervisor (10.8s)
+  ✓   5 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for qc-reviewer (6.6s)
+  ✓   6 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for finance-user (5.6s)
+  ✓   7 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for collections-specialist (8.5s)
+  ✓   8 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for payables-payroll-admin (13.3s)
+  ✓   9 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for accounting-manager (11.9s)
+  ✓  10 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for read-only-auditor (8.1s)
+  ✓  11 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for qc-manager (7.7s)
+  ✓  12 [chromium] › tests/e2e/action-states/application-permission-denials.spec.ts:12:38 › all protected writes deny missing grants for billing-manager (9.7s)
+
+  12 passed (1.8m)

@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
+
 import { ModalBoundary } from "../../modal-boundary";
 import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
 import {DangerZone,ReadOnlyBanner} from "../../operator-page-templates";
@@ -515,7 +517,7 @@ function CandidateCard({ candidate }: { candidate: CandidateView }) {
 
 function CandidateTable({ candidates }: { candidates: CandidateView[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -543,7 +545,7 @@ function CandidateTable({ candidates }: { candidates: CandidateView[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -995,7 +997,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {!rows.length ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead>
             <tbody>
@@ -1006,7 +1008,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );

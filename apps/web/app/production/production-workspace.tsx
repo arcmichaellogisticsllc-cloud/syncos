@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
 import { ModalBoundary } from "../modal-boundary";
 import { permittedRecordTabs } from "../intelligence/api";
 
@@ -310,6 +312,7 @@ export function ProductionEdit({ productionId }: { productionId: string }) {
       {loading ? <div className="empty-state">Loading production record...</div> : null}
       {!loading ? (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Production" purpose="Keep quantities, dates and location consistent with the work performed and its supporting evidence." afterSave="Review the saved production record and submit through the applicable QC and customer-acceptance steps." />
           <div className="warning-box">Approved, rejected, voided, billable, and archived records are backend read-only. Status changes use lifecycle routes.</div>
           <ProductionFormFields form={form} setForm={setForm} related={related} />
           <div className="form-actions">
@@ -490,7 +493,7 @@ function ProductionShell({ title, purpose, children }: { title: string; purpose:
 
 function ProductionTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -521,7 +524,7 @@ function ProductionTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -646,7 +649,7 @@ function EvidenceFormFields({ form, setForm }: { form: Record<string, string>; s
 
 function EvidenceTable({ rows, session, onArchive }: { rows: SyncRecord[]; session: Session; onArchive: (id: string) => void }) {
   if (!rows.length) return null;
-  return <div className="wide-table"><table><thead><tr>{["Evidence Type", "Filename / Reference", "Caption", "Uploaded By", "Uploaded At", "Captured At", "GPS", "Archived", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.evidence_type)}</td><td>{textValue(row.filename ?? row.storage_reference ?? row.file_url ?? row.source_url)}</td><td>{textValue(row.caption ?? row.description ?? row.summary)}</td><td>{textValue(row.uploaded_by)}</td><td>{dateValue(row.uploaded_at)}</td><td>{dateValue(row.captured_at)}</td><td>{gps(row.geo_latitude, row.geo_longitude)}</td><td>{row.archived_at || row.status === "archived" ? "Yes" : "No"}</td><td>{hasPermission(session.permissions, "production_evidence.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "production_evidence.archive") || Boolean(row.archived_at)} onClick={() => onArchive(String(row.id))}>Archive</button> : null}</td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Evidence Type", "Filename / Reference", "Caption", "Uploaded By", "Uploaded At", "Captured At", "GPS", "Archived", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.evidence_type)}</td><td>{textValue(row.filename ?? row.storage_reference ?? row.file_url ?? row.source_url)}</td><td>{textValue(row.caption ?? row.description ?? row.summary)}</td><td>{textValue(row.uploaded_by)}</td><td>{dateValue(row.uploaded_at)}</td><td>{dateValue(row.captured_at)}</td><td>{gps(row.geo_latitude, row.geo_longitude)}</td><td>{row.archived_at || row.status === "archived" ? "Yes" : "No"}</td><td>{hasPermission(session.permissions, "production_evidence.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "production_evidence.archive") || Boolean(row.archived_at)} onClick={() => onArchive(String(row.id))}>Archive</button> : null}</td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function SessionPanel({ session }: { session: Session }) {
@@ -767,7 +770,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -788,7 +791,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildSummary(rows: SyncRecord[]) {

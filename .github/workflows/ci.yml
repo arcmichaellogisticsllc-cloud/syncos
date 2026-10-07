@@ -81,6 +81,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      SYNCOS_RESTRICTED_FILE_STORAGE_DIR: /tmp/syncos-restricted-ci
       NODE_ENV: test
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_e2e
       AUTH_JWT_SECRET: syncos-isolated-ci-validation-secret-2026

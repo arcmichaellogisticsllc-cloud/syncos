@@ -1,4 +1,7 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -213,6 +216,7 @@ export function QcReviewCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create QC Review" purpose="Use the submitted work and evidence to record the quality review, findings and responsible reviewer." afterSave="Review findings and correction requirements. Internal QC approval alone does not authorize customer billing." />
         <div className="warning-box">Choose the production to review. Its work order, project, quantity and unit carry into this review. Record your quantity decision after creating the review.</div>
         <QcCreateFields form={form} setForm={setForm} related={related} />
         <div className="form-actions">
@@ -436,7 +440,7 @@ function QcShell({ title, purpose, children }: { title: string; purpose: string;
 
 function QcReviewTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -463,7 +467,7 @@ function QcReviewTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -690,7 +694,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -711,7 +715,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildSummary(rows: SyncRecord[]) {

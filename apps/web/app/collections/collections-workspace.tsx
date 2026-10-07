@@ -1,4 +1,8 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -220,6 +224,7 @@ export function CollectionCaseCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Collection Case" purpose="Identify the invoice, customer, responsible owner and follow-up context for this collection case." afterSave="Review the case and add dated follow-up actions; a collection note does not change the invoice balance." />
         <div className="warning-box">Backend validation is authoritative. Creating a case does not update invoice balance, create a cash receipt, create a payment application, or send a message.</div>
         <div className="form-grid">
           <Select label="Invoice" value={form.invoice_id ?? ""} options={["", ...invoices.map((row) => String(row.id))]} labels={labelsFor(invoices, "invoice_number")} onChange={(invoice_id) => setForm({ ...form, invoice_id })} required />
@@ -284,6 +289,7 @@ export function CollectionCaseEdit({ caseId }: { caseId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Collection case not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Collection Case" purpose="Identify the invoice, customer, responsible owner and follow-up context for this collection case." afterSave="Review the case and add dated follow-up actions; a collection note does not change the invoice balance." />
           <div className="warning-box">Cannot edit invoice balance. Status changes must use lifecycle actions.</div>
           <div className="form-grid">
             <input value={form.assigned_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, assigned_owner_user_id: event.target.value })} placeholder="Assigned owner user ID" disabled={archived} />
@@ -343,6 +349,7 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
   return (
     <CollectionsShell title="Collection Case Detail" purpose="Show collection truth for an open invoice balance: owner, aging, actions, promise, dispute, escalation, and next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["collection_case","collection_action"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Collection Case Detail.</div> : null}
@@ -545,6 +552,7 @@ export function CollectionActionDetail({ actionId }: { actionId: string }) {
   return (
     <CollectionsShell title="Collection Action Detail" purpose="Show collection activity context, promise/dispute/escalation data, follow-up fields, timeline, and audit history.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["collection_action"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!action ? <div className="empty-state">Collection action not found or no access.</div> : null}
@@ -635,12 +643,12 @@ function CollectionsShell({ title, purpose, children }: { title: string; purpose
 }
 
 function CollectionCaseTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Case", "Customer", "Invoice", "Amount Due", "Age / Due Date", "Owner", "Status", "Dispute / Promise", "Next Action Due", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{caseLink(row.id, row.case_number)}<div className="cell-helper">{formatAction(row.collection_priority)} priority</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.current_balance ?? row.original_invoice_amount)}</td><td>{formatAging(row.aging_bucket)}<div className="cell-helper">{dateValue(row.next_action_due_at)}</div></td><td>{textValue(row.assigned_owner_name ?? row.assigned_owner_user_id, "Unassigned")}</td><td>{formatAction(row.case_status)}<div className="cell-helper">{formatAction(row.risk_level)} risk</div></td><td>{collectionPromiseDispute(row)}</td><td>{dateValue(row.next_action_due_at)}</td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collections/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Case", "Customer", "Invoice", "Amount Due", "Age / Due Date", "Owner", "Status", "Dispute / Promise", "Next Action Due", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{caseLink(row.id, row.case_number)}<div className="cell-helper">{formatAction(row.collection_priority)} priority</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.current_balance ?? row.original_invoice_amount)}</td><td>{formatAging(row.aging_bucket)}<div className="cell-helper">{dateValue(row.next_action_due_at)}</div></td><td>{textValue(row.assigned_owner_name ?? row.assigned_owner_user_id, "Unassigned")}</td><td>{formatAction(row.case_status)}<div className="cell-helper">{formatAction(row.risk_level)} risk</div></td><td>{collectionPromiseDispute(row)}</td><td>{dateValue(row.next_action_due_at)}</td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collections/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CollectionActionTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No collection actions returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Action", "Case", "Type", "Due Date", "Owner", "Status", "Completed At", "Result / Note", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/collection-actions/${row.id}`}>{formatAction(row.action_type)}</Link></td><td>{caseLink(row.collection_case_id, row.case_number)}</td><td>{formatAction(row.contact_method)}<div className="cell-helper">{formatAction(row.action_type)}</div></td><td>{dateValue(row.due_at ?? row.follow_up_due_at ?? row.action_date)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.completed_at)}</td><td>{formatAction(row.outcome)}<div className="cell-helper">{textValue(row.note)}</div></td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collection-actions/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Action", "Case", "Type", "Due Date", "Owner", "Status", "Completed At", "Result / Note", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/collection-actions/${row.id}`}>{formatAction(row.action_type)}</Link></td><td>{caseLink(row.collection_case_id, row.case_number)}</td><td>{formatAction(row.contact_method)}<div className="cell-helper">{formatAction(row.action_type)}</div></td><td>{dateValue(row.due_at ?? row.follow_up_due_at ?? row.action_date)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.completed_at)}</td><td>{formatAction(row.outcome)}<div className="cell-helper">{textValue(row.note)}</div></td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collection-actions/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CollectionCaseTab({ tab, detail, collectionCase, actions, session, onAction }: { tab: string; detail: CollectionCaseDetailShape; collectionCase: SyncRecord; actions: SyncRecord[]; session: Session; onAction: (type: string, action?: SyncRecord) => void }) {
@@ -663,7 +671,7 @@ function CollectionCaseTab({ tab, detail, collectionCase, actions, session, onAc
 
 function CollectionActionsForCase({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, action?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No collection actions yet. Add an internal note, promise, dispute, escalation, or follow-up.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Action Type", "Status", "Date", "Due At", "Completed At", "Actor", "Contact Method", "Outcome", "Follow-Up Required", "Follow-Up Due", "Note", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{actionLink(row.id, formatAction(row.action_type))}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.action_date)}</td><td>{dateValue(row.due_at)}</td><td>{dateValue(row.completed_at)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.contact_method)}</td><td>{formatAction(row.outcome)}</td><td>{row.follow_up_required ? "Yes" : "No"}</td><td>{dateValue(row.follow_up_due_at)}</td><td>{textValue(row.note)}</td><td><div className="form-actions"><ActionButton permission="collection_action.complete" session={session} disabled={actionInactive(row)} onClick={() => onAction("complete_action", row)}>Complete</ActionButton><ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(row)} onClick={() => onAction("cancel_action", row)}>Cancel</ActionButton><ActionButton permission="collection_action.archive" session={session} disabled={row.action_status === "archived"} onClick={() => onAction("archive_action", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Action Type", "Status", "Date", "Due At", "Completed At", "Actor", "Contact Method", "Outcome", "Follow-Up Required", "Follow-Up Due", "Note", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{actionLink(row.id, formatAction(row.action_type))}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.action_date)}</td><td>{dateValue(row.due_at)}</td><td>{dateValue(row.completed_at)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.contact_method)}</td><td>{formatAction(row.outcome)}</td><td>{row.follow_up_required ? "Yes" : "No"}</td><td>{dateValue(row.follow_up_due_at)}</td><td>{textValue(row.note)}</td><td><div className="form-actions"><ActionButton permission="collection_action.complete" session={session} disabled={actionInactive(row)} onClick={() => onAction("complete_action", row)}>Complete</ActionButton><ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(row)} onClick={() => onAction("cancel_action", row)}>Cancel</ActionButton><ActionButton permission="collection_action.archive" session={session} disabled={row.action_status === "archived"} onClick={() => onAction("archive_action", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CollectionCaseModal({ type, caseId, collectionCase, action, session, onClose, onSaved }: { type: string; caseId: string; collectionCase: SyncRecord; action: SyncRecord | null; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -1097,7 +1105,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function caseLink(id: unknown, label: unknown) {

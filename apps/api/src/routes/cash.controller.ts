@@ -1,3 +1,4 @@
+import {directoryPage} from './directory-pagination';
 import {activityPage} from './activity-pagination';
 import { InvoicePackagesController } from './invoice-packages.controller';
 import { requireInvoiceCommercialIntegrity } from './commercial-terms';
@@ -1248,6 +1249,7 @@ export class CashController {
   @Get("cash-receipts")
   @RequirePermission("cash_receipt.read")
   async listCashReceipts(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["cr.tenant_id = $1", "cr.deleted_at IS NULL"];
@@ -1281,8 +1283,8 @@ export class CashController {
           GROUP BY tenant_id, cash_receipt_id
         ) apps ON apps.tenant_id = cr.tenant_id AND apps.cash_receipt_id = cr.id
         WHERE ${where.join(" AND ")}
-        ORDER BY ${this.cashReceiptSort(query.sort)}
-        LIMIT 100
+        ORDER BY ${this.cashReceiptSort(query.sort)}, cr.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );
@@ -1508,6 +1510,7 @@ export class CashController {
   @Get("payment-applications")
   @RequirePermission("payment_application.read")
   async listPaymentApplications(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["pa.tenant_id = $1", "pa.deleted_at IS NULL"];
@@ -1532,8 +1535,8 @@ export class CashController {
         JOIN invoices i ON i.tenant_id = pa.tenant_id AND i.id = pa.invoice_id
         LEFT JOIN organizations co ON co.tenant_id = pa.tenant_id AND co.id = pa.customer_organization_id
         WHERE ${where.join(" AND ")}
-        ORDER BY pa.application_date DESC, pa.updated_at DESC
-        LIMIT 100
+        ORDER BY pa.application_date DESC, pa.updated_at DESC, pa.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );

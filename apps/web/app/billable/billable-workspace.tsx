@@ -1,4 +1,8 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -184,6 +188,7 @@ export function BillableCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Billable" purpose="Select the approved source and verify customer acceptance, quantities and applicable commercial terms." afterSave="Review readiness, holds and supporting evidence before advancing toward settlement or invoicing." />
         <div className="warning-box">Backend validation requires approved QC and approved production, blocks duplicates unless overridden, and writes event/audit/system_action records.</div>
         <BillableFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
@@ -254,6 +259,7 @@ export function BillableEdit({ billableId }: { billableId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!item ? <div className="empty-state">Billable item not found or you do not have access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Billable" purpose="Select the approved source and verify customer acceptance, quantities and applicable commercial terms." afterSave="Review readiness, holds and supporting evidence before advancing toward settlement or invoicing." />
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, and settlement-created items are backend read-only.</div>
           <BillableFormFields form={form} setForm={setForm} related={emptyRelated} disabled={readOnly} />
           <div className="form-actions">
@@ -300,6 +306,7 @@ export function BillableDetail({ billableId }: { billableId: string }) {
   return (
     <BillableShell title="Billable Detail" purpose="Show financial eligibility truth, readiness, source context, timeline, and audit without creating finance records.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["billable_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Billable Detail.</div> : null}
@@ -423,7 +430,7 @@ function BillableShell({ title, purpose, children }: { title: string; purpose: s
 
 function BillableTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -463,7 +470,7 @@ function BillableTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -659,7 +666,7 @@ function SelectInline({ value, options, labels = {}, onChange, disabled = false 
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -680,7 +687,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 const billableQueues = [

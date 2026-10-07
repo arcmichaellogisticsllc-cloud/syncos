@@ -1,4 +1,7 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
 import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
@@ -6,7 +9,7 @@ import { permittedRecordTabs } from "../intelligence/api";
 
 import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 import { DetailBoundaryNotice, DetailNextActionCard, ReadOnlyBanner } from "../operator-page-templates";
@@ -94,6 +97,7 @@ const reconciliationQueueDefinitions: Array<{ key: ReconciliationQueueKey; label
 
 export function BankReconciliationLanding() {
   const session = useSession();
+  const [summary, setSummary] = useState<SyncRecord>({});
   const [data, setData] = useState<LandingData>({ accounts: [], transactions: [], matches: [] });
   const [accountFilters, setAccountFilters] = useState<Record<string, string>>({ archived: "false" });
   const [transactionFilters, setTransactionFilters] = useState<Record<string, string>>({ archived: "false", sort: "exception_first" });
@@ -102,27 +106,35 @@ export function BankReconciliationLanding() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const requestGeneration = useRef(0);
   async function load() {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError("");
     try {
-      const [accounts, transactions, matches] = await Promise.all([
-        syncosFetch<SyncRecord[]>(`/bank-accounts?${queryString(accountFilters)}`, { token: session.token }),
-        syncosFetch<SyncRecord[]>(`/bank-transactions?${queryString(transactionFilters)}`, { token: session.token }),
-        syncosFetch<SyncRecord[]>(`/reconciliation-matches?${queryString(matchFilters)}`, { token: session.token }),
+      const [accounts, transactions, matches, accountCounts, transactionCounts, matchCounts] = await Promise.all([
+        completeDirectory(`/bank-accounts?${queryString(accountFilters)}`, session.token),
+        completeDirectory(`/bank-transactions?${queryString(transactionFilters)}`, session.token),
+        completeDirectory(`/reconciliation-matches?${queryString(matchFilters)}`, session.token),
+        syncosFetch<SyncRecord[]>(`/bank-accounts?${queryString(accountFilters)}&summary=true`, {token: session.token}),
+        syncosFetch<SyncRecord[]>(`/bank-transactions?${queryString(transactionFilters)}&summary=true`, {token: session.token}),
+        syncosFetch<SyncRecord[]>(`/reconciliation-matches?${queryString(matchFilters)}&summary=true`, {token: session.token}),
       ]);
+      if (accountCounts.length !== 1 || transactionCounts.length !== 1 || matchCounts.length !== 1 || typeof transactionCounts[0].unmatchedCredits !== "number") throw new Error("Could not load reconciliation totals. Retry the refresh.");
+      if (generation !== requestGeneration.current) return;
+      setSummary({...transactionCounts[0], ...matchCounts[0], archived: numberValue(accountCounts[0].archivedAccounts,0) + numberValue(transactionCounts[0].archivedTransactions,0) + numberValue(matchCounts[0].archivedMatches,0)});
       setData({ accounts, transactions, matches });
     } catch (nextError) {
-      setError(plainError((nextError as Error).message));
+      if (generation === requestGeneration.current) setError(plainError((nextError as Error).message));
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (session.token) void load();
-    else setLoading(false);
-  }, [session.token, accountFilters.archived, transactionFilters.archived, matchFilters.archived]);
+    const timer = setTimeout(() => { if (session.token) void load(); else setLoading(false); }, 200);
+    return () => { clearTimeout(timer); requestGeneration.current += 1; };
+  }, [session.token, JSON.stringify(accountFilters), JSON.stringify(transactionFilters), JSON.stringify(matchFilters)]);
 
   const visibleTransactions = useMemo(() => sortTransactions(data.transactions.filter((row) => reconciliationTransactionMatches(row, activeQueue)), transactionFilters.sort), [data.transactions, activeQueue, transactionFilters.sort]);
   const visibleMatches = useMemo(() => data.matches.filter((row) => reconciliationMatchMatches(row, activeQueue)), [data.matches, activeQueue]);
@@ -140,12 +152,12 @@ export function BankReconciliationLanding() {
     <BankShell title="Bank Reconciliation Workbench" purpose="Match bank-side evidence to SyncOS cash and payment records, review exceptions, and keep reconciliation status visible without connecting to banks or moving money.">
       <SessionPanel session={session} />
       <div className="warning-box">Bank Reconciliation verifies internal matches against bank-side evidence. SyncOS does not import bank feeds, connect to banks, move money, create cash receipts, execute payments, or post accounting entries.</div>
-      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {error ? <div className="error-banner" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading bank reconciliation workspace...</div> : null}
-      {session.token && !loading && !error ? (
+      {session.token ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Today&apos;s reconciliation work</h2>
@@ -157,7 +169,7 @@ export function BankReconciliationLanding() {
               </div>
             </div>
             <div className="summary-grid">
-              {reconciliationQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countReconciliationQueue(data, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
+              {reconciliationQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={summary[queue.key] ?? "Unavailable"} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
           </section>
 
@@ -178,7 +190,7 @@ export function BankReconciliationLanding() {
             </details>
           </section>
 
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Bank Account Visibility</h2>
@@ -188,7 +200,7 @@ export function BankReconciliationLanding() {
             </div>
             <BankAccountTable rows={visibleAccounts} />
           </section>
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>{selectedQueue.label}</h2>
@@ -198,7 +210,7 @@ export function BankReconciliationLanding() {
             </div>
             {!data.transactions.length ? <div className="empty-state">No bank transactions yet. Create manual bank-side evidence before reconciliation begins.</div> : visibleTransactions.length ? <BankTransactionTable rows={visibleTransactions} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Reconciliation Match Visibility</h2>
@@ -208,7 +220,7 @@ export function BankReconciliationLanding() {
             </div>
             {visibleMatches.length ? <MatchTable rows={visibleMatches} /> : <div className="empty-state">{activeQueue === "reviewMatches" ? selectedQueue.empty : "No reconciliation matches in this queue."}</div>}
           </section>
-          <FuturePlaceholders />
+          <IntegrationStatus />
         </>
       ) : null}
     </BankShell>
@@ -237,6 +249,7 @@ export function BankAccountCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Bank Account" purpose="Use an internal account label, institution, currency and masked identifiers. Do not enter banking passwords or full account credentials." afterSave="Review the account reference and its reconciliation records. Saving this form does not establish a bank connection." />
         <div className="warning-box">Never enter full account numbers, online banking credentials, passwords, or API tokens.</div>
         <BankAccountFields form={form} setForm={setForm} includeCreate />
         <div className="form-actions">
@@ -286,6 +299,7 @@ export function BankAccountEdit({ accountId }: { accountId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Bank account not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Bank Account" purpose="Use an internal account label, institution, currency and masked identifiers. Do not enter banking passwords or full account credentials." afterSave="Review the account reference and its reconciliation records. Saving this form does not establish a bank connection." />
           <div className="warning-box">No full account numbers, credentials, passwords, login information, or API tokens are allowed.</div>
           <BankAccountFields form={form} setForm={setForm} />
           <div className="form-actions">
@@ -325,6 +339,7 @@ export function ManualBankTransactionCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Manual Bank Transaction" purpose="Use the actual statement date, direction, amount and reference from bank-side evidence." afterSave="Review the transaction and propose a match to the correct SyncOS receipt or payment record." />
         <div className="warning-box">Manual bank transactions are records for reconciliation. They do not move money, create cash receipts, create payments, or update invoice balances.</div>
         <BankTransactionFields form={form} setForm={setForm} accounts={accounts} includeCreate />
         <div className="form-actions">
@@ -379,6 +394,7 @@ export function BankTransactionEdit({ transactionId }: { transactionId: string }
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Bank transaction not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Bank Transaction" purpose="Keep statement details and bank-side evidence aligned when correcting this transaction." afterSave="Review existing matches and exceptions before approving reconciliation." />
           <div className="warning-box">Amount and direction edits after matching rely on backend validation. No money movement, cash receipt creation, or invoice balance update is available here.</div>
           <BankTransactionFields form={form} setForm={setForm} accounts={accounts} />
           <div className="form-actions">
@@ -422,6 +438,7 @@ export function BankAccountDetail({ accountId }: { accountId: string }) {
   return (
     <BankShell title="Bank Account Detail" purpose="Show bank account context and reconciliation health without bank feeds, statement imports, or treasury workflows.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["bank_account"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!account && session.token && !error ? <div className="empty-state">Bank account not found or no access.</div> : null}
@@ -612,6 +629,7 @@ export function ReconciliationMatchDetail({ matchId }: { matchId: string }) {
   return (
     <BankShell title="Reconciliation Match Detail" purpose="Review and approve bank-to-SyncOS evidence without accounting export, invoice balance updates, or money movement.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["reconciliation_match"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!match && session.token && !error ? <div className="empty-state">Reconciliation match not found or no access.</div> : null}
@@ -692,11 +710,11 @@ function LandingFilters({ accountFilters, setAccountFilters, transactionFilters,
     <section className="workspace-panel">
       <h2>Filters</h2>
       <div className="filter-grid">
-        <input value={accountFilters.q ?? ""} onChange={(event) => setAccountFilters({ ...accountFilters, q: event.target.value })} placeholder="Search accounts" />
+        <input aria-label="Search accounts" value={accountFilters.q ?? ""} onChange={(event) => setAccountFilters({ ...accountFilters, q: event.target.value })} placeholder="Search accounts" />
         <Select label="Account Type" value={accountFilters.account_type ?? ""} options={["", ...accountTypes]} onChange={(account_type) => setAccountFilters({ ...accountFilters, account_type })} />
         <Select label="Account Status" value={accountFilters.status ?? ""} options={["", ...accountStatuses]} onChange={(status) => setAccountFilters({ ...accountFilters, status })} />
         <Select label="Accounts Archived" value={accountFilters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setAccountFilters({ ...accountFilters, archived })} />
-        <input value={transactionFilters.q ?? ""} onChange={(event) => setTransactionFilters({ ...transactionFilters, q: event.target.value })} placeholder="Search transactions" />
+        <input aria-label="Search transactions" value={transactionFilters.q ?? ""} onChange={(event) => setTransactionFilters({ ...transactionFilters, q: event.target.value })} placeholder="Search transactions" />
         <Select label="Bank Account" value={transactionFilters.bank_account_id ?? ""} options={["", ...accounts.map((row) => String(row.id))]} labels={labelsFor(accounts, "account_name")} onChange={(bank_account_id) => setTransactionFilters({ ...transactionFilters, bank_account_id })} />
         <Select label="Direction" value={transactionFilters.direction ?? ""} options={["", ...directions]} onChange={(direction) => setTransactionFilters({ ...transactionFilters, direction })} />
         <Select label="Transaction Type" value={transactionFilters.transaction_type ?? ""} options={["", ...transactionTypes]} onChange={(transaction_type) => setTransactionFilters({ ...transactionFilters, transaction_type })} />
@@ -712,7 +730,7 @@ function LandingFilters({ accountFilters, setAccountFilters, transactionFilters,
         <Select label="Source Type" value={transactionFilters.source_type ?? ""} options={["", ...sourceTypes]} onChange={(source_type) => setTransactionFilters({ ...transactionFilters, source_type })} />
         <Select label="Transactions Archived" value={transactionFilters.archived ?? "false"} options={["false", "true"]} onChange={(archived) => setTransactionFilters({ ...transactionFilters, archived })} />
         <Select label="Sort" value={transactionFilters.sort ?? "exception_first"} options={["updated_desc", "transaction_date_desc", "posted_date_desc", "amount_desc", "exception_first", "unreconciled_first"]} labels={{ updated_desc: "Recently Updated", transaction_date_desc: "Transaction Date Newest", posted_date_desc: "Posted Date Newest", amount_desc: "Amount Highest", exception_first: "Exception First", unreconciled_first: "Unreconciled First" }} onChange={(sort) => setTransactionFilters({ ...transactionFilters, sort })} />
-        <input value={matchFilters.q ?? ""} onChange={(event) => setMatchFilters({ ...matchFilters, q: event.target.value })} placeholder="Search matches" />
+        <input aria-label="Search matches" value={matchFilters.q ?? ""} onChange={(event) => setMatchFilters({ ...matchFilters, q: event.target.value })} placeholder="Search matches" />
         <Select label="Match Type" value={matchFilters.match_type ?? ""} options={["", ...matchTypes]} onChange={(match_type) => setMatchFilters({ ...matchFilters, match_type })} />
         <Select label="Matched Object" value={matchFilters.matched_object_type ?? ""} options={["", ...matchedObjectTypes]} onChange={(matched_object_type) => setMatchFilters({ ...matchFilters, matched_object_type })} />
         <Select label="Match Status" value={matchFilters.match_status ?? ""} options={["", ...matchStatuses]} onChange={(match_status) => setMatchFilters({ ...matchFilters, match_status })} />
@@ -730,8 +748,8 @@ function AccountTab({ tab, detail, account, transactions }: { tab: string; detai
   if (tab === "exceptions") return <Panel title="Exceptions"><ObjectTable rows={transactions.filter((row) => row.exception_status === "open" || row.reconciliation_status === "exception")} columns={["transaction_date", "direction", "amount", "description", "exception_status", "exception_reason"]} /></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline} columns={["event_type", "aggregate_type", "aggregate_id", "created_at"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail.audit_allowed === false ? <div className="warning-box">You do not have permission to view bank reconciliation audit details.</div> : <ObjectTable rows={detail._audit} columns={["action", "entity_type", "entity_id", "created_at"]} />}</Panel>;
-  if (tab === "future_bank_feed") return <Panel title="Future Bank Feed"><div className="warning-box">Bank feed integration is not available in this sprint. Bank credentials and API tokens must not be entered.</div></Panel>;
-  return <Panel title="Future Statement Import"><div className="warning-box">Statement import is not available in this sprint. Manual bank transactions are supported for controlled reconciliation.</div></Panel>;
+  if (tab === "future_bank_feed") return <Panel title="Future Bank Feed"><div className="warning-box">Automated bank feeds are not connected. Enter bank transactions manually for review and matching.</div></Panel>;
+  return <Panel title="Future Statement Import"><div className="warning-box">Statement import is not connected. Manual bank transactions are supported for controlled reconciliation.</div></Panel>;
 }
 
 function TransactionTab({ tab, detail, transaction, matches, related, session, onAction }: { tab: string; detail: TransactionDetailShape; transaction: SyncRecord; matches: SyncRecord[]; related: RelatedOptions; session: Session; onAction: (type: string) => void }) {
@@ -745,8 +763,8 @@ function TransactionTab({ tab, detail, transaction, matches, related, session, o
   if (tab === "reconciliation_status") return <Panel title="Reconciliation Status"><dl className="detail-list"><dt>Reconciliation Status</dt><dd>{formatAction(transaction.reconciliation_status)}</dd><dt>Cleared Status</dt><dd>{formatAction(transaction.cleared_status)}</dd><dt>Exception Status</dt><dd>{formatAction(transaction.exception_status)}</dd><dt>Approved Match Amount</dt><dd>{money(transaction.approved_match_amount)}</dd><dt>Unmatched Amount</dt><dd>{money(transaction.unmatched_amount)}</dd><dt>Active Match Count</dt><dd>{formatCell(transaction.active_match_count ?? matches.length)}</dd><dt>Recommended Next Action</dt><dd>{formatAction(transaction.recommended_next_action ?? detail.recommended_next_action)}</dd></dl><div className="warning-box">Matched means linked to SyncOS record. Cleared means bank-posted/confirmed. Reconciled means reviewed and accepted. These are separate states.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline} columns={["event_type", "aggregate_type", "aggregate_id", "created_at"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail.audit_allowed === false ? <div className="warning-box">You do not have permission to view bank reconciliation audit details.</div> : <ObjectTable rows={detail._audit} columns={["action", "entity_type", "entity_id", "created_at"]} />}</Panel>;
-  if (tab === "future_processor_settlement") return <Panel title="Future Processor Settlement"><div className="warning-box">Payment processor settlement reconciliation is not available in this sprint.</div></Panel>;
-  return <Panel title="Future Accounting Export"><div className="warning-box">Accounting export and GL posting are not available in this sprint.</div></Panel>;
+  if (tab === "future_processor_settlement") return <Panel title="Future Processor Settlement"><div className="warning-box">Passport payment reconciliation remains in preparation until provider verification is complete.</div></Panel>;
+  return <Panel title="Future Accounting Export"><div className="warning-box">Accounting export batches can be prepared for review and delivery. External ledger posting requires a verified connection.</div></Panel>;
 }
 
 function MatchPanel({ title, message, action, related, session, disabled, onAction }: { title: string; message: string; action: string; related: RelatedOptions; session: Session; disabled: boolean; onAction: (type: string) => void }) {
@@ -826,21 +844,21 @@ function BankTransactionFields({ form, setForm, accounts, includeCreate = false 
 
 function BankAccountTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No bank accounts found.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Account", "Institution / Reference", "Status", "Active Transactions", "Unmatched Count", "Exception Count", "Last Statement", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{accountLink(row.id, row.account_name)}<div className="muted">{formatAction(row.account_type)} / {textValue(row.currency)}</div></td><td>{textValue(row.institution_name)}<div className="muted">{textValue(row.masked_account_number)}</div></td><td>{formatAction(row.status)}</td><td>{formatCell(row.transaction_count)}</td><td>{formatCell(row.unreconciled_count)}</td><td>{formatCell(row.exception_count)}</td><td>{dateValue(row.last_statement_date)}</td><td>{bankAccountNextAction(row)}</td><td><Link className="table-link" href={`/bank-reconciliation/accounts/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Account", "Institution / Reference", "Status", "Active Transactions", "Unmatched Count", "Exception Count", "Last Statement", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{accountLink(row.id, row.account_name)}<div className="muted">{formatAction(row.account_type)} / {textValue(row.currency)}</div></td><td>{textValue(row.institution_name)}<div className="muted">{textValue(row.masked_account_number)}</div></td><td>{formatAction(row.status)}</td><td>{formatCell(row.transaction_count)}</td><td>{formatCell(row.unreconciled_count)}</td><td>{formatCell(row.exception_count)}</td><td>{dateValue(row.last_statement_date)}</td><td>{bankAccountNextAction(row)}</td><td><Link className="table-link" href={`/bank-reconciliation/accounts/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function BankTransactionTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No bank transactions found.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Bank Transaction", "Account", "Direction / Type", "Amount", "Transaction Date", "Reference / Memo", "Match Status", "Exception Status", "Related SyncOS Record", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{transactionLink(row.id, row.description ?? row.id)}<div className="muted">{textValue(row.bank_reference)}</div></td><td>{textValue(row.bank_account_name ?? row.bank_account_id)}</td><td>{formatAction(row.direction)}<div className="muted">{formatAction(row.transaction_type)}</div></td><td>{money(row.amount)}</td><td>{dateValue(row.transaction_date)}</td><td>{textValue(row.description)}<div className="muted">{textValue(row.external_transaction_id)}</div></td><td>{formatAction(row.reconciliation_status)}<div className="muted">{formatCell(row.active_match_count)} active matches</div></td><td>{formatAction(row.exception_status)}<div className="muted">{textValue(row.exception_reason)}</div></td><td>{relatedBankRecord(row)}</td><td>{dateValue(row.updated_at)}</td><td>{bankTransactionNextAction(row)}</td><td><Link className="table-link" href={`/bank-reconciliation/transactions/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Bank Transaction", "Account", "Direction / Type", "Amount", "Transaction Date", "Reference / Memo", "Match Status", "Exception Status", "Related SyncOS Record", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{transactionLink(row.id, row.description ?? row.id)}<div className="muted">{textValue(row.bank_reference)}</div></td><td>{textValue(row.bank_account_name ?? row.bank_account_id)}</td><td>{formatAction(row.direction)}<div className="muted">{formatAction(row.transaction_type)}</div></td><td>{money(row.amount)}</td><td>{dateValue(row.transaction_date)}</td><td>{textValue(row.description)}<div className="muted">{textValue(row.external_transaction_id)}</div></td><td>{formatAction(row.reconciliation_status)}<div className="muted">{formatCell(row.active_match_count)} active matches</div></td><td>{formatAction(row.exception_status)}<div className="muted">{textValue(row.exception_reason)}</div></td><td>{relatedBankRecord(row)}</td><td>{dateValue(row.updated_at)}</td><td>{bankTransactionNextAction(row)}</td><td><Link className="table-link" href={`/bank-reconciliation/transactions/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function MatchTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No reconciliation matches found.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Match", "Bank Transaction", "Matched Record Type", "Matched Record", "Amount", "Review Status", "Exception Status", "Created / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{matchLink(row.id, row.match_type)}<div className="muted">{formatAction(row.match_confidence)}</div></td><td>{transactionLink(row.bank_transaction_id, row.bank_transaction_description ?? row.bank_reference ?? row.bank_transaction_id)}</td><td>{formatAction(row.matched_object_type)}</td><td>{matchedObjectLink(row)}</td><td>{money(row.matched_amount)}<div className="muted">Variance {money(row.variance_amount)}</div></td><td>{formatAction(row.match_status)}<div className="muted">{textValue(row.match_reason)}</div></td><td>{formatAction(row.exception_status ?? "none")}</td><td>{dateValue(row.created_at)}<div className="muted">{dateValue(row.updated_at)}</div></td><td>{reconciliationMatchNextAction(row)}</td><td><Link className="table-link" href={`/reconciliation-matches/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Match", "Bank Transaction", "Matched Record Type", "Matched Record", "Amount", "Review Status", "Exception Status", "Created / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{matchLink(row.id, row.match_type)}<div className="muted">{formatAction(row.match_confidence)}</div></td><td>{transactionLink(row.bank_transaction_id, row.bank_transaction_description ?? row.bank_reference ?? row.bank_transaction_id)}</td><td>{formatAction(row.matched_object_type)}</td><td>{matchedObjectLink(row)}</td><td>{money(row.matched_amount)}<div className="muted">Variance {money(row.variance_amount)}</div></td><td>{formatAction(row.match_status)}<div className="muted">{textValue(row.match_reason)}</div></td><td>{formatAction(row.exception_status ?? "none")}</td><td>{dateValue(row.created_at)}<div className="muted">{dateValue(row.updated_at)}</div></td><td>{reconciliationMatchNextAction(row)}</td><td><Link className="table-link" href={`/reconciliation-matches/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
-function FuturePlaceholders() {
-  return <section className="workspace-panel"><h2>Future Workflow Placeholders</h2><div className="summary-grid"><Metric label="Future Bank Feed" value="Bank feed integration is not available in this sprint. Bank credentials and API tokens must not be entered." /><Metric label="Future Statement Import" value="Statement import is not available in this sprint. Manual bank transactions are supported for controlled reconciliation." /><Metric label="Future Processor Settlement" value="Payment processor settlement reconciliation is not available in this sprint." /><Metric label="Future Accounting Export" value="Accounting export and GL posting are not available in this sprint." /><Metric label="Future Treasury" value="Treasury forecasting, funding optimization, and cash forecasting are not available in this sprint." /></div></section>;
+function IntegrationStatus() {
+  return <section className="workspace-panel"><h2>Connected services</h2><p>Bank transactions are entered manually. Automated bank feeds and statement imports are not connected.</p><p>Accounting export batches can be prepared for review and delivery. External ledger posting requires a verified connection.</p><p>Passport payment reconciliation remains in preparation until provider verification is complete.</p><div className="form-actions"><Link className="link-button" href="/accounting-exports">Open Accounting Exports</Link><Link className="link-button" href="/passport">Review Passport Preparation</Link></div></section>;
 }
 
 function SessionPanel({ session }: { session: Session }) { return null; }
@@ -896,8 +914,8 @@ const emptyRelatedOptions: RelatedOptions = { paymentBatches: [], paymentItems: 
 async function loadRelatedOptions(token: string): Promise<RelatedOptions> {
   const [paymentBatches, cashReceipts, paymentApplications] = await Promise.all([
     hasPermission(readPermissions(), "payment_batch.read") ? completeDirectory("/payment-batches?execution_status=executed_later&archived=false", token) : Promise.resolve([]),
-    optionalList("/cash-receipts?archived=false", token),
-    optionalList("/payment-applications?archived=false", token),
+    hasPermission(readPermissions(), "cash_receipt.read") ? completeDirectory("/cash-receipts?archived=false", token) : Promise.resolve([]),
+    hasPermission(readPermissions(), "payment_application.read") ? completeDirectory("/payment-applications?archived=false", token) : Promise.resolve([]),
   ]);
   const paymentItems = hasPermission(readPermissions(), "payment_item.read") ? await completeBatchItems(paymentBatches, "/payment-batches", token) : [];
   return { paymentBatches, paymentItems, cashReceipts, paymentApplications };
@@ -1154,7 +1172,7 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function accountLink(id: unknown, label: unknown) {

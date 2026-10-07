@@ -1,4 +1,8 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -216,6 +220,7 @@ export function PayrollRunCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Payroll Run" purpose="Check the employee work, payroll period and responsible company before preparing this run." afterSave="Review eligibility, quantities and approved terms before payroll approval. Employee work stays separate from partner payables." />
         <div className="warning-box">Backend validation is authoritative. Creating a payroll run does not create payment, ACH/card/check, provider submission, tax filing, or accounting export records.</div>
         <PayrollFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
@@ -283,6 +288,7 @@ export function PayrollRunEdit({ payrollRunId }: { payrollRunId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Payroll run not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Payroll Run" purpose="Check the employee work, payroll period and responsible company before preparing this run." afterSave="Review eligibility, quantities and approved terms before payroll approval. Employee work stays separate from partner payables." />
           <div className="warning-box">Cannot create payment, submit payroll, mark paid, or file taxes from this form. Lifecycle states use backend action routes.</div>
           <PayrollFormFields form={form} setForm={setForm} related={related} disabled={readonly} />
           <div className="form-actions">
@@ -339,6 +345,7 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
   return (
     <PayrollShell title="Payroll Run Detail" purpose="Show worker compensation readiness before future Payment Execution or Payroll Provider workflows consume payroll-ready runs.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["payroll_run","payroll_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Payroll Run Detail.</div> : null}
@@ -466,7 +473,7 @@ function PayrollShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PayrollRunTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payroll Record", "Crew / Worker Group", "Amount", "Review Status", "Readiness", "Dispute", "Pay Period / Date", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payrollLink(row.id, row.payroll_run_number ?? row.id)}<div className="muted">{formatAction(row.payroll_run_type)}</div></td><td>{textValue(row.crew_name ?? row.worker_group_name ?? row.crew_id)}<div className="muted">{projectLink(row.project_id, row.project_name)}</div></td><td>{money(row.net_pay_amount ?? row.gross_pay_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{payrollReadinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{dateValue(row.payroll_period_start)} to {dateValue(row.payroll_period_end)}<div className="muted">Pay date {dateValue(row.pay_date)}</div></td><td>{dateValue(row.updated_at)}</td><td>{nextPayrollAction(row)}</td><td><Link className="link-button" href={`/payroll/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payroll Record", "Crew / Worker Group", "Amount", "Review Status", "Readiness", "Dispute", "Pay Period / Date", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payrollLink(row.id, row.payroll_run_number ?? row.id)}<div className="muted">{formatAction(row.payroll_run_type)}</div></td><td>{textValue(row.crew_name ?? row.worker_group_name ?? row.crew_id)}<div className="muted">{projectLink(row.project_id, row.project_name)}</div></td><td>{money(row.net_pay_amount ?? row.gross_pay_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{payrollReadinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{dateValue(row.payroll_period_start)} to {dateValue(row.payroll_period_end)}<div className="muted">Pay date {dateValue(row.pay_date)}</div></td><td>{dateValue(row.updated_at)}</td><td>{nextPayrollAction(row)}</td><td><Link className="link-button" href={`/payroll/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: string; detail: DetailShape; run: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -493,7 +500,7 @@ function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: strin
 
 function PayrollItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payroll items yet.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Worker", "Worker Classification", "Source Type", "Earning Type", "Status", "Work Date", "Crew", "Project", "Work Order", "Production Record", "Regular Hours", "Overtime Hours", "Doubletime Hours", "Quantity", "Unit", "Regular Rate", "Overtime Rate", "Doubletime Rate", "Piece Rate", "Gross Pay Amount", "Reimbursement Amount", "Deduction Amount", "Estimated Tax Amount", "Net Pay Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{formatAction(row.worker_classification)}</td><td>{formatAction(row.source_type)}</td><td>{formatAction(row.earning_type)}</td><td>{formatAction(row.status)}</td><td>{dateValue(row.work_date)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{projectLink(row.project_id, row.project_name ?? row.project_id)}</td><td>{textValue(row.work_order_id)}</td><td>{textValue(row.production_record_id)}</td><td>{formatCell(row.hours_regular)}</td><td>{formatCell(row.hours_overtime)}</td><td>{formatCell(row.hours_doubletime)}</td><td>{formatCell(row.quantity)}</td><td>{textValue(row.unit)}</td><td>{money(row.rate_regular)}</td><td>{money(row.rate_overtime)}</td><td>{money(row.rate_doubletime)}</td><td>{money(row.piece_rate)}</td><td>{money(row.gross_pay_amount)}</td><td>{money(row.reimbursement_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.estimated_tax_amount)}</td><td>{money(row.net_pay_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td><div className="form-actions"><ActionButton permission="payroll_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payroll_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payroll_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Worker", "Worker Classification", "Source Type", "Earning Type", "Status", "Work Date", "Crew", "Project", "Work Order", "Production Record", "Regular Hours", "Overtime Hours", "Doubletime Hours", "Quantity", "Unit", "Regular Rate", "Overtime Rate", "Doubletime Rate", "Piece Rate", "Gross Pay Amount", "Reimbursement Amount", "Deduction Amount", "Estimated Tax Amount", "Net Pay Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{formatAction(row.worker_classification)}</td><td>{formatAction(row.source_type)}</td><td>{formatAction(row.earning_type)}</td><td>{formatAction(row.status)}</td><td>{dateValue(row.work_date)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{projectLink(row.project_id, row.project_name ?? row.project_id)}</td><td>{textValue(row.work_order_id)}</td><td>{textValue(row.production_record_id)}</td><td>{formatCell(row.hours_regular)}</td><td>{formatCell(row.hours_overtime)}</td><td>{formatCell(row.hours_doubletime)}</td><td>{formatCell(row.quantity)}</td><td>{textValue(row.unit)}</td><td>{money(row.rate_regular)}</td><td>{money(row.rate_overtime)}</td><td>{money(row.rate_doubletime)}</td><td>{money(row.piece_rate)}</td><td>{money(row.gross_pay_amount)}</td><td>{money(row.reimbursement_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.estimated_tax_amount)}</td><td>{money(row.net_pay_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td><div className="form-actions"><ActionButton permission="payroll_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payroll_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payroll_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PayrollModal({ type, payrollRunId, item, related, session, onClose, onSaved }: { type: string; payrollRunId: string; run: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -846,7 +853,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function payrollLink(id: unknown, label: unknown) {

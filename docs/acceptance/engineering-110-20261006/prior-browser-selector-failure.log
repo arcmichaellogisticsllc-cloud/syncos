@@ -1,0 +1,58 @@
+
+Running 9 tests using 1 worker
+
+(node:90281) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/onboarding-ui/financial-directories.spec.ts:4:6 › payments displays attention items beyond 25 batches and reports incomplete loading (4.8s)
+  ✘  2 tests/onboarding-ui/financial-directories.spec.ts:4:6 › accounting-exports displays attention items beyond 25 batches and reports incomplete loading (46.3s)
+(node:90485) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  3 tests/onboarding-ui/onboarding.spec.ts:3:5 › onboarding edit requires confirmation, preserves failures and sends the reviewed revision (2.6s)
+  ✓  4 tests/onboarding-ui/onboarding.spec.ts:8:5 › onboarding reader sees the profile without editing controls (1.8s)
+  ✓  5 tests/onboarding-ui/onboarding.spec.ts:9:5 › starting onboarding saves the chosen organization and lane only after review (3.3s)
+  ✓  6 tests/onboarding-ui/program-policies.spec.ts:4:5 › policy form preserves input on failure and requires source confirmation (4.2s)
+  ✓  7 tests/onboarding-ui/program-policies.spec.ts:5:5 › read-only program review hides all mutation controls (3.3s)
+  ✓  8 tests/onboarding-ui/program-policies.spec.ts:7:5 › stalled access checks fail closed and offer a safe retry (17.5s)
+  ✓  9 tests/onboarding-ui/program-policies.spec.ts:15:5 › onboarding board includes accounts beyond its first page (2.2s)
+
+
+  1) tests/onboarding-ui/financial-directories.spec.ts:4:6 › accounting-exports displays attention items beyond 25 batches and reports incomplete loading 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Older batch exception', { exact: true })
+    Expected: visible
+    Timeout: 45000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByText('Older batch exception', { exact: true }) with timeout 45000ms
+      - waiting for getByText('Older batch exception', { exact: true })
+
+
+       9 |   const batches=Array.from({length:26},(_,i)=>({id:`batch-${i}`,payment_batch_number:`Batch ${i}`,export_batch_number:`Batch ${i}`,status:'submitted',created_at:'2026-10-06',updated_at:'2026-10-06'}));let fail=false;const requested=new Set<string>();
+      10 |   await page.route(`**/api/syncos/${prefix}**`,r=>{const url=new URL(r.request().url());if(url.pathname.endsWith('/items')){const id=url.pathname.split('/').at(-2)!;requested.add(id);if(id==='batch-25'){if(fail)return r.fulfill({status:503,json:{message:'Older batch temporarily unavailable'}});return r.fulfill({json:[{id:'older-item',payee_name:'Older batch exception',memo:'Older batch exception',status:'failed',execution_status:'failed',export_status:'failed',mapping_status:'mapping_error',payment_batch_id:id,accounting_export_batch_id:id}]});}return r.fulfill({json:[]});}const offset=Number(url.searchParams.get('offset')??0);return r.fulfill({json:batches.slice(offset,offset+200)});});
+    > 11 |   await page.goto('/'+domain);await expect(page.getByText('Older batch exception',{exact:true})).toBeVisible({timeout:45000});expect(requested.size).toBe(26);
+         |                                                                                                  ^
+      12 |   fail=true;await page.reload();await expect(page.getByText('Older batch temporarily unavailable',{exact:false}).first()).toBeVisible({timeout:45000});await expect(page.getByText('Older batch exception',{exact:true})).toHaveCount(0);
+      13 |  });
+      14 | }
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/onboarding-ui/financial-directories.spec.ts:11:98
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/onboarding-ui/financial-directories-acco-97723--reports-incomplete-loading/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/onboarding-ui/financial-directories-acco-97723--reports-incomplete-loading/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-ui/financial-directories-acco-97723--reports-incomplete-loading/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-ui/financial-directories-acco-97723--reports-incomplete-loading/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/onboarding-ui/financial-directories.spec.ts:4:6 › accounting-exports displays attention items beyond 25 batches and reports incomplete loading 
+  8 passed (1.5m)

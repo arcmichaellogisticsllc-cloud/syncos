@@ -1,4 +1,7 @@
 "use client";
+import {completeDirectory} from "../intelligence/complete-directory";
+import {ScrollableRegion} from "../scrollable-region";
+
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -68,13 +71,12 @@ export function CashReceiptQueue() {
     try {
       const query = new URLSearchParams();
       query.set("archived", filters.archived === "true" ? "true" : "false");
-      for (const key of ["customer_organization_id", "payment_method", "receipt_status", "deposit_status", "reconciliation_status", "source_type", "payment_date_from", "payment_date_to", "has_unapplied", "q"]) if (filters[key]) query.set(key, filters[key]);
       if (filters.sort) query.set("sort", filters.sort);
       const applicationQuery = new URLSearchParams();
       applicationQuery.set("archived", filters.archived === "true" ? "true" : "false");
       const [receipts, applications] = await Promise.all([
-        syncosFetch<SyncRecord[]>(`/cash-receipts?${query.toString()}`, { token: session.token }),
-        optionalList(`/payment-applications?${applicationQuery.toString()}`, session.token),
+        completeDirectory(`/cash-receipts?${query.toString()}`, session.token),
+        hasPermission(session.permissions, "payment_application.read") ? completeDirectory(`/payment-applications?${applicationQuery.toString()}`, session.token) : Promise.resolve([]),
       ]);
       setRows(receipts);
       setApplicationRows(applications);
@@ -284,6 +286,7 @@ export function CashReceiptEdit({ receiptId }: { receiptId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!receipt ? <div className="empty-state">Receipt not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Cash Receipt" purpose="Use the actual receipt reference, date, customer and amount supported by payment evidence." afterSave="Review unapplied cash and apply it to the correct accepted invoice through the separate application action." />
           <div className="warning-box">Cannot bypass payment application rules. Invoice balances are not edited from this form.</div>
           <ReceiptFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
@@ -434,8 +437,7 @@ export function PaymentApplicationQueue() {
     try {
       const query = new URLSearchParams();
       query.set("archived", filters.archived === "true" ? "true" : "false");
-      for (const key of ["cash_receipt_id", "invoice_id", "customer_organization_id", "application_status", "application_type", "application_date_from", "application_date_to", "q"]) if (filters[key]) query.set(key, filters[key]);
-      setRows(await syncosFetch<SyncRecord[]>(`/payment-applications?${query.toString()}`, { token: session.token }));
+      setRows(await completeDirectory(`/payment-applications?${query.toString()}`, session.token));
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
     } finally {
@@ -536,6 +538,7 @@ export function PaymentApplicationDetail({ applicationId }: { applicationId: str
   return (
     <CashShell title="Payment Application Detail" purpose="Show receipt context, invoice impact, customer context, timeline, and audit for a payment allocation.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["payment_application"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!application ? <div className="empty-state">Payment application not found or no access.</div> : null}
@@ -620,12 +623,12 @@ function CashShell({ title, purpose, children }: { title: string; purpose: strin
 }
 
 function CashReceiptTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Receipt", "Customer", "Amount Received", "Applied Amount", "Unapplied Balance", "Receipt Date", "Source / Reference", "Status", "Invoice Link", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/cash/receipts/${row.id}`}>{textValue(row.receipt_number, String(row.id))}</Link><div className="cell-helper">{textValue(row.payer_name)}</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.gross_received_amount)}</td><td>{money(row.applied_amount)}</td><td>{money(row.unapplied_amount)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.payment_reference ?? row.external_transaction_id)}<div className="cell-helper">{formatAction(row.source_type)}</div></td><td>{formatAction(row.receipt_status)}<div className="cell-helper">{formatAction(row.reconciliation_status)}</div></td><td>{Number(row.invoice_count ?? 0) > 0 ? `${formatCell(row.invoice_count)} linked` : "No invoice link yet"}</td><td>{nextCashAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/cash/receipts/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Receipt", "Customer", "Amount Received", "Applied Amount", "Unapplied Balance", "Receipt Date", "Source / Reference", "Status", "Invoice Link", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/cash/receipts/${row.id}`}>{textValue(row.receipt_number, String(row.id))}</Link><div className="cell-helper">{textValue(row.payer_name)}</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.gross_received_amount)}</td><td>{money(row.applied_amount)}</td><td>{money(row.unapplied_amount)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.payment_reference ?? row.external_transaction_id)}<div className="cell-helper">{formatAction(row.source_type)}</div></td><td>{formatAction(row.receipt_status)}<div className="cell-helper">{formatAction(row.reconciliation_status)}</div></td><td>{Number(row.invoice_count ?? 0) > 0 ? `${formatCell(row.invoice_count)} linked` : "No invoice link yet"}</td><td>{nextCashAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/cash/receipts/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentApplicationTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No payment applications returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Application", "Receipt", "Invoice", "Amount Applied", "Application Status", "Applied Date", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-applications/${row.id}`}>{textValue(row.application_number, String(row.id))}</Link><div className="cell-helper">{formatAction(row.application_type)}</div></td><td>{cashReceiptLink(row.cash_receipt_id, row.receipt_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.applied_amount)}</td><td>{formatAction(row.application_status)}</td><td>{dateValue(row.application_date)}</td><td>{nextApplicationAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Application", "Receipt", "Invoice", "Amount Applied", "Application Status", "Applied Date", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-applications/${row.id}`}>{textValue(row.application_number, String(row.id))}</Link><div className="cell-helper">{formatAction(row.application_type)}</div></td><td>{cashReceiptLink(row.cash_receipt_id, row.receipt_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.applied_amount)}</td><td>{formatAction(row.application_status)}</td><td>{dateValue(row.application_date)}</td><td>{nextApplicationAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CashReceiptTab({ tab, detail, receipt, applications, session, onApplicationAction }: { tab: string; detail: CashReceiptDetailShape; receipt: SyncRecord; applications: SyncRecord[]; session: Session; onApplicationAction: (type: string, application: SyncRecord) => void }) {
@@ -643,7 +646,7 @@ function CashReceiptTab({ tab, detail, receipt, applications, session, onApplica
 
 function PaymentApplicationsForReceipt({ rows, session, onApplicationAction }: { rows: SyncRecord[]; session: Session; onApplicationAction: (type: string, application: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payment applications yet. Apply unapplied cash to a ready invoice.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Invoice Number", "Customer", "Applied Amount", "Application Date", "Application Type", "Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.applied_amount)}</td><td>{dateValue(row.application_date)}</td><td>{formatAction(row.application_type)}</td><td>{formatAction(row.application_status)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open</Link><ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(row)} onClick={() => onApplicationAction("void_application", row)}>Void</ActionButton><ActionButton permission="payment_application.archive" session={session} disabled={String(row.application_status) === "archived"} onClick={() => onApplicationAction("archive_application", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Invoice Number", "Customer", "Applied Amount", "Application Date", "Application Type", "Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.applied_amount)}</td><td>{dateValue(row.application_date)}</td><td>{formatAction(row.application_type)}</td><td>{formatAction(row.application_status)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open</Link><ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(row)} onClick={() => onApplicationAction("void_application", row)}>Void</ActionButton><ActionButton permission="payment_application.archive" session={session} disabled={String(row.application_status) === "archived"} onClick={() => onApplicationAction("archive_application", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CashReceiptModal({ type, receiptId, receipt, applications, related, application, session, onClose, onSaved }: { type: string; receiptId: string; receipt: SyncRecord; applications: SyncRecord[]; related: RelatedData; application: SyncRecord | null; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -795,7 +798,7 @@ function Select({ label, value, options, labels = {}, onChange, disabled = false
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function Checklist({ items }: { items: [string, boolean][] }) {
@@ -808,7 +811,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildReceiptSummary(rows: SyncRecord[]) {

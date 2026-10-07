@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
+
 import { ModalBoundary } from "../../modal-boundary";
 
 import { PermissionLink as Link } from "../../access-control";
@@ -558,7 +560,7 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
 
 function CoveragePlanTable({ plans }: { plans: CoverageRow[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -605,7 +607,7 @@ function CoveragePlanTable({ plans }: { plans: CoverageRow[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -1142,12 +1144,12 @@ function RangeInput({ label, min, max, setMin, setMax }: { label: string; min: s
 
 function SimpleTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 

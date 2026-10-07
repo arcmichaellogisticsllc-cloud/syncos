@@ -38,7 +38,8 @@ test.describe("Operator UI Phase 9 detail and form standards", () => {
     await expect(page.getByLabel("Next Action")).toBeVisible();
     await expect(page.getByText(/SyncOS does not email the customer, collect payment, apply cash, move money, or post accounting entries/i)).toBeVisible();
     await expect(page.getByLabel("Danger zone")).toBeVisible();
-    await expect(page.getByText(/Reject, dispute, void, and archive actions change lifecycle state/i)).toBeVisible();
+    await expect(page.getByLabel("Danger zone").getByText(/These actions change the invoice lifecycle/i)).toBeVisible();
+    await expect(page.getByLabel("Danger zone").getByRole("button", { name: "Void", exact: true })).toBeVisible();
     await expectNoDevSessionUi(page);
 
     await context.close();

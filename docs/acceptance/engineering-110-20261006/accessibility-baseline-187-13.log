@@ -1,0 +1,941 @@
+
+Running 200 tests using 1 worker
+
+(node:748) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    1 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence (4.2s)
+  ✓    2 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/signals (3.5s)
+  ✓    3 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/signals/a0d4da94-a197-538f-ba6c-371154494228 (5.5s)
+  ✓    4 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/account-onboarding (6.4s)
+  ✓    5 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/organizations (13.8s)
+  ✓    6 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/organizations/new (6.3s)
+  ✘    7 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5 (6.0s)
+(node:1036) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    8 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5/edit (4.6s)
+  ✓    9 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/contacts (7.4s)
+  ✓   10 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/contacts/new (5.2s)
+  ✓   11 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/contacts/44210d51-0251-5c85-a581-5149f269f21a (9.2s)
+  ✓   12 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/contacts/44210d51-0251-5c85-a581-5149f269f21a/edit (7.1s)
+  ✓   13 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/relationship-maps (7.9s)
+  ✓   14 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/relationship-maps/new (5.2s)
+  ✓   15 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/relationship-maps/b7edc55d-4170-508a-8867-088de5d63bb7 (4.9s)
+  ✓   16 tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/relationship-maps/b7edc55d-4170-508a-8867-088de5d63bb7/edit (4.9s)
+  ✓   17 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities (7.2s)
+  ✓   18 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/candidates (12.1s)
+  ✓   19 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/candidates/new (11.5s)
+  ✘   20 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12 (6.6s)
+(node:1417) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   21 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12/edit (8.4s)
+  ✓   22 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/pipeline (9.6s)
+  ✓   23 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/new (7.1s)
+  ✘   24 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97 (5.1s)
+(node:1476) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   25 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97/edit (4.6s)
+  ✓   26 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/coverage (4.8s)
+  ✓   27 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/coverage/new (4.4s)
+  ✓   28 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/coverage/6c2adb9e-689f-5924-87d2-7fa46c416165 (7.1s)
+  ✓   29 tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/coverage/6c2adb9e-689f-5924-87d2-7fa46c416165/edit (8.4s)
+  ✓   30 tests/accessibility/routes.spec.ts:7:6 › desktop /projects (9.8s)
+  ✓   31 tests/accessibility/routes.spec.ts:7:6 › desktop /projects/3e8fdeb8-dece-5285-833d-db832a5180fd (7.6s)
+  ✓   32 tests/accessibility/routes.spec.ts:7:6 › desktop /projects/3e8fdeb8-dece-5285-833d-db832a5180fd/edit (5.3s)
+  ✓   33 tests/accessibility/routes.spec.ts:7:6 › desktop /work-orders (7.9s)
+  ✓   34 tests/accessibility/routes.spec.ts:7:6 › desktop /work-orders/new (10.2s)
+  ✓   35 tests/accessibility/routes.spec.ts:7:6 › desktop /work-orders/6059ac12-783a-5172-a229-0213f1569b13 (6.8s)
+  ✓   36 tests/accessibility/routes.spec.ts:7:6 › desktop /work-orders/6059ac12-783a-5172-a229-0213f1569b13/edit (5.0s)
+  ✓   37 tests/accessibility/routes.spec.ts:7:6 › desktop /production (6.2s)
+  ✓   38 tests/accessibility/routes.spec.ts:7:6 › desktop /production/new (25.8s)
+  ✓   39 tests/accessibility/routes.spec.ts:7:6 › desktop /production/d07f0f37-b932-50c0-a3c2-f007b62be454 (9.1s)
+  ✓   40 tests/accessibility/routes.spec.ts:7:6 › desktop /production/d07f0f37-b932-50c0-a3c2-f007b62be454/edit (9.2s)
+  ✓   41 tests/accessibility/routes.spec.ts:7:6 › desktop /qc (16.2s)
+  ✓   42 tests/accessibility/routes.spec.ts:7:6 › desktop /qc/new (8.5s)
+  ✓   43 tests/accessibility/routes.spec.ts:7:6 › desktop /qc/6d64587a-51d3-5b2b-b7c2-10eacd7b7789 (9.0s)
+  ✓   44 tests/accessibility/routes.spec.ts:7:6 › desktop /qc/6d64587a-51d3-5b2b-b7c2-10eacd7b7789/edit (15.6s)
+  ✓   45 tests/accessibility/routes.spec.ts:7:6 › desktop /billable (14.0s)
+  ✓   46 tests/accessibility/routes.spec.ts:7:6 › desktop /billable/new (9.2s)
+  ✓   47 tests/accessibility/routes.spec.ts:7:6 › desktop /billable/c8ec8491-f179-579d-b19e-7428149abf97 (14.8s)
+  ✓   48 tests/accessibility/routes.spec.ts:7:6 › desktop /billable/c8ec8491-f179-579d-b19e-7428149abf97/edit (7.6s)
+  ✘   49 tests/accessibility/routes.spec.ts:7:6 › desktop /settlements (16.8s)
+(node:2944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   50 tests/accessibility/routes.spec.ts:7:6 › desktop /settlements/new (19.8s)
+  ✓   51 tests/accessibility/routes.spec.ts:7:6 › desktop /settlements/0899699c-1cb9-5955-b337-cdfb99e94538 (14.0s)
+  ✓   52 tests/accessibility/routes.spec.ts:7:6 › desktop /settlements/0899699c-1cb9-5955-b337-cdfb99e94538/edit (15.3s)
+  ✓   53 tests/accessibility/routes.spec.ts:7:6 › desktop /invoices (13.1s)
+  ✓   54 tests/accessibility/routes.spec.ts:7:6 › desktop /invoices/new (7.3s)
+  ✓   55 tests/accessibility/routes.spec.ts:7:6 › desktop /invoices/c8c9233d-8c96-55d9-a920-04dd928234ef (12.4s)
+  ✓   56 tests/accessibility/routes.spec.ts:7:6 › desktop /invoices/c8c9233d-8c96-55d9-a920-04dd928234ef/edit (11.1s)
+  ✓   57 tests/accessibility/routes.spec.ts:7:6 › desktop /cash (13.7s)
+  ✓   58 tests/accessibility/routes.spec.ts:7:6 › desktop /cash/receipts/new (15.1s)
+  ✓   59 tests/accessibility/routes.spec.ts:7:6 › desktop /cash/receipts/9602b2c7-be2a-5abe-bb15-24dba6ef722f (6.6s)
+  ✓   60 tests/accessibility/routes.spec.ts:7:6 › desktop /cash/receipts/9602b2c7-be2a-5abe-bb15-24dba6ef722f/edit (6.2s)
+  ✓   61 tests/accessibility/routes.spec.ts:7:6 › desktop /payment-applications (20.2s)
+  ✓   62 tests/accessibility/routes.spec.ts:7:6 › desktop /payment-applications/15a8aea5-78eb-5183-82d8-35820df26cc3 (6.3s)
+  ✓   63 tests/accessibility/routes.spec.ts:7:6 › desktop /collections (5.8s)
+  ✓   64 tests/accessibility/routes.spec.ts:7:6 › desktop /collections/new (9.3s)
+  ✓   65 tests/accessibility/routes.spec.ts:7:6 › desktop /collections/eea202fc-fbf1-53e0-a1ee-c0c62fe22cf0 (20.6s)
+  ✓   66 tests/accessibility/routes.spec.ts:7:6 › desktop /collections/eea202fc-fbf1-53e0-a1ee-c0c62fe22cf0/edit (6.0s)
+  ✓   67 tests/accessibility/routes.spec.ts:7:6 › desktop /collection-actions (4.2s)
+  ✓   68 tests/accessibility/routes.spec.ts:7:6 › desktop /collection-actions/4f84f07c-4653-5a25-92b6-ff1bfcf04c0e (4.0s)
+  ✓   69 tests/accessibility/routes.spec.ts:7:6 › desktop /contractor-payables (5.1s)
+  ✓   70 tests/accessibility/routes.spec.ts:7:6 › desktop /contractor-payables/new (5.0s)
+  ✓   71 tests/accessibility/routes.spec.ts:7:6 › desktop /contractor-payables/0532f1ae-3ea9-5722-a17d-1ef59c055c60 (5.9s)
+  ✓   72 tests/accessibility/routes.spec.ts:7:6 › desktop /contractor-payables/0532f1ae-3ea9-5722-a17d-1ef59c055c60/edit (5.7s)
+  ✓   73 tests/accessibility/routes.spec.ts:7:6 › desktop /payroll (8.9s)
+  ✓   74 tests/accessibility/routes.spec.ts:7:6 › desktop /payroll/new (6.2s)
+  ✓   75 tests/accessibility/routes.spec.ts:7:6 › desktop /payroll/9a5e24b3-f800-5af8-9ae3-ca1f5d42bfb6 (8.3s)
+  ✓   76 tests/accessibility/routes.spec.ts:7:6 › desktop /payroll/9a5e24b3-f800-5af8-9ae3-ca1f5d42bfb6/edit (6.1s)
+  ✓   77 tests/accessibility/routes.spec.ts:7:6 › desktop /payments (7.4s)
+  ✓   78 tests/accessibility/routes.spec.ts:7:6 › desktop /payments/new (6.3s)
+  ✓   79 tests/accessibility/routes.spec.ts:7:6 › desktop /payments/7123d00c-09b2-5bce-bc4a-ccffe41f0639 (8.4s)
+  ✓   80 tests/accessibility/routes.spec.ts:7:6 › desktop /payments/7123d00c-09b2-5bce-bc4a-ccffe41f0639/edit (5.7s)
+  ✘   81 tests/accessibility/routes.spec.ts:7:6 › desktop /payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e (5.8s)
+(node:4236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   82 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation (6.4s)
+  ✓   83 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation/accounts/new (5.1s)
+  ✓   84 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation/accounts/46166eca-ccc1-5390-b5da-05c5d36d613f (5.8s)
+  ✓   85 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation/accounts/46166eca-ccc1-5390-b5da-05c5d36d613f/edit (5.6s)
+  ✓   86 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation/transactions/new (7.1s)
+  ✓   87 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation/transactions/157b1af5-9bb3-5ad9-9305-1d12b7b364dd (7.5s)
+  ✓   88 tests/accessibility/routes.spec.ts:7:6 › desktop /bank-reconciliation/transactions/157b1af5-9bb3-5ad9-9305-1d12b7b364dd/edit (6.7s)
+  ✘   89 tests/accessibility/routes.spec.ts:7:6 › desktop /reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e (5.1s)
+(node:4507) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   90 tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-exports (4.9s)
+  ✓   91 tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-exports/new (3.3s)
+  ✓   92 tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-exports/b82c2439-08d3-5f49-8bf0-5b5538884df6 (4.4s)
+  ✓   93 tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-exports/b82c2439-08d3-5f49-8bf0-5b5538884df6/edit (3.5s)
+  ✘   94 tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0 (4.6s)
+(node:4783) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   95 tests/accessibility/routes.spec.ts:7:6 › desktop /forms (5.3s)
+  ✓   96 tests/accessibility/routes.spec.ts:7:6 › desktop /material-inventory (4.7s)
+  ✓   97 tests/accessibility/routes.spec.ts:7:6 › desktop /customer-inquiries (4.5s)
+  ✓   98 tests/accessibility/routes.spec.ts:7:6 › desktop /passport (4.6s)
+  ✓   99 tests/accessibility/routes.spec.ts:7:6 › desktop /record-history (2.7s)
+  ✓  100 tests/accessibility/routes.spec.ts:7:6 › desktop /training (4.7s)
+  ✓  101 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence (3.5s)
+  ✓  102 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/signals (3.2s)
+  ✓  103 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/signals/a0d4da94-a197-538f-ba6c-371154494228 (2.6s)
+  ✓  104 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/account-onboarding (2.7s)
+  ✓  105 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/organizations (3.3s)
+  ✓  106 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/organizations/new (2.7s)
+  ✘  107 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5 (3.5s)
+(node:5023) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  108 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5/edit (4.3s)
+  ✓  109 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/contacts (5.5s)
+  ✓  110 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/contacts/new (3.9s)
+  ✓  111 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/contacts/44210d51-0251-5c85-a581-5149f269f21a (4.1s)
+  ✓  112 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/contacts/44210d51-0251-5c85-a581-5149f269f21a/edit (2.6s)
+  ✓  113 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/relationship-maps (2.5s)
+  ✓  114 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/relationship-maps/new (2.0s)
+  ✓  115 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/relationship-maps/b7edc55d-4170-508a-8867-088de5d63bb7 (1.8s)
+  ✓  116 tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/relationship-maps/b7edc55d-4170-508a-8867-088de5d63bb7/edit (1.6s)
+  ✓  117 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities (1.7s)
+  ✓  118 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/candidates (1.5s)
+  ✓  119 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/candidates/new (1.4s)
+  ✘  120 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12 (1.6s)
+(node:5161) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  121 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12/edit (1.8s)
+  ✓  122 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/pipeline (1.7s)
+  ✓  123 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/new (1.8s)
+  ✘  124 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97 (1.9s)
+(node:5176) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  125 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97/edit (1.6s)
+  ✓  126 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/coverage (1.7s)
+  ✓  127 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/coverage/new (1.5s)
+  ✓  128 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/coverage/6c2adb9e-689f-5924-87d2-7fa46c416165 (1.8s)
+  ✓  129 tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/coverage/6c2adb9e-689f-5924-87d2-7fa46c416165/edit (1.4s)
+  ✓  130 tests/accessibility/routes.spec.ts:7:6 › mobile /projects (1.7s)
+  ✓  131 tests/accessibility/routes.spec.ts:7:6 › mobile /projects/3e8fdeb8-dece-5285-833d-db832a5180fd (1.6s)
+  ✓  132 tests/accessibility/routes.spec.ts:7:6 › mobile /projects/3e8fdeb8-dece-5285-833d-db832a5180fd/edit (1.6s)
+  ✓  133 tests/accessibility/routes.spec.ts:7:6 › mobile /work-orders (1.7s)
+  ✓  134 tests/accessibility/routes.spec.ts:7:6 › mobile /work-orders/new (1.6s)
+  ✓  135 tests/accessibility/routes.spec.ts:7:6 › mobile /work-orders/6059ac12-783a-5172-a229-0213f1569b13 (1.7s)
+  ✓  136 tests/accessibility/routes.spec.ts:7:6 › mobile /work-orders/6059ac12-783a-5172-a229-0213f1569b13/edit (2.0s)
+  ✓  137 tests/accessibility/routes.spec.ts:7:6 › mobile /production (2.1s)
+  ✓  138 tests/accessibility/routes.spec.ts:7:6 › mobile /production/new (2.0s)
+  ✓  139 tests/accessibility/routes.spec.ts:7:6 › mobile /production/d07f0f37-b932-50c0-a3c2-f007b62be454 (1.7s)
+  ✓  140 tests/accessibility/routes.spec.ts:7:6 › mobile /production/d07f0f37-b932-50c0-a3c2-f007b62be454/edit (1.7s)
+  ✓  141 tests/accessibility/routes.spec.ts:7:6 › mobile /qc (2.1s)
+  ✓  142 tests/accessibility/routes.spec.ts:7:6 › mobile /qc/new (1.5s)
+  ✓  143 tests/accessibility/routes.spec.ts:7:6 › mobile /qc/6d64587a-51d3-5b2b-b7c2-10eacd7b7789 (1.6s)
+  ✓  144 tests/accessibility/routes.spec.ts:7:6 › mobile /qc/6d64587a-51d3-5b2b-b7c2-10eacd7b7789/edit (1.6s)
+  ✓  145 tests/accessibility/routes.spec.ts:7:6 › mobile /billable (1.6s)
+  ✓  146 tests/accessibility/routes.spec.ts:7:6 › mobile /billable/new (1.5s)
+  ✓  147 tests/accessibility/routes.spec.ts:7:6 › mobile /billable/c8ec8491-f179-579d-b19e-7428149abf97 (1.7s)
+  ✓  148 tests/accessibility/routes.spec.ts:7:6 › mobile /billable/c8ec8491-f179-579d-b19e-7428149abf97/edit (1.4s)
+  ✓  149 tests/accessibility/routes.spec.ts:7:6 › mobile /settlements (1.5s)
+  ✓  150 tests/accessibility/routes.spec.ts:7:6 › mobile /settlements/new (1.4s)
+  ✓  151 tests/accessibility/routes.spec.ts:7:6 › mobile /settlements/0899699c-1cb9-5955-b337-cdfb99e94538 (1.6s)
+  ✓  152 tests/accessibility/routes.spec.ts:7:6 › mobile /settlements/0899699c-1cb9-5955-b337-cdfb99e94538/edit (1.4s)
+  ✓  153 tests/accessibility/routes.spec.ts:7:6 › mobile /invoices (1.5s)
+  ✓  154 tests/accessibility/routes.spec.ts:7:6 › mobile /invoices/new (1.4s)
+  ✓  155 tests/accessibility/routes.spec.ts:7:6 › mobile /invoices/c8c9233d-8c96-55d9-a920-04dd928234ef (1.6s)
+  ✓  156 tests/accessibility/routes.spec.ts:7:6 › mobile /invoices/c8c9233d-8c96-55d9-a920-04dd928234ef/edit (1.5s)
+  ✓  157 tests/accessibility/routes.spec.ts:7:6 › mobile /cash (1.6s)
+  ✓  158 tests/accessibility/routes.spec.ts:7:6 › mobile /cash/receipts/new (1.5s)
+  ✓  159 tests/accessibility/routes.spec.ts:7:6 › mobile /cash/receipts/9602b2c7-be2a-5abe-bb15-24dba6ef722f (1.6s)
+  ✓  160 tests/accessibility/routes.spec.ts:7:6 › mobile /cash/receipts/9602b2c7-be2a-5abe-bb15-24dba6ef722f/edit (1.5s)
+  ✓  161 tests/accessibility/routes.spec.ts:7:6 › mobile /payment-applications (1.5s)
+  ✓  162 tests/accessibility/routes.spec.ts:7:6 › mobile /payment-applications/15a8aea5-78eb-5183-82d8-35820df26cc3 (1.5s)
+  ✓  163 tests/accessibility/routes.spec.ts:7:6 › mobile /collections (1.6s)
+  ✓  164 tests/accessibility/routes.spec.ts:7:6 › mobile /collections/new (1.5s)
+  ✓  165 tests/accessibility/routes.spec.ts:7:6 › mobile /collections/eea202fc-fbf1-53e0-a1ee-c0c62fe22cf0 (1.7s)
+  ✓  166 tests/accessibility/routes.spec.ts:7:6 › mobile /collections/eea202fc-fbf1-53e0-a1ee-c0c62fe22cf0/edit (1.6s)
+  ✓  167 tests/accessibility/routes.spec.ts:7:6 › mobile /collection-actions (1.6s)
+  ✓  168 tests/accessibility/routes.spec.ts:7:6 › mobile /collection-actions/4f84f07c-4653-5a25-92b6-ff1bfcf04c0e (1.6s)
+  ✓  169 tests/accessibility/routes.spec.ts:7:6 › mobile /contractor-payables (1.7s)
+  ✓  170 tests/accessibility/routes.spec.ts:7:6 › mobile /contractor-payables/new (1.7s)
+  ✓  171 tests/accessibility/routes.spec.ts:7:6 › mobile /contractor-payables/0532f1ae-3ea9-5722-a17d-1ef59c055c60 (1.8s)
+  ✓  172 tests/accessibility/routes.spec.ts:7:6 › mobile /contractor-payables/0532f1ae-3ea9-5722-a17d-1ef59c055c60/edit (1.6s)
+  ✓  173 tests/accessibility/routes.spec.ts:7:6 › mobile /payroll (1.8s)
+  ✓  174 tests/accessibility/routes.spec.ts:7:6 › mobile /payroll/new (1.7s)
+  ✓  175 tests/accessibility/routes.spec.ts:7:6 › mobile /payroll/9a5e24b3-f800-5af8-9ae3-ca1f5d42bfb6 (1.6s)
+  ✓  176 tests/accessibility/routes.spec.ts:7:6 › mobile /payroll/9a5e24b3-f800-5af8-9ae3-ca1f5d42bfb6/edit (1.5s)
+  ✓  177 tests/accessibility/routes.spec.ts:7:6 › mobile /payments (1.7s)
+  ✓  178 tests/accessibility/routes.spec.ts:7:6 › mobile /payments/new (1.5s)
+  ✓  179 tests/accessibility/routes.spec.ts:7:6 › mobile /payments/7123d00c-09b2-5bce-bc4a-ccffe41f0639 (1.6s)
+  ✓  180 tests/accessibility/routes.spec.ts:7:6 › mobile /payments/7123d00c-09b2-5bce-bc4a-ccffe41f0639/edit (1.5s)
+  ✘  181 tests/accessibility/routes.spec.ts:7:6 › mobile /payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e (1.5s)
+(node:5383) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  182 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation (1.9s)
+  ✓  183 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation/accounts/new (1.9s)
+  ✓  184 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation/accounts/46166eca-ccc1-5390-b5da-05c5d36d613f (1.4s)
+  ✓  185 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation/accounts/46166eca-ccc1-5390-b5da-05c5d36d613f/edit (1.7s)
+  ✓  186 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation/transactions/new (1.6s)
+  ✓  187 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation/transactions/157b1af5-9bb3-5ad9-9305-1d12b7b364dd (1.8s)
+  ✓  188 tests/accessibility/routes.spec.ts:7:6 › mobile /bank-reconciliation/transactions/157b1af5-9bb3-5ad9-9305-1d12b7b364dd/edit (1.7s)
+  ✘  189 tests/accessibility/routes.spec.ts:7:6 › mobile /reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e (1.5s)
+(node:5410) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  190 tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-exports (1.9s)
+  ✓  191 tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-exports/new (1.4s)
+  ✓  192 tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-exports/b82c2439-08d3-5f49-8bf0-5b5538884df6 (1.6s)
+  ✓  193 tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-exports/b82c2439-08d3-5f49-8bf0-5b5538884df6/edit (1.4s)
+  ✘  194 tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0 (1.5s)
+(node:5426) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  195 tests/accessibility/routes.spec.ts:7:6 › mobile /forms (1.5s)
+  ✓  196 tests/accessibility/routes.spec.ts:7:6 › mobile /material-inventory (1.5s)
+  ✓  197 tests/accessibility/routes.spec.ts:7:6 › mobile /customer-inquiries (1.6s)
+  ✓  198 tests/accessibility/routes.spec.ts:7:6 › mobile /passport (1.7s)
+  ✓  199 tests/accessibility/routes.spec.ts:7:6 › mobile /record-history (1.3s)
+  ✓  200 tests/accessibility/routes.spec.ts:7:6 › mobile /training (1.9s)
+
+
+  1) tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".workspace-panel:nth-child(3) > .wide-table",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".workspace-panel:nth-child(4) > .wide-table",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-intelligenc-2728c-4058-51e2-bd24-f0b644f431a5/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-intelligenc-2728c-4058-51e2-bd24-f0b644f431a5/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-intelligenc-2728c-4058-51e2-bd24-f0b644f431a5/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-intelligenc-2728c-4058-51e2-bd24-f0b644f431a5/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 17
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".wide-table",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-opportuniti-e08ad-5759-5192-98d2-47dbaea00b12/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-opportuniti-e08ad-5759-5192-98d2-47dbaea00b12/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-opportuniti-e08ad-5759-5192-98d2-47dbaea00b12/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-opportuniti-e08ad-5759-5192-98d2-47dbaea00b12/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 17
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".wide-table",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-opportuniti-3bcac-64e0-519e-9a00-248720684e97/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-opportuniti-3bcac-64e0-519e-9a00-248720684e97/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-opportuniti-3bcac-64e0-519e-9a00-248720684e97/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-opportuniti-3bcac-64e0-519e-9a00-248720684e97/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) tests/accessibility/routes.spec.ts:7:6 › desktop /settlements ─────────────────────────────────
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "All touch targets must be 24px large, or leave sufficient space",
+    +     "id": "target-size",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Target has insufficient size (164.2px by 16px, should be at least 24px by 24px)
+    +   Target has insufficient space to its closest neighbors. Safe clickable space has a diameter of 16px instead of at least 24px.",
+    +         "target": Array [
+    +           "td:nth-child(2) > .table-link",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Target has insufficient size (165.3px by 14px, should be at least 24px by 24px)
+    +   Target has insufficient space to its closest neighbors. Safe clickable space has a diameter of 16px instead of at least 24px.",
+    +         "target": Array [
+    +           ".cell-helper > .table-link",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-settlements/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-settlements/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-settlements/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-settlements/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) tests/accessibility/routes.spec.ts:7:6 › desktop /payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(1) > pre",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(2) > pre",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-payment-ite-5c717-f5a3-521e-aac6-4a334c104f9e/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-payment-ite-5c717-f5a3-521e-aac6-4a334c104f9e/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-payment-ite-5c717-f5a3-521e-aac6-4a334c104f9e/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-payment-ite-5c717-f5a3-521e-aac6-4a334c104f9e/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) tests/accessibility/routes.spec.ts:7:6 › desktop /reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 17
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           "pre",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-reconciliat-8d450-fb54-5dfa-8fc0-aa8cae22c42e/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-reconciliat-8d450-fb54-5dfa-8fc0-aa8cae22c42e/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-reconciliat-8d450-fb54-5dfa-8fc0-aa8cae22c42e/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-reconciliat-8d450-fb54-5dfa-8fc0-aa8cae22c42e/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(1) > pre",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(2) > pre",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-accounting--c211f-3f55-5523-a45c-d5f79a5367e0/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-desktop-accounting--c211f-3f55-5523-a45c-d5f79a5367e0/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-desktop-accounting--c211f-3f55-5523-a45c-d5f79a5367e0/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-desktop-accounting--c211f-3f55-5523-a45c-d5f79a5367e0/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".workspace-panel:nth-child(3) > .wide-table",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".workspace-panel:nth-child(4) > .wide-table",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-intelligence-77132-4058-51e2-bd24-f0b644f431a5/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-mobile-intelligence-77132-4058-51e2-bd24-f0b644f431a5/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-intelligence-77132-4058-51e2-bd24-f0b644f431a5/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-mobile-intelligence-77132-4058-51e2-bd24-f0b644f431a5/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 17
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".wide-table",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-opportunitie-c153f-5759-5192-98d2-47dbaea00b12/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-mobile-opportunitie-c153f-5759-5192-98d2-47dbaea00b12/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-opportunitie-c153f-5759-5192-98d2-47dbaea00b12/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-mobile-opportunitie-c153f-5759-5192-98d2-47dbaea00b12/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 17
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".wide-table",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-opportunitie-0176d-64e0-519e-9a00-248720684e97/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-mobile-opportunitie-0176d-64e0-519e-9a00-248720684e97/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-opportunitie-0176d-64e0-519e-9a00-248720684e97/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-mobile-opportunitie-0176d-64e0-519e-9a00-248720684e97/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) tests/accessibility/routes.spec.ts:7:6 › mobile /payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(1) > pre",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(2) > pre",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-payment-item-64bf1-f5a3-521e-aac6-4a334c104f9e/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-mobile-payment-item-64bf1-f5a3-521e-aac6-4a334c104f9e/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-payment-item-64bf1-f5a3-521e-aac6-4a334c104f9e/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-mobile-payment-item-64bf1-f5a3-521e-aac6-4a334c104f9e/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) tests/accessibility/routes.spec.ts:7:6 › mobile /reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 17
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           "pre",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-reconciliati-afece-fb54-5dfa-8fc0-aa8cae22c42e/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-mobile-reconciliati-afece-fb54-5dfa-8fc0-aa8cae22c42e/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-reconciliati-afece-fb54-5dfa-8fc0-aa8cae22c42e/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-mobile-reconciliati-afece-fb54-5dfa-8fc0-aa8cae22c42e/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 25
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "help": "Scrollable region must have keyboard access",
+    +     "id": "scrollable-region-focusable",
+    +     "impact": "serious",
+    +     "nodes": Array [
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(1) > pre",
+    +         ],
+    +       },
+    +       Object {
+    +         "summary": "Fix any of the following:
+    +   Element should have focusable content
+    +   Element should be focusable",
+    +         "target": Array [
+    +           ".panel:nth-child(2) > pre",
+    +         ],
+    +       },
+    +     ],
+    +   },
+    + ]
+
+      13 |   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
+      14 |   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});
+    > 15 |   expect(results.violations.map((v:any)=>({id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.map((n:any)=>({target:n.target,summary:n.failureSummary}))}))).toEqual([]);
+         |                                                                                                                                                             ^
+      16 |  });
+      17 | }
+      18 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/accessibility/routes.spec.ts:15:157
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-accounting-e-757f6-3f55-5523-a45c-d5f79a5367e0/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/accessibility/routes-mobile-accounting-e-757f6-3f55-5523-a45c-d5f79a5367e0/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/accessibility/routes-mobile-accounting-e-757f6-3f55-5523-a45c-d5f79a5367e0/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/accessibility/routes-mobile-accounting-e-757f6-3f55-5523-a45c-d5f79a5367e0/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13 failed
+    tests/accessibility/routes.spec.ts:7:6 › desktop /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5 
+    tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12 
+    tests/accessibility/routes.spec.ts:7:6 › desktop /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97 
+    tests/accessibility/routes.spec.ts:7:6 › desktop /settlements ──────────────────────────────────
+    tests/accessibility/routes.spec.ts:7:6 › desktop /payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e 
+    tests/accessibility/routes.spec.ts:7:6 › desktop /reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e 
+    tests/accessibility/routes.spec.ts:7:6 › desktop /accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0 
+    tests/accessibility/routes.spec.ts:7:6 › mobile /intelligence/organizations/432e658f-4058-51e2-bd24-f0b644f431a5 
+    tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/candidates/6ac46226-5759-5192-98d2-47dbaea00b12 
+    tests/accessibility/routes.spec.ts:7:6 › mobile /opportunities/4cd11c9f-64e0-519e-9a00-248720684e97 
+    tests/accessibility/routes.spec.ts:7:6 › mobile /payment-items/6a46faba-f5a3-521e-aac6-4a334c104f9e 
+    tests/accessibility/routes.spec.ts:7:6 › mobile /reconciliation-matches/e8e8852f-fb54-5dfa-8fc0-aa8cae22c42e 
+    tests/accessibility/routes.spec.ts:7:6 › mobile /accounting-export-items/012a13a5-3f55-5523-a45c-d5f79a5367e0 
+  187 passed (17.8m)

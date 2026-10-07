@@ -1,9 +1,10 @@
+import {directoryPage} from './directory-pagination';
 import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
-import { RequirePermission } from "../security/require-permission.decorator";
+import { RequirePermission, TenantPermissionOnly } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick } from "./intelligence.types";
 
@@ -28,7 +29,9 @@ export class BankReconciliationController {
 
   @Get("bank-accounts")
   @RequirePermission("bank_account.read")
+  @TenantPermissionOnly()
   async listAccounts(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["ba.tenant_id = $1", "ba.deleted_at IS NULL"];
@@ -38,6 +41,10 @@ export class BankReconciliationController {
       if (query.q) {
         values.push(`%${query.q}%`);
         where.push(`(ba.account_name ILIKE $${values.length} OR ba.institution_name ILIKE $${values.length} OR ba.masked_account_number ILIKE $${values.length})`);
+      }
+      if (query.summary === "true") {
+        const summary = await client.query(`SELECT count(*) FILTER (WHERE ba.status = 'archived')::int AS "archivedAccounts" FROM bank_accounts ba WHERE ${where.join(" AND ")}`, values);
+        return summary.rows;
       }
       const result = await client.query(
         `
@@ -56,8 +63,8 @@ export class BankReconciliationController {
           GROUP BY tenant_id, bank_account_id
         ) summary ON summary.tenant_id = ba.tenant_id AND summary.bank_account_id = ba.id
         WHERE ${where.join(" AND ")}
-        ORDER BY ba.updated_at DESC
-        LIMIT 250
+        ORDER BY ba.updated_at DESC, ba.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );
@@ -155,7 +162,9 @@ export class BankReconciliationController {
 
   @Get("bank-transactions")
   @RequirePermission("bank_transaction.read")
+  @TenantPermissionOnly()
   async listTransactions(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["bt.tenant_id = $1", "bt.deleted_at IS NULL"];
@@ -177,6 +186,10 @@ export class BankReconciliationController {
         values.push(`%${query.q}%`);
         where.push(`(bt.description ILIKE $${values.length} OR bt.bank_reference ILIKE $${values.length} OR bt.external_transaction_id ILIKE $${values.length} OR bt.exception_reason ILIKE $${values.length} OR ba.account_name ILIKE $${values.length})`);
       }
+      if (query.summary === "true") {
+        const summary = await client.query(`SELECT count(*) FILTER (WHERE bt.direction='credit' AND bt.reconciliation_status IN ('unreconciled','partially_matched') AND bt.exception_status <> 'open')::int AS "unmatchedCredits", count(*) FILTER (WHERE bt.direction='debit' AND bt.reconciliation_status IN ('unreconciled','partially_matched') AND bt.exception_status <> 'open')::int AS "unmatchedDebits", count(*) FILTER (WHERE bt.exception_status='open' OR bt.reconciliation_status='exception')::int AS "openExceptions", count(*) FILTER (WHERE bt.exception_status='resolved')::int AS "resolvedExceptions", count(*) FILTER (WHERE bt.reconciliation_status='ignored' OR bt.exception_status='ignored')::int AS "ignored", count(*) FILTER (WHERE bt.reconciliation_status='matched')::int AS "matched", count(*) FILTER (WHERE bt.reconciliation_status='archived' OR bt.archived_at IS NOT NULL)::int AS "archivedTransactions" FROM bank_transactions bt JOIN bank_accounts ba ON ba.tenant_id=bt.tenant_id AND ba.id=bt.bank_account_id WHERE ${where.join(" AND ")}`, values);
+        return summary.rows;
+      }
       const result = await client.query(
         `
         SELECT bt.*, ba.account_name AS bank_account_name,
@@ -194,8 +207,8 @@ export class BankReconciliationController {
           GROUP BY tenant_id, bank_transaction_id
         ) match_summary ON match_summary.tenant_id = bt.tenant_id AND match_summary.bank_transaction_id = bt.id
         WHERE ${where.join(" AND ")}
-        ORDER BY bt.transaction_date DESC, bt.created_at DESC
-        LIMIT 250
+        ORDER BY bt.transaction_date DESC, bt.created_at DESC, bt.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );
@@ -380,7 +393,9 @@ export class BankReconciliationController {
 
   @Get("reconciliation-matches")
   @RequirePermission("reconciliation_match.read")
+  @TenantPermissionOnly()
   async listMatches(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["rm.tenant_id = $1", "rm.deleted_at IS NULL"];
@@ -400,14 +415,18 @@ export class BankReconciliationController {
         values.push(`%${query.q}%`);
         where.push(`(rm.match_reason ILIKE $${values.length} OR rm.notes ILIKE $${values.length} OR bt.description ILIKE $${values.length} OR bt.bank_reference ILIKE $${values.length})`);
       }
+      if (query.summary === "true") {
+        const summary = await client.query(`SELECT count(*) FILTER (WHERE rm.match_status IN ('proposed','reviewed'))::int AS "reviewMatches", count(*) FILTER (WHERE rm.match_status='archived' OR rm.archived_at IS NOT NULL)::int AS "archivedMatches" FROM reconciliation_matches rm JOIN bank_transactions bt ON bt.tenant_id=rm.tenant_id AND bt.id=rm.bank_transaction_id WHERE ${where.join(" AND ")}`, values);
+        return summary.rows;
+      }
       const result = await client.query(
         `
         SELECT rm.*, bt.description AS bank_transaction_description, bt.bank_reference, bt.amount AS bank_transaction_amount
         FROM reconciliation_matches rm
         JOIN bank_transactions bt ON bt.tenant_id = rm.tenant_id AND bt.id = rm.bank_transaction_id
         WHERE ${where.join(" AND ")}
-        ORDER BY rm.created_at DESC
-        LIMIT 250
+        ORDER BY rm.created_at DESC, rm.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );

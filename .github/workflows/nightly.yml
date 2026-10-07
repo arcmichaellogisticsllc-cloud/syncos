@@ -77,6 +77,9 @@ jobs:
         run: npm run e2e:ci:nightly
       - name: Supplemental offline, product and identity browser checks
         run: npm run e2e:supplemental
+      - name: Automated desktop and phone-width accessibility checks
+        id: accessibility
+        run: npm run e2e:accessibility
       - name: Upload supplemental evidence
         if: always()
         uses: actions/upload-artifact@v4

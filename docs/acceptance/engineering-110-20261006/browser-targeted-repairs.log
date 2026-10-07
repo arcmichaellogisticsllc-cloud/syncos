@@ -1,0 +1,55 @@
+
+Running 14 tests using 1 worker
+
+(node:97788) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/operator-phase9.spec.ts:16:7 › Operator UI Phase 9 detail and form standards › representative operational detail shows next action and boundary copy (2.9s)
+  ✘   2 [chromium] › tests/e2e/operator-phase9.spec.ts:31:7 › Operator UI Phase 9 detail and form standards › representative finance detail shows boundary and danger separation (12.0s)
+(node:97834) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   3 [chromium] › tests/e2e/operator-phase9.spec.ts:48:7 › Operator UI Phase 9 detail and form standards › read-only auditor sees record context without lifecycle guidance or mutation controls (1.5s)
+  ✓   4 [chromium] › tests/e2e/operator-phase9.spec.ts:65:7 › Operator UI Phase 9 detail and form standards › representative create form has purpose header and boundary notice (897ms)
+  ✓   5 [chromium] › tests/e2e/operator-phase9.spec.ts:80:7 › Operator UI Phase 9 detail and form standards › signal detail hides developer controls and shows conversion boundary (1.1s)
+  ✓   6 [chromium] › tests/e2e/operator-phase9.spec.ts:94:7 › Operator UI Phase 9 detail and form standards › accounting export detail shows handoff next-action guidance (1.1s)
+  ✓   7 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:6:5 › authenticated Partner Admin uploads canonical Partner Compliance evidence @reviewer-fixture-upload (13ms)
+  ✓   8 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:7:5 › authenticated reviewer downloads exact evidence-linked binary artifact @authenticated-reviewer (36ms)
+  ✓   9 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:8:5 › authenticated Partner Admin downloads own-company artifact through Partner route @authenticated-reviewer (31ms)
+  ✓  10 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:9:5 › authenticated Partner Admin is denied from internal reviewer route @authenticated-reviewer (21ms)
+  ✓  11 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:10:5 › route registration smoke (25ms)
+  ✓  12 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:11:5 › unauthenticated guard smoke (12ms)
+  ✓  13 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:12:5 › invalid organization-ID validation (11ms)
+  ✓  14 [chromium] › tests/e2e/partner-compliance-reviewer-download.spec.ts:13:5 › invalid evidence-ID validation (12ms)
+
+
+  1) [chromium] › tests/e2e/operator-phase9.spec.ts:31:7 › Operator UI Phase 9 detail and form standards › representative finance detail shows boundary and danger separation 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByLabel('Danger zone').getByText(/These actions change lifecycle state/i)
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByLabel('Danger zone').getByText(/These actions change lifecycle state/i) with timeout 10000ms
+      - waiting for getByLabel('Danger zone').getByText(/These actions change lifecycle state/i)
+
+
+      39 |     await expect(page.getByText(/SyncOS does not email the customer, collect payment, apply cash, move money, or post accounting entries/i)).toBeVisible();
+      40 |     await expect(page.getByLabel("Danger zone")).toBeVisible();
+    > 41 |     await expect(page.getByLabel("Danger zone").getByText(/These actions change lifecycle state/i)).toBeVisible();
+         |                                                                                                     ^
+      42 |     await expect(page.getByLabel("Danger zone").getByRole("button", { name: "Void", exact: true })).toBeVisible();
+      43 |     await expectNoDevSessionUi(page);
+      44 |
+        at /Users/User/.codex/worktrees/syncos-financial-completion/syncos/tests/e2e/operator-phase9.spec.ts:41:101
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/operator-phase9-Operator-U-51c58-ndary-and-danger-separation-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/operator-phase9-Operator-U-51c58-ndary-and-danger-separation-chromium/error-context.md
+
+  1 failed
+    [chromium] › tests/e2e/operator-phase9.spec.ts:31:7 › Operator UI Phase 9 detail and form standards › representative finance detail shows boundary and danger separation 
+  13 passed (25.2s)

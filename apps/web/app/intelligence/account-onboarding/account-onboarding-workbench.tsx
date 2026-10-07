@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
+
 
 import { PermissionLink as Link } from "../../access-control";
 import { useEffect, useMemo, useState } from "react";
@@ -210,7 +212,7 @@ export function AccountOnboardingWorkbench() {
 
 function OnboardingTable({ rows, permissions }: { rows: AccountOnboardingRecord[]; permissions: string[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -265,7 +267,7 @@ function OnboardingTable({ rows, permissions }: { rows: AccountOnboardingRecord[
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 

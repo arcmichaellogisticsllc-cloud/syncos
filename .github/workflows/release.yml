@@ -61,6 +61,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      SYNCOS_RESTRICTED_FILE_STORAGE_DIR: /tmp/syncos-restricted-ci
       NODE_ENV: test
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_e2e
       AUTH_JWT_SECRET: syncos-isolated-ci-validation-secret-2026
@@ -89,6 +90,7 @@ jobs:
       - name: Seed E2E database
         run: npm run seed:e2e-demo
       - name: Validate seed
+        id: seed_check
         run: npm run e2e:seed-smoke
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -111,9 +113,14 @@ jobs:
           done
           curl -fsS http://127.0.0.1:3138
       - name: E2E release certification suite
+        id: browser_suite
         run: npm run e2e:ci:release
       - name: Supplemental offline, product and identity browser checks
+        id: supplemental
         run: npm run e2e:supplemental
+      - name: Automated desktop and phone-width accessibility checks
+        id: accessibility
+        run: npm run e2e:accessibility
       - name: Upload supplemental evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,6 +147,11 @@ jobs:
         if: always()
         env:
           RELEASE_VERSION: ${{ inputs.version }}
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+          SEED_RESULT: ${{ steps.seed_check.outcome }}
+          BROWSER_RESULT: ${{ steps.browser_suite.outcome }}
+          SUPPLEMENTAL_RESULT: ${{ steps.supplemental.outcome }}
+          ACCESSIBILITY_RESULT: ${{ steps.accessibility.outcome }}
         run: |
           E2E_STATUS="${{ job.status }}"
           VERSION="$RELEASE_VERSION"
@@ -158,14 +170,11 @@ jobs:
             echo ""
             echo "| Gate | Status |"
             echo "|---|---|"
-            echo "| Typecheck | ✅ |"
-            echo "| Build (API · Worker · Web) | ✅ |"
-            echo "| Unit tests | ✅ |"
-            echo "| Database migration verification | ✅ |"
-            echo "| Smoke tests (all domains) | ✅ |"
-            echo "| E2E certification enforcer | ✅ |"
-            echo "| E2E seed smoke | ✅ |"
-            echo "| E2E full suite (\`e2e:ci:release\`) | ${E2E_CELL} |"
+            echo "| Upstream typecheck, builds, regression and smoke validation | ${VALIDATION_RESULT:-not run} |"
+            echo "| E2E seed validation | ${SEED_RESULT:-not run} |"
+            echo "| Full browser suite | ${BROWSER_RESULT:-not run} |"
+            echo "| Supplemental browser checks | ${SUPPLEMENTAL_RESULT:-not run} |"
+            echo "| Automated accessibility | ${ACCESSIBILITY_RESULT:-not run} |"
             echo ""
             echo "Automated run completed at: \`${DATE}\`"
             echo ""

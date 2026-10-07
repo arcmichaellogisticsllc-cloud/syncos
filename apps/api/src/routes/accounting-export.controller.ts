@@ -4,7 +4,7 @@ import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, 
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
-import { RequirePermission } from "../security/require-permission.decorator";
+import { RequirePermission, TenantPermissionOnly } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick } from "./intelligence.types";
 
@@ -29,25 +29,7 @@ export class AccountingExportController {
   async listBatches(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
     const page = directoryPage(query);
     return this.withClient(async (client) => {
-      const values: unknown[] = [request.auth.tenantId];
-      const where = ["aeb.tenant_id = $1", "aeb.deleted_at IS NULL"];
-      if (query.archived !== "true") where.push("aeb.status <> 'archived'");
-      this.addFilter(where, values, "aeb.export_type", query.export_type);
-      this.addFilter(where, values, "aeb.target_system", query.target_system);
-      this.addFilter(where, values, "aeb.export_format", query.export_format);
-      this.addFilter(where, values, "aeb.status", query.status);
-      this.addFilter(where, values, "aeb.approval_status", query.approval_status);
-      this.addFilter(where, values, "aeb.export_status", query.export_status);
-      this.addDateFilter(where, values, "aeb.period_start", ">=", query.period_start);
-      this.addDateFilter(where, values, "aeb.period_end", "<=", query.period_end);
-      this.addDateFilter(where, values, "aeb.submitted_at", ">=", query.submitted_from);
-      this.addDateFilter(where, values, "aeb.submitted_at", "<=", query.submitted_to);
-      this.addDateFilter(where, values, "aeb.accepted_at", ">=", query.accepted_from);
-      this.addDateFilter(where, values, "aeb.accepted_at", "<=", query.accepted_to);
-      if (query.q) {
-        values.push(`%${query.q}%`);
-        where.push(`(aeb.export_batch_number ILIKE $${values.length} OR aeb.target_system ILIKE $${values.length} OR aeb.export_format ILIKE $${values.length} OR aeb.external_batch_reference ILIKE $${values.length} OR aeb.failure_reason ILIKE $${values.length} OR aeb.notes ILIKE $${values.length})`);
-      }
+      const {values, where} = this.batchFilters(request.auth.tenantId, query);
       const result = await client.query(
         `SELECT aeb.*
          FROM accounting_export_batches aeb
@@ -57,6 +39,36 @@ export class AccountingExportController {
         values,
       );
       return result.rows.map((row) => this.withBatchGuidance(row));
+    });
+  }
+
+
+  @Get("accounting-export-batches/queue-summary")
+  @RequirePermission("accounting_export_batch.read")
+  @TenantPermissionOnly()
+  async queueSummary(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const {values, where} = this.batchFilters(request.auth.tenantId, query);
+      const allowed = await client.query(`SELECT 1 FROM tenant_users tu
+        JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id
+        JOIN roles active_role ON active_role.id = ur.role_id AND active_role.tenant_id = tu.tenant_id AND active_role.deleted_at IS NULL
+        JOIN role_permissions rp ON rp.role_id = ur.role_id AND rp.tenant_id = tu.tenant_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active' AND tu.deleted_at IS NULL
+          AND ur.scope_type = 'tenant' AND p.key = $3 LIMIT 1`, [request.auth.tenantId, request.auth.userId, "accounting_export_item.read"]);
+      const attentionExpression = allowed.rowCount ? `(SELECT count(*)::int FROM accounting_export_items i JOIN chosen b ON b.tenant_id = i.tenant_id AND b.id = i.accounting_export_batch_id WHERE i.deleted_at IS NULL AND (i.export_status IN ('rejected_later','failed','cancelled','archived') OR i.mapping_status IN ('unmapped','mapping_warning','mapping_error') OR COALESCE(i.error_message,'') <> ''))` : 'NULL::int';
+      const result = await client.query(`WITH chosen AS (SELECT aeb.* FROM accounting_export_batches aeb WHERE ${where.join(" AND ")}), classified AS (SELECT chosen.*, CASE WHEN status = 'archived' OR archived_at IS NOT NULL THEN 'archived' WHEN status = 'cancelled' OR export_status = 'cancelled' THEN 'canceled' WHEN status IN ('failed','rejected_later') OR export_status IN ('failed','rejected_later') OR approval_status = 'rejected' THEN 'failed' WHEN status = 'accepted_later' OR export_status = 'accepted_later' OR accepted_at IS NOT NULL THEN 'accepted' WHEN status = 'submitted_later' OR export_status = 'submitted_later' THEN 'markedSubmitted' WHEN status IN ('ready_for_review','under_review') OR approval_status = 'pending' THEN 'submitted' WHEN status = 'approved' OR approval_status = 'approved' OR export_status = 'generated' THEN 'approved' WHEN status IN ('draft','assembling') OR approval_status = 'not_submitted' THEN 'draft' ELSE 'other' END AS queue FROM chosen)
+        SELECT count(*) FILTER (WHERE queue = 'archived')::int AS "archived",
+          count(*) FILTER (WHERE queue = 'canceled')::int AS "canceled",
+          count(*) FILTER (WHERE queue = 'accepted')::int AS "accepted",
+          count(*) FILTER (WHERE queue = 'failed')::int AS "failed",
+          count(*) FILTER (WHERE queue = 'markedSubmitted')::int AS "markedSubmitted",
+          count(*) FILTER (WHERE queue = 'submitted')::int AS "submitted",
+          count(*) FILTER (WHERE queue = 'approved')::int AS "approved",
+          count(*) FILTER (WHERE queue = 'draft')::int AS "draft",
+          ${attentionExpression} AS "itemsAttention"
+        FROM classified`, values);
+      return result.rows[0];
     });
   }
 
@@ -844,4 +856,32 @@ export class AccountingExportController {
       client.release();
     }
   }
+  private batchFilters(tenantId: string, query: Record<string, string | undefined>) {
+      const values: unknown[] = [tenantId];
+      const where = ["aeb.tenant_id = $1", "aeb.deleted_at IS NULL"];
+      if (query.archived !== "true") where.push("aeb.status <> 'archived'");
+      this.addFilter(where, values, "aeb.export_type", query.export_type);
+      this.addFilter(where, values, "aeb.target_system", query.target_system);
+      this.addFilter(where, values, "aeb.export_format", query.export_format);
+      this.addFilter(where, values, "aeb.status", query.status);
+      this.addFilter(where, values, "aeb.approval_status", query.approval_status);
+      this.addFilter(where, values, "aeb.export_status", query.export_status);
+      this.addDateFilter(where, values, "aeb.period_start", ">=", query.period_start_from ?? query.period_start);
+      this.addDateFilter(where, values, "aeb.period_end", "<=", query.period_end_to ?? query.period_end);
+      this.addDateFilter(where, values, "aeb.submitted_at", ">=", query.submitted_from);
+      this.addDateFilter(where, values, "aeb.submitted_at", "<=", query.submitted_to);
+      this.addDateFilter(where, values, "aeb.accepted_at", ">=", query.accepted_from);
+      this.addDateFilter(where, values, "aeb.accepted_at", "<=", query.accepted_to);
+      for (const key of ["has_errors", "has_mapping_errors"]) {
+        if (query[key] !== undefined && !["true", "false", ""].includes(query[key]!)) throw new BadRequestException(key + " must be true or false");
+      }
+      if (query.has_errors) where.push(`${query.has_errors === "false" ? "NOT " : ""}(aeb.error_count > 0 OR aeb.export_status = 'failed')`);
+      if (query.has_mapping_errors) where.push(`${query.has_mapping_errors === "false" ? "NOT " : ""}EXISTS (SELECT 1 FROM accounting_export_items aei WHERE aei.tenant_id = aeb.tenant_id AND aei.accounting_export_batch_id = aeb.id AND aei.deleted_at IS NULL AND aei.mapping_status = 'mapping_error')`);
+      if (query.q) {
+        values.push(`%${query.q}%`);
+        where.push(`(aeb.export_batch_number ILIKE $${values.length} OR aeb.target_system ILIKE $${values.length} OR aeb.export_format ILIKE $${values.length} OR aeb.external_batch_reference ILIKE $${values.length} OR aeb.failure_reason ILIKE $${values.length} OR aeb.notes ILIKE $${values.length})`);
+      }
+      return {values, where};
+  }
+
 }

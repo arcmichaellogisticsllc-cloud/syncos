@@ -1,4 +1,8 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
 import { ModalBoundary } from "../modal-boundary";
 import {DangerZone} from "../operator-page-templates";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -184,6 +188,7 @@ export function SettlementCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Settlement" purpose="Check the customer, project, settlement period and accepted-work sources for this settlement." afterSave="Review included items, totals and approval requirements before marking the settlement invoice-ready." />
         <div className="warning-box">Backend validation enforces tenant scope, approved settlement types, settlement number uniqueness, and event/audit/system_action behavior.</div>
         <SettlementFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
@@ -252,6 +257,7 @@ export function SettlementEdit({ settlementId }: { settlementId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Settlement not found or you do not have access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Settlement" purpose="Check the customer, project, settlement period and accepted-work sources for this settlement." afterSave="Review included items, totals and approval requirements before marking the settlement invoice-ready." />
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, invoice-created, and payable-created future states are read-only.</div>
           <SettlementFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
@@ -308,6 +314,7 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
   return (
     <SettlementShell title="Settlement Detail" purpose="Show financial commitment truth, settlement items, readiness, timeline, and audit without creating downstream finance records.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["settlement","settlement_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Settlement Detail.</div> : null}
@@ -438,7 +445,7 @@ function SettlementShell({ title, purpose, children }: { title: string; purpose:
 
 function SettlementTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -475,7 +482,7 @@ function SettlementTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -500,7 +507,7 @@ function SettlementTab({ tab, detail, settlement, items, session, onItemAction }
 function SettlementItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]; session: Session; onItemAction: (type: string, item: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No settlement items returned. Add items from ready billable items.</div>;
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{["Item Type", "Status", "Billable Item", "Project", "Work Order", "Production Record", "QC Review", "Customer", "Provider", "Crew", "Quantity", "Unit", "Unit Rate", "Gross Amount", "Retainage Amount", "Deduction Amount", "Chargeback Amount", "Net Amount", "Contractor Rate", "Contractor Payable Amount", "Margin Amount", "Margin Percent", "Billing Package Status", "Documentation Status", "Customer Acceptance", "Prime Acceptance", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
@@ -535,7 +542,7 @@ function SettlementItemsTable({ rows, session, onItemAction }: { rows: SyncRecor
           </tr>)}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -723,7 +730,7 @@ function Select({ label, value, options, labels = {}, onChange, disabled = false
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function WarningList({ title, rows, empty }: { title: string; rows: SyncRecord[]; empty: string }) {
@@ -740,7 +747,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 const settlementQueues = [

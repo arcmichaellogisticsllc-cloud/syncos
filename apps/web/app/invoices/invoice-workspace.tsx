@@ -1,4 +1,6 @@
 "use client";
+import {ScrollableRegion} from "../scrollable-region";
+
 import { ModalBoundary } from "../modal-boundary";
 import { InvoicePackages } from "../accepted-production-financials/invoice-packages";
 import { permittedRecordTabs } from "../intelligence/api";
@@ -265,6 +267,7 @@ export function InvoiceEdit({ invoiceId }: { invoiceId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Invoice not found or you do not have access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Invoice" purpose="Check the customer, invoice dates, supporting accepted work and approved commercial terms." afterSave="Review the invoice package and approval requirements before delivery and customer acceptance." />
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, sent, paid-later, and fully-applied-later invoices are read-only unless backend policy explicitly allows updates.</div>
           <InvoiceFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
@@ -458,7 +461,7 @@ function InvoiceShell({ title, purpose, children }: { title: string; purpose: st
 
 function InvoiceTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{["Invoice", "Customer", "Settlement / Source", "Invoice Amount", "Sent Status", "Due Date / Age", "Dispute Status", "Cash Status", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
@@ -490,7 +493,7 @@ function InvoiceTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -515,7 +518,7 @@ function InvoiceTab({ tab, detail, invoice, items, session, onItemAction }: { ta
 function InvoiceItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]; session: Session; onItemAction: (type: string, item: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No invoice items returned. Add items from invoice-ready settlement items.</div>;
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{["Item Type", "Status", "Description", "Settlement", "Settlement Item", "Project", "Work Order", "Production Record", "QC Review", "Quantity", "Unit", "Unit Rate", "Gross Amount", "Retainage Amount", "Deduction Amount", "Adjustment Amount", "Tax Amount", "Fee Amount", "Net Amount", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
@@ -543,7 +546,7 @@ function InvoiceItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]
           </tr>)}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -722,7 +725,7 @@ function Select({ label, value, options, labels = {}, onChange, disabled = false
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function WarningList({ title, rows, empty }: { title: string; rows: SyncRecord[]; empty: string }) {
@@ -739,7 +742,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 const invoiceQueues = [

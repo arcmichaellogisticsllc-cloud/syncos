@@ -1,4 +1,7 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
+
+import {ReadOnlyBanner} from "../../operator-page-templates";
 import { ModalBoundary } from "../../modal-boundary";
 import { DangerZone } from "../../operator-page-templates";
 import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
@@ -424,6 +427,7 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
   return (
     <OpportunityShell title="Opportunity Detail" purpose="Decide what must happen next to pursue, approve, award, lose, defer, or archive this opportunity.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["opportunity","capacity_requirement","constraint"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {!opportunity ? (
         <section className="workspace-panel"><div className="empty-state">Opportunity not found or you do not have access.</div></section>
@@ -554,7 +558,7 @@ function OpportunityCard({ opportunity }: { opportunity: OpportunityView }) {
 
 function OpportunityTable({ opportunities }: { opportunities: OpportunityView[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -583,7 +587,7 @@ function OpportunityTable({ opportunities }: { opportunities: OpportunityView[] 
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -1065,7 +1069,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {!rows.length ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead>
             <tbody>
@@ -1076,7 +1080,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );
