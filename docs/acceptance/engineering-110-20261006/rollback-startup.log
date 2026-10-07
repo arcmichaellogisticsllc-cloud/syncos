@@ -1,0 +1,3 @@
+{"ok":true,"environment":{"ok":true,"nodeEnv":"staging","errors":[],"warnings":["Outbound invitation email is disabled in staging until a provider is configured"]},"database":{"ok":true},"migrations":{"ok":true,"appliedCount":84,"missing":[],"unexpected":[],"currentCeiling":"084_payment_installment_schedule.sql","hasCurrentCeiling":true},"requiredTables":{"ok":true,"missing":[]},"redis":{"ok":true,"configured":true,"host":"127.0.0.1","port":6379},"permissionSeed":{"ok":true,"missing":[]},"requiredRoles":{"ok":true,"missing":[]}}active
+active
+active

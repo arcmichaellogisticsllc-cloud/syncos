@@ -1,0 +1,12 @@
+
+Running 5 tests using 1 worker
+
+(node:11002) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/e2e/partner-portal-shell.spec.ts:44:7 › P7 Partner Portal shell › Partner Admin enters dashboard with safe P1-P6 operational summary (3.7s)
+  ✓  2 [chromium] › tests/e2e/partner-portal-shell.spec.ts:81:7 › P7 Partner Portal shell › Partner Admin workspaces expose safe company, workforce, agreement, vehicle, and mobilization views (18.8s)
+  ✓  3 [chromium] › tests/e2e/partner-portal-shell.spec.ts:122:7 › P7 Partner Portal shell › Partner Foreman receives field-focused navigation and no company-sensitive workspaces (7.8s)
+  ✓  4 [chromium] › tests/e2e/partner-portal-shell.spec.ts:157:7 › P7 Partner Portal shell › guessed IDs and cross-Partner scope do not broaden Partner Portal access (2.1s)
+  ✓  5 [chromium] › tests/e2e/partner-portal-shell.spec.ts:176:7 › P7 Partner Portal shell › Partner and SyncField shells reach terminal UI states without browser dialogs or client organization scope (2.2s)
+
+  5 passed (37.7s)

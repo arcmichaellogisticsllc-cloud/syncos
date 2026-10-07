@@ -1,4 +1,5 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
 import {ScrollableRegion} from "../../scrollable-region";
 
 import {ReadOnlyBanner} from "../../operator-page-templates";
@@ -291,6 +292,7 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
       {error ? <div className="error-banner">{error}</div> : null}
       <UnsupportedNotice />
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Relationship map" purpose="Name the map and choose the target organization or contact. Record the relationships and sources that support the intended access path." afterSave="Review the map and supporting evidence. Saving relationship information does not verify a contact or approve an opportunity." />
         <div className="form-grid">
           <label>Map name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
           <label>Map type<SelectInline value={form.map_type} options={mapTypes} onChange={(map_type) => setForm({ ...form, map_type })} /></label>

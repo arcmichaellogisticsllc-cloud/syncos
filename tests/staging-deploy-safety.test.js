@@ -34,6 +34,7 @@ if (tool === 'sudo' && args.includes('is-active')) {
   if (!service.startsWith('syncos-staging-')) process.exit(scenario === 'legacy' ? 0 : 3);
   if (scenario === 'worker-failed' && service === 'syncos-staging-worker') process.exit(3);
 }
+if (tool === 'sudo' && args.some(a => a.endsWith('/scripts/checkpoint-staging.sh')) && scenario === 'checkpoint-failed') process.exit(1);
 if (tool === 'npm' && args.includes('release:staging:migrate') && scenario === 'migration-failed') process.exit(1);
 if (tool === 'node' && args[0] === 'scripts/check-deployed-startup.js' && scenario === 'health-failed') process.exit(1);
 `;
@@ -60,13 +61,14 @@ for (const scenario of ['dirty', 'legacy']) {
     assert.equal(published, false);
   });
 }
-for (const scenario of ['migration-failed', 'health-failed', 'worker-failed']) {
+for (const scenario of ['checkpoint-failed', 'migration-failed', 'health-failed', 'worker-failed']) {
   test(`deployment leaves services stopped without publishing on ${scenario}`, t => {
     const { result, calls, published } = deployment(t, scenario);
     assert.notEqual(result.status, 0);
-    assert.ok(calls.indexOf('systemctl stop') < calls.indexOf('npm run release:staging:migrate'));
+    if (scenario !== 'checkpoint-failed') assert.ok(calls.indexOf('systemctl stop') < calls.indexOf('npm run release:staging:migrate'));
     assert.match(calls.trim().split('\n').at(-1), /systemctl stop syncos-staging-api syncos-staging-worker syncos-staging-web/);
-    if (scenario === 'migration-failed') assert.doesNotMatch(calls, /systemctl start/);
+    if (['migration-failed','checkpoint-failed'].includes(scenario)) assert.doesNotMatch(calls, /systemctl start/);
+    if (scenario === 'checkpoint-failed') assert.doesNotMatch(calls, /npm run release:staging:migrate/);
     assert.equal(published, false);
   });
 }
@@ -74,6 +76,7 @@ test('healthy deployment stops writers before migrating and publishes after veri
   const { result, calls, published } = deployment(t, 'healthy');
   assert.equal(result.status, 0, result.stderr);
   assert.ok(calls.indexOf('systemctl stop') < calls.indexOf('npm run release:staging:migrate'));
+  assert.ok(calls.indexOf('scripts/checkpoint-staging.sh') < calls.indexOf('npm run release:staging:migrate'));
   assert.ok(calls.indexOf('npm run release:staging:migrate') < calls.indexOf('systemctl start'));
   assert.match(calls, /systemctl is-active --quiet syncos-staging-worker/);
   assert.equal(published, true);

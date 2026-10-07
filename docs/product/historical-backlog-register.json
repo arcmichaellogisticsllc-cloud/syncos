@@ -695,27 +695,27 @@
       "id": "OUX-038",
       "title": "Payment item attention and execution summaries",
       "source": "docs/product/operator-ui-gap-backlog.md",
-      "status": "implementation_review",
+      "status": "local_automation_passed",
       "evidence": [
         "apps/api/src/routes/payment-execution.controller.ts",
         "apps/web/app/intelligence/complete-directory.ts",
         "tests/financial-directory-pagination.test.js",
         "tests/onboarding-ui/financial-directories.spec.ts"
       ],
-      "note": "Removed 25-batch item cutoffs in payment/export views and payment-item reconciliation choices; batch directories support validated paging. Complete loading fails visibly instead of reporting a false empty exception queue. Broader aggregate summary requirements remain under review."
+      "note": "Payment summaries now aggregate all matching batches with currency-separated scheduled/executed totals, preserve partial-payment distinction and exclude failed/cancelled/voided states. Item attention requires current tenant permission. Seven financial directory/summary database tests passed; affected cash UI and accessibility passed. Latest overall release validation remains separate."
     },
     {
       "id": "OUX-039",
       "title": "Reconciliation and export item attention summaries",
       "source": "docs/product/operator-ui-gap-backlog.md",
-      "status": "implementation_review",
+      "status": "local_automation_passed",
       "evidence": [
         "apps/api/src/routes/accounting-export.controller.ts",
         "apps/web/app/intelligence/complete-directory.ts",
         "tests/financial-directory-pagination.test.js",
         "tests/onboarding-ui/financial-directories.spec.ts"
       ],
-      "note": "Removed 25-batch item cutoffs in payment/export views and payment-item reconciliation choices; batch directories support validated paging. Complete loading fails visibly instead of reporting a false empty exception queue. Broader aggregate summary requirements remain under review."
+      "note": "Reconciliation and export summaries cover all filtered rows, maintain mapping/error attention and enforce item-read permission. Failed/cancelled current states take precedence over retained approvals/acceptances. Financial directory and UI tests passed; generated export status remains preparation metadata, not an external ledger posting or downloadable accounting file."
     },
     {
       "id": "OUX-040",
@@ -779,7 +779,7 @@
         "apps/web/app/modal-boundary.tsx",
         "tests/e2e/action-states/action-state-modals.spec.ts"
       ],
-      "note": "29 legacy dialog boundaries now provide accessible names, focus containment, Escape and return-focus behavior. Browser keyboard verification is being repeated against production build; actual screen-reader and device acceptance are still required."
+      "note": "Automated axe scans passed for 100 internal routes at desktop and phone widths (200 cases), 12 public cases and partner portal checks. Twenty-nine legacy modal boundaries support focus containment, Escape and focus return. Physical devices and actual assistive-technology acceptance remain open."
     },
     {
       "id": "OUX-046",
@@ -1043,11 +1043,11 @@
       "id": "STG-010",
       "title": "Branch protection",
       "source": "docs/product/staging-readiness-gap-backlog.md",
-      "status": "external_evidence_required",
+      "status": "configured_remote_ci_blocked",
       "evidence": [
         "docs/deployment/candidate-106-readiness.md"
       ],
-      "note": "Read-only GitHub branch protection lookup returned Branch not protected. Required checks must be configured and verified after remote CI becomes available."
+      "note": "Main branch protection verified through GitHub API: strict required checks validate and E2E PR Gate, administrator enforcement, conversation resolution, force pushes and deletions disabled. The required remote jobs still cannot start because the account is locked for billing; run 37560236656 confirms this."
     },
     {
       "id": "STG-011",

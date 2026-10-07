@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "scope": "Local synthetic coordinated database and restricted-file restore; not offsite or total-server-loss acceptance",
+  "database": "syncos_recovery_complete_110_final",
+  "tableCount": 239,
+  "restrictedOriginals": 2,
+  "dumpSha256": "5b16471a86e7841f8520b5b932f6795c898593c36d356a18445fa18e0479474a",
+  "elapsedSeconds": 24,
+  "artifacts": "/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-recovery-Vt2zTv",
+  "restoredFileRoot": "/var/folders/h7/4n8lg1vd7j5cn78q9j4kwy9r0000gp/T/syncos-recovery-Vt2zTv/restored-files"
+}

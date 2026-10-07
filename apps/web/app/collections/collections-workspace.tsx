@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import {FormPurposeHeader} from "../operator-page-templates";
@@ -666,7 +667,7 @@ function CollectionCaseTab({ tab, detail, collectionCase, actions, session, onAc
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view collections audit details.</div>}</Panel>;
   if (tab === "future_cash_application") return <PlaceholderPanel title="Future Cash Application" message="Cash Application is not performed from Collections in this sprint. Use Cash Application workspace to record or apply payments." columns={["Cash receipt button", "Payment application button", "Invoice balance edit"]} />;
   if (tab === "future_legal") return <PlaceholderPanel title="Future Legal" message="Legal filing and collections agency workflows are not available in this sprint." columns={["Legal filing", "Agency referral", "Demand letter"]} />;
-  return <PlaceholderPanel title="Future Accounting / Tax" message="Accounting export, tax write-off, and GL workflows are not available in this sprint." columns={["Accounting export", "Tax write-off", "GL entry"]} />;
+  return <PlaceholderPanel title="Future Accounting / Tax" message="Accounting batch preparation is available separately. Tax write-offs and external general-ledger posting require their own authorization and services." columns={["Accounting export", "Tax write-off", "GL entry"]} />;
 }
 
 function CollectionActionsForCase({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, action?: SyncRecord) => void }) {
@@ -1093,7 +1094,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

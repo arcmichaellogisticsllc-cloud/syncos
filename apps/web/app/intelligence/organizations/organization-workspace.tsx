@@ -1,4 +1,5 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
 import {ScrollableRegion} from "../../scrollable-region";
 
 import {ReadOnlyBanner} from "../../operator-page-templates";
@@ -326,11 +327,12 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
         <div className="section-toolbar">
           <div>
             <h2>{mode === "create" ? "New Telecom Actor" : textValue(organization?.name, "Organization")}</h2>
-            <p className="muted">Organization type, actor roles, owner, trust, strategic status, and scores are persisted through the hardened Organization API.</p>
+            <p className="muted">Keep the organization’s identity, responsible owner, qualification and relationship information current.</p>
           </div>
           {organizationId ? <Link className="table-link" href={`/intelligence/organizations/${organizationId}`}>Back to profile</Link> : <Link className="table-link" href="/intelligence/organizations">Back to organizations</Link>}
         </div>
         <form className="workspace-panel" onSubmit={submit}>
+        <FormPurposeHeader title="Organization profile" purpose="Confirm the organization name, type and territory, then record the legal and contact details supported by your source." afterSave="Review qualification and account onboarding separately. Saving a profile does not approve an agreement or authorize field work." />
           <div className="form-grid">
             <label>
               Organization name

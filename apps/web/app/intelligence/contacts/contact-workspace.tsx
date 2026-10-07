@@ -1,4 +1,5 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
 import {ReadOnlyBanner} from "../../operator-page-templates";
 import { ModalBoundary } from "../../modal-boundary";
 import { DangerZone } from "../../operator-page-templates";
@@ -284,6 +285,7 @@ export function ContactForm({ mode, contactId }: { mode: "create" | "edit"; cont
       <SessionPanel session={session} />
       {error ? <div className="error">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Contact details" purpose="Choose the organization and confirm the person’s name, role and source before saving." afterSave="Review and verify the contact on the profile. Saving contact details does not grant authority to approve work or payments." />
         <label>Organization<SelectInline value={form.organization_id} options={["", ...organizations.map((organization) => String(organization.id))]} labels={labelMap(organizations, "name")} onChange={(organization_id) => setForm({ ...form, organization_id })} /></label>
         <label>Full name<input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required /></label>
         <label>Title or role description<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>

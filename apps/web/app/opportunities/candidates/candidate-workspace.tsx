@@ -1,4 +1,5 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
 import {ScrollableRegion} from "../../scrollable-region";
 
 import { ModalBoundary } from "../../modal-boundary";
@@ -319,6 +320,7 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Candidate information" purpose="Record the candidate name, territory and source evidence. Link the organization and supporting signals when available." afterSave="Review qualification and evidence before converting the candidate. Saving does not create an awarded opportunity or project." />
         <div className="form-grid">
           <label>Candidate name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
           <label>Organization<SelectInline value={form.organization_id} options={["", ...data.organizations.map((organization) => String(organization.id))]} labels={labelMap(data.organizations, "name")} onChange={(organization_id) => setForm({ ...form, organization_id })} /></label>

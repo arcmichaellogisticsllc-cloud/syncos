@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import { ModalBoundary } from "../modal-boundary";
@@ -544,8 +545,8 @@ function ProductionTab({ tab, detail, record, session, onArchiveEvidence }: { ta
     if (!hasAnyPermission(session.permissions, ["production.audit.read"])) return <Panel title="Audit"><div className="empty-state">You do not have permission to view production audit details.</div></Panel>;
     return <Panel title="Audit"><ObjectTable rows={detail._audit ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} /></Panel>;
   }
-  if (tab === "future_qc") return <PlaceholderPanel title="Future QC Workspace" message="Full QC Workspace is not available in this sprint. Production review actions remain backend lifecycle actions here." columns={["QC review", "Reviewer", "Evidence findings", "Correction quantity", "Customer acceptance"]} />;
-  if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Billable Workspace is not available in this sprint. Production billable status does not create finance records." columns={["Billable item", "Rate", "Billing package", "Ready for settlement", "Settlement"]} />;
+  if (tab === "future_qc") return <PlaceholderPanel title="Future QC Workspace" message="Use QC for findings, corrections, evidence review and closure. Customer acceptance remains separate from internal QC." columns={["QC review", "Reviewer", "Evidence findings", "Correction quantity", "Customer acceptance"]} />;
+  if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Use Billable or Accepted Work to Finance for the controlled financial handoff. Production status alone does not create financial records." columns={["Billable item", "Rate", "Billing package", "Ready for settlement", "Settlement"]} />;
   return null;
 }
 
@@ -757,7 +758,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permissions, session, disabled, onClick, children }: { permissions: string[]; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasAnyPermission(session.permissions, permissions) ? <button type="button" disabled={disabled || !hasAnyPermission(session.permissions, permissions)} onClick={onClick}>{children}</button> : null);
+  return (hasAnyPermission(session.permissions, permissions) ? <ContextualRecordAction destructive={permissions.some(permission => /\.(archive|void|cancel|override)$/.test(permission))} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {

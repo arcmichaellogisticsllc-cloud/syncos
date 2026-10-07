@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import {FormPurposeHeader} from "../operator-page-templates";
@@ -500,8 +501,8 @@ function SettlementTab({ tab, detail, settlement, items, session, onItemAction }
   if (tab === "holds_disputes") return <Panel title="Holds & Disputes"><dl className="detail-list"><dt>Hold reason</dt><dd>{textValue(settlement.hold_reason)}</dd><dt>Hold note</dt><dd>{textValue(settlement.hold_note)}</dd><dt>Dispute reason</dt><dd>{textValue(settlement.dispute_reason)}</dd><dt>Dispute note</dt><dd>{textValue(settlement.dispute_note)}</dd><dt>Status</dt><dd>{formatAction(settlement.status)}</dd><dt>Resolution state</dt><dd>{["held", "disputed"].includes(String(settlement.status)) ? "Open" : "No active hold or dispute"}</dd></dl></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view settlement audit details.</div>}</Panel>;
-  if (tab === "future_invoice") return <PlaceholderPanel title="Future Invoice" message="Invoice creation is not available in this sprint. Invoice, invoice item, AR, payment, and cash workflows require future rules and backend approval." columns={["Invoice", "Invoice item", "AR", "Payment", "Cash"]} />;
-  return <PlaceholderPanel title="Future Payment / Payroll" message="Payment, payroll, ACH, card payout, and bank transaction workflows are not available in this sprint." columns={["Payment", "Payroll", "ACH", "Card payout", "Bank transaction"]} />;
+  if (tab === "future_invoice") return <PlaceholderPanel title="Future Invoice" message="Use the approved invoice workflow after accepted work and agreement checks. Invoice creation, delivery, customer acceptance and cash allocation are separate steps." columns={["Invoice", "Invoice item", "AR", "Payment", "Cash"]} />;
+  return <PlaceholderPanel title="Future Payment / Payroll" message="Use the separate payroll, partner payment and bank-matching workflows. Recording an approved batch does not send money." columns={["Payment", "Payroll", "ACH", "Card payout", "Bank transaction"]} />;
 }
 
 function SettlementItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]; session: Session; onItemAction: (type: string, item: SyncRecord) => void }) {
@@ -721,7 +722,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {

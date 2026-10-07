@@ -9,6 +9,8 @@ for(const width of [1280,390])for(const route of routes){
   const response=await page.goto(route);expect(response?.status()).toBeLessThan(400);
   await expect(page.locator('h1').first()).toBeVisible();await page.waitForLoadState('networkidle');
   await expect(page.getByText('Verifying access…',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Access unavailable',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Sign in',exact:true})).toHaveCount(0);
   await page.addScriptTag({path:require.resolve('axe-core/axe.min.js')});
   const results=await page.evaluate(async()=>{const axe=(window as any).axe;return axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}});});
   await info.attach('accessibility-results',{body:JSON.stringify({route,width,violations:results.violations,incomplete:results.incomplete},null,2),contentType:'application/json'});

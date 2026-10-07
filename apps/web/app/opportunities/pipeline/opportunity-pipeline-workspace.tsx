@@ -1,4 +1,5 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
 import {ScrollableRegion} from "../../scrollable-region";
 
 import {ReadOnlyBanner} from "../../operator-page-templates";
@@ -344,6 +345,7 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Opportunity information" purpose="Confirm the source candidate, customer, territory, estimated value and expected work before saving." afterSave="Review the opportunity and approval requirements. Saving does not award work, create a project or authorize a crew." />
         <div className="form-grid">
           <label>Source candidate<SelectInline value={form.candidate_id} options={["", ...qualifiedCandidates.map((candidate) => String(candidate.id))]} labels={labelMap(qualifiedCandidates, "name")} onChange={applyCandidate} /></label>
           <label>Opportunity name<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>

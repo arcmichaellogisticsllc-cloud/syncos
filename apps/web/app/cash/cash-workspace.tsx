@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {completeDirectory} from "../intelligence/complete-directory";
 import {ScrollableRegion} from "../scrollable-region";
 
@@ -639,9 +640,9 @@ function CashReceiptTab({ tab, detail, receipt, applications, session, onApplica
   if (tab === "unapplied_cash") return <Panel title="Unapplied Cash"><dl className="detail-list"><dt>Gross amount</dt><dd>{money(receipt.gross_received_amount)}</dd><dt>Applied amount</dt><dd>{money(receipt.applied_amount)}</dd><dt>Unapplied amount</dt><dd>{money(receipt.unapplied_amount)}</dd><dt>Application count</dt><dd>{formatCell(receipt.application_count ?? applications.length)}</dd><dt>Unapplied summary</dt><dd><JsonBlock value={detail.unapplied_summary} /></dd></dl><div className="warning-box">Unapplied cash remains available for future invoice application.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view audit details.</div>}</Panel>;
-  if (tab === "future_collections") return <PlaceholderPanel title="Future Collections" message="Collections workflows are not available in this sprint. Collection status is tracked on invoices and may be used by future collections automation." columns={["Collection workflow", "Notice", "Writeoff"]} />;
-  if (tab === "future_reconciliation") return <PlaceholderPanel title="Future Reconciliation" message="Bank reconciliation is not available in this sprint. Deposit and reconciliation statuses are informational only." columns={["Deposit batch", "Bank transaction", "Reconciliation record"]} />;
-  return <PlaceholderPanel title="Future Contractor Payables" message="Contractor payments and payroll are not available in this sprint." columns={["Contractor payment", "Payroll", "ACH payout"]} />;
+  if (tab === "future_collections") return <PlaceholderPanel title="Future Collections" message="Use Collections for cases, responsible owners, deadlines and follow-up actions. Receipt allocation and collection history remain separate records." columns={["Collection workflow", "Notice", "Writeoff"]} />;
+  if (tab === "future_reconciliation") return <PlaceholderPanel title="Future Reconciliation" message="Use Bank Reconciliation to match recorded transactions with receipt or payment records. A status on this receipt alone does not prove a bank match." columns={["Deposit batch", "Bank transaction", "Reconciliation record"]} />;
+  return <PlaceholderPanel title="Future Contractor Payables" message="Partner payables and employee payroll use separate approval and payment-recording workflows. This receipt does not create either." columns={["Contractor payment", "Payroll", "ACH payout"]} />;
 }
 
 function PaymentApplicationsForReceipt({ rows, session, onApplicationAction }: { rows: SyncRecord[]; session: Session; onApplicationAction: (type: string, application: SyncRecord) => void }) {
@@ -789,7 +790,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {

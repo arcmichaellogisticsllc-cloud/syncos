@@ -34,7 +34,7 @@ test.describe('Honest queue feedback', () => {
   });
   test('QC creation uses supported choices and no raw override JSON', async ({ page }) => {
     await page.goto('/qc/new');
-    await expect(page.getByRole('heading', { name: 'Create QC Review', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Create QC Review', exact: true, level: 1 })).toBeVisible();
     await expect(page.getByLabel('Override Reasons JSON')).toHaveCount(0);
     await expect(page.getByLabel('Reviewer User ID')).toHaveCount(0);
     await expect(page.getByLabel('Evidence Status').locator('option[value="missing"]')).toHaveCount(0);

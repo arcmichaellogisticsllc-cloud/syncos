@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import {Client} from "pg";
 import fs from "node:fs";
 import path from "node:path";
 import type { FullConfig } from "@playwright/test";
@@ -15,6 +16,24 @@ export default async function globalSetup(_config: FullConfig) {
   const secret = process.env.AUTH_JWT_SECRET;
   if (!apiBaseUrl) throw new Error("API_BASE_URL is required for Browser E2E auth setup");
   if (!secret) throw new Error("AUTH_JWT_SECRET is required for Browser E2E auth setup");
+
+  // Fail before a long browser run when the migrated/base-seeded API is incomplete.
+  // This does not mutate fixtures or repair a real environment automatically.
+  const startup = await fetch(`${apiBaseUrl}/health/startup`);
+  if (!startup.ok) throw new Error("E2E API startup is not ready. Use an isolated migrated database, run db:seed and seed:e2e-demo, and verify API dependencies before browser tests.");
+
+  if (process.env.DATABASE_URL) {
+    const db = new Client({connectionString: process.env.DATABASE_URL});
+    await db.connect();
+    try {
+      const canonical = await db.query(`SELECT 1 FROM tenants t JOIN tenant_users tu ON tu.tenant_id=t.id
+        JOIN user_roles ur ON ur.tenant_user_id=tu.id AND ur.tenant_id=t.id
+        JOIN roles r ON r.id=ur.role_id AND r.tenant_id=t.id
+        WHERE t.slug='sync-comm-systems' AND r.system_key='system_admin' AND ur.scope_type='tenant'
+          AND tu.status='active' AND tu.deleted_at IS NULL AND r.deleted_at IS NULL LIMIT 1`);
+      if (!canonical.rowCount) throw new Error("Missing canonical base fixture. Run db:seed before seed:e2e-demo in the isolated test database.");
+    } finally { await db.end(); }
+  }
 
   const manifest = readManifest();
   fs.mkdirSync(path.join(process.cwd(), "tests/e2e/.auth"), { recursive: true });

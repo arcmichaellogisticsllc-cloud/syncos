@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import {FormPurposeHeader} from "../operator-page-templates";
@@ -247,7 +248,7 @@ export function QcReviewEdit({ qcReviewId }: { qcReviewId: string }) {
 
   const review = detail ? qcReview(detail) : null;
   return (
-    <QcShell title="Edit QC Review" purpose="Review editable QC fields where backend support exists; lifecycle decisions use action routes.">
+    <QcShell title="QC Review Summary" purpose="Review the current QC record. Use the actions on QC Detail to record decisions and changes.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       {!review ? <div className="empty-state">QC review not found or you do not have access.</div> : (
@@ -341,7 +342,7 @@ export function QcReviewDetail({ qcReviewId }: { qcReviewId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/qc/${qcReviewId}/edit`} allowed={hasPermission(session.permissions, "qc_review.update")}>Edit QC Review</Link>
+                <Link className="link-button" href={`/qc/${qcReviewId}/edit`} allowed={hasPermission(session.permissions, "qc_review.update")}>Review QC Summary</Link>
                 <ActionButton permission="qc_review.start" session={session} disabled={!["pending", "corrected"].includes(String(review.review_status))} onClick={() => setModal("start")}>Start Review</ActionButton>
                 <ActionButton permission="qc_review.approve" session={session} disabled={["approved", "voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("approve")}>Approve</ActionButton>
                 <ActionButton permission="qc_review.request_correction" session={session} disabled={["voided", "archived"].includes(String(review.review_status))} onClick={() => setModal("correction")}>Request Correction</ActionButton>
@@ -485,7 +486,7 @@ function QcTab({ tab, detail, review }: { tab: string; detail: QcDetailShape; re
   if (tab === "billable") return <Panel title="Billable Candidate"><dl className="detail-list"><dt>Approved quantity</dt><dd>{quantity(review.approved_quantity, review.unit)}</dd><dt>Billable candidate quantity</dt><dd>{quantity(review.billable_candidate_quantity, review.unit)}</dd><dt>Unit</dt><dd>{formatAction(review.unit)}</dd><dt>Production billable status</dt><dd>{formatAction(production.billable_status ?? review.production_billable_status)}</dd><dt>Related billable item count</dt><dd>{String(detail._billable_items?.length ?? 0)}</dd></dl><div className="warning-box">Review billable candidates in Finance. Customer acceptance is required before production-backed billing can advance.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view QC audit details.</div>}</Panel>;
-  if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Billable Workspace is not available in this sprint. QC may create billable candidate quantity only." columns={["billable_item", "status", "quantity", "unit", "rate", "readiness"]} />;
+  if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Use Billable or Accepted Work to Finance after the required customer acceptance and agreement checks. Internal QC alone does not authorize billing." columns={["billable_item", "status", "quantity", "unit", "rate", "readiness"]} />;
   return <PlaceholderPanel title="Future Settlement" message="Use the authorized settlement workflow after accepted-work and agreement checks pass. QC does not create settlement, invoice, AR, payment, cash, payroll, or tax records." columns={["settlement_item", "invoice_item", "AR", "payment", "cash", "status"]} />;
 }
 
@@ -681,7 +682,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {

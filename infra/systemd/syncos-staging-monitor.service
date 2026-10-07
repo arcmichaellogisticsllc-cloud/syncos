@@ -1,0 +1,15 @@
+[Unit]
+Description=SyncOS staging health and backup report (local journal only)
+After=network.target
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/syncos/staging/api.env
+WorkingDirectory=/opt/syncos/staging/current
+ExecStart=/usr/bin/node /opt/syncos/staging/current/scripts/staging-health-report.js
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/syncos/staging/shared/monitoring
+ProtectHome=true

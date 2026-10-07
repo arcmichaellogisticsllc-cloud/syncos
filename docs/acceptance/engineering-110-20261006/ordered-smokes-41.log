@@ -1,0 +1,411 @@
+Running release check: security:smoke
+
+> syncos@0.1.0 security:smoke
+> npm run smoke:security -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:security
+> node scripts/security-smoke.js
+
+security smoke passed
+Running release check: sprint1:smoke
+
+> syncos@0.1.0 sprint1:smoke
+> npm run smoke:sprint1 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint1
+> node scripts/sprint1-smoke.js
+
+sprint1 smoke passed
+Running release check: sprint2:smoke
+
+> syncos@0.1.0 sprint2:smoke
+> npm run smoke:sprint2 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint2
+> node scripts/sprint2-smoke.js
+
+sprint2 smoke passed
+Running release check: sprint3:smoke
+
+> syncos@0.1.0 sprint3:smoke
+> npm run smoke:sprint3 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint3
+> node scripts/sprint3-smoke.js
+
+sprint3 smoke passed
+Running release check: sprint4:smoke
+
+> syncos@0.1.0 sprint4:smoke
+> npm run smoke:sprint4 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint4
+> node scripts/sprint4-smoke.js
+
+sprint4 smoke passed
+Running release check: sprint5:smoke
+
+> syncos@0.1.0 sprint5:smoke
+> npm run smoke:sprint5 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint5
+> node scripts/sprint5-smoke.js
+
+sprint5 smoke passed
+Running release check: sprint6:smoke
+
+> syncos@0.1.0 sprint6:smoke
+> npm run smoke:sprint6 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint6
+> node scripts/sprint6-smoke.js
+
+sprint6 smoke passed
+Running release check: sprint7:smoke
+
+> syncos@0.1.0 sprint7:smoke
+> npm run smoke:sprint7 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint7
+> node scripts/sprint7-smoke.js
+
+sprint7 smoke passed
+Running release check: sprint8:smoke
+
+> syncos@0.1.0 sprint8:smoke
+> npm run smoke:sprint8 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint8
+> node scripts/sprint8-smoke.js
+
+sprint8 smoke passed
+Running release check: sprint9:smoke
+
+> syncos@0.1.0 sprint9:smoke
+> npm run smoke:sprint9 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint9
+> node scripts/sprint9-smoke.js
+
+sprint9 smoke passed
+Running release check: sprint10:smoke
+
+> syncos@0.1.0 sprint10:smoke
+> npm run smoke:sprint10 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint10
+> node scripts/sprint10-smoke.js
+
+sprint10 smoke passed
+Running release check: sprint11:smoke
+
+> syncos@0.1.0 sprint11:smoke
+> npm run smoke:sprint11 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint11
+> node scripts/sprint11-smoke.js
+
+sprint11 smoke passed
+Running release check: sprint12:smoke
+
+> syncos@0.1.0 sprint12:smoke
+> npm run smoke:sprint12 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint12
+> node scripts/sprint12-smoke.js
+
+sprint12 smoke passed
+Running release check: sprint13:smoke
+
+> syncos@0.1.0 sprint13:smoke
+> npm run smoke:sprint13 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint13
+> node scripts/sprint13-smoke.js
+
+sprint13 smoke passed
+Running release check: sprint14:smoke
+
+> syncos@0.1.0 sprint14:smoke
+> npm run smoke:sprint14 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint14
+> node scripts/sprint14-smoke.js
+
+sprint14 smoke passed
+Running release check: sprint15:smoke
+
+> syncos@0.1.0 sprint15:smoke
+> npm run smoke:sprint15 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint15
+> node scripts/sprint15-smoke.js
+
+sprint15 smoke passed
+Running release check: sprint16:smoke
+
+> syncos@0.1.0 sprint16:smoke
+> npm run smoke:sprint16 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint16
+> node scripts/sprint16-smoke.js
+
+sprint16 smoke passed
+Running release check: sprint17:smoke
+
+> syncos@0.1.0 sprint17:smoke
+> npm run smoke:sprint17 -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:sprint17
+> node scripts/sprint17-smoke.js
+
+sprint17 smoke passed
+Running release check: intelligence:smoke
+
+> syncos@0.1.0 intelligence:smoke
+> npm run smoke:intelligence -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:intelligence
+> node scripts/intelligence-smoke.js
+
+intelligence smoke passed
+Running release check: organization:smoke
+
+> syncos@0.1.0 organization:smoke
+> npm run smoke:organization -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:organization
+> node scripts/organization-smoke.js
+
+organization smoke passed
+Running release check: account-onboarding:smoke
+
+> syncos@0.1.0 account-onboarding:smoke
+> npm run smoke:account-onboarding -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:account-onboarding
+> node scripts/account-onboarding-smoke.js
+
+account onboarding smoke passed
+Running release check: contact:smoke
+
+> syncos@0.1.0 contact:smoke
+> npm run smoke:contact -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:contact
+> node scripts/contact-smoke.js
+
+contact smoke passed
+Running release check: relationship:smoke
+
+> syncos@0.1.0 relationship:smoke
+> npm run smoke:relationship -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:relationship
+> node scripts/relationship-smoke.js
+
+relationship smoke passed
+Running release check: candidate:smoke
+
+> syncos@0.1.0 candidate:smoke
+> npm run smoke:candidate -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:candidate
+> node scripts/candidate-smoke.js
+
+candidate smoke passed
+Running release check: opportunity:smoke
+
+> syncos@0.1.0 opportunity:smoke
+> npm run smoke:opportunity -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:opportunity
+> node scripts/opportunity-smoke.js
+
+opportunity smoke passed
+Running release check: coverage:smoke
+
+> syncos@0.1.0 coverage:smoke
+> npm run smoke:coverage -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:coverage
+> node scripts/coverage-smoke.js
+
+coverage smoke passed
+Running release check: project-handoff:smoke
+
+> syncos@0.1.0 project-handoff:smoke
+> npm run smoke:project-handoff -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:project-handoff
+> node scripts/project-handoff-smoke.js
+
+project handoff smoke passed
+Running release check: project:smoke
+
+> syncos@0.1.0 project:smoke
+> npm run smoke:project -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:project
+> node scripts/project-smoke.js
+
+project smoke passed
+Running release check: work-order:smoke
+
+> syncos@0.1.0 work-order:smoke
+> npm run smoke:work-order -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:work-order
+> node scripts/work-order-smoke.js
+
+work order smoke passed
+Running release check: production:smoke
+
+> syncos@0.1.0 production:smoke
+> npm run smoke:production -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:production
+> node scripts/production-smoke.js
+
+production smoke passed
+Running release check: qc:smoke
+
+> syncos@0.1.0 qc:smoke
+> npm run smoke:qc -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:qc
+> node scripts/qc-smoke.js
+
+qc smoke passed
+Running release check: billable:smoke
+
+> syncos@0.1.0 billable:smoke
+> npm run smoke:billable -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:billable
+> node scripts/billable-smoke.js
+
+billable smoke passed
+Running release check: settlement:smoke
+
+> syncos@0.1.0 settlement:smoke
+> npm run smoke:settlement -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:settlement
+> node scripts/settlement-smoke.js
+
+settlement smoke passed
+Running release check: invoice:smoke
+
+> syncos@0.1.0 invoice:smoke
+> npm run smoke:invoice -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:invoice
+> node scripts/invoice-smoke.js
+
+invoice smoke passed
+Running release check: cash-application:smoke
+
+> syncos@0.1.0 cash-application:smoke
+> npm run smoke:cash-application -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:cash-application
+> node scripts/cash-application-smoke.js
+
+cash application smoke passed
+Running release check: collections:smoke
+
+> syncos@0.1.0 collections:smoke
+> npm run smoke:collections -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:collections
+> node scripts/collections-smoke.js
+
+collections smoke passed
+Running release check: contractor-payable:smoke
+
+> syncos@0.1.0 contractor-payable:smoke
+> npm run smoke:contractor-payable -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:contractor-payable
+> node scripts/contractor-payable-smoke.js
+
+contractor payable smoke passed
+Running release check: payroll:smoke
+
+> syncos@0.1.0 payroll:smoke
+> npm run smoke:payroll -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:payroll
+> node scripts/payroll-smoke.js
+
+payroll smoke passed
+Running release check: payment-execution:smoke
+
+> syncos@0.1.0 payment-execution:smoke
+> npm run smoke:payment-execution -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:payment-execution
+> node scripts/payment-execution-smoke.js
+
+payment execution smoke passed
+Running release check: bank-reconciliation:smoke
+
+> syncos@0.1.0 bank-reconciliation:smoke
+> npm run smoke:bank-reconciliation -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:bank-reconciliation
+> node scripts/bank-reconciliation-smoke.js
+
+bank reconciliation smoke passed
+Running release check: accounting-export:smoke
+
+> syncos@0.1.0 accounting-export:smoke
+> npm run smoke:accounting-export -w @syncos/api
+
+
+> @syncos/api@0.1.0 smoke:accounting-export
+> node scripts/accounting-export-smoke.js
+
+accounting export smoke passed
+{"status":"passed","groups":41,"steps":["security:smoke","sprint1:smoke","sprint2:smoke","sprint3:smoke","sprint4:smoke","sprint5:smoke","sprint6:smoke","sprint7:smoke","sprint8:smoke","sprint9:smoke","sprint10:smoke","sprint11:smoke","sprint12:smoke","sprint13:smoke","sprint14:smoke","sprint15:smoke","sprint16:smoke","sprint17:smoke","intelligence:smoke","organization:smoke","account-onboarding:smoke","contact:smoke","relationship:smoke","candidate:smoke","opportunity:smoke","coverage:smoke","project-handoff:smoke","project:smoke","work-order:smoke","production:smoke","qc:smoke","billable:smoke","settlement:smoke","invoice:smoke","cash-application:smoke","collections:smoke","contractor-payable:smoke","payroll:smoke","payment-execution:smoke","bank-reconciliation:smoke","accounting-export:smoke"]}

@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
@@ -197,7 +198,7 @@ export function AccountingExportQueue() {
             </div>
             {visibleItems.length ? <AccountingExportItemVisibilityTable rows={visibleItems} /> : <div className="empty-state">No accounting export items need attention.</div>}
           </section> : null}
-          <FuturePlaceholders />
+          <IntegrationStatus />
         </>
       ) : null}
     </AccountingExportShell>
@@ -663,8 +664,8 @@ function MappingSummary({ items }: { items: SyncRecord[] }) {
   return <ObjectTable rows={rows} columns={["mapping_status", "count"]} />;
 }
 
-function FuturePlaceholders() {
-  return <section className="workspace-panel"><h2>Future Workflow Placeholders</h2><div className="summary-grid"><Metric label="Future QuickBooks" value="QuickBooks integration is not available in this sprint." /><Metric label="Future ERP" value="Sage, NetSuite, and ERP integrations are not available." /><Metric label="Future GL" value="GL posting and journal creation are not available." /><Metric label="Future Tax" value="Tax filing, W2, 1099, payroll tax, and sales/use tax workflows are not available." /><Metric label="Future Accounting Close" value="Accounting close, trial balance, and financial statements are not available." /><Metric label="Future File Download" value="File download generation is not available unless the backend explicitly provides a generated file reference." /></div></section>;
+function IntegrationStatus() {
+  return <section className="workspace-panel"><h2>Connected services</h2><p>This workspace prepares and tracks accounting batches. Marking a batch generated does not create a downloadable file or post to an external ledger. QuickBooks, ERP posting, tax filing and accounting close are not connected.</p><p>Use Accepted Work to Finance to prepare customer invoice packages and track delivery and acceptance.</p><Link href="/accepted-production-financials">Open Accepted Work to Finance</Link></section>;
 }
 
 function SessionPanel({ session }: { session: Session }) { return null; }
@@ -929,7 +930,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

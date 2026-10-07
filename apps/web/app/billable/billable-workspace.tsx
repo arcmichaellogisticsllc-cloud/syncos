@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import {FormPurposeHeader} from "../operator-page-templates";
@@ -489,7 +490,7 @@ function BillableTab({ tab, detail, item }: { tab: string; detail: BillableDetai
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view billable audit details.</div>}</Panel>;
   if (tab === "future_settlement") return <PlaceholderPanel title="Future Settlement" message="Use the authorized settlement workflow after accepted-work and agreement checks pass. A future Settlement layer will convert ready billable items into settlement items after rules are approved." columns={["settlement_item", "status", "quantity", "amount", "approval"]} />;
-  return <PlaceholderPanel title="Future Invoice" message="Invoice creation is not available in this sprint. Invoice, AR, Payment, Cash, Payroll, and Tax workflows are future finance layers." columns={["invoice_item", "invoice", "AR", "payment", "cash", "status"]} />;
+  return <PlaceholderPanel title="Future Invoice" message="Invoice preparation, cash application, payroll and partner payments have separate controlled workflows. Marking work billable does not create those records." columns={["invoice_item", "invoice", "AR", "payment", "cash", "status"]} />;
 }
 
 function BillableLifecycleModal({ type, billableId, item, blockers, session, onClose, onSaved }: { type: string; billableId: string; item: SyncRecord; blockers: SyncRecord[]; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -653,7 +654,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {

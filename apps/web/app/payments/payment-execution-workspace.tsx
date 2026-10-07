@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
@@ -195,7 +196,7 @@ export function PaymentBatchQueue() {
             </div>
             {visibleItems.length ? <PaymentItemVisibilityTable rows={visibleItems} /> : <div className="empty-state">No payment items need attention.</div>}
           </section> : null}
-          <FuturePlaceholders />
+          <IntegrationStatus />
         </>
       ) : null}
     </PaymentShell>
@@ -559,8 +560,8 @@ function PaymentTab({ tab, detail, batch, items, session, onAction }: { tab: str
   if (tab === "future_ach") return <PlaceholderPanel title="Future ACH Placeholder" message="ACH processor integration is not available in this sprint." columns={["ach_submit_button"]} />;
   if (tab === "future_check") return <PlaceholderPanel title="Future Check Placeholder" message="Check printing is not available in this sprint." columns={["print_check_button"]} />;
   if (tab === "future_payroll_provider") return <PlaceholderPanel title="Future Payroll Provider Placeholder" message="Payroll provider submission is not available in this sprint." columns={["provider_submit_button"]} />;
-  if (tab === "future_bank_reconciliation") return <PlaceholderPanel title="Future Bank Reconciliation Placeholder" message="Bank reconciliation is not available in this sprint. Executed status does not mean bank-cleared." columns={["bank_reconciliation"]} />;
-  return <PlaceholderPanel title="Future Accounting / Tax Placeholder" message="Accounting export, GL posting, tax filing, W2/1099, benefit, and garnishment workflows are not available in this sprint." columns={["accounting_export", "tax_filing"]} />;
+  if (tab === "future_bank_reconciliation") return <PlaceholderPanel title="Future Bank Reconciliation Placeholder" message="Bank Reconciliation supports recorded transactions and controlled matching. Executed payment status does not establish bank clearance." columns={["bank_reconciliation"]} />;
+  return <PlaceholderPanel title="Future Accounting / Tax Placeholder" message="Accounting batch preparation is available separately. External general-ledger posting, tax filing, statutory forms, benefits and garnishments are not connected." columns={["accounting_export", "tax_filing"]} />;
 }
 
 function PaymentItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -673,8 +674,8 @@ function PayeeSummary({ items }: { items: SyncRecord[] }) {
   return <ObjectTable rows={rows} columns={["payee_type", "payee_name", "payment_amount", "item_count"]} />;
 }
 
-function FuturePlaceholders() {
-  return <section className="workspace-panel"><h2>Future Workflow Placeholders</h2><div className="summary-grid"><Metric label="Future ACH" value="ACH processor integration is not available in this sprint." /><Metric label="Future Check" value="Check printing is not available in this sprint." /><Metric label="Future Payroll Provider" value="Payroll provider submission is not available in this sprint." /><Metric label="Future Bank Reconciliation" value="Bank reconciliation is not available in this sprint." /><Metric label="Future Accounting / Tax" value="Accounting export, GL posting, tax filing, W2/1099, benefit, and garnishment workflows are not available." /></div></section>;
+function IntegrationStatus() {
+  return <section className="workspace-panel"><h2>Connected services</h2><p>Record externally completed payments with proof. Priority Passport automation requires verified provider configuration. Payroll-provider submission, check printing and tax filing are separate services.</p><div className="form-actions"><Link href="/passport">Review Passport readiness</Link><Link href="/bank-reconciliation">Open Bank Reconciliation</Link><Link href="/accounting-exports">Open Accounting Exports</Link></div></section>;
 }
 
 function SessionPanel({ session }: { session: Session }) {
@@ -956,7 +957,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

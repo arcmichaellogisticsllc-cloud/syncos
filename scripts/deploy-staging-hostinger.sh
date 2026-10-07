@@ -95,6 +95,9 @@ trap on_deploy_exit EXIT
 QUIESCE_ATTEMPTED=true
 sudo -n systemctl stop syncos-staging-api syncos-staging-worker syncos-staging-web
 
+# Capture the actual quiesced state, not merely a backup from before the build.
+sudo -n bash "${RELEASE_DIR}/scripts/checkpoint-staging.sh" "${APP_ROOT}" "${STAGING_API_ENV_FILE}"
+
 if [[ "${MIGRATION_ENV_ACCESS}" == "direct" ]]; then
   (
     set -a

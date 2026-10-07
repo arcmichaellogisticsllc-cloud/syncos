@@ -3939,3 +3939,10 @@ th {
 @media (max-width: 640px) {
   .table-link { min-height: 44px; }
 }
+
+.contextual-danger-action {
+  display: inline-flex;
+  border-inline-start: 2px solid var(--border, #b8bec8);
+  padding-inline-start: 0.65rem;
+  margin-inline-start: 0.35rem;
+}

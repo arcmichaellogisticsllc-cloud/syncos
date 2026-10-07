@@ -1,4 +1,5 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
 import {ScrollableRegion} from "../scrollable-region";
 
 import {FormPurposeHeader} from "../operator-page-templates";
@@ -493,9 +494,9 @@ function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: strin
   if (tab === "payroll_readiness") return <Panel title="Payroll Readiness"><dl className="detail-list"><dt>Payroll Readiness Status</dt><dd>{formatAction(run.payroll_readiness_status)}</dd><dt>Net Pay Amount</dt><dd>{money(run.net_pay_amount)}</dd><dt>Compliance Status</dt><dd>{formatAction(run.compliance_status)}</dd><dt>Tax Document Status</dt><dd>{formatAction(run.tax_document_status)}</dd><dt>Hold Status</dt><dd>{formatAction(run.hold_status)}</dd><dt>Dispute Status</dt><dd>{formatAction(run.dispute_status)}</dd><dt>Warnings</dt><dd><JsonBlock value={detail.warnings} /></dd><dt>Blockers</dt><dd><JsonBlock value={detail.blockers} /></dd><dt>Required Override Fields</dt><dd><JsonBlock value={detail.required_override_fields} /></dd><dt>Recommended Next Action</dt><dd>{formatAction(run.recommended_next_action ?? detail.recommended_next_action)}</dd></dl><div className="form-actions"><ActionButton permission="payroll_run.mark_payroll_ready" session={session} disabled={runInactive(run)} onClick={() => onAction("payroll_ready")}>Mark Payroll Ready</ActionButton></div><div className="warning-box">Mark Payroll Ready does not send money, submit payroll, create ACH/card/check, create bank transaction, or file taxes.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "entity_type", "entity_id", "created_at", "actor_user_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail.audit_allowed === false ? <div className="warning-box">You do not have permission to view payroll audit details.</div> : <ObjectTable rows={detail._audit ?? []} columns={["action", "entity_type", "entity_id", "actor_user_id", "created_at"]} />}</Panel>;
-  if (tab === "future_payment") return <PlaceholderPanel title="Future Payment" message="Payment execution is not available in this sprint. Future payment workflows may consume payroll-ready runs." columns={["No payment button", "No mark paid button", "No check/ACH/card action"]} />;
+  if (tab === "future_payment") return <PlaceholderPanel title="Future Payment" message="Payment Execution records approved payroll payment batches and external execution evidence. Payroll-provider submission remains separately configured." columns={["No payment button", "No mark paid button", "No check/ACH/card action"]} />;
   if (tab === "future_payroll_provider") return <PlaceholderPanel title="Future Payroll Provider" message="Payroll provider submission is not available in this sprint." columns={["No provider submission", "No payroll execution", "No external integration"]} />;
-  return <PlaceholderPanel title="Future Tax / Accounting" message="Tax filing, W2/1099 generation, payroll tax deposits, accounting export, and bank reconciliation are not available in this sprint." columns={["No tax filing", "No W2/1099", "No accounting export", "No bank reconciliation"]} />;
+  return <PlaceholderPanel title="Future Tax / Accounting" message="Accounting batch preparation and bank matching are available in their workspaces. Tax filing, statutory forms and payroll tax deposits require separate services." columns={["No tax filing", "No W2/1099", "No accounting export", "No bank reconciliation"]} />;
 }
 
 function PayrollItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -841,7 +842,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (hasPermission(session.permissions, permission) ? <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button> : null);
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {

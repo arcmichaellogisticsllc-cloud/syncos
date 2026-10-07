@@ -1,0 +1,19 @@
+
+Running 12 tests using 1 worker
+
+(node:10791) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/accessibility/public.spec.ts:4:61 › public 1280 /login (16.0s)
+  ✓   2 tests/accessibility/public.spec.ts:4:61 › public 1280 /forgot-password (6.0s)
+  ✓   3 tests/accessibility/public.spec.ts:4:61 › public 1280 /reset-password#token=synthetic-accessibility-token (3.1s)
+  ✓   4 tests/accessibility/public.spec.ts:4:61 › public 1280 /sign-in-link (2.6s)
+  ✓   5 tests/accessibility/public.spec.ts:4:61 › public 1280 /sso/callback (2.2s)
+  ✓   6 tests/accessibility/public.spec.ts:4:61 › public 1280 /request-service/synthetic-accessibility (1.6s)
+  ✓   7 tests/accessibility/public.spec.ts:4:61 › public 390 /login (1.7s)
+  ✓   8 tests/accessibility/public.spec.ts:4:61 › public 390 /forgot-password (1.7s)
+  ✓   9 tests/accessibility/public.spec.ts:4:61 › public 390 /reset-password#token=synthetic-accessibility-token (1.6s)
+  ✓  10 tests/accessibility/public.spec.ts:4:61 › public 390 /sign-in-link (1.6s)
+  ✓  11 tests/accessibility/public.spec.ts:4:61 › public 390 /sso/callback (1.7s)
+  ✓  12 tests/accessibility/public.spec.ts:4:61 › public 390 /request-service/synthetic-accessibility (1.9s)
+
+  12 passed (44.7s)
