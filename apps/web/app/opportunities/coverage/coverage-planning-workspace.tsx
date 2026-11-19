@@ -1,6 +1,10 @@
 "use client";
+import {FormPurposeHeader, ReadOnlyBanner, DangerZone} from "../../operator-page-templates";
+import {ScrollableRegion} from "../../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../../modal-boundary";
+
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { defaultOpportunityPermissions, dateValue, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../../intelligence/api";
@@ -78,7 +82,7 @@ export function CoveragePlanningWorkspace() {
   useEffect(() => {
     setToken(readToken());
     const stored = readPermissions();
-    const next = stored.length ? stored : defaultOpportunityPermissions;
+    const next = stored;
     setPermissions(next);
   }, []);
 
@@ -140,7 +144,7 @@ export function CoveragePlanningWorkspace() {
       <div className="warning-box">Coverage Planning does not create projects, work orders, production, settlement, invoice, payment, payroll, AR, or cash records.</div>
       {error ? <div className="error-banner">{error}</div> : null}
       {loading ? <div className="empty-state">Loading coverage plans...</div> : null}
-      {!token ? <div className="empty-state">Sign in with a SyncOS token to view Coverage Planning.</div> : null}
+      {!token ? <div className="empty-state">Sign in to review coverage plans and readiness.</div> : null}
       {token && !loading ? (
         <>
           <section className="workspace-panel">
@@ -249,7 +253,7 @@ export function CoveragePlanFormPage({ mode, id, initialOpportunityId = "" }: { 
 
   useEffect(() => {
     setToken(readToken());
-    setPermissions(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissions(readPermissions());
   }, []);
 
   useEffect(() => {
@@ -317,6 +321,7 @@ export function CoveragePlanFormPage({ mode, id, initialOpportunityId = "" }: { 
         <div className="warning-box">Coverage plan creation does not create a project.</div>
         {error ? <div className="error-banner">{error}</div> : null}
         <form className="compact-modal" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Coverage plan" purpose="Choose the awarded opportunity and record the capacity and coverage requirements supported by the approved scope." afterSave="Review capacity readiness and approval before project handoff. Saving a plan does not assign or authorize crews." />
           {mode === "create" ? (
             <SelectInline label="Opportunity" value={form.opportunity_id} onChange={(value) => setForm({ ...form, opportunity_id: value })} options={["", ...awardedOpportunities.map((opportunity) => String(opportunity.id))]} labels={optionLabels(awardedOpportunities, "title", "opportunity_name")} required />
           ) : (
@@ -365,7 +370,7 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
 
   useEffect(() => {
     setToken(readToken());
-    setPermissions(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissions(readPermissions());
   }, []);
 
   useEffect(() => {
@@ -414,7 +419,7 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
     return (
       <OpportunityShell title="Coverage Plan Detail" purpose="Define requirements, sources, gaps, and approval readiness.">
         <SessionPanel token={token} permissions={permissions} setToken={setToken} setPermissions={setPermissions} />
-        <div className="empty-state">Sign in with a SyncOS token to view Coverage Planning.</div>
+        <div className="empty-state">Sign in to review coverage plans and readiness.</div>
       </OpportunityShell>
     );
   }
@@ -440,6 +445,7 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
       <SessionPanel token={token} permissions={permissions} setToken={setToken} setPermissions={setPermissions} />
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="empty-state">{notice}</div> : null}
+      {!permissions.some(permission => ["coverage_plan", "coverage_requirement", "coverage_source", "coverage_gap"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>You can review this coverage plan. Editing, approval and lifecycle actions are unavailable with your access.</ReadOnlyBanner> : null}
 
       <section className="workspace-panel">
         <div className="section-toolbar">
@@ -455,10 +461,10 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
             {hasPermission(permissions, "coverage_gap.create") && !archived ? <button onClick={() => setModal({ type: "gap" })}>Add Gap</button> : null}
             {hasPermission(permissions, "coverage_plan.recalculate") && !archived ? <button onClick={() => void recalculate()}>Recalculate</button> : null}
             {hasPermission(permissions, "coverage_plan.approve_handoff") && !archived ? <button className="primary-button" onClick={() => setModal({ type: "approve" })}>Approve For Handoff</button> : null}
-            {hasPermission(permissions, "coverage_plan.archive") && !archived ? <button onClick={() => setModal({ type: "archive", objectType: "plan", id })}>Archive Plan</button> : null}
             {opportunity?.id ? <Link className="link-button" href={`/opportunities/${opportunity.id}`}>Open Opportunity</Link> : null}
           </div>
         </div>
+        {hasPermission(permissions, "coverage_plan.archive") && !archived ? <DangerZone description="Archiving removes this plan from active planning. Review the reason in the confirmation before continuing."><button className="danger-button" onClick={() => setModal({ type: "archive", objectType: "plan", id })}>Archive Plan</button></DangerZone> : null}
         <div className="summary-grid">
           <SummaryCard label="Coverage Readiness" value={scoreLabel(detail.readiness.coverage_readiness_score)} detail={bandLabel(detail.readiness.coverage_readiness_band)} />
           <SummaryCard label="Capacity Readiness" value={scoreLabel(detail.readiness.capacity_readiness_score)} />
@@ -557,7 +563,7 @@ export function CoveragePlanDetailPage({ id }: { id: string }) {
 
 function CoveragePlanTable({ plans }: { plans: CoverageRow[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -604,7 +610,7 @@ function CoveragePlanTable({ plans }: { plans: CoverageRow[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -702,8 +708,8 @@ function GapsTab({ detail, permissions, setModal }: { detail: CoverageDetail; pe
               <div className="tab-row">
                 {hasPermission(permissions, "coverage_gap.update") && !row.archived_at ? <button onClick={() => setModal({ type: "gap", row })}>Edit</button> : null}
                 {hasPermission(permissions, "coverage_gap.resolve") && !closedGapStatuses.has(String(row.status)) ? <button onClick={() => setModal({ type: "resolve-gap", row })}>Resolve</button> : null}
-                {hasPermission(permissions, "coverage_gap.override") && !row.hard_stop && !closedGapStatuses.has(String(row.status)) ? <button onClick={() => setModal({ type: "override-gap", row })}>Override</button> : null}
-                {hasPermission(permissions, "coverage_gap.archive") && !row.archived_at ? <button onClick={() => setModal({ type: "archive", objectType: "gap", id: String(row.id) })}>Archive</button> : null}
+                {hasPermission(permissions, "coverage_gap.override") && !row.hard_stop && !closedGapStatuses.has(String(row.status)) ? <span className="danger-zone-actions" role="group" aria-label="Override gap"><button className="danger-button" onClick={() => setModal({ type: "override-gap", row })}>Override</button></span> : null}
+                {hasPermission(permissions, "coverage_gap.archive") && !row.archived_at ? <span className="danger-zone-actions" role="group" aria-label="Archive gap"><button className="danger-button" onClick={() => setModal({ type: "archive", objectType: "gap", id: String(row.id) })}>Archive</button></span> : null}
               </div>
             </td>
           </tr>
@@ -792,9 +798,9 @@ function ApprovalPanel({ detail, permissions, setModal }: { detail: CoverageDeta
         ["Required override fields", detail.required_override_fields.length ? detail.required_override_fields.map(humanize).join(", ") : "None"],
         ["Boundary", detail.project_creation_boundary ?? "Coverage approval creates no project."],
       ]} />
-      <button className="primary-button" disabled={!hasPermission(permissions, "coverage_plan.approve_handoff") || blockers.length > 0} onClick={() => setModal({ type: "approve" })}>
+      {hasPermission(permissions, "coverage_plan.approve_handoff") ? <button className="primary-button" disabled={!hasPermission(permissions, "coverage_plan.approve_handoff") || blockers.length > 0} onClick={() => setModal({ type: "approve" })}>
         Approve For Handoff
-      </button>
+      </button> : null}
       {blockers.length ? <div className="error-banner">Hard stop gaps must be resolved before handoff approval.</div> : null}
     </>
   );
@@ -1056,7 +1062,7 @@ function RecordModal({ title, children, onClose, onSubmit, error: externalError 
     }
   }
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -1069,12 +1075,12 @@ function RecordModal({ title, children, onClose, onSubmit, error: externalError 
           <button className="primary-button" disabled={saving} type="submit">{saving ? "Saving..." : "Save"}</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
 function SessionPanel({ token, permissions, setToken, setPermissions }: { token: string; permissions: string[]; setToken: (token: string) => void; setPermissions: (permissions: string[]) => void }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   const [nextToken, setNextToken] = useState(token);
   const [nextPermissions, setNextPermissions] = useState(permissions.join(", "));
   useEffect(() => {
@@ -1141,12 +1147,12 @@ function RangeInput({ label, min, max, setMin, setMax }: { label: string; min: s
 
 function SimpleTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -1154,7 +1160,7 @@ function RowActions({ row, permissions, editPermission, archivePermission, onEdi
   return (
     <div className="tab-row">
       {hasPermission(permissions, editPermission) && !row.archived_at ? <button onClick={onEdit}>Edit</button> : null}
-      {hasPermission(permissions, archivePermission) && !row.archived_at ? <button onClick={onArchive}>Archive</button> : null}
+      {hasPermission(permissions, archivePermission) && !row.archived_at ? <span className="danger-zone-actions" role="group" aria-label="Archive record"><button className="danger-button" onClick={onArchive}>Archive</button></span> : null}
     </div>
   );
 }

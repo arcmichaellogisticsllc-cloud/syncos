@@ -17,11 +17,11 @@ async function main() {
     FROM users u
     JOIN tenant_users tu ON tu.user_id = u.id
     JOIN tenants t ON t.id = tu.tenant_id
-    WHERE u.email = 'admin@jackson-telcom.local'
-      AND t.slug = 'jackson-telcom'
+    WHERE u.email = 'admin@synccommsystems.local'
+      AND t.slug = 'sync-comm-systems'
     LIMIT 1
   `);
-  if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+  if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
 
   const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
   const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
@@ -50,8 +50,8 @@ async function main() {
 
   const createBefore = await counts(client);
   const organization = await expectStatus("create organization with taxonomy", "POST", "/organizations", `Bearer ${token}`, 201, {
-    name: `Jackson Utility ${Date.now()}`,
-    legal_name: "Jackson Utility Cooperative",
+    name: `Sync Utility ${Date.now()}`,
+    legal_name: "Sync Utility Cooperative",
     organization_type: "utility",
     actor_roles: ["work_creator", "cash_controller"],
     territory_id: base.territoryId,

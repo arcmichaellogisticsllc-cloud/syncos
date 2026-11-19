@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { findTenantRecordById, insertTenantRecord, updateTenantRecord } from "@syncos/database";
@@ -59,12 +60,11 @@ export class RelationshipMapsController {
   async timeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireMap(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
+      const result = await activityPage(client, `
         WITH map_paths AS (
           SELECT id FROM relationship_paths WHERE tenant_id = $1 AND relationship_map_id = $2
         )
-        SELECT
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time,
           e.id AS event_id,
           e.event_type,
           e.actor_user_id AS actor_id,
@@ -85,9 +85,7 @@ export class RelationshipMapsController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -97,12 +95,11 @@ export class RelationshipMapsController {
   async auditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireMap(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
+      const result = await activityPage(client, `
         WITH map_paths AS (
           SELECT id FROM relationship_paths WHERE tenant_id = $1 AND relationship_map_id = $2
         )
-        SELECT
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time,
           al.id AS audit_id,
           al.actor_user_id AS actor_id,
           u.display_name AS actor_name,
@@ -123,9 +120,7 @@ export class RelationshipMapsController {
           )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -271,6 +266,13 @@ export class RelationshipMapsController {
       return await this.write(request, "relationship_path.create", "relationship_path.created", "relationship_path", async (client) => {
         await this.requireMap(client, request.auth.tenantId, id);
         await this.validatePathValues(client, request.auth.tenantId, values);
+        if(body.client_mutation_id){
+          if(typeof body.client_mutation_id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.client_mutation_id))throw new BadRequestException('Invalid request identifier');
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,91))',[request.auth.tenantId+':path:'+body.client_mutation_id]);
+          const existing=(await client.query('SELECT * FROM relationship_paths WHERE tenant_id=$1 AND client_mutation_id=$2',[request.auth.tenantId,body.client_mutation_id])).rows[0];
+          if(existing){if(existing.relationship_map_id!==id||Object.entries(values).some(([k,v])=>v!==undefined&&JSON.stringify(existing[k])!==JSON.stringify(v)))throw new BadRequestException('Request identifier already used for different relationship details');return {entityType:'relationship_path',entityId:existing.id,afterState:existing,skipEventAudit:true};}
+          values.client_mutation_id=body.client_mutation_id;
+        }
         const path = await insertTenantRecord(client, "relationship_paths", request.auth.tenantId, { ...values, relationship_map_id: id, score: values.confidence_score ?? values.strength_score });
         await this.refreshMapDerived(client, request.auth.tenantId, id);
         const after = (await this.listEnrichedPaths(client, request.auth.tenantId, id, false)).find((row) => row.id === path.id) ?? path;

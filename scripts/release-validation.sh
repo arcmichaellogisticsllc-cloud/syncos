@@ -6,22 +6,23 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${PORT:-3120}"
 export NODE_ENV="${NODE_ENV:-test}"
-export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-release-validation-secret}"
-export API_BASE_URL="${API_BASE_URL:-http://localhost:${PORT}}"
+export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-syncos-isolated-release-validation-secret}"
+export API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:${PORT}}"
 export PORT
+export HOST="127.0.0.1"
 
 cd "${ROOT_DIR}"
 
+npm run security:dependencies
 node scripts/check-e2e-certification.js --ci
 
 npm run typecheck
 npm run build -w @syncos/api
 npm run build -w @syncos/worker
 npm run build -w @syncos/web
-npm test
 npm run db:verify
 
-npm run start -w @syncos/api &
+node apps/api/dist/main.js &
 API_PID=$!
 trap 'kill "${API_PID}" 2>/dev/null || true' EXIT
 
@@ -51,8 +52,12 @@ npm run sprint11:smoke
 npm run sprint12:smoke
 npm run sprint13:smoke
 npm run sprint14:smoke
+npm run sprint15:smoke
+npm run sprint16:smoke
+npm run sprint17:smoke
 npm run intelligence:smoke
 npm run organization:smoke
+npm run account-onboarding:smoke
 npm run contact:smoke
 npm run relationship:smoke
 npm run candidate:smoke
@@ -73,5 +78,7 @@ npm run payroll:smoke
 npm run payment-execution:smoke
 npm run bank-reconciliation:smoke
 npm run accounting-export:smoke
+
+npm run test:acceptance
 
 echo "release validation passed"

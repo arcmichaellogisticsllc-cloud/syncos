@@ -17,11 +17,11 @@ async function main() {
     FROM users u
     JOIN tenant_users tu ON tu.user_id = u.id
     JOIN tenants t ON t.id = tu.tenant_id
-    WHERE u.email = 'admin@jackson-telcom.local'
-      AND t.slug = 'jackson-telcom'
+    WHERE u.email = 'admin@synccommsystems.local'
+      AND t.slug = 'sync-comm-systems'
     LIMIT 1
   `);
-  if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+  if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
   const { user_id: userId, tenant_id: tenantId, tenant_user_id: tenantUserId } = seeded.rows[0];
   await assignRole(client, tenantId, tenantUserId, "Billing Manager");
   await assignRole(client, tenantId, tenantUserId, "Finance Manager");

@@ -1,0 +1,2 @@
+const path = require('node:path');
+module.exports = { outputFileTracingRoot: path.resolve(__dirname, '../..'), distDir:process.env.SYNCOS_NEXT_DIST_DIR||'.next', async headers(){return [{source:'/:path*',headers:[{key:'X-Content-Type-Options',value:'nosniff'},{key:'Referrer-Policy',value:'strict-origin-when-cross-origin'},{key:'Content-Security-Policy',value:"object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"}]}]} };

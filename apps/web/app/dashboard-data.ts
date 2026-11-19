@@ -1,22 +1,5 @@
 export type DashboardData = Record<string, unknown>;
 
-const apiBaseUrl = process.env.SYNCOS_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3100";
-const apiToken = process.env.SYNCOS_DASHBOARD_TOKEN;
-
-export async function getDashboardData(kind: string): Promise<DashboardData | null> {
-  if (!apiToken) return null;
-  try {
-    const response = await fetch(`${apiBaseUrl}/dashboard/${kind}`, {
-      headers: { authorization: `Bearer ${apiToken}` },
-      cache: "no-store",
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as DashboardData;
-  } catch {
-    return null;
-  }
-}
-
 export function valueAt(data: DashboardData | null, path: string, fallback: unknown = 0): unknown {
   if (!data) return fallback;
   return path.split(".").reduce<unknown>((current, key) => {

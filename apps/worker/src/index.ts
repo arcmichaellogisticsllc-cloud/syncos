@@ -1,4 +1,6 @@
 import { Queue, Worker, type JobsOptions } from "bullmq";
+import { Pool, type PoolClient } from "pg";
+import { runExecutiveCommandRefreshScan, runMobilizationExpirationScan, runOpportunityCapacityMatchingScan, runPartnerPerformanceRecalculationScan } from "@syncos/shared";
 
 const connection = {
   ...parseRedisUrl(process.env.REDIS_URL ?? "redis://localhost:6379"),
@@ -6,6 +8,15 @@ const connection = {
 };
 
 export const foundationQueueName = "syncos.foundation";
+
+function createDatabasePool(connectionString: string) {
+  const hosted = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "staging";
+  return new Pool({
+    connectionString,
+    max: Number(process.env.WORKER_DB_POOL_MAX ?? (hosted ? 5 : 3)),
+    ssl: hosted ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false" } : undefined,
+  });
+}
 
 export function createFoundationQueue() {
   return new Queue(foundationQueueName, {
@@ -32,6 +43,166 @@ export async function enqueueDemoJob() {
   return queue.add("demo.health", { source: "foundation-smoke" });
 }
 
+export function startMobilizationExpirationScheduler(options: { pool?: Pool; intervalMs?: number; batchSize?: number; disabled?: boolean } = {}) {
+  const disabled = options.disabled ?? process.env.SYNCOS_P6_EXPIRATION_SCAN_DISABLED === "true";
+  const databaseUrl = process.env.DATABASE_URL;
+  if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
+
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
+  const intervalMs = Math.max(60_000, Number(options.intervalMs ?? process.env.SYNCOS_P6_EXPIRATION_SCAN_INTERVAL_MS ?? 300_000));
+  const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P6_EXPIRATION_BATCH_SIZE ?? 50), 250));
+  let running = false;
+
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    let client: PoolClient | undefined;
+    try {
+      client = await pool.connect();
+      const result = await runMobilizationExpirationScan(client, { batchSize });
+      console.log(`mobilization expiration scan completed emitted=${result.emittedEvents}`);
+    } catch (error) {
+      console.error(`mobilization expiration scan failed: ${(error as Error).message}`);
+    } finally {
+      client?.release();
+      running = false;
+    }
+  };
+
+  const timer = setInterval(runOnce, intervalMs);
+  timer.unref();
+  void runOnce();
+  return {
+    started: true,
+    stop: async () => {
+      clearInterval(timer);
+      if (!options.pool) await pool.end();
+    },
+  };
+}
+
+export function startPartnerPerformanceScheduler(options: { pool?: Pool; intervalMs?: number; batchSize?: number; disabled?: boolean } = {}) {
+  const disabled = options.disabled ?? process.env.SYNCOS_P14_PERFORMANCE_SCAN_DISABLED === "true";
+  const databaseUrl = process.env.DATABASE_URL;
+  if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
+
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
+  const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P14_PERFORMANCE_SCAN_INTERVAL_MS ?? 3_600_000));
+  const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P14_PERFORMANCE_BATCH_SIZE ?? 50), 250));
+  let running = false;
+
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    let client: PoolClient | undefined;
+    try {
+      client = await pool.connect();
+      const result = await runPartnerPerformanceRecalculationScan(client, { batchSize });
+      console.log(`partner performance scan completed scanned=${result.scannedPartners} created=${result.createdSnapshots} locked=${result.locked}`);
+    } catch (error) {
+      console.error(`partner performance scan failed: ${(error as Error).message}`);
+    } finally {
+      client?.release();
+      running = false;
+    }
+  };
+
+  const timer = setInterval(runOnce, intervalMs);
+  timer.unref();
+  void runOnce();
+  return {
+    started: true,
+    stop: async () => {
+      clearInterval(timer);
+      if (!options.pool) await pool.end();
+    },
+  };
+}
+
+export function startOpportunityCapacityMatchingScheduler(options: { pool?: Pool; intervalMs?: number; batchSize?: number; disabled?: boolean } = {}) {
+  const disabled = options.disabled ?? process.env.SYNCOS_P15_MATCHING_SCAN_DISABLED === "true";
+  const databaseUrl = process.env.DATABASE_URL;
+  if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
+
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
+  const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P15_MATCHING_SCAN_INTERVAL_MS ?? 3_600_000));
+  const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P15_MATCHING_BATCH_SIZE ?? 50), 250));
+  let running = false;
+
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    let client: PoolClient | undefined;
+    try {
+      client = await pool.connect();
+      const result = await runOpportunityCapacityMatchingScan(client, { batchSize });
+      console.log(`opportunity capacity matching scan completed scanned=${result.scannedOpportunities} created=${result.createdPartnerMatches} locked=${result.locked}`);
+    } catch (error) {
+      console.error(`opportunity capacity matching scan failed: ${(error as Error).message}`);
+    } finally {
+      client?.release();
+      running = false;
+    }
+  };
+
+  const timer = setInterval(runOnce, intervalMs);
+  timer.unref();
+  void runOnce();
+  return {
+    started: true,
+    stop: async () => {
+      clearInterval(timer);
+      if (!options.pool) await pool.end();
+    },
+  };
+}
+
+export function startExecutiveCommandScheduler(options: { pool?: Pool; intervalMs?: number; batchSize?: number; disabled?: boolean } = {}) {
+  const disabled = options.disabled ?? process.env.SYNCOS_P16_COMMAND_SCAN_DISABLED === "true";
+  const databaseUrl = process.env.DATABASE_URL;
+  if (disabled || !databaseUrl) return { started: false, stop: async () => undefined };
+
+  const pool = options.pool ?? createDatabasePool(databaseUrl);
+  const intervalMs = Math.max(300_000, Number(options.intervalMs ?? process.env.SYNCOS_P16_COMMAND_SCAN_INTERVAL_MS ?? 3_600_000));
+  const batchSize = Math.max(1, Math.min(Number(options.batchSize ?? process.env.SYNCOS_P16_COMMAND_BATCH_SIZE ?? 25), 100));
+  let running = false;
+
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    let client: PoolClient | undefined;
+    try {
+      client = await pool.connect();
+      const result = await runExecutiveCommandRefreshScan(client, { batchSize });
+      console.log(`executive command scan completed scanned=${result.scannedTenants} created=${result.createdSnapshots} locked=${result.locked}`);
+    } catch (error) {
+      console.error(`executive command scan failed: ${(error as Error).message}`);
+    } finally {
+      client?.release();
+      running = false;
+    }
+  };
+
+  const timer = setInterval(runOnce, intervalMs);
+  timer.unref();
+  void runOnce();
+  return {
+    started: true,
+    stop: async () => {
+      clearInterval(timer);
+      if (!options.pool) await pool.end();
+    },
+  };
+}
+
+export function startUploadCleanup(options:{pool?:Pool;intervalMs?:number}={}){
+ if(!options.pool&&!process.env.DATABASE_URL)return {started:false,stop:async()=>undefined};
+ const pool=options.pool??createDatabasePool(process.env.DATABASE_URL!);let running:Promise<void>|undefined;
+ const run=()=>{if(running)return;running=(async()=>{try{await pool.query(`DELETE FROM field_upload_sessions WHERE id IN (SELECT id FROM field_upload_sessions WHERE expires_at<now() ORDER BY expires_at LIMIT 100)`);}catch{console.error('Expired evidence upload cleanup failed; check worker database access.');}finally{running=undefined;}})();};
+ const timer=setInterval(run,Math.max(60000,options.intervalMs??3600000));timer.unref();run();
+ return {started:true,stop:async()=>{clearInterval(timer);await running;if(!options.pool)await pool.end();}};
+}
+
 function defaultRetryPolicy(): JobsOptions {
   return {
     attempts: 3,
@@ -51,12 +222,28 @@ function parseRedisUrl(value: string) {
     port: Number(url.port || 6379),
     username: url.username || undefined,
     password: url.password || undefined,
+    tls: url.protocol === "rediss:" ? {} : undefined,
   };
 }
 
 if (require.main === module) {
   const worker = createFoundationWorker();
+  const scheduler = startMobilizationExpirationScheduler();
+  const performanceScheduler = startPartnerPerformanceScheduler();
+  const matchingScheduler = startOpportunityCapacityMatchingScheduler();
+  const executiveCommandScheduler = startExecutiveCommandScheduler();
+  const uploadCleanup = startUploadCleanup();
   worker.on("completed", (job) => console.log(`completed ${job.id}`));
   worker.on("failed", (job, error) => console.error(`failed ${job?.id}: ${error.message}`));
+  const shutdown = async () => {
+    await scheduler.stop();
+    await performanceScheduler.stop();
+    await matchingScheduler.stop();
+    await executiveCommandScheduler.stop();
+    await uploadCleanup.stop();
+    await worker.close();
+  };
+  process.once("SIGINT", () => void shutdown().then(() => process.exit(0)));
+  process.once("SIGTERM", () => void shutdown().then(() => process.exit(0)));
   console.log(`SyncOS worker listening on ${foundationQueueName}`);
 }

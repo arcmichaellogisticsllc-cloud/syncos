@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+"use client";
+
+import { useId, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 export type ActionVariant = "primary" | "secondary" | "danger" | "ghost" | "utility";
 
@@ -21,8 +23,10 @@ export function ActionButton({
   consequence?: string;
   loading?: boolean;
 }) {
-  const reason = disabledReason || permissionHint;
-  const describedBy = reason ? `${buttonId(label)}-disabled-reason` : props["aria-describedby"];
+  const descriptionId = useId();
+  if (permissionHint) return null;
+  const reason = disabledReason;
+  const describedBy = reason ? `${descriptionId}-disabled-reason` : props["aria-describedby"];
   return (
     <span className="action-button-wrap">
       <button
@@ -99,4 +103,10 @@ export function ModalActions({
 
 function buttonId(label: string) {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+/** Keeps destructive row actions distinct without changing their permission or lifecycle rules. */
+export function ContextualRecordAction({ destructive, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { destructive: boolean }) {
+  const button = <button {...props} type={props.type ?? "button"} className={[props.className, destructive ? "danger-button" : ""].filter(Boolean).join(" ")}>{children}</button>;
+  return destructive ? <span className="contextual-danger-action" role="group" aria-label="Destructive record action">{button}</span> : button;
 }

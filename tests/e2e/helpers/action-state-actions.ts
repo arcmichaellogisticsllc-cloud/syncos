@@ -34,13 +34,8 @@ export async function expectActionButtonVisible(page: Page, state: ActionStateLi
 
 export async function expectActionButtonAbsentOrDisabled(page: Page, state: ActionStateLike) {
   const buttons = page.getByRole("button", { name: state.expectedActionLabel });
-  const count = await buttons.count();
-  for (let index = 0; index < count; index += 1) {
-    const button = buttons.nth(index);
-    if (await isExcludedAction(button)) continue;
-    if (!(await button.isVisible().catch(() => false))) continue;
-    await expect(button, `Read-only action should be disabled: ${state.stateKey}`).toBeDisabled({ timeout: 5_000 });
-  }
+  await expect(buttons, `Read-only action must be absent: ${state.stateKey}`).toHaveCount(0);
+
 }
 
 async function locateActionButton(

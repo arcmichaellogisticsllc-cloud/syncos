@@ -1,6 +1,13 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {completeDirectory} from "../intelligence/complete-directory";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
@@ -14,7 +21,7 @@ const reconciliationStatuses = ["not_reconciled", "pending_later", "reconciled_l
 const sourceTypes = ["manual", "bank_import_later", "processor_import_later", "customer_portal_later", "accounting_import_later"];
 const applicationStatuses = ["applied", "partially_applied", "reversed_later", "voided", "archived"];
 const applicationTypes = ["standard_payment", "partial_payment", "overpayment_application", "retainage_payment", "discount", "writeoff_later", "adjustment", "correction"];
-const receiptTabs = ["overview", "payment_applications", "customer", "invoice_impact", "unapplied_cash", "timeline", "audit", "future_collections", "future_reconciliation", "future_contractor_payables"];
+const receiptTabs = ["overview", "payment_applications", "customer", "invoice_impact", "unapplied_cash", "timeline", "audit"];
 
 type CashReceiptDetailShape = {
   cash_receipt?: SyncRecord;
@@ -65,13 +72,12 @@ export function CashReceiptQueue() {
     try {
       const query = new URLSearchParams();
       query.set("archived", filters.archived === "true" ? "true" : "false");
-      for (const key of ["customer_organization_id", "payment_method", "receipt_status", "deposit_status", "reconciliation_status", "source_type", "payment_date_from", "payment_date_to", "has_unapplied", "q"]) if (filters[key]) query.set(key, filters[key]);
       if (filters.sort) query.set("sort", filters.sort);
       const applicationQuery = new URLSearchParams();
       applicationQuery.set("archived", filters.archived === "true" ? "true" : "false");
       const [receipts, applications] = await Promise.all([
-        syncosFetch<SyncRecord[]>(`/cash-receipts?${query.toString()}`, { token: session.token }),
-        optionalList(`/payment-applications?${applicationQuery.toString()}`, session.token),
+        completeDirectory(`/cash-receipts?${query.toString()}`, session.token),
+        hasPermission(session.permissions, "payment_application.read") ? completeDirectory(`/payment-applications?${applicationQuery.toString()}`, session.token) : Promise.resolve([]),
       ]);
       setRows(receipts);
       setApplicationRows(applications);
@@ -104,7 +110,7 @@ export function CashReceiptQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review received cash, unapplied balances, and payment applications.</div> : null}
       {loading ? <div className="loading-state">Loading cash application records...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -114,7 +120,7 @@ export function CashReceiptQueue() {
                 <p className="muted">Start with unapplied cash, partial applications, voided records, and application review.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/cash/receipts/new" aria-disabled={!hasPermission(session.permissions, "cash_receipt.create")}>Create Cash Receipt</Link>
+                <Link className="primary-button" href="/cash/receipts/new" allowed={hasPermission(session.permissions, "cash_receipt.create")}>Create Cash Receipt</Link>
                 <Link className="link-button" href={firstReceiptHref(rows.filter((row) => numberValue(row.unapplied_amount, 0) > 0), "/cash")} aria-disabled={!rows.some((row) => numberValue(row.unapplied_amount, 0) > 0)}>Apply Receipt to Invoice</Link>
                 <button type="button" onClick={() => selectQueue("unapplied")}>Review Unapplied Cash</button>
                 <button type="button" onClick={() => selectQueue("voided")}>Review Voided / Exceptions</button>
@@ -129,7 +135,7 @@ export function CashReceiptQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyCashQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptyCashQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("unapplied"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -216,7 +222,7 @@ export function CashReceiptCreate() {
           <ReceiptFormFields form={form} setForm={setForm} related={related} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "cash_receipt.create")}>Create Receipt</button>
+          {hasPermission(session.permissions, "cash_receipt.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "cash_receipt.create")}>Create Receipt</button> : null}
           <Link className="link-button" href="/cash">Cancel</Link>
         </div>
       </form>
@@ -281,10 +287,11 @@ export function CashReceiptEdit({ receiptId }: { receiptId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!receipt ? <div className="empty-state">Receipt not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Cash Receipt" purpose="Use the actual receipt reference, date, customer and amount supported by payment evidence." afterSave="Review unapplied cash and apply it to the correct accepted invoice through the separate application action." />
           <div className="warning-box">Cannot bypass payment application rules. Invoice balances are not edited from this form.</div>
           <ReceiptFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "cash_receipt.update")}>Save Receipt</button>
+            {hasPermission(session.permissions, "cash_receipt.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "cash_receipt.update")}>Save Receipt</button> : null}
             <Link className="link-button" href={`/cash/receipts/${receiptId}`}>Cancel</Link>
           </div>
         </form>
@@ -342,7 +349,7 @@ export function CashReceiptDetail({ receiptId }: { receiptId: string }) {
       {receipt && detail ? (
         <>
           {!hasPermission(session.permissions, "cash_receipt.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "cash_receipt.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(receipt.receipt_status)}
             nextActionLabel={nextCashAction(receipt)}
@@ -350,7 +357,7 @@ export function CashReceiptDetail({ receiptId }: { receiptId: string }) {
             disabled={!hasPermission(session.permissions, "cash_receipt.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Cash receipt/application actions update internal SyncOS records only. They do not move money, refund money, process cards, initiate ACH, or post accounting entries."
-          />
+          /> : null}
           <DetailBoundaryNotice>Cash receipt/application actions update internal SyncOS records only. They do not move money, refund money, process cards, initiate ACH, change bank truth, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -365,12 +372,14 @@ export function CashReceiptDetail({ receiptId }: { receiptId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/cash/receipts/${receiptId}/edit`} aria-disabled={!hasPermission(session.permissions, "cash_receipt.update")}>Edit Receipt</Link>
+                <Link className="link-button" href={`/cash/receipts/${receiptId}/edit`} allowed={hasPermission(session.permissions, "cash_receipt.update")}>Edit Receipt</Link>
                 <ActionButton permission="cash_receipt.apply" session={session} disabled={receiptViewOnly(receipt) || numberValue(receipt.unapplied_amount, 0) <= 0} onClick={() => setModal("apply")}>Apply To Invoice</ActionButton>
-                <ActionButton permission="cash_receipt.void" session={session} disabled={receiptViewOnly(receipt) || activeApplications(applications) > 0} onClick={() => setModal("void_receipt")}>Void</ActionButton>
-                <ActionButton permission="cash_receipt.archive" session={session} disabled={String(receipt.receipt_status) === "archived"} onClick={() => setModal("archive_receipt")}>Archive</ActionButton>
               </div>
             </div>
+            {["cash_receipt.void", "cash_receipt.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="cash_receipt.void" session={session} disabled={receiptViewOnly(receipt) || activeApplications(applications) > 0} onClick={() => setModal("void_receipt")}>Void</ActionButton>
+              <ActionButton permission="cash_receipt.archive" session={session} disabled={String(receipt.receipt_status) === "archived"} onClick={() => setModal("archive_receipt")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Amount" value={money(receipt.gross_received_amount)} />
               <Metric label="Applied Amount" value={money(receipt.applied_amount)} />
@@ -403,7 +412,7 @@ export function CashReceiptDetail({ receiptId }: { receiptId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {receiptTabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(receiptTabs, "cash_receipt").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <CashReceiptTab tab={tab} detail={detail} receipt={receipt} applications={applications} session={session} onApplicationAction={openApplicationAction} />
             </section>
@@ -429,8 +438,7 @@ export function PaymentApplicationQueue() {
     try {
       const query = new URLSearchParams();
       query.set("archived", filters.archived === "true" ? "true" : "false");
-      for (const key of ["cash_receipt_id", "invoice_id", "customer_organization_id", "application_status", "application_type", "application_date_from", "application_date_to", "q"]) if (filters[key]) query.set(key, filters[key]);
-      setRows(await syncosFetch<SyncRecord[]>(`/payment-applications?${query.toString()}`, { token: session.token }));
+      setRows(await completeDirectory(`/payment-applications?${query.toString()}`, session.token));
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
     } finally {
@@ -453,7 +461,7 @@ export function PaymentApplicationQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review payment applications.</div> : null}
       {loading ? <div className="loading-state">Loading payment applications...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -531,6 +539,7 @@ export function PaymentApplicationDetail({ applicationId }: { applicationId: str
   return (
     <CashShell title="Payment Application Detail" purpose="Show receipt context, invoice impact, customer context, timeline, and audit for a payment allocation.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["payment_application"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!application ? <div className="empty-state">Payment application not found or no access.</div> : null}
@@ -546,10 +555,12 @@ export function PaymentApplicationDetail({ applicationId }: { applicationId: str
                 </div>
               </div>
               <div className="form-actions">
-                <ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(application)} onClick={() => setModal("void_application")}>Void Application</ActionButton>
-                <ActionButton permission="payment_application.archive" session={session} disabled={String(application.application_status) === "archived"} onClick={() => setModal("archive_application")}>Archive Application</ActionButton>
               </div>
             </div>
+            {["payment_application.void", "payment_application.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(application)} onClick={() => setModal("void_application")}>Void Application</ActionButton>
+              <ActionButton permission="payment_application.archive" session={session} disabled={String(application.application_status) === "archived"} onClick={() => setModal("archive_application")}>Archive Application</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Applied Amount" value={money(application.applied_amount)} />
               <Metric label="Application Date" value={dateValue(application.application_date)} />
@@ -604,7 +615,7 @@ function CashShell({ title, purpose, children }: { title: string; purpose: strin
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Cash Application</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -613,12 +624,12 @@ function CashShell({ title, purpose, children }: { title: string; purpose: strin
 }
 
 function CashReceiptTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Receipt", "Customer", "Amount Received", "Applied Amount", "Unapplied Balance", "Receipt Date", "Source / Reference", "Status", "Invoice Link", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/cash/receipts/${row.id}`}>{textValue(row.receipt_number, String(row.id))}</Link><div className="cell-helper">{textValue(row.payer_name)}</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.gross_received_amount)}</td><td>{money(row.applied_amount)}</td><td>{money(row.unapplied_amount)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.payment_reference ?? row.external_transaction_id)}<div className="cell-helper">{formatAction(row.source_type)}</div></td><td>{formatAction(row.receipt_status)}<div className="cell-helper">{formatAction(row.reconciliation_status)}</div></td><td>{Number(row.invoice_count ?? 0) > 0 ? `${formatCell(row.invoice_count)} linked` : "No invoice link yet"}</td><td>{nextCashAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/cash/receipts/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Receipt", "Customer", "Amount Received", "Applied Amount", "Unapplied Balance", "Receipt Date", "Source / Reference", "Status", "Invoice Link", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/cash/receipts/${row.id}`}>{textValue(row.receipt_number, String(row.id))}</Link><div className="cell-helper">{textValue(row.payer_name)}</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.gross_received_amount)}</td><td>{money(row.applied_amount)}</td><td>{money(row.unapplied_amount)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.payment_reference ?? row.external_transaction_id)}<div className="cell-helper">{formatAction(row.source_type)}</div></td><td>{formatAction(row.receipt_status)}<div className="cell-helper">{formatAction(row.reconciliation_status)}</div></td><td>{Number(row.invoice_count ?? 0) > 0 ? `${formatCell(row.invoice_count)} linked` : "No invoice link yet"}</td><td>{nextCashAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/cash/receipts/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentApplicationTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No payment applications returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Application", "Receipt", "Invoice", "Amount Applied", "Application Status", "Applied Date", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-applications/${row.id}`}>{textValue(row.application_number, String(row.id))}</Link><div className="cell-helper">{formatAction(row.application_type)}</div></td><td>{cashReceiptLink(row.cash_receipt_id, row.receipt_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.applied_amount)}</td><td>{formatAction(row.application_status)}</td><td>{dateValue(row.application_date)}</td><td>{nextApplicationAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Application", "Receipt", "Invoice", "Amount Applied", "Application Status", "Applied Date", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-applications/${row.id}`}>{textValue(row.application_number, String(row.id))}</Link><div className="cell-helper">{formatAction(row.application_type)}</div></td><td>{cashReceiptLink(row.cash_receipt_id, row.receipt_number)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.applied_amount)}</td><td>{formatAction(row.application_status)}</td><td>{dateValue(row.application_date)}</td><td>{nextApplicationAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CashReceiptTab({ tab, detail, receipt, applications, session, onApplicationAction }: { tab: string; detail: CashReceiptDetailShape; receipt: SyncRecord; applications: SyncRecord[]; session: Session; onApplicationAction: (type: string, application: SyncRecord) => void }) {
@@ -629,14 +640,14 @@ function CashReceiptTab({ tab, detail, receipt, applications, session, onApplica
   if (tab === "unapplied_cash") return <Panel title="Unapplied Cash"><dl className="detail-list"><dt>Gross amount</dt><dd>{money(receipt.gross_received_amount)}</dd><dt>Applied amount</dt><dd>{money(receipt.applied_amount)}</dd><dt>Unapplied amount</dt><dd>{money(receipt.unapplied_amount)}</dd><dt>Application count</dt><dd>{formatCell(receipt.application_count ?? applications.length)}</dd><dt>Unapplied summary</dt><dd><JsonBlock value={detail.unapplied_summary} /></dd></dl><div className="warning-box">Unapplied cash remains available for future invoice application.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view audit details.</div>}</Panel>;
-  if (tab === "future_collections") return <PlaceholderPanel title="Future Collections" message="Collections workflows are not available in this sprint. Collection status is tracked on invoices and may be used by future collections automation." columns={["Collection workflow", "Notice", "Writeoff"]} />;
-  if (tab === "future_reconciliation") return <PlaceholderPanel title="Future Reconciliation" message="Bank reconciliation is not available in this sprint. Deposit and reconciliation statuses are informational only." columns={["Deposit batch", "Bank transaction", "Reconciliation record"]} />;
-  return <PlaceholderPanel title="Future Contractor Payables" message="Contractor payments and payroll are not available in this sprint." columns={["Contractor payment", "Payroll", "ACH payout"]} />;
+  if (tab === "future_collections") return <PlaceholderPanel title="Future Collections" message="Use Collections for cases, responsible owners, deadlines and follow-up actions. Receipt allocation and collection history remain separate records." columns={["Collection workflow", "Notice", "Writeoff"]} />;
+  if (tab === "future_reconciliation") return <PlaceholderPanel title="Future Reconciliation" message="Use Bank Reconciliation to match recorded transactions with receipt or payment records. A status on this receipt alone does not prove a bank match." columns={["Deposit batch", "Bank transaction", "Reconciliation record"]} />;
+  return <PlaceholderPanel title="Future Contractor Payables" message="Partner payables and employee payroll use separate approval and payment-recording workflows. This receipt does not create either." columns={["Contractor payment", "Payroll", "ACH payout"]} />;
 }
 
 function PaymentApplicationsForReceipt({ rows, session, onApplicationAction }: { rows: SyncRecord[]; session: Session; onApplicationAction: (type: string, application: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payment applications yet. Apply unapplied cash to a ready invoice.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Invoice Number", "Customer", "Applied Amount", "Application Date", "Application Type", "Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.applied_amount)}</td><td>{dateValue(row.application_date)}</td><td>{formatAction(row.application_type)}</td><td>{formatAction(row.application_status)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open</Link><ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(row)} onClick={() => onApplicationAction("void_application", row)}>Void</ActionButton><ActionButton permission="payment_application.archive" session={session} disabled={String(row.application_status) === "archived"} onClick={() => onApplicationAction("archive_application", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Invoice Number", "Customer", "Applied Amount", "Application Date", "Application Type", "Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{money(row.applied_amount)}</td><td>{dateValue(row.application_date)}</td><td>{formatAction(row.application_type)}</td><td>{formatAction(row.application_status)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-applications/${row.id}`}>Open</Link><ActionButton permission="payment_application.void" session={session} disabled={applicationInactive(row)} onClick={() => onApplicationAction("void_application", row)}>Void</ActionButton><ActionButton permission="payment_application.archive" session={session} disabled={String(row.application_status) === "archived"} onClick={() => onApplicationAction("archive_application", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CashReceiptModal({ type, receiptId, receipt, applications, related, application, session, onClose, onSaved }: { type: string; receiptId: string; receipt: SyncRecord; applications: SyncRecord[]; related: RelatedData; application: SyncRecord | null; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -662,7 +673,7 @@ function CashReceiptModal({ type, receiptId, receipt, applications, related, app
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -679,7 +690,7 @@ function CashReceiptModal({ type, receiptId, receipt, applications, related, app
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -697,7 +708,7 @@ function PaymentApplicationModal({ type, applicationId, session, onClose, onSave
       setError(plainError((nextError as Error).message));
     }
   }
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "void_application" ? <><label>Void Reason<textarea value={form.void_reason ?? ""} onChange={(event) => setForm({ ...form, void_reason: event.target.value })} required /></label><label>Void Note<textarea value={form.void_note ?? ""} onChange={(event) => setForm({ ...form, void_note: event.target.value })} /></label></> : <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></div>;
+  return <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "void_application" ? <><label>Void Reason<textarea value={form.void_reason ?? ""} onChange={(event) => setForm({ ...form, void_reason: event.target.value })} required /></label><label>Void Note<textarea value={form.void_note ?? ""} onChange={(event) => setForm({ ...form, void_note: event.target.value })} /></label></> : <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></ModalBoundary>;
 }
 
 function ApplyFields({ form, setForm, invoices, receipt, applications }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; invoices: SyncRecord[]; receipt: SyncRecord; applications: SyncRecord[] }) {
@@ -708,17 +719,14 @@ function ReceiptFormFields({ form, setForm, related, includeCreate = false, disa
   return <div className="form-grid">{includeCreate ? <label>Gross Received Amount<input disabled={disabled} type="number" step="0.01" value={form.gross_received_amount ?? ""} onChange={(event) => setForm({ ...form, gross_received_amount: event.target.value })} required /></label> : null}<label>Payment Date<input disabled={disabled} type="date" value={form.payment_date ?? ""} onChange={(event) => setForm({ ...form, payment_date: event.target.value })} required={includeCreate} /></label><Select label="Payment Method" value={form.payment_method ?? ""} options={includeCreate ? paymentMethods : ["", ...paymentMethods]} onChange={(payment_method) => setForm({ ...form, payment_method })} disabled={disabled} /><Select label="Customer" value={form.customer_organization_id ?? ""} options={["", ...related.customers.map((row) => String(row.id))]} labels={labelsFor(related.customers)} onChange={(customer_organization_id) => setForm({ ...form, customer_organization_id })} disabled={disabled} /><label>Payer Name<input disabled={disabled} value={form.payer_name ?? ""} onChange={(event) => setForm({ ...form, payer_name: event.target.value })} /></label><label>Payment Reference<input disabled={disabled} value={form.payment_reference ?? ""} onChange={(event) => setForm({ ...form, payment_reference: event.target.value })} /></label><label>External Transaction ID<input disabled={disabled} value={form.external_transaction_id ?? ""} onChange={(event) => setForm({ ...form, external_transaction_id: event.target.value })} /></label>{includeCreate ? <><label>Currency<input disabled={disabled} value={form.currency ?? "USD"} onChange={(event) => setForm({ ...form, currency: event.target.value })} /></label><Select label="Source Type" value={form.source_type ?? "manual"} options={sourceTypes} onChange={(source_type) => setForm({ ...form, source_type })} disabled={disabled} /></> : null}<label>Evidence Reference<input disabled={disabled} value={form.evidence_reference ?? ""} onChange={(event) => setForm({ ...form, evidence_reference: event.target.value })} /></label><label>Notes<textarea disabled={disabled} value={form.notes ?? ""} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label><label>Override Reasons JSON<textarea disabled={disabled} value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label></div>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test cash application actions.</p></div><button type="button" onClick={session.applyDefaults}>Use cash defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setTokenState] = useState("");
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : cashDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -782,7 +790,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {
@@ -791,7 +799,7 @@ function Select({ label, value, options, labels = {}, onChange, disabled = false
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function Checklist({ items }: { items: [string, boolean][] }) {
@@ -804,7 +812,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildReceiptSummary(rows: SyncRecord[]) {

@@ -22,7 +22,14 @@ async function main() {
       NODE_ENV: "production",
       DATABASE_URL: process.env.DATABASE_URL,
       AUTH_JWT_SECRET: process.env.AUTH_JWT_SECRET,
-      API_BASE_URL: apiBaseUrl,
+      // This subprocess validates configuration only; it never contacts these URLs.
+      API_BASE_URL: "https://api.syncos-test.invalid",
+      APPLICATION_BASE_URL: "https://app.syncos-test.invalid",
+      WEB_BASE_URL: "https://app.syncos-test.invalid",
+      SYNCOS_ALLOWED_ORIGINS: "https://app.syncos-test.invalid",
+      PUBLIC_PARTNER_INQUIRY_TENANT_ID: "00000000-0000-4000-8000-000000000001",
+      EMAIL_PROVIDER: "disabled",
+      LIVE_AUTOMATED_PARTNER_PAYMENTS: "false",
       REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
     },
     encoding: "utf8",
@@ -56,8 +63,9 @@ async function main() {
     throw new Error("dashboard trend placeholder was not removed");
   }
 
-  const testRun = spawnSync("npm", ["test"], { cwd: root, encoding: "utf8" });
-  if (testRun.status !== 0) throw new Error(`regression suite failed: ${testRun.stdout}\n${testRun.stderr}`);
+  // The release runner executes the full no-skip database/HTTP regression suite
+  // after the ordered smokes. Do not launch a second, partially configured suite here.
+  if (!fs.readFileSync(path.join(root,"scripts/release-validation.sh"),"utf8").includes("npm run test:acceptance")) throw new Error("Release runner must execute full acceptance regression");
 
   await verifyFreshDatabase();
 
@@ -76,40 +84,17 @@ async function main() {
   }
 
   const ci = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
-  for (const command of ["npm ci", "npm run typecheck", "npm run build -w @syncos/api", "npm run build -w @syncos/worker", "npm run build -w @syncos/web", "npm run db:verify", "npm run security:smoke", "npm test"]) {
-    if (!ci.includes(command)) throw new Error(`CI configuration missing ${command}`);
-  }
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  if (!packageJson.scripts["release:validate"]) throw new Error("release validation command is required");
+  if (!ci.includes("run: npm ci") || !ci.includes("run: npm run release:validate")) throw new Error("CI must install dependencies and execute the complete release gate");
+  if (packageJson.scripts["release:validate"] !== "bash scripts/release-validation.sh") throw new Error("release validation command must invoke the audited runner");
+  const releaseRunner = fs.readFileSync(path.join(root, "scripts/release-validation.sh"), "utf8");
+  for (const command of ["npm run typecheck", "npm run build -w @syncos/api", "npm run build -w @syncos/worker", "npm run build -w @syncos/web", "npm run db:verify", "npm run security:smoke", "npm run test:acceptance"]) {
+    if (!releaseRunner.split("\n").includes(command)) throw new Error(`Release gate missing ${command}`);
+  }
 
   const migrations = fs.readdirSync(path.join(root, "packages/database/migrations")).filter((file) => file.endsWith(".sql"));
-  const approvedPostRc1Migrations = new Set([
-    "016_tenant_fk_hardening.sql",
-    "017_intelligence_signal_contract_hardening.sql",
-    "018_organization_contract_hardening.sql",
-    "019_contact_contract_hardening.sql",
-    "020_relationship_contract_hardening.sql",
-    "021_opportunity_candidate_contract_hardening.sql",
-    "022_opportunity_pipeline_contract_hardening.sql",
-    "023_opportunity_approval_policy_hardening.sql",
-    "024_coverage_planning_contract_foundation.sql",
-    "025_coverage_planning_backend_hardening.sql",
-    "026_project_handoff_contract_foundation.sql",
-    "027_project_backend_contract_hardening.sql",
-    "028_work_order_contract_hardening.sql",
-    "029_production_contract_hardening.sql",
-    "030_qc_review_contract_foundation.sql",
-    "031_billable_contract_foundation.sql",
-    "032_settlement_contract_foundation.sql",
-    "033_invoice_contract_foundation.sql",
-    "034_cash_application_contract_foundation.sql",
-    "035_collections_contract_foundation.sql",
-    "036_contractor_payable_contract_foundation.sql",
-    "037_payroll_contract_foundation.sql",
-    "038_payment_execution_contract_foundation.sql",
-    "039_bank_reconciliation_contract_foundation.sql",
-    "040_accounting_export_contract_foundation.sql",
-  ]);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "packages/database/src/migration-manifest.json"), "utf8"));
+  const approvedPostRc1Migrations = new Set(manifest.filter(file => file.localeCompare("016_tenant_fk_hardening.sql") >= 0));
   const postRc1Migrations = migrations.filter((file) => file.localeCompare("016_tenant_fk_hardening.sql") >= 0);
   const unexpectedPostRc1Migrations = postRc1Migrations.filter((file) => !approvedPostRc1Migrations.has(file));
   if (unexpectedPostRc1Migrations.length > 0) {
@@ -175,8 +160,8 @@ async function seededAdminToken() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!result.rows[0]) throw new Error("seeded admin user not found");
@@ -213,18 +198,22 @@ function encode(value) {
 }
 
 function repositoryContainsCreateTable(tableName) {
-  const files = listFiles(root).filter((file) => !file.includes("node_modules") && !file.includes(".git"));
+  const files = ["apps", "packages", "scripts"].flatMap((directory) => listFiles(path.join(root, directory)));
   return files.some((file) => fs.readFileSync(file, "utf8").includes(`CREATE TABLE ${tableName}`));
 }
 
 function listFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (["node_modules", ".git", ".next", "dist", "test-results", "playwright-report", "coverage"].includes(entry.name)) return [];
     const fullPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? listFiles(fullPath) : [fullPath];
+    if (entry.isDirectory()) return listFiles(fullPath);
+    return entry.isFile() && /\.(sql|[cm]?js|tsx?|prisma)$/.test(entry.name) ? [fullPath] : [];
   });
 }
 
-main().catch((error) => {
+module.exports = { listFiles };
+
+if (require.main === module) main().catch((error) => {
   console.error(error);
   process.exit(1);
 });

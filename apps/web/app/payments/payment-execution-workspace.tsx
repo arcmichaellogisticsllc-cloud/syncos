@@ -1,10 +1,18 @@
 "use client";
+import {PaymentSecurityPanel} from "./payment-security-panel";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import { completeDirectory, completeBatchItems } from "../intelligence/complete-directory";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
-import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
+import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, loadAuthContext, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
 import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const batchTypes = ["contractor_payable", "payroll", "mixed_later", "correction", "reversal"];
@@ -15,7 +23,7 @@ const executionStatuses = ["not_submitted", "ready_for_execution", "submitted_la
 const itemStatuses = ["draft", "ready", "approved", "scheduled", "submitted_later", "executed_later", "failed", "cancelled", "voided", "archived"];
 const sourceTypes = ["contractor_payable", "payroll", "correction", "reversal"];
 const payeeTypes = ["capacity_provider", "crew", "worker", "vendor_later", "internal_self_perform"];
-const tabs = ["overview", "payment_items", "contractor_sources", "payroll_sources", "payee_summary", "payment_method", "financial_summary", "approval", "schedule", "execution_status", "failure_cancellation", "timeline", "audit", "future_ach", "future_check", "future_payroll_provider", "future_bank_reconciliation", "future_accounting_tax"];
+const tabs = ["overview", "payment_items", "contractor_sources", "payroll_sources", "payee_summary", "payment_method", "financial_summary", "approval", "schedule", "execution_status", "failure_cancellation", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -42,13 +50,14 @@ type DetailShape = {
 type RelatedData = {
   contractorPayables: SyncRecord[];
   payrollRuns: SyncRecord[];
+  exceptions?: SyncRecord[];
   providers: SyncRecord[];
   crews: SyncRecord[];
   workers: SyncRecord[];
 };
 
 const emptyRelated: RelatedData = { contractorPayables: [], payrollRuns: [], providers: [], crews: [], workers: [] };
-type PaymentQueueKey = "draft" | "submitted" | "approved" | "scheduled" | "submittedExecution" | "executed" | "voided" | "itemsAttention" | "archived";
+type PaymentQueueKey = "draft" | "submitted" | "approved" | "scheduled" | "submittedExecution" | "executed" | "voided" | "failed" | "itemsAttention" | "archived";
 
 const paymentQueueDefinitions: Array<{ key: PaymentQueueKey; label: string; helper: string; empty: string }> = [
   { key: "draft", label: "Draft", helper: "Payment batches still being prepared.", empty: "No draft payment batches need attention." },
@@ -58,12 +67,14 @@ const paymentQueueDefinitions: Array<{ key: PaymentQueueKey; label: string; help
   { key: "submittedExecution", label: "Submitted Execution", helper: "Batches recorded as submitted manually or externally.", empty: "No payment batches have submitted-execution status in this queue." },
   { key: "executed", label: "Executed", helper: "Batches marked executed based on manual/external confirmation.", empty: "No executed payment batches in this queue." },
   { key: "voided", label: "Voided", helper: "Voided batches retained for audit.", empty: "No voided payment batches in this queue." },
+  { key: "failed", label: "Failed / Cancelled", helper: "Payment batches with failed or cancelled execution that require review.", empty: "No failed or cancelled payment batches in this queue." },
   { key: "itemsAttention", label: "Items Need Attention", helper: "Payment items blocked, archived, voided, or requiring review if supported by current data.", empty: "No payment items need attention." },
   { key: "archived", label: "Archived", helper: "Closed or removed payment batches/items.", empty: "No archived payment batches/items in this queue." },
 ];
 
 export function PaymentBatchQueue() {
   const session = useSession();
+  const [summary, setSummary] = useState<SyncRecord>({});
   const [rows, setRows] = useState<SyncRecord[]>([]);
   const [paymentItems, setPaymentItems] = useState<SyncRecord[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "updated_desc" });
@@ -71,29 +82,35 @@ export function PaymentBatchQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const requestGeneration = useRef(0);
   async function load() {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError("");
     try {
+      const nextSummary = await syncosFetch<SyncRecord>(`/payment-batches/queue-summary?${paymentQuery(filters).toString()}`, {token: session.token});
+      if (!nextSummary || Array.isArray(nextSummary) || typeof nextSummary.draft !== "number") throw new Error("Could not load queue totals. Retry the refresh.");
       const query = paymentQuery(filters);
-      const batches = await syncosFetch<SyncRecord[]>(`/payment-batches?${query.toString()}`, { token: session.token });
+      const batches = await completeDirectory(`/payment-batches?${query.toString()}`, session.token);
+      const batchItems = hasPermission(session.permissions, "payment_item.read") ? await completeBatchItems(batches, "/payment-batches", session.token) : [];
+      if (generation !== requestGeneration.current) return;
       setRows(batches);
-      const batchItems = (await Promise.all(batches.slice(0, 25).map((batch) => optionalList(`/payment-batches/${batch.id}/items`, session.token)))).flat();
+      setSummary(nextSummary);
       setPaymentItems(batchItems);
     } catch (nextError) {
-      setError(plainError((nextError as Error).message));
+      if (generation === requestGeneration.current) setError(plainError((nextError as Error).message));
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (session.token) void load();
-    else setLoading(false);
-  }, [session.token, filters.archived]);
+    const timer = setTimeout(() => { if (session.token) void load(); else setLoading(false); }, 200);
+    return () => { clearTimeout(timer); requestGeneration.current += 1; };
+  }, [session.token, JSON.stringify(filters), session.permissions.join(",")]);
 
   const visible = useMemo(() => sortBatches(rows.filter((row) => paymentQueueMatches(row, activeQueue)), filters.sort), [rows, activeQueue, filters.sort]);
-  const visibleItems = useMemo(() => paymentItems.filter((item) => itemNeedsAttention(item) || activeQueue === "itemsAttention"), [paymentItems, activeQueue]);
+  const visibleItems = useMemo(() => paymentItems.filter((item) => itemNeedsAttention(item)), [paymentItems, activeQueue]);
   const selectedQueue = paymentQueueDefinitions.find((queue) => queue.key === activeQueue) ?? paymentQueueDefinitions[1];
 
   function selectQueue(queue: PaymentQueueKey) {
@@ -105,22 +122,24 @@ export function PaymentBatchQueue() {
     <PaymentShell title="Payment Execution Workbench" purpose="Track internal payment batch approval, scheduling, submission, and manual/external execution status without moving money inside SyncOS.">
       <SessionPanel session={session} />
       <div className="warning-box">Payment Execution records internal payment workflow status only. SyncOS does not move money, initiate ACH, send wires, issue card payouts, print checks, submit payroll, or connect to a bank.</div>
-      {error ? <div className="error-banner" role="alert">{error}</div> : null}
+      {error ? <div className="error-banner" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading payment batches...</div> : null}
-      {session.token && !loading ? (
+      {session.token ? (
         <>
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Today&apos;s payment execution work</h2>
                 <p className="muted">Review, approve, schedule, and record external/manual execution status without implying SyncOS moved money.</p>
               </div>
-              <Link className="primary-button" href="/payments/new" aria-disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</Link>
+              <Link className="primary-button" href="/payments/new" allowed={hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</Link>
             </div>
             <div className="summary-grid">
-              {paymentQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPaymentQueue(rows, paymentItems, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
+              {paymentQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "payment_item.read")).map((queue) => <SummaryCard key={queue.key} label={queue.label} value={summary[queue.key] ?? "Unavailable"} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
             </div>
+            {Array.isArray(summary.currency_totals) ? <ObjectTable rows={summary.currency_totals as SyncRecord[]} columns={["currency", "scheduled_amount", "executed_amount", "partially_executed_batch_amount"]} /> : null}
+            <p className="muted">Totals reflect the current filters. Partially executed batch amounts are shown separately and do not represent settled funds.</p>
           </section>
 
           <section className="workspace-panel">
@@ -132,7 +151,7 @@ export function PaymentBatchQueue() {
               <button type="button" onClick={() => { setActiveQueue("submitted"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
             <div className="tab-row" role="tablist" aria-label="Payment execution queues">
-              {paymentQueueDefinitions.map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
+              {paymentQueueDefinitions.filter(queue => queue.key !== "itemsAttention" || hasPermission(session.permissions, "payment_item.read")).map((queue) => <button key={queue.key} type="button" role="tab" aria-selected={activeQueue === queue.key} onClick={() => selectQueue(queue.key)}>{queue.label}</button>)}
             </div>
             <details className="filter-drawer">
               <summary aria-label="Advanced filters drawer">Advanced filters</summary>
@@ -141,7 +160,7 @@ export function PaymentBatchQueue() {
               {["ach", "check", "manual"].map((payment_method) => <button key={payment_method} type="button" onClick={() => setFilters({ ...filters, payment_method })}>{formatAction(payment_method)}</button>)}
               </div>
               <div className="filter-grid">
-              <input value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, reference, payee, source, failure" />
+              <input aria-label="Search batches" value={filters.q ?? ""} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search batch, reference, payee, source, failure" />
               <Select label="Batch Type" value={filters.batch_type ?? ""} options={["", ...batchTypes]} onChange={(batch_type) => setFilters({ ...filters, batch_type })} />
               <Select label="Payment Method" value={filters.payment_method ?? ""} options={["", ...paymentMethods]} onChange={(payment_method) => setFilters({ ...filters, payment_method })} />
               <Select label="Status" value={filters.status ?? ""} options={["", ...batchStatuses]} onChange={(status) => setFilters({ ...filters, status })} />
@@ -159,7 +178,7 @@ export function PaymentBatchQueue() {
             </details>
           </section>
 
-          <section className="workspace-panel">
+          <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>{selectedQueue.label}</h2>
@@ -169,7 +188,7 @@ export function PaymentBatchQueue() {
             </div>
             {!rows.length ? <div className="empty-state">No payment batches yet. Create a batch and add payment-ready sources.</div> : visible.length ? <PaymentBatchTable rows={visible} /> : <div className="empty-state">{selectedQueue.empty}</div>}
           </section>
-          <section className="workspace-panel">
+          {hasPermission(session.permissions, "payment_item.read") ? <section className="workspace-panel" style={loading || error ? {display: "none"} : undefined}>
             <div className="section-toolbar">
               <div>
                 <h2>Payment Items Visibility</h2>
@@ -178,8 +197,8 @@ export function PaymentBatchQueue() {
               <span>{visibleItems.length} items needing attention</span>
             </div>
             {visibleItems.length ? <PaymentItemVisibilityTable rows={visibleItems} /> : <div className="empty-state">No payment items need attention.</div>}
-          </section>
-          <FuturePlaceholders />
+          </section> : null}
+          <IntegrationStatus />
         </>
       ) : null}
     </PaymentShell>
@@ -218,7 +237,7 @@ export function PaymentBatchCreate() {
           <PaymentFormFields form={form} setForm={setForm} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</button>
+          {hasPermission(session.permissions, "payment_batch.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payment_batch.create")}>Create Payment Batch</button> : null}
           <Link className="link-button" href="/payments">Cancel</Link>
         </div>
       </form>
@@ -258,17 +277,18 @@ export function PaymentBatchEdit({ paymentBatchId }: { paymentBatchId: string })
     }
   }
 
-  const readonly = ["submitted", "executed_later", "voided", "archived"].includes(String(record?.status));
+  const readonly = !["draft", "assembling", "rejected"].includes(String(record?.status));
   return (
     <PaymentShell title="Edit Payment Batch" purpose="Edit payment instruction context without moving money or creating bank/provider/tax/accounting activity.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Payment batch not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Payment Batch" purpose="Check the payees, payment method, schedule and payment-ready sources before saving." afterSave="Review and approve the batch separately. Saving records details; execution still requires verified external payment evidence." />
           <div className="warning-box">Cannot move money, create bank transactions, submit providers, mark paid, reconcile, file taxes, or export accounting from this form.</div>
           <PaymentFormFields form={form} setForm={setForm} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payment_batch.update")}>Save Payment Batch</button>
+            {hasPermission(session.permissions, "payment_batch.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payment_batch.update")}>Save Payment Batch</button> : null}
             <Link className="link-button" href={`/payments/${paymentBatchId}`}>Cancel</Link>
           </div>
         </form>
@@ -300,7 +320,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
         optionalList(`/payment-batches/${paymentBatchId}/audit-summary`, session.token),
       ]);
       setDetail({ ...next, _timeline: timeline, _audit: audit });
-      setRelated(nextRelated);
+      setRelated({...nextRelated,exceptions:await syncosFetch<SyncRecord[]>(`/payment-batches/${paymentBatchId}/exceptions`,{token:session.token})});
     } catch (nextError) {
       setError(plainError((nextError as Error).message));
     }
@@ -328,7 +348,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
       {batch && detail ? (
         <>
           {!hasPermission(session.permissions, "payment_batch.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "payment_batch.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(batch.status)}
             nextActionLabel={nextPaymentAction(batch)}
@@ -336,7 +356,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
             disabled={!hasPermission(session.permissions, "payment_batch.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Payment Execution records internal/manual status only. SyncOS does not initiate ACH, wire, card payout, check, payroll, or bank movement."
-          />
+          /> : null}
           <DetailBoundaryNotice>Payment Execution records internal/manual status only. SyncOS does not initiate ACH, wire, card payout, check, payroll, bank movement, tax filing, or accounting posting.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -352,23 +372,25 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/payments/${paymentBatchId}/edit`} aria-disabled={!hasPermission(session.permissions, "payment_batch.update")}>Edit Batch</Link>
-                <ActionButton permission="payment_batch.add_item" session={session} disabled={batchInactive(batch)} onClick={() => openAction("add_contractor")}>Add Contractor Payable Item</ActionButton>
-                <ActionButton permission="payment_batch.add_item" session={session} disabled={batchInactive(batch)} onClick={() => openAction("add_payroll")}>Add Payroll Item</ActionButton>
-                <ActionButton permission="payment_batch.recalculate_totals" session={session} disabled={batchInactive(batch)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
-                <ActionButton permission="payment_batch.submit_review" session={session} disabled={batchInactive(batch)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
-                <ActionButton permission="payment_batch.start_review" session={session} disabled={batchInactive(batch)} onClick={() => openAction("start_review")}>Start Review</ActionButton>
-                <ActionButton permission="payment_batch.approve" session={session} disabled={batchInactive(batch)} onClick={() => openAction("approve")}>Approve</ActionButton>
-                <ActionButton permission="payment_batch.reject" session={session} disabled={batchInactive(batch)} onClick={() => openAction("reject")}>Reject</ActionButton>
-                <ActionButton permission="payment_batch.schedule" session={session} disabled={batchInactive(batch)} onClick={() => openAction("schedule")}>Schedule</ActionButton>
-                <ActionButton permission="payment_batch.submit_execution" session={session} disabled={batchInactive(batch)} onClick={() => openAction("submit_execution")}>Submit Execution</ActionButton>
+                <Link className="link-button" href={`/payments/${paymentBatchId}/edit`} allowed={hasPermission(session.permissions, "payment_batch.update") && ["draft","assembling","rejected"].includes(String(batch.status))}>Edit Batch</Link>
+                <ActionButton permission="payment_batch.add_item" session={session} disabled={!["draft","assembling","rejected"].includes(String(batch.status))} onClick={() => openAction("add_contractor")}>Add Contractor Payable Item</ActionButton>
+                <ActionButton permission="payment_batch.add_item" session={session} disabled={!["draft","assembling","rejected"].includes(String(batch.status))} onClick={() => openAction("add_payroll")}>Add Payroll Item</ActionButton>
+                <ActionButton permission="payment_batch.recalculate_totals" session={session} disabled={!["draft","assembling","rejected"].includes(String(batch.status))} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
+                <ActionButton permission="payment_batch.submit_review" session={session} disabled={!["draft","assembling","rejected"].includes(String(batch.status))} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
+                <ActionButton permission="payment_batch.start_review" session={session} disabled={batch.status !== "ready_for_review"} onClick={() => openAction("start_review")}>Start Review</ActionButton>
+                <ActionButton permission="payment_batch.approve" session={session} disabled={!["ready_for_review","under_review"].includes(String(batch.status))} onClick={() => openAction("approve")}>Approve</ActionButton>
+                <ActionButton permission="payment_batch.schedule" session={session} disabled={batch.approval_status !== "approved"} onClick={() => openAction("schedule")}>Schedule</ActionButton>
+                <ActionButton permission="payment_batch.submit_execution" session={session} disabled={!["approved","scheduled"].includes(String(batch.status))} onClick={() => openAction("submit_execution")}>Submit Execution</ActionButton>
                 <ActionButton permission="payment_batch.mark_executed" session={session} disabled={batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("mark_executed")}>Mark Executed</ActionButton>
                 <ActionButton permission="payment_batch.mark_failed" session={session} disabled={batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("mark_failed")}>Mark Failed</ActionButton>
-                <ActionButton permission="payment_batch.cancel" session={session} disabled={batch.status === "executed_later" || batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("cancel")}>Cancel</ActionButton>
-                <ActionButton permission="payment_batch.void" session={session} disabled={batch.status === "voided" || batch.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
-                <ActionButton permission="payment_batch.archive" session={session} disabled={batch.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["payment_batch.reject", "payment_batch.cancel", "payment_batch.void", "payment_batch.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payment_batch.reject" session={session} disabled={batchInactive(batch)} onClick={() => openAction("reject")}>Reject</ActionButton>
+              <ActionButton permission="payment_batch.cancel" session={session} disabled={batch.status === "executed_later" || batch.status === "archived" || batch.status === "voided"} onClick={() => openAction("cancel")}>Cancel</ActionButton>
+              <ActionButton permission="payment_batch.void" session={session} disabled={batch.status === "voided" || batch.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
+              <ActionButton permission="payment_batch.archive" session={session} disabled={batch.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Total Payment Amount" value={money(batch.total_payment_amount)} />
               <Metric label="Item Count" value={formatCell(batch.item_count ?? items.length)} />
@@ -384,6 +406,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
             <div className="warning-box">Payment Execution does not move money in this sprint. Submit Execution is status-only/manual reference. Mark Executed is status-only/manual reference. Bank reconciliation and accounting export are future workflows.</div>
           </section>
 
+          <PaymentSecurityPanel batch={batch} token={session.token} permissions={session.permissions} sources={related} onChange={load}/>
           <div className="organization-layout">
             <aside className="workspace-panel">
               <h2>Strategic Sidebar</h2>
@@ -405,7 +428,7 @@ export function PaymentBatchDetail({ paymentBatchId }: { paymentBatchId: string 
             </aside>
             <section className="workspace-panel">
               <div className="tabs" role="tablist" aria-label="Payment batch detail sections">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" role="tab" aria-selected={tab === itemTab} className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "payment_batch").map((itemTab) => <button key={itemTab} type="button" role="tab" aria-selected={tab === itemTab} className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PaymentTab tab={tab} detail={detail} batch={batch} items={items} session={session} onAction={openAction} />
             </section>
@@ -441,6 +464,7 @@ export function PaymentItemDetail({ paymentItemId }: { paymentItemId: string }) 
   return (
     <PaymentShell title="Payment Item Detail" purpose="Show payment item instruction context without item-level execution controls or external money movement.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["payment_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!item ? <div className="empty-state">Payment item not found or no access.</div> : (
@@ -453,10 +477,12 @@ export function PaymentItemDetail({ paymentItemId }: { paymentItemId: string }) 
               </div>
               <div className="form-actions">
                 <ActionButton permission="payment_item.update" session={session} disabled={itemInactive(item)} onClick={() => setModal("edit_item")}>Edit Item</ActionButton>
-                <ActionButton permission="payment_item.void" session={session} disabled={itemInactive(item)} onClick={() => setModal("void_item")}>Void Item</ActionButton>
-                <ActionButton permission="payment_item.archive" session={session} disabled={item.status === "archived"} onClick={() => setModal("archive_item")}>Archive Item</ActionButton>
               </div>
             </div>
+            {["payment_item.void", "payment_item.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payment_item.void" session={session} disabled={itemInactive(item)} onClick={() => setModal("void_item")}>Void Item</ActionButton>
+              <ActionButton permission="payment_item.archive" session={session} disabled={item.status === "archived"} onClick={() => setModal("archive_item")}>Archive Item</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Payment Amount" value={money(item.payment_amount)} />
               <Metric label="Payment Method" value={formatAction(item.payment_method)} />
@@ -504,7 +530,7 @@ function PaymentShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Payments</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -513,11 +539,11 @@ function PaymentShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PaymentBatchTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payment Batch", "Source Type / Items", "Total Amount", "Review Status", "Schedule Status", "Execution Status", "Submitted / Executed", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.payment_batch_number ?? row.id)}<div className="muted">{formatAction(row.payment_method)}</div></td><td>{formatAction(row.batch_type)}<div className="muted">{formatCell(row.item_count)} items</div></td><td>{money(row.total_payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{dateValue(row.scheduled_payment_date)}</td><td>{formatAction(row.execution_status)}<div className="muted">{textValue(row.execution_reference)}</div></td><td>{dateValue(row.submitted_at)} / {dateValue(row.executed_at)}</td><td>{nextPaymentAction(row)}</td><td><Link className="link-button" href={`/payments/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payment Batch", "Source Type / Items", "Total Amount", "Review Status", "Schedule Status", "Execution Status", "Submitted / Executed", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{batchLink(row.id, row.payment_batch_number ?? row.id)}<div className="muted">{formatAction(row.payment_method)}</div></td><td>{formatAction(row.batch_type)}<div className="muted">{formatCell(row.item_count)} items</div></td><td>{money(row.total_payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{dateValue(row.scheduled_payment_date)}</td><td>{formatAction(row.execution_status)}<div className="muted">{textValue(row.execution_reference)}</div></td><td>{dateValue(row.submitted_at)} / {dateValue(row.executed_at)}</td><td>{nextPaymentAction(row)}</td><td><Link className="link-button" href={`/payments/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentItemVisibilityTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payment Item", "Source", "Payee", "Amount", "Item Status", "Batch", "Next Action"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-items/${row.id}`}>{textValue(row.id)}</Link></td><td>{formatAction(row.source_type)}<div className="muted">{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)} {payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</div></td><td>{textValue(row.payee_name ?? row.worker_name ?? row.capacity_provider_name ?? row.crew_name)}</td><td>{money(row.payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.execution_status)}</div></td><td>{batchLink(row.payment_batch_id, row.payment_batch_number ?? row.payment_batch_id)}</td><td>{paymentItemNextAction(row)}</td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payment Item", "Source", "Payee", "Amount", "Item Status", "Batch", "Next Action"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/payment-items/${row.id}`}>{textValue(row.id)}</Link></td><td>{formatAction(row.source_type)}<div className="muted">{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)} {payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</div></td><td>{textValue(row.payee_name ?? row.worker_name ?? row.capacity_provider_name ?? row.crew_name)}</td><td>{money(row.payment_amount)}<div className="muted">{textValue(row.currency)}</div></td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.execution_status)}</div></td><td>{batchLink(row.payment_batch_id, row.payment_batch_number ?? row.payment_batch_id)}</td><td>{paymentItemNextAction(row)}</td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentTab({ tab, detail, batch, items, session, onAction }: { tab: string; detail: DetailShape; batch: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -537,13 +563,13 @@ function PaymentTab({ tab, detail, batch, items, session, onAction }: { tab: str
   if (tab === "future_ach") return <PlaceholderPanel title="Future ACH Placeholder" message="ACH processor integration is not available in this sprint." columns={["ach_submit_button"]} />;
   if (tab === "future_check") return <PlaceholderPanel title="Future Check Placeholder" message="Check printing is not available in this sprint." columns={["print_check_button"]} />;
   if (tab === "future_payroll_provider") return <PlaceholderPanel title="Future Payroll Provider Placeholder" message="Payroll provider submission is not available in this sprint." columns={["provider_submit_button"]} />;
-  if (tab === "future_bank_reconciliation") return <PlaceholderPanel title="Future Bank Reconciliation Placeholder" message="Bank reconciliation is not available in this sprint. Executed status does not mean bank-cleared." columns={["bank_reconciliation"]} />;
-  return <PlaceholderPanel title="Future Accounting / Tax Placeholder" message="Accounting export, GL posting, tax filing, W2/1099, benefit, and garnishment workflows are not available in this sprint." columns={["accounting_export", "tax_filing"]} />;
+  if (tab === "future_bank_reconciliation") return <PlaceholderPanel title="Future Bank Reconciliation Placeholder" message="Bank Reconciliation supports recorded transactions and controlled matching. Executed payment status does not establish bank clearance." columns={["bank_reconciliation"]} />;
+  return <PlaceholderPanel title="Future Accounting / Tax Placeholder" message="Accounting batch preparation is available separately. External general-ledger posting, tax filing, statutory forms, benefits and garnishments are not connected." columns={["accounting_export", "tax_filing"]} />;
 }
 
 function PaymentItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payment items in this batch.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Source Type", "Status", "Execution Status", "Payee Type", "Payee Name", "Contractor Payable", "Contractor Payable Item", "Payroll Run", "Payroll Item", "Worker", "Provider", "Crew", "Payment Method", "Payment Amount", "Currency", "Payment Date", "Execution Reference", "Failure Reason", "Notes", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.source_type)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.execution_status)}</td><td>{formatAction(row.payee_type)}</td><td>{textValue(row.payee_name)}</td><td>{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)}</td><td>{textValue(row.contractor_payable_item_id)}</td><td>{payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</td><td>{textValue(row.payroll_item_id)}</td><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{formatAction(row.payment_method)}</td><td>{money(row.payment_amount)}</td><td>{textValue(row.currency)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.execution_reference)}</td><td>{textValue(row.failure_reason)}</td><td>{textValue(row.notes)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-items/${row.id}`}>Open</Link><ActionButton permission="payment_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payment_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payment_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Source Type", "Status", "Execution Status", "Payee Type", "Payee Name", "Contractor Payable", "Contractor Payable Item", "Payroll Run", "Payroll Item", "Worker", "Provider", "Crew", "Payment Method", "Payment Amount", "Currency", "Payment Date", "Execution Reference", "Failure Reason", "Notes", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.source_type)}</td><td>{formatAction(row.status)}</td><td>{formatAction(row.execution_status)}</td><td>{formatAction(row.payee_type)}</td><td>{textValue(row.payee_name)}</td><td>{payableLink(row.contractor_payable_id, row.contractor_payable_number ?? row.contractor_payable_id)}</td><td>{textValue(row.contractor_payable_item_id)}</td><td>{payrollLink(row.payroll_run_id, row.payroll_run_number ?? row.payroll_run_id)}</td><td>{textValue(row.payroll_item_id)}</td><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{textValue(row.capacity_provider_name ?? row.capacity_provider_id)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{formatAction(row.payment_method)}</td><td>{money(row.payment_amount)}</td><td>{textValue(row.currency)}</td><td>{dateValue(row.payment_date)}</td><td>{textValue(row.execution_reference)}</td><td>{textValue(row.failure_reason)}</td><td>{textValue(row.notes)}</td><td><div className="form-actions"><Link className="link-button" href={`/payment-items/${row.id}`}>Open</Link><ActionButton permission="payment_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payment_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payment_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PaymentModal({ type, paymentBatchId, item, related, session, onClose, onSaved }: { type: string; paymentBatchId: string; batch: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -584,7 +610,7 @@ function PaymentModal({ type, paymentBatchId, item, related, session, onClose, o
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose} disabled={submitting}>Close</button></div>
         {error ? <div className="error-banner" role="alert">{error}</div> : null}
@@ -603,7 +629,7 @@ function PaymentModal({ type, paymentBatchId, item, related, session, onClose, o
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Payment Execution backend only. It creates no ACH, card, check, wire, provider, bank, tax, accounting, reconciliation, or real money movement records.</div> : null}
         <div className="form-actions" data-testid="modal-actions"><button className={["reject", "cancel", "void", "void_item", "archive", "archive_item", "mark_failed"].includes(type) ? "danger-button" : "primary-button"} type="submit" disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button><button type="button" onClick={onClose} disabled={submitting}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -612,11 +638,11 @@ function PaymentFormFields({ form, setForm, includeCreate = false, disabled = fa
 }
 
 function AddContractorFields({ form, setForm, related }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; related: RelatedData }) {
-  return <div className="form-grid"><Select label="Payment-Ready Contractor Payable" value={form.contractor_payable_id ?? ""} options={["", ...related.contractorPayables.map((row) => String(row.id))]} labels={labelsFor(related.contractorPayables, "payable_number")} onChange={(contractor_payable_id) => setForm({ ...form, contractor_payable_id })} required /><label>Contractor Payable ID<input value={form.contractor_payable_id ?? ""} onChange={(event) => setForm({ ...form, contractor_payable_id: event.target.value })} required /></label><label>Contractor Payable Item ID<input value={form.contractor_payable_item_id ?? ""} onChange={(event) => setForm({ ...form, contractor_payable_item_id: event.target.value })} /></label><label>Payment Amount<input type="number" step="0.01" value={form.payment_amount ?? ""} onChange={(event) => setForm({ ...form, payment_amount: event.target.value })} /></label><label>Payee Name<input value={form.payee_name ?? ""} onChange={(event) => setForm({ ...form, payee_name: event.target.value })} /></label><OverrideField form={form} setForm={setForm} /><div className="warning-box">No real payment is created. Contractor payable must be payment ready unless backend accepts an override.</div></div>;
+  return <div className="form-grid"><Select label="Payment-Ready Contractor Payable" value={form.contractor_payable_id ?? ""} options={["", ...related.contractorPayables.map((row) => String(row.id))]} labels={labelsFor(related.contractorPayables, "payable_number")} onChange={(contractor_payable_id) => setForm({ ...form, contractor_payable_id })} required /><label>Contractor Payable ID<input value={form.contractor_payable_id ?? ""} onChange={(event) => setForm({ ...form, contractor_payable_id: event.target.value })} required /></label><label>Contractor Payable Item ID<input value={form.contractor_payable_item_id ?? ""} onChange={(event) => setForm({ ...form, contractor_payable_item_id: event.target.value })} /></label><label>Payment Amount<input type="number" step="0.01" value={form.payment_amount ?? ""} onChange={(event) => setForm({ ...form, payment_amount: event.target.value })} /></label><label>Payee Name<input value={form.payee_name ?? ""} onChange={(event) => setForm({ ...form, payee_name: event.target.value })} /></label><Select label="Approved finance exception (optional)" value={form.approved_exception_id??""} options={["",...(related.exceptions??[]).filter(x=>x.status==='approved'&&x.source_id===form.contractor_payable_id&&new Date(String(x.expires_at)).getTime()>Date.now()).map(x=>String(x.id))]} labels={Object.fromEntries((related.exceptions??[]).map(x=>[String(x.id),String(x.reason)]))} onChange={approved_exception_id=>setForm({...form,approved_exception_id})} /><div className="warning-box">No real payment is created. The source must be payment-ready. Holds require independent finance review; amount and duplicate protections always apply.</div></div>;
 }
 
 function AddPayrollFields({ form, setForm, related }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; related: RelatedData }) {
-  return <div className="form-grid"><Select label="Payroll-Ready Payroll Run" value={form.payroll_run_id ?? ""} options={["", ...related.payrollRuns.map((row) => String(row.id))]} labels={labelsFor(related.payrollRuns, "payroll_run_number")} onChange={(payroll_run_id) => setForm({ ...form, payroll_run_id })} required /><label>Payroll Run ID<input value={form.payroll_run_id ?? ""} onChange={(event) => setForm({ ...form, payroll_run_id: event.target.value })} required /></label><label>Payroll Item ID<input value={form.payroll_item_id ?? ""} onChange={(event) => setForm({ ...form, payroll_item_id: event.target.value })} required /></label><label>Payment Amount<input type="number" step="0.01" value={form.payment_amount ?? ""} onChange={(event) => setForm({ ...form, payment_amount: event.target.value })} /></label><label>Payee Name<input value={form.payee_name ?? ""} onChange={(event) => setForm({ ...form, payee_name: event.target.value })} /></label><OverrideField form={form} setForm={setForm} /><div className="warning-box">Whole payroll run intake requires payroll item selection unless backend safely expands worker items. No provider submission, ACH, or bank transaction is created.</div></div>;
+  return <div className="form-grid"><Select label="Payroll-Ready Payroll Run" value={form.payroll_run_id ?? ""} options={["", ...related.payrollRuns.map((row) => String(row.id))]} labels={labelsFor(related.payrollRuns, "payroll_run_number")} onChange={(payroll_run_id) => setForm({ ...form, payroll_run_id })} required /><label>Payroll Run ID<input value={form.payroll_run_id ?? ""} onChange={(event) => setForm({ ...form, payroll_run_id: event.target.value })} required /></label><label>Payroll Item ID<input value={form.payroll_item_id ?? ""} onChange={(event) => setForm({ ...form, payroll_item_id: event.target.value })} required /></label><label>Payment Amount<input type="number" step="0.01" value={form.payment_amount ?? ""} onChange={(event) => setForm({ ...form, payment_amount: event.target.value })} /></label><label>Payee Name<input value={form.payee_name ?? ""} onChange={(event) => setForm({ ...form, payee_name: event.target.value })} /></label><Select label="Approved finance exception (optional)" value={form.approved_exception_id??""} options={["",...(related.exceptions??[]).filter(x=>x.status==='approved'&&x.source_id===form.payroll_run_id&&new Date(String(x.expires_at)).getTime()>Date.now()).map(x=>String(x.id))]} labels={Object.fromEntries((related.exceptions??[]).map(x=>[String(x.id),String(x.reason)]))} onChange={approved_exception_id=>setForm({...form,approved_exception_id})} /><div className="warning-box">Whole payroll run intake requires payroll item selection unless backend safely expands worker items. No provider submission, ACH, or bank transaction is created.</div></div>;
 }
 
 function ItemEditFields({ form, setForm }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void }) {
@@ -624,7 +650,7 @@ function ItemEditFields({ form, setForm }: { form: Record<string, string>; setFo
 }
 
 function OverrideField({ form, setForm }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void }) {
-  return <label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label>;
+  return <label>Review notes (JSON; does not authorize an exception)<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label>;
 }
 
 function VoidFields({ form, setForm }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void }) {
@@ -651,12 +677,12 @@ function PayeeSummary({ items }: { items: SyncRecord[] }) {
   return <ObjectTable rows={rows} columns={["payee_type", "payee_name", "payment_amount", "item_count"]} />;
 }
 
-function FuturePlaceholders() {
-  return <section className="workspace-panel"><h2>Future Workflow Placeholders</h2><div className="summary-grid"><Metric label="Future ACH" value="ACH processor integration is not available in this sprint." /><Metric label="Future Check" value="Check printing is not available in this sprint." /><Metric label="Future Payroll Provider" value="Payroll provider submission is not available in this sprint." /><Metric label="Future Bank Reconciliation" value="Bank reconciliation is not available in this sprint." /><Metric label="Future Accounting / Tax" value="Accounting export, GL posting, tax filing, W2/1099, benefit, and garnishment workflows are not available." /></div></section>;
+function IntegrationStatus() {
+  return <section className="workspace-panel"><h2>Connected services</h2><p>Record externally completed payments with proof. Priority Passport automation requires verified provider configuration. Payroll-provider submission, check printing and tax filing are separate services.</p><div className="form-actions"><Link href="/passport">Review Passport readiness</Link><Link href="/bank-reconciliation">Open Bank Reconciliation</Link><Link href="/accounting-exports">Open Accounting Exports</Link></div></section>;
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   const [token, setToken] = useState(session.token);
   const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
   return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
@@ -664,20 +690,16 @@ function SessionPanel({ session }: { session: Session }) {
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(paymentDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
-    const stored = readPermissions();
-    setPermissions(stored.length ? stored : paymentDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    let active = true;
+    setPermissions([]);
+    if (nextToken) void loadAuthContext(nextToken).then(context => {
+      if (active) setPermissions(context.permissions);
+    }).catch(() => { if (active) setPermissions([]); });
+    return () => { active = false; };
   }, []);
   return { token, permissions };
 }
@@ -749,11 +771,11 @@ function patchPayload(form: Record<string, string>) {
 }
 
 function addContractorPayload(form: Record<string, string>) {
-  return prune({ contractor_payable_id: form.contractor_payable_id, contractor_payable_item_id: form.contractor_payable_item_id, payment_amount: numericOrUndefined(form.payment_amount), payee_name: form.payee_name, override_reasons: parseJsonField(form.override_reasons, "Override Reasons") });
+  return prune({ contractor_payable_id: form.contractor_payable_id, contractor_payable_item_id: form.contractor_payable_item_id, payment_amount: numericOrUndefined(form.payment_amount), approved_exception_id:form.approved_exception_id||undefined, payee_name: form.payee_name, override_reasons: parseJsonField(form.override_reasons, "Override Reasons") });
 }
 
 function addPayrollPayload(form: Record<string, string>) {
-  return prune({ payroll_run_id: form.payroll_run_id, payroll_item_id: form.payroll_item_id, payment_amount: numericOrUndefined(form.payment_amount), payee_name: form.payee_name, override_reasons: parseJsonField(form.override_reasons, "Override Reasons") });
+  return prune({ payroll_run_id: form.payroll_run_id, payroll_item_id: form.payroll_item_id, payment_amount: numericOrUndefined(form.payment_amount), approved_exception_id:form.approved_exception_id||undefined, payee_name: form.payee_name, override_reasons: parseJsonField(form.override_reasons, "Override Reasons") });
 }
 
 function itemPatchPayload(form: Record<string, string>) {
@@ -830,17 +852,17 @@ function countPaymentQueue(rows: SyncRecord[], items: SyncRecord[], queue: Payme
 }
 
 function paymentQueueMatches(row: SyncRecord, queue: PaymentQueueKey) {
-  const status = String(row.status ?? "");
-  const execution = String(row.execution_status ?? "");
-  if (queue === "draft") return ["draft", "assembling"].includes(status);
-  if (queue === "submitted") return ["ready_for_review", "under_review"].includes(status) || String(row.approval_status ?? "") === "pending";
-  if (queue === "approved") return status === "approved";
-  if (queue === "scheduled") return status === "scheduled";
-  if (queue === "submittedExecution") return status === "submitted" || execution === "submitted_later";
-  if (queue === "executed") return status === "executed_later" || execution === "executed_later" || status === "partially_executed_later";
-  if (queue === "voided") return status === "voided";
-  if (queue === "itemsAttention") return false;
-  return status === "archived";
+  const status = String(row.status ?? ""), execution = String(row.execution_status ?? "");
+  if (status === "archived") return queue === "archived";
+  if (status === "voided") return queue === "voided";
+  if (["failed", "cancelled"].includes(status) || ["failed", "cancelled"].includes(execution)) return queue === "failed";
+  if (["draft", "assembling"].includes(status)) return queue === "draft";
+  if (["ready_for_review", "under_review"].includes(status) || String(row.approval_status ?? "") === "pending") return queue === "submitted";
+  if (status === "approved") return queue === "approved";
+  if (status === "scheduled") return queue === "scheduled";
+  if (status === "submitted" || execution === "submitted_later") return queue === "submittedExecution";
+  if (["executed_later", "partially_executed_later"].includes(status) || execution === "executed_later") return queue === "executed";
+  return false;
 }
 
 function itemNeedsAttention(item: SyncRecord) {
@@ -941,7 +963,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {
@@ -953,7 +975,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function batchLink(id: unknown, label: unknown) {

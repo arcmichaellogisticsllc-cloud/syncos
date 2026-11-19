@@ -21,7 +21,7 @@ test.describe("Action-state readiness — route loads, label hydrates, action vi
     test(`[${state.domain}] ${state.stateKey}: route loads and action label visible`, async ({ page }) => {
       // Readiness runs last in the suite; triple timeout so API calls under sustained load still resolve
       test.slow();
-      await installStoredSession(page, personas.systemAdmin.storageState);
+      await installStoredSession(page, Object.values(personas).find(persona => persona.slug === state.persona)!.storageState);
       await expectRouteHealthy(page, state.route, state.objectType);
 
       // Label, ID, or action button visible — proves record hydrated, not just shell.

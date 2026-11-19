@@ -1,3 +1,4 @@
+const {authorizeSyntheticWork}=require('./synthetic-work-authorization');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -17,8 +18,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -31,6 +32,8 @@ async function main() {
     const limitedToken = createToken({ sub: limitedUserId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
     const base = await createBase(client, tenantId, userId, "ready_for_work", "in_progress");
     const planningBase = await createBase(client, tenantId, userId, "planning", "in_progress");
+    await authorizeSyntheticWork(client,tenantId,userId,base.workOrderId,"2026-09-05");
+    await authorizeSyntheticWork(client,tenantId,userId,base.workOrderId,new Date().toISOString().slice(0,10));
     const outside = await createOutsideTenant(client);
 
     await expectStatus("unauthorized blocked", "GET", "/production-records", undefined, 401);

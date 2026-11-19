@@ -143,6 +143,7 @@ export class ConstraintsController {
     const title = this.requireString(body.title, "constraint title is required");
     const severity = this.requireAllowed(body.severity, severities, "severity");
     return this.createConstraintRecord(request, {
+      client_mutation_id: body.client_mutation_id ? this.requiredId(body.client_mutation_id,"client_mutation_id") : undefined,
       constraint_type: constraintType,
       affected_object_type: affectedObjectType,
       affected_object_id: affectedObjectId,
@@ -444,6 +445,11 @@ export class ConstraintsController {
   private async createConstraintRecord(request: AuthenticatedRequest, values: Record<string, unknown>, eventType: string) {
     return this.write(request, "constraint.create", eventType, "constraint", async (client) => {
       await this.validateAffectedObject(client, request.auth.tenantId, String(values.affected_object_type), String(values.affected_object_id));
+      if(values.client_mutation_id){
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,91))',[request.auth.tenantId+':constraint:'+values.client_mutation_id]);
+        const existing=(await client.query('SELECT * FROM constraints WHERE tenant_id=$1 AND client_mutation_id=$2',[request.auth.tenantId,values.client_mutation_id])).rows[0];
+        if(existing){for(const [key,value] of Object.entries(values))if(value!==undefined&&existing[key]!==value)throw new BadRequestException('Request identifier already used for different constraint details');return {entityType:'constraint',entityId:existing.id,afterState:existing,skipEventAudit:true};}
+      }
       const constraint = await insertTenantRecord(client, "constraints", request.auth.tenantId, values);
       return { entityType: "constraint", entityId: constraint.id, afterState: constraint };
     });
@@ -617,7 +623,7 @@ export class ConstraintsController {
 
   private async validateAffectedObject(client: PoolClient, tenantId: string, objectType: string, objectId: string) {
     const table = objectTables[objectType];
-    if (!table) return;
+    if (!table) throw new BadRequestException("Unsupported affected object type");
     await this.requireRecord(client, table, tenantId, objectId, "affected object not found");
   }
 

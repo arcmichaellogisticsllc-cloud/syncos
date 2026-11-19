@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Deterministic synthetic signing secret used only by environment validation tests"
+condition = "AND"
+paths = ['''(^|/)tests/email-feature-configuration\.test\.js$''']
+regexTarget = "secret"
+regexes = ['''^synthetic-test-secret-with-at-least-32-characters$''']
+
+[[allowlists]]
+description = "Synthetic payment idempotency labels, not authentication credentials"
+condition = "AND"
+paths = ['''(^|/)tests/e2e/payment-retainage-adjustments\.spec\.ts$''']
+regexTarget = "secret"
+regexes = ['''^p13-retained-(held|final)$''']

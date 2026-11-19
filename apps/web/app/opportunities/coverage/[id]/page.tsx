@@ -1,5 +1,5 @@
 import { CoveragePlanDetailPage } from "../coverage-planning-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <CoveragePlanDetailPage id={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <CoveragePlanDetailPage id={(await params).id} />;
 }

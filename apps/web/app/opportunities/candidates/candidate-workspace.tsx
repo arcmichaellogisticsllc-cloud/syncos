@@ -1,6 +1,13 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
+import {ScrollableRegion} from "../../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../../modal-boundary";
+import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
+import {DangerZone,ReadOnlyBanner} from "../../operator-page-templates";
+import { permittedRecordTabs } from "../../intelligence/api";
+
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -149,7 +156,7 @@ export function CandidateBoard() {
           </div>
           <div className="form-actions">
             <button type="button" onClick={() => setView(view === "board" ? "table" : "board")}>{view === "board" ? "Table View" : "Board View"}</button>
-            <Link className="primary-button link-button" href="/opportunities/candidates/new" aria-disabled={!hasPermission(session.permissions, "opportunity_candidate.create")}>Create Candidate</Link>
+            <Link className="primary-button link-button" href="/opportunities/candidates/new" allowed={hasPermission(session.permissions, "opportunity_candidate.create")}>Create Candidate</Link>
           </div>
         </div>
         <div className="filter-grid">
@@ -313,6 +320,7 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Candidate information" purpose="Record the candidate name, territory and source evidence. Link the organization and supporting signals when available." afterSave="Review qualification and evidence before converting the candidate. Saving does not create an awarded opportunity or project." />
         <div className="form-grid">
           <label>Candidate name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
           <label>Organization<SelectInline value={form.organization_id} options={["", ...data.organizations.map((organization) => String(organization.id))]} labels={labelMap(data.organizations, "name")} onChange={(organization_id) => setForm({ ...form, organization_id })} /></label>
@@ -335,7 +343,7 @@ export function CandidateForm({ mode, candidateId }: { mode: "create" | "edit"; 
         </div>
         <div className="warning-box">Lifecycle movement should still use the dedicated Monitor, Investigate, Qualify, Reject, and Archive actions where possible.</div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity_candidate.create" : "opportunity_candidate.update")}>{mode === "create" ? "Create Candidate" : "Save Candidate"}</button>
+          {hasPermission(session.permissions, mode === "create" ? "opportunity_candidate.create" : "opportunity_candidate.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity_candidate.create" : "opportunity_candidate.update")}>{mode === "create" ? "Create Candidate" : "Save Candidate"}</button> : null}
           <Link href={candidateId ? `/opportunities/candidates/${candidateId}` : "/opportunities/candidates"}>Cancel</Link>
         </div>
       </form>
@@ -412,18 +420,21 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
               </div>
               <div className="form-actions">
                 <Link href={`/opportunities/candidates/${candidate.id}/edit`}>Edit Candidate</Link>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.monitor") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "monitor", load, setError)}>Monitor</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.investigate") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "investigate", load, setError)}>Investigate</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.qualify") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "qualify", load, setError)}>Qualify</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.reject") || candidate.status === "archived"} onClick={() => setModal("reject")}>Reject</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.archive") || candidate.status === "archived"} onClick={() => setModal("archive")}>Archive</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.assign_owner") || candidate.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.link_relationship_map") || candidate.status === "archived"} onClick={() => setModal("relationship")}>{candidate.relationshipMap ? "Change Relationship Map" : "Link Relationship Map"}</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "candidate_signal.create") || candidate.status === "archived"} onClick={() => setModal("signal")}>Attach Signal</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.score") || candidate.status === "archived"} onClick={() => void scoreCandidate(candidate, load, setError)}>Score Candidate</button>
+                {hasPermission(session.permissions, "opportunity_candidate.monitor") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.monitor") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "monitor", load, setError)}>Monitor</button> : null}
+                {hasPermission(session.permissions, "opportunity_candidate.investigate") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.investigate") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "investigate", load, setError)}>Investigate</button> : null}
+                {hasPermission(session.permissions, "opportunity_candidate.qualify") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.qualify") || candidate.status === "archived"} onClick={() => void lifecycle(candidate, "qualify", load, setError)}>Qualify</button> : null}
+                {hasPermission(session.permissions, "opportunity_candidate.assign_owner") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.assign_owner") || candidate.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button> : null}
+                {hasPermission(session.permissions, "opportunity_candidate.link_relationship_map") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.link_relationship_map") || candidate.status === "archived"} onClick={() => setModal("relationship")}>{candidate.relationshipMap ? "Change Relationship Map" : "Link Relationship Map"}</button> : null}
+                {hasPermission(session.permissions, "candidate_signal.create") ? <button type="button" disabled={!hasPermission(session.permissions, "candidate_signal.create") || candidate.status === "archived"} onClick={() => setModal("signal")}>Attach Signal</button> : null}
+                {hasPermission(session.permissions, "opportunity_candidate.score") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.score") || candidate.status === "archived"} onClick={() => void scoreCandidate(candidate, load, setError)}>Score Candidate</button> : null}
                 <button type="button" onClick={() => setModal("research")}>Research Candidate</button>
               </div>
             </div>
+            {!session.permissions.some(permission => permission.startsWith("opportunity_candidate.") && !permission.endsWith(".read")) && <ReadOnlyBanner>Review this candidate and its evidence. Your role has no candidate mutation authority.</ReadOnlyBanner>}
+            {["opportunity_candidate.reject","opportunity_candidate.archive"].some(permission => hasPermission(session.permissions,permission)) && <DangerZone description="Rejecting or archiving changes this candidate's lifecycle. Review the reason before confirming.">
+              {hasPermission(session.permissions, "opportunity_candidate.reject") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.reject") || candidate.status === "archived"} onClick={() => setModal("reject")}>Reject</button> : null}
+              {hasPermission(session.permissions, "opportunity_candidate.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.archive") || candidate.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+            </DangerZone>}
             <div className="summary-grid">
               <SummaryMetric label="Candidate Score" value={scoreValue(candidate.candidateScore)} />
               <SummaryMetric label="Confidence Score" value={scoreValue(candidate.confidenceScore)} />
@@ -455,7 +466,7 @@ export function CandidateDetail({ candidateId }: { candidateId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "opportunity_candidate").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <CandidateTab tab={tab} candidate={candidate} data={data} scoreSummary={scoreSummary} permissions={session.permissions} onAttach={() => setModal("signal")} />
             </section>
@@ -508,7 +519,7 @@ function CandidateCard({ candidate }: { candidate: CandidateView }) {
 
 function CandidateTable({ candidates }: { candidates: CandidateView[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -536,7 +547,7 @@ function CandidateTable({ candidates }: { candidates: CandidateView[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -578,7 +589,7 @@ function CandidateTab({ tab, candidate, data, scoreSummary, permissions, onAttac
       </div>
     );
   }
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(candidate, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this candidate." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(candidate, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this candidate." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="opportunity_candidate" objectId={candidate.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={relatedRecommendations(candidate, data)} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this candidate." />;
   if (tab === "timeline") return <ObjectSlice title="Candidate Timeline" rows={candidate.timeline} columns={["event_type", "actor_name", "timestamp", "object_type", "object_id", "summary"]} empty="Candidate timeline endpoint is not available yet." />;
   if (tab === "audit") return <ObjectSlice title="Candidate Audit" rows={candidate.audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} empty="Candidate audit summary is not available or you do not have permission." />;
@@ -988,7 +999,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {!rows.length ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead>
             <tbody>
@@ -999,30 +1010,13 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );
 }
 
-function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return (
-    <section className="workspace-panel">
-      <div className="section-toolbar">
-        <div>
-          <h2>Session</h2>
-          <p className="muted">Paste a JWT and comma-separated permissions to test permission-aware candidate actions.</p>
-        </div>
-        <button type="button" onClick={() => session.applyDefaults()}>Use opportunity defaults</button>
-      </div>
-      <div className="session-grid">
-        <input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" />
-        <input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" />
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) { return null; }
 
 function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
   return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
@@ -1048,7 +1042,7 @@ function Checklist({ title, items }: { title: string; items: [string, boolean][]
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -1056,7 +1050,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -1074,7 +1068,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function useSession() {
   const [token, setTokenState] = useState(readToken());
-  const [permissions, setPermissionsState] = useState<string[]>(unique([...defaultOpportunityPermissions, ...readPermissions()]));
+  const [permissions, setPermissionsState] = useState<string[]>(readPermissions());
   function setToken(next: string) {
     setTokenState(next);
     saveToken(next);

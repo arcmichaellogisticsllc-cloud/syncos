@@ -1,6 +1,12 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -19,7 +25,7 @@ const disputeStatuses = ["none", "open", "under_review", "resolved", "rejected"]
 const holdStatuses = ["none", "hold", "released"];
 const itemTypes = ["labor", "subcontractor_production", "equipment", "material_reimbursement", "retainage_hold", "retainage_release", "deduction", "chargeback", "adjustment", "correction", "bonus", "penalty"];
 const itemStatuses = ["draft", "ready", "approved", "held", "disputed", "payment_ready", "payment_created_later", "voided", "archived"];
-const tabs = ["overview", "payable_items", "payable_party", "provider_crew_context", "settlement_context", "project_context", "financial_summary", "compliance_tax_readiness", "retainage", "deductions_chargebacks", "holds_disputes", "approval", "payment_readiness", "timeline", "audit", "future_payment", "future_payroll", "future_bank_accounting"];
+const tabs = ["overview", "payable_items", "payable_party", "provider_crew_context", "settlement_context", "project_context", "financial_summary", "compliance_tax_readiness", "retainage", "deductions_chargebacks", "holds_disputes", "approval", "payment_readiness", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -112,7 +118,7 @@ export function ContractorPayableQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading contractor payables...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -120,7 +126,7 @@ export function ContractorPayableQueue() {
                 <h2>Today&apos;s payable work</h2>
                 <p className="muted">Start with submitted, blocked, disputed, and approved payables before marking anything payment-ready.</p>
               </div>
-              <Link className="primary-button" href="/contractor-payables/new" aria-disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</Link>
+              <Link className="primary-button" href="/contractor-payables/new" allowed={hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</Link>
             </div>
             <div className="summary-grid">
               {payableQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPayableQueue(rows, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
@@ -225,7 +231,7 @@ export function ContractorPayableCreate() {
           <PayableFormFields form={form} setForm={setForm} related={related} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</button>
+          {hasPermission(session.permissions, "contractor_payable.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "contractor_payable.create")}>Create Contractor Payable</button> : null}
           <Link className="link-button" href="/contractor-payables">Cancel</Link>
         </div>
       </form>
@@ -281,10 +287,11 @@ export function ContractorPayableEdit({ payableId }: { payableId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Contractor payable not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Contractor Payable" purpose="Review partner earnings, source work and approved terms before changing payable details." afterSave="Review the payable and its readiness checks before approval or payment scheduling." />
           <div className="warning-box">Cannot create payment, payroll, or mark paid from this form. Lifecycle states use backend action routes.</div>
           <PayableFormFields form={form} setForm={setForm} related={emptyRelated} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "contractor_payable.update")}>Save Payable</button>
+            {hasPermission(session.permissions, "contractor_payable.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "contractor_payable.update")}>Save Payable</button> : null}
             <Link className="link-button" href={`/contractor-payables/${payableId}`}>Cancel</Link>
           </div>
         </form>
@@ -344,7 +351,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
       {payable && detail ? (
         <>
           {!hasPermission(session.permissions, "contractor_payable.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "contractor_payable.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(payable.status)}
             nextActionLabel={nextPayableAction(payable)}
@@ -352,7 +359,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
             disabled={!hasPermission(session.permissions, "contractor_payable.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Payment Ready does not pay the contractor or move money."
-          />
+          /> : null}
           <DetailBoundaryNotice>Contractor Payable tracks internal approval and payment-readiness state. It does not pay contractors, initiate ACH, issue card payouts, print checks, move money, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -367,22 +374,24 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/contractor-payables/${payableId}/edit`} aria-disabled={!hasPermission(session.permissions, "contractor_payable.update")}>Edit Payable</Link>
+                <Link className="link-button" href={`/contractor-payables/${payableId}/edit`} allowed={hasPermission(session.permissions, "contractor_payable.update")}>Edit Payable</Link>
                 <ActionButton permission="contractor_payable.add_item" session={session} disabled={payableInactive(payable)} onClick={() => openAction("add_item")}>Add Payable Item</ActionButton>
                 <ActionButton permission="contractor_payable.recalculate_totals" session={session} disabled={payableInactive(payable)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="contractor_payable.submit_review" session={session} disabled={payableInactive(payable)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="contractor_payable.start_review" session={session} disabled={payableInactive(payable)} onClick={() => openAction("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="contractor_payable.approve" session={session} disabled={payableInactive(payable)} onClick={() => openAction("approve")}>Approve</ActionButton>
-                <ActionButton permission="contractor_payable.reject" session={session} disabled={payableInactive(payable)} onClick={() => openAction("reject")}>Reject</ActionButton>
                 <ActionButton permission="contractor_payable.mark_payment_ready" session={session} disabled={payableInactive(payable)} onClick={() => openAction("payment_ready")}>Mark Payment Ready</ActionButton>
                 <ActionButton permission="contractor_payable.place_hold" session={session} disabled={payableInactive(payable)} onClick={() => openAction("place_hold")}>Place Hold</ActionButton>
                 <ActionButton permission="contractor_payable.release_hold" session={session} disabled={payableInactive(payable)} onClick={() => openAction("release_hold")}>Release Hold</ActionButton>
-                <ActionButton permission="contractor_payable.dispute" session={session} disabled={payableInactive(payable)} onClick={() => openAction("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="contractor_payable.resolve_dispute" session={session} disabled={payableInactive(payable)} onClick={() => openAction("resolve_dispute")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="contractor_payable.void" session={session} disabled={payable.status === "voided" || payable.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
-                <ActionButton permission="contractor_payable.archive" session={session} disabled={payable.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["contractor_payable.reject", "contractor_payable.dispute", "contractor_payable.void", "contractor_payable.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="contractor_payable.reject" session={session} disabled={payableInactive(payable)} onClick={() => openAction("reject")}>Reject</ActionButton>
+              <ActionButton permission="contractor_payable.dispute" session={session} disabled={payableInactive(payable)} onClick={() => openAction("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="contractor_payable.void" session={session} disabled={payable.status === "voided" || payable.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
+              <ActionButton permission="contractor_payable.archive" session={session} disabled={payable.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Payable Amount" value={money(payable.gross_payable_amount)} />
               <Metric label="Deduction Amount" value={money(payable.deduction_amount)} />
@@ -424,7 +433,7 @@ export function ContractorPayableDetail({ payableId }: { payableId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "contractor_payable").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PayableTab tab={tab} detail={detail} payable={payable} items={items} session={session} onAction={openAction} />
             </section>
@@ -464,7 +473,7 @@ function PayableShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Contractor Payables</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -473,7 +482,7 @@ function PayableShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PayableTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payable", "Contractor / Vendor", "Source Work", "Amount", "Review Status", "Readiness", "Dispute", "Payment Readiness", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payableLink(row.id, row.payable_number ?? row.id)}<div className="muted">{formatAction(row.payable_type)}</div></td><td>{textValue(row.capacity_provider_name ?? row.crew_name ?? row.vendor_organization_id ?? row.payable_party_type)}</td><td>{projectLink(row.project_id, row.project_name)}<div className="muted">{settlementLink(row.settlement_id, row.settlement_number)}</div></td><td>{money(row.net_payable_amount ?? row.gross_payable_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{readinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{formatAction(row.payment_readiness_status)}</td><td>{dateValue(row.updated_at)}</td><td>{nextPayableAction(row)}</td><td><Link className="link-button" href={`/contractor-payables/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payable", "Contractor / Vendor", "Source Work", "Amount", "Review Status", "Readiness", "Dispute", "Payment Readiness", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payableLink(row.id, row.payable_number ?? row.id)}<div className="muted">{formatAction(row.payable_type)}</div></td><td>{textValue(row.capacity_provider_name ?? row.crew_name ?? row.vendor_organization_id ?? row.payable_party_type)}</td><td>{projectLink(row.project_id, row.project_name)}<div className="muted">{settlementLink(row.settlement_id, row.settlement_number)}</div></td><td>{money(row.net_payable_amount ?? row.gross_payable_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{readinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{formatAction(row.payment_readiness_status)}</td><td>{dateValue(row.updated_at)}</td><td>{nextPayableAction(row)}</td><td><Link className="link-button" href={`/contractor-payables/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PayableTab({ tab, detail, payable, items, session, onAction }: { tab: string; detail: DetailShape; payable: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -492,14 +501,14 @@ function PayableTab({ tab, detail, payable, items, session, onAction }: { tab: s
   if (tab === "payment_readiness") return <Panel title="Payment Readiness"><dl className="detail-list"><dt>Payment readiness</dt><dd>{formatAction(payable.payment_readiness_status)}</dd><dt>Payment status</dt><dd>{formatAction(payable.payment_status)}</dd><dt>Net payable</dt><dd>{money(payable.net_payable_amount)}</dd><dt>Compliance</dt><dd>{formatAction(payable.compliance_status)}</dd><dt>Tax documents</dt><dd>{formatAction(payable.tax_document_status)}</dd><dt>Hold status</dt><dd>{formatAction(payable.hold_status)}</dd><dt>Dispute status</dt><dd>{formatAction(payable.dispute_status)}</dd><dt>Warnings</dt><dd><JsonBlock value={detail.warnings} /></dd><dt>Blockers</dt><dd><JsonBlock value={detail.blockers} /></dd><dt>Required overrides</dt><dd><JsonBlock value={detail.required_override_fields} /></dd><dt>Recommended next action</dt><dd>{formatAction(payable.recommended_next_action ?? detail.recommended_next_action)}</dd><dt>Boundary summary</dt><dd><JsonBlock value={detail.payment_boundary_summary} /></dd></dl><ActionButton permission="contractor_payable.mark_payment_ready" session={session} disabled={payableInactive(payable)} onClick={() => onAction("payment_ready")}>Mark Payment Ready</ActionButton><div className="warning-box">Mark Payment Ready does not send money. It only prepares this payable for a future payment/payroll workflow.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view contractor payable audit details.</div>}</Panel>;
-  if (tab === "future_payment") return <PlaceholderPanel title="Future Payment" message="Payment execution is not available in this sprint. Future payment workflows may consume payment-ready payables." columns={["Payment button", "Mark paid", "ACH/check/card action"]} />;
-  if (tab === "future_payroll") return <PlaceholderPanel title="Future Payroll" message="Payroll is not available in this sprint. Worker payroll and contractor payables are governed separately." columns={["Payroll run", "Payslip", "Worker tax action"]} />;
-  return <PlaceholderPanel title="Future Bank / Accounting" message="Bank reconciliation, tax filing, and accounting export are not available in this sprint." columns={["Bank transaction", "Tax filing", "Accounting export"]} />;
+  if (tab === "future_payment") return <PlaceholderPanel title="Future Payment" message="Payment Execution tracks approved payable batches and external execution evidence. It does not itself send funds." columns={["Payment button", "Mark paid", "ACH/check/card action"]} />;
+  if (tab === "future_payroll") return <PlaceholderPanel title="Future Payroll" message="Employee payroll and partner payables use separate workflows. Employee work must not create partner settlements." columns={["Payroll run", "Payslip", "Worker tax action"]} />;
+  return <PlaceholderPanel title="Future Bank / Accounting" message="Bank matching and accounting batch preparation have separate workspaces. External accounting posting and tax filing are not connected." columns={["Bank transaction", "Tax filing", "Accounting export"]} />;
 }
 
 function PayableItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payable items yet. Add payable-ready settlement items.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Item Type", "Status", "Description", "Settlement", "Settlement Item", "Billable Item", "QC Review", "Production Record", "Work Order", "Project", "Provider", "Crew", "Quantity", "Unit", "Contractor Rate", "Gross Payable Amount", "Deduction Amount", "Chargeback Amount", "Retainage Percent", "Retainage Amount", "Net Payable Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.item_type)}</td><td>{formatAction(row.status)}</td><td>{textValue(row.description)}</td><td>{settlementLink(row.settlement_id, row.settlement_number ?? row.settlement_id)}</td><td>{textValue(row.settlement_item_id)}</td><td>{textValue(row.billable_item_id)}</td><td>{textValue(row.qc_review_id)}</td><td>{textValue(row.production_record_id)}</td><td>{textValue(row.work_order_id)}</td><td>{projectLink(row.project_id, row.project_name ?? row.project_id)}</td><td>{providerLink(row.capacity_provider_id, row.capacity_provider_name ?? row.capacity_provider_id)}</td><td>{crewLink(row.crew_id, row.crew_name ?? row.crew_id)}</td><td>{formatCell(row.quantity)}</td><td>{textValue(row.unit)}</td><td>{money(row.contractor_rate)}</td><td>{money(row.gross_payable_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.chargeback_amount)}</td><td>{formatCell(row.retainage_percent)}</td><td>{money(row.retainage_amount)}</td><td>{money(row.net_payable_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td><div className="form-actions"><ActionButton permission="contractor_payable_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="contractor_payable_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="contractor_payable_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Item Type", "Status", "Description", "Settlement", "Settlement Item", "Billable Item", "QC Review", "Production Record", "Work Order", "Project", "Provider", "Crew", "Quantity", "Unit", "Contractor Rate", "Gross Payable Amount", "Deduction Amount", "Chargeback Amount", "Retainage Percent", "Retainage Amount", "Net Payable Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.item_type)}</td><td>{formatAction(row.status)}</td><td>{textValue(row.description)}</td><td>{settlementLink(row.settlement_id, row.settlement_number ?? row.settlement_id)}</td><td>{textValue(row.settlement_item_id)}</td><td>{textValue(row.billable_item_id)}</td><td>{textValue(row.qc_review_id)}</td><td>{textValue(row.production_record_id)}</td><td>{textValue(row.work_order_id)}</td><td>{projectLink(row.project_id, row.project_name ?? row.project_id)}</td><td>{providerLink(row.capacity_provider_id, row.capacity_provider_name ?? row.capacity_provider_id)}</td><td>{crewLink(row.crew_id, row.crew_name ?? row.crew_id)}</td><td>{formatCell(row.quantity)}</td><td>{textValue(row.unit)}</td><td>{money(row.contractor_rate)}</td><td>{money(row.gross_payable_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.chargeback_amount)}</td><td>{formatCell(row.retainage_percent)}</td><td>{money(row.retainage_amount)}</td><td>{money(row.net_payable_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td><div className="form-actions"><ActionButton permission="contractor_payable_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="contractor_payable_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="contractor_payable_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PayableModal({ type, payableId, payable, item, related, session, onClose, onSaved }: { type: string; payableId: string; payable: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -534,7 +543,7 @@ function PayableModal({ type, payableId, payable, item, related, session, onClos
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -552,7 +561,7 @@ function PayableModal({ type, payableId, payable, item, related, session, onClos
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Contractor Payable backend and creates no payment, payroll, bank, tax, or accounting records.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -591,29 +600,17 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
   return <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  const [token, setToken] = useState(session.token);
-  const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
-  return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(payableDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : payableDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -846,7 +843,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {
@@ -858,7 +855,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function payableLink(id: unknown, label: unknown) {

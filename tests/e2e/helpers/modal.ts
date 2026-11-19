@@ -17,7 +17,9 @@ export async function expectModal(page: Page, title: string | RegExp) {
 
 export async function expectRequiredFields(page: Page, labels: Array<string | RegExp>) {
   for (const label of labels) {
-    await expect(page.getByLabel(label).first(), `Required field should be present: ${String(label)}`).toBeVisible();
+    const field=page.getByLabel(label).first();
+    await expect(field, `Required field should be present: ${String(label)}`).toBeVisible();
+    expect(await field.evaluate(element => element.hasAttribute('required') || element.getAttribute('aria-required') === 'true'), `Required field must expose its requirement: ${String(label)}`).toBe(true);
   }
 }
 

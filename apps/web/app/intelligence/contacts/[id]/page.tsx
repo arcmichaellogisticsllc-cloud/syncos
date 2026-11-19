@@ -1,5 +1,5 @@
 import { ContactDetail } from "../contact-workspace";
 
-export default function ContactDetailPage({ params }: { params: { id: string } }) {
-  return <ContactDetail contactId={params.id} />;
+export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return <ContactDetail contactId={(await params).id} />;
 }

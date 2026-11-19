@@ -17,11 +17,11 @@ async function main() {
     FROM users u
     JOIN tenant_users tu ON tu.user_id = u.id
     JOIN tenants t ON t.id = tu.tenant_id
-    WHERE u.email = 'admin@jackson-telcom.local'
-      AND t.slug = 'jackson-telcom'
+    WHERE u.email = 'admin@synccommsystems.local'
+      AND t.slug = 'sync-comm-systems'
     LIMIT 1
   `);
-  if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+  if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
 
   const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
   const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
@@ -99,11 +99,11 @@ async function main() {
 
   const pathBefore = await counts(client);
   const path = await expectStatus("create path with valid contacts", "POST", `/relationship-maps/${map.id}/paths`, `Bearer ${token}`, 201, {
-    path_name: "Jackson ops director to prime vendor manager",
+    path_name: "Sync Comm Systems ops director to prime vendor manager",
     from_contact_id: base.sourceContactId,
     to_contact_id: base.targetContactId,
     intermediary_contact_ids: [base.bridgeContactId],
-    path_summary: "Bridge contact can introduce Jackson operations to the prime vendor manager.",
+    path_summary: "Bridge contact can introduce Sync Comm Systems operations to the prime vendor manager.",
     strength_score: 82,
     confidence_score: 78,
     rank: 1,
@@ -113,7 +113,7 @@ async function main() {
     risk_notes: "Relationship should be reconfirmed before pursuit decision.",
   });
   await expectWriteDelta(client, pathBefore, 1, 1, 1, 1, "relationship path create");
-  if (path.path_name !== "Jackson ops director to prime vendor manager" || path.status !== "active") throw new Error("relationship path metadata did not persist");
+  if (path.path_name !== "Sync Comm Systems ops director to prime vendor manager" || path.status !== "active") throw new Error("relationship path metadata did not persist");
 
   const ranked = await expectStatus("rank path works", "POST", `/relationship-paths/${path.id}/rank`, `Bearer ${token}`, 201, { rank: 2 });
   if (ranked.rank !== 2) throw new Error("relationship path rank did not persist");
@@ -171,7 +171,7 @@ async function createBase(client, tenantId) {
   const suffix = Date.now();
   const territory = await client.query("INSERT INTO territories (tenant_id, name, code) VALUES ($1, $2, $3) RETURNING id", [tenantId, `Relationship Smoke Territory ${suffix}`, "REL"]);
   const organization = await client.query("INSERT INTO organizations (tenant_id, name, organization_type, type, actor_roles, territory_id) VALUES ($1, $2, 'prime_contractor', 'prime_contractor', ARRAY['work_distributor']::text[], $3) RETURNING id", [tenantId, `Relationship Smoke Prime ${suffix}`, territory.rows[0].id]);
-  const source = await client.query("INSERT INTO contacts (tenant_id, organization_id, full_name, contact_role, email, influence_score, decision_authority_score, relationship_strength_score) VALUES ($1, $2, 'Jackson Ops Director', 'relationship_bridge', 'ops-director@example.test', 70, 55, 80) RETURNING id", [tenantId, organization.rows[0].id]);
+  const source = await client.query("INSERT INTO contacts (tenant_id, organization_id, full_name, contact_role, email, influence_score, decision_authority_score, relationship_strength_score) VALUES ($1, $2, 'Sync Comm Systems Ops Director', 'relationship_bridge', 'ops-director@example.test', 70, 55, 80) RETURNING id", [tenantId, organization.rows[0].id]);
   const bridge = await client.query("INSERT INTO contacts (tenant_id, organization_id, full_name, contact_role, email, influence_score, decision_authority_score, relationship_strength_score) VALUES ($1, $2, 'Prime Bridge Contact', 'relationship_bridge', 'bridge@example.test', 76, 60, 72) RETURNING id", [tenantId, organization.rows[0].id]);
   const target = await client.query("INSERT INTO contacts (tenant_id, organization_id, full_name, contact_role, email, influence_score, decision_authority_score, relationship_strength_score) VALUES ($1, $2, 'Prime Vendor Manager', 'vendor_manager', 'vendor-manager@example.test', 82, 78, 65) RETURNING id", [tenantId, organization.rows[0].id]);
   return { territoryId: territory.rows[0].id, organizationId: organization.rows[0].id, sourceContactId: source.rows[0].id, bridgeContactId: bridge.rows[0].id, targetContactId: target.rows[0].id };

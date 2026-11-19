@@ -1,6 +1,12 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
+import {ReadOnlyBanner} from "../../operator-page-templates";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
+import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
+import { permittedRecordTabs } from "../api";
 
-import Link from "next/link";
+import { PermissionLink as Link } from "../../access-control";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { defaultContactPermissions, hasPermission, readPermissions, readToken, savePermissions, saveToken, syncosFetch, type SyncRecord, textValue, dateValue, numberValue } from "../api";
@@ -155,7 +161,7 @@ export function ContactDirectory() {
             <h2>Contact Directory</h2>
             <p className="muted">Filters run over tenant-scoped contact and organization data exposed by existing APIs.</p>
           </div>
-          <Link className="primary-button" href="/intelligence/contacts/new" aria-disabled={!hasPermission(session.permissions, "contact.create")}>Create Contact</Link>
+          <Link className="primary-button" href="/intelligence/contacts/new" allowed={hasPermission(session.permissions, "contact.create")}>Create Contact</Link>
         </div>
         <div className="filter-grid">
           <input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search contacts" />
@@ -279,6 +285,7 @@ export function ContactForm({ mode, contactId }: { mode: "create" | "edit"; cont
       <SessionPanel session={session} />
       {error ? <div className="error">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Contact details" purpose="Choose the organization and confirm the person’s name, role and source before saving." afterSave="Review and verify the contact on the profile. Saving contact details does not grant authority to approve work or payments." />
         <label>Organization<SelectInline value={form.organization_id} options={["", ...organizations.map((organization) => String(organization.id))]} labels={labelMap(organizations, "name")} onChange={(organization_id) => setForm({ ...form, organization_id })} /></label>
         <label>Full name<input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required /></label>
         <label>Title or role description<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
@@ -290,7 +297,7 @@ export function ContactForm({ mode, contactId }: { mode: "create" | "edit"; cont
         <label>Source note<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
         <label>Status<SelectInline value={form.status} options={contactStatuses} onChange={(status) => setForm({ ...form, status })} /></label>
         <div className="button-row">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "contact.create" : "contact.update")}>{mode === "create" ? "Create Contact" : "Save Contact"}</button>
+          {hasPermission(session.permissions, mode === "create" ? "contact.create" : "contact.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "contact.create" : "contact.update")}>{mode === "create" ? "Create Contact" : "Save Contact"}</button> : null}
           {contact ? <Link href={`/intelligence/contacts/${contact.id}`}>Cancel</Link> : <Link href="/intelligence/contacts">Cancel</Link>}
         </div>
       </form>
@@ -347,6 +354,7 @@ export function ContactDetail({ contactId }: { contactId: string }) {
   return (
     <IntelligenceShell title="Contact Detail" purpose="Understand the human access point, organization context, authority, relationship strength, and next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["contact","constraint"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error">{error}</div> : null}
       {!contact ? (
         <section className="workspace-panel"><div className="empty-state">Contact not found or you do not have access.</div></section>
@@ -365,16 +373,18 @@ export function ContactDetail({ contactId }: { contactId: string }) {
               </div>
               <div className="button-row">
                 <Link href={`/intelligence/contacts/${contact.id}/edit`}>Edit Contact</Link>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.verify") || contact.status === "archived"} onClick={() => setModal("verify")}>Verify Contact</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.assign_owner") || contact.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("contacted")}>Mark Contacted</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("engaged")}>Mark Engaged</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_relationship_active") || contact.status === "archived"} onClick={() => setModal("active")}>Relationship Active</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("dormant")}>Mark Dormant</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_invalid") || contact.status === "archived"} onClick={() => setModal("invalid")}>Mark Invalid</button>
-                <button type="button" disabled onClick={() => undefined}>Add to Relationship Map</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "contact.archive") || contact.status === "archived"} onClick={() => setModal("archive")}>Archive</button>
+                {hasPermission(session.permissions, "contact.verify") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.verify") || contact.status === "archived"} onClick={() => setModal("verify")}>Verify Contact</button> : null}
+                {hasPermission(session.permissions, "contact.assign_owner") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.assign_owner") || contact.status === "archived"} onClick={() => setModal("owner")}>Assign Owner</button> : null}
+                {hasPermission(session.permissions, "contact.update") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("contacted")}>Mark Contacted</button> : null}
+                {hasPermission(session.permissions, "contact.update") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("engaged")}>Mark Engaged</button> : null}
+                {hasPermission(session.permissions, "contact.mark_relationship_active") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_relationship_active") || contact.status === "archived"} onClick={() => setModal("active")}>Relationship Active</button> : null}
+                {hasPermission(session.permissions, "contact.update") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.update") || contact.status === "archived"} onClick={() => setModal("dormant")}>Mark Dormant</button> : null}
+                <AddContactToRelationship contactId={contact.id}/>
               </div>
+              {(hasPermission(session.permissions, "contact.mark_invalid") || hasPermission(session.permissions, "contact.archive")) ? <DangerZone>
+                {hasPermission(session.permissions, "contact.mark_invalid") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.mark_invalid") || contact.status === "archived"} onClick={() => setModal("invalid")}>Mark Invalid</button> : null}
+                {hasPermission(session.permissions, "contact.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.archive") || contact.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <SummaryMetric label="Influence" value={scoreText(contact.influenceScore, "contact influence")} />
@@ -405,7 +415,7 @@ export function ContactDetail({ contactId }: { contactId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item.id} type="button" className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}
+                {permittedRecordTabs(tabs, "contact").map((item) => <button key={item.id} type="button" className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}
               </div>
               <ContactTab tab={tab} contact={contact} related={related} permissions={session.permissions} />
             </section>
@@ -463,7 +473,7 @@ function ContactTab({ tab, contact, related, permissions }: { tab: string; conta
   if (tab === "opportunities") return <ObjectSlice title="Related Opportunities" rows={related.opportunities} columns={["name", "status", "estimated_value", "pursuit_score", "owner_name", "decision_date"]} empty="Contact-specific opportunity linkage is not exposed yet." />;
   if (tab === "projects") return <ObjectSlice title="Related Projects" rows={related.projects} columns={["name", "status", "customer_organization_id", "created_at"]} empty="Project-contact linkage is not exposed yet." />;
   if (tab === "finance") return <FinanceSlice related={related} />;
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={related.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this contact." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={related.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this contact." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="contact" objectId={contact.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={related.recommendations} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this contact." />;
   if (tab === "events") return <ObjectSlice title="Events" rows={related.events} columns={["event_type", "actor_name", "timestamp", "object_type", "summary"]} empty="No contact timeline events are available or you do not have timeline permission." />;
   if (tab === "audit") return <ObjectSlice title="Audit" rows={related.audit} columns={["actor_name", "action", "object_type", "reason", "created_at", "correlation_id"]} empty="Audit summary is unavailable or you do not have audit permission." />;
@@ -500,7 +510,7 @@ function ContactTable({ contacts, permissions, reload }: { contacts: ContactView
             <td>
               <div className="button-row">
                 <Link href={`/intelligence/contacts/${contact.id}`}>Open</Link>
-                <Link href={`/intelligence/contacts/${contact.id}/edit`} aria-disabled={!hasPermission(permissions, "contact.update")}>Edit</Link>
+                <Link href={`/intelligence/contacts/${contact.id}/edit`} allowed={hasPermission(permissions, "contact.update")}>Edit</Link>
                 <button type="button" disabled title="Open detail to verify with method and source">Verify</button>
               </div>
             </td>
@@ -967,7 +977,7 @@ function roleExplanation(contact: ContactView) {
   if (contact.contactRole === "vendor_manager") return "This contact may influence subcontractor onboarding, vendor approval, and access to work distributed by the organization.";
   if (contact.contactRole === "field_inspector" || contact.contactRole === "qc_contact") return "This contact may validate field work, influence correction flow, or unblock production acceptance.";
   if (contact.contactRole === "ap_contact" || contact.contactRole === "billing_contact") return "This contact may help resolve settlement, invoice, AR, or payment issues.";
-  if (contact.contactRole === "relationship_bridge") return "This contact may introduce Jackson to target contacts or help relationship pathing.";
+  if (contact.contactRole === "relationship_bridge") return "This contact may introduce Sync Comm Systems to target contacts or help relationship pathing.";
   if (contact.contactRole === "decision_maker") return "This contact may influence or approve telecom work decisions.";
   return "Contact role is not captured by the backend yet. Use the title, organization context, and notes to prepare relationship mapping.";
 }
@@ -1013,20 +1023,11 @@ function Checklist({ items }: { items: Array<[string, boolean]> }) {
   return <ul className="checklist">{items.map(([label, complete]) => <li key={label}><span className={complete ? "complete" : "missing"}>{complete ? "Complete" : "Missing"}</span>{label}</li>)}</ul>;
 }
 
-function SessionPanel({ session }: { session: ReturnType<typeof useSession>[0] }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return (
-    <details className="workspace-panel">
-      <summary>Session</summary>
-      <label>API token<textarea value={session.token} onChange={(event) => session.setToken(event.target.value)} /></label>
-      <label>Visible permissions<textarea value={session.permissions.join(", ")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} /></label>
-    </details>
-  );
-}
+function SessionPanel({ session }: { session: ReturnType<typeof useSession>[0] }) { return null; }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel">
         <div className="section-header">
           <h2>{title}</h2>
@@ -1034,7 +1035,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -1061,12 +1062,12 @@ function EmptyContacts({ filters, clear }: { filters: Filters; clear: () => void
 
 function useSession() {
   const [token, setTokenState] = useState("");
-  const [permissions, setPermissionsState] = useState<string[]>(defaultContactPermissions);
+  const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
     const hasStoredPermissions = typeof window !== "undefined" && Boolean(window.localStorage.getItem("syncos.permissions"));
     const stored = readPermissions();
-    setPermissionsState(hasStoredPermissions ? stored : defaultContactPermissions);
+    setPermissionsState(stored);
   }, []);
   function setToken(value: string) {
     setTokenState(value);

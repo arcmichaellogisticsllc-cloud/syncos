@@ -17,8 +17,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -206,24 +206,30 @@ async function createTransactionViaApi(token, accountId, description, amount) {
 }
 
 async function createExecutedPayment(client, tenantId, userId, marker, amount) {
+  const payable = await client.query(
+    `INSERT INTO contractor_payables (tenant_id, payable_number, payable_type, payable_party_type, status, approval_status, payment_readiness_status, net_payable_amount, created_by, updated_by)
+     VALUES ($1,$2,'subcontractor','internal_self_perform','payment_ready','approved','ready_for_payment',$3,$4,$4) RETURNING id`,
+    [tenantId, `CP-BANK-${marker}-${crypto.randomUUID().slice(0, 6)}`, amount, userId],
+  );
   const batch = await client.query(
     `INSERT INTO payment_batches (
       tenant_id, payment_batch_number, batch_type, payment_method, status, approval_status,
       execution_status, item_count, total_payment_amount, currency, execution_reference, created_by, updated_by
     )
-    VALUES ($1, $2, 'contractor_payable', 'manual', 'executed_later', 'approved',
-      'executed_later', 1, $3, 'USD', $4, $5, $5) RETURNING id`,
+    VALUES ($1, $2, 'contractor_payable', 'manual', 'draft', 'pending',
+      'not_submitted', 1, $3, 'USD', $4, $5, $5) RETURNING id`,
     [tenantId, `PB-BANK-${marker}-${crypto.randomUUID().slice(0, 6)}`, amount, `EXEC-${marker}`, userId],
   );
   const item = await client.query(
     `INSERT INTO payment_items (
       tenant_id, payment_batch_id, source_type, payee_type, payee_name, payment_method,
-      payment_amount, currency, execution_status, execution_reference, status, created_by, updated_by
+      payment_amount, currency, execution_status, execution_reference, status, created_by, updated_by, contractor_payable_id
     )
-    VALUES ($1, $2, 'correction', 'internal_self_perform', $3, 'manual',
-      $4, 'USD', 'executed_later', $5, 'executed_later', $6, $6) RETURNING id`,
-    [tenantId, batch.rows[0].id, `Bank Reconciliation Payee ${marker}`, amount, `EXECITEM-${marker}`, userId],
+    VALUES ($1, $2, 'contractor_payable', 'internal_self_perform', $3, 'manual',
+      $4, 'USD', 'executed_later', $5, 'executed_later', $6, $6, $7) RETURNING id`,
+    [tenantId, batch.rows[0].id, `Bank Reconciliation Payee ${marker}`, amount, `EXECITEM-${marker}`, userId, payable.rows[0].id],
   );
+  await client.query("UPDATE payment_batches SET status='executed_later', approval_status='approved', execution_status='executed_later' WHERE id=$1", [batch.rows[0].id]);
   return { batchId: batch.rows[0].id, itemId: item.rows[0].id };
 }
 

@@ -19,7 +19,7 @@ test.describe("Minimum persona permission certification", () => {
     const page = await context.newPage();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, invoiceApproved.route, invoiceApproved.objectType);
-    await expectNavVisible(page, ["Intelligence", "Operations", "Finance"]);
+    await expectNavVisible(page, ["Demand", "Execution", "Finance"]);
     await expectActionButtonVisible(page, invoiceApproved, { timeout: 60_000 });
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, paymentBatchExecutionSubmitted.route, paymentBatchExecutionSubmitted.objectType);

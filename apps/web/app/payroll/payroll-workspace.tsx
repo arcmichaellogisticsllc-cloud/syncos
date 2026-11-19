@@ -1,6 +1,14 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -19,7 +27,7 @@ const sourceTypes = ["approved_time", "production_based", "per_diem", "reimburse
 const earningTypes = ["regular", "overtime", "doubletime", "piece_rate", "per_diem", "reimbursement", "bonus", "incentive", "adjustment", "correction", "deduction", "penalty"];
 const workerClassifications = ["w2_employee", "contractor_1099", "temp_worker", "seasonal_worker", "internal_self_perform", "union_later", "unknown"];
 const itemStatuses = ["draft", "ready", "approved", "held", "disputed", "payroll_ready", "payroll_created_later", "voided", "archived"];
-const tabs = ["overview", "payroll_items", "worker_summary", "crew_context", "project_production_context", "payroll_period_cycle", "financial_summary", "earnings", "reimbursements", "deductions", "compliance_tax_readiness", "holds_disputes", "approval", "payroll_readiness", "timeline", "audit", "future_payment", "future_payroll_provider", "future_tax_accounting"];
+const tabs = ["overview", "payroll_items", "worker_summary", "crew_context", "project_production_context", "payroll_period_cycle", "financial_summary", "earnings", "reimbursements", "deductions", "compliance_tax_readiness", "holds_disputes", "approval", "payroll_readiness", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -111,7 +119,7 @@ export function PayrollRunQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Authentication is required before this workspace can load.</div> : null}
       {loading ? <div className="empty-state">Loading payroll runs...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -119,7 +127,7 @@ export function PayrollRunQueue() {
                 <h2>Today&apos;s payroll readiness work</h2>
                 <p className="muted">Start with submitted, blocked, disputed, and approved payroll records before marking anything payroll-ready.</p>
               </div>
-              <Link className="primary-button" href="/payroll/new" aria-disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</Link>
+              <Link className="primary-button" href="/payroll/new" allowed={hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</Link>
             </div>
             <div className="summary-grid">
               {payrollQueueDefinitions.map((queue) => <SummaryCard key={queue.key} label={queue.label} value={countPayrollQueue(rows, queue.key)} helper={queue.helper} active={activeQueue === queue.key} onClick={() => selectQueue(queue.key)} />)}
@@ -213,10 +221,11 @@ export function PayrollRunCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Payroll Run" purpose="Check the employee work, payroll period and responsible company before preparing this run." afterSave="Review eligibility, quantities and approved terms before payroll approval. Employee work stays separate from partner payables." />
         <div className="warning-box">Backend validation is authoritative. Creating a payroll run does not create payment, ACH/card/check, provider submission, tax filing, or accounting export records.</div>
         <PayrollFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</button>
+          {hasPermission(session.permissions, "payroll_run.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "payroll_run.create")}>Create Payroll Run</button> : null}
           <Link className="link-button" href="/payroll">Cancel</Link>
         </div>
       </form>
@@ -280,10 +289,11 @@ export function PayrollRunEdit({ payrollRunId }: { payrollRunId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Payroll run not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Payroll Run" purpose="Check the employee work, payroll period and responsible company before preparing this run." afterSave="Review eligibility, quantities and approved terms before payroll approval. Employee work stays separate from partner payables." />
           <div className="warning-box">Cannot create payment, submit payroll, mark paid, or file taxes from this form. Lifecycle states use backend action routes.</div>
           <PayrollFormFields form={form} setForm={setForm} related={related} disabled={readonly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payroll_run.update")}>Save Payroll Run</button>
+            {hasPermission(session.permissions, "payroll_run.update") ? <button className="primary-button" type="submit" disabled={readonly || !hasPermission(session.permissions, "payroll_run.update")}>Save Payroll Run</button> : null}
             <Link className="link-button" href={`/payroll/${payrollRunId}`}>Cancel</Link>
           </div>
         </form>
@@ -336,6 +346,7 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
   return (
     <PayrollShell title="Payroll Run Detail" purpose="Show worker compensation readiness before future Payment Execution or Payroll Provider workflows consume payroll-ready runs.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["payroll_run","payroll_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Payroll Run Detail.</div> : null}
@@ -355,22 +366,24 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/payroll/${payrollRunId}/edit`} aria-disabled={!hasPermission(session.permissions, "payroll_run.update")}>Edit Payroll Run</Link>
+                <Link className="link-button" href={`/payroll/${payrollRunId}/edit`} allowed={hasPermission(session.permissions, "payroll_run.update")}>Edit Payroll Run</Link>
                 <ActionButton permission="payroll_run.add_item" session={session} disabled={runInactive(run)} onClick={() => openAction("add_item")}>Add Payroll Item</ActionButton>
                 <ActionButton permission="payroll_run.recalculate_totals" session={session} disabled={runInactive(run)} onClick={() => openAction("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="payroll_run.submit_review" session={session} disabled={runInactive(run)} onClick={() => openAction("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="payroll_run.start_review" session={session} disabled={runInactive(run)} onClick={() => openAction("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="payroll_run.approve" session={session} disabled={runInactive(run)} onClick={() => openAction("approve")}>Approve</ActionButton>
-                <ActionButton permission="payroll_run.reject" session={session} disabled={runInactive(run)} onClick={() => openAction("reject")}>Reject</ActionButton>
                 <ActionButton permission="payroll_run.mark_payroll_ready" session={session} disabled={runInactive(run)} onClick={() => openAction("payroll_ready")}>Mark Payroll Ready</ActionButton>
                 <ActionButton permission="payroll_run.place_hold" session={session} disabled={runInactive(run)} onClick={() => openAction("place_hold")}>Place Hold</ActionButton>
                 <ActionButton permission="payroll_run.release_hold" session={session} disabled={runInactive(run)} onClick={() => openAction("release_hold")}>Release Hold</ActionButton>
-                <ActionButton permission="payroll_run.dispute" session={session} disabled={runInactive(run)} onClick={() => openAction("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="payroll_run.resolve_dispute" session={session} disabled={runInactive(run)} onClick={() => openAction("resolve_dispute")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="payroll_run.void" session={session} disabled={run.status === "voided" || run.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
-                <ActionButton permission="payroll_run.archive" session={session} disabled={run.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["payroll_run.reject", "payroll_run.dispute", "payroll_run.void", "payroll_run.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="payroll_run.reject" session={session} disabled={runInactive(run)} onClick={() => openAction("reject")}>Reject</ActionButton>
+              <ActionButton permission="payroll_run.dispute" session={session} disabled={runInactive(run)} onClick={() => openAction("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="payroll_run.void" session={session} disabled={run.status === "voided" || run.status === "archived"} onClick={() => openAction("void")}>Void</ActionButton>
+              <ActionButton permission="payroll_run.archive" session={session} disabled={run.status === "archived"} onClick={() => openAction("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Pay Amount" value={money(run.gross_pay_amount)} />
               <Metric label="Reimbursement Amount" value={money(run.reimbursement_amount)} />
@@ -386,7 +399,7 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
               <Metric label="Hold Status" value={formatAction(run.hold_status)} />
               <Metric label="Dispute Status" value={formatAction(run.dispute_status)} />
             </div>
-            <div className="warning-box">Payroll Run does not send payment. Payroll Ready does not create ACH, card payout, check, bank transaction, payroll provider submission, or tax filing. Payment execution and payroll provider submission are future workflows.</div>
+            <div className="warning-box">Payroll Run does not send payment. Payroll Ready does not create ACH, card payout, check, bank transaction, payroll provider submission, or tax filing. Record externally completed payments through payment controls. Payroll-provider submission requires a configured integration.</div>
           </section>
 
           <div className="organization-layout">
@@ -411,7 +424,7 @@ export function PayrollRunDetail({ payrollRunId }: { payrollRunId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "payroll_run").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <PayrollTab tab={tab} detail={detail} run={run} items={items} session={session} onAction={openAction} />
             </section>
@@ -452,7 +465,7 @@ function PayrollShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Payroll</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -461,7 +474,7 @@ function PayrollShell({ title, purpose, children }: { title: string; purpose: st
 }
 
 function PayrollRunTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Payroll Record", "Crew / Worker Group", "Amount", "Review Status", "Readiness", "Dispute", "Pay Period / Date", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payrollLink(row.id, row.payroll_run_number ?? row.id)}<div className="muted">{formatAction(row.payroll_run_type)}</div></td><td>{textValue(row.crew_name ?? row.worker_group_name ?? row.crew_id)}<div className="muted">{projectLink(row.project_id, row.project_name)}</div></td><td>{money(row.net_pay_amount ?? row.gross_pay_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{payrollReadinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{dateValue(row.payroll_period_start)} to {dateValue(row.payroll_period_end)}<div className="muted">Pay date {dateValue(row.pay_date)}</div></td><td>{dateValue(row.updated_at)}</td><td>{nextPayrollAction(row)}</td><td><Link className="link-button" href={`/payroll/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Payroll Record", "Crew / Worker Group", "Amount", "Review Status", "Readiness", "Dispute", "Pay Period / Date", "Age / Updated", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{payrollLink(row.id, row.payroll_run_number ?? row.id)}<div className="muted">{formatAction(row.payroll_run_type)}</div></td><td>{textValue(row.crew_name ?? row.worker_group_name ?? row.crew_id)}<div className="muted">{projectLink(row.project_id, row.project_name)}</div></td><td>{money(row.net_pay_amount ?? row.gross_pay_amount)}</td><td>{formatAction(row.status)}<div className="muted">{formatAction(row.approval_status)}</div></td><td>{payrollReadinessLabel(row)}</td><td>{formatAction(row.dispute_status)}<div className="muted">{formatAction(row.hold_status)}</div></td><td>{dateValue(row.payroll_period_start)} to {dateValue(row.payroll_period_end)}<div className="muted">Pay date {dateValue(row.pay_date)}</div></td><td>{dateValue(row.updated_at)}</td><td>{nextPayrollAction(row)}</td><td><Link className="link-button" href={`/payroll/${row.id}`}>Open Detail</Link></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: string; detail: DetailShape; run: SyncRecord; items: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
@@ -473,7 +486,7 @@ function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: strin
   if (tab === "payroll_period_cycle") return <Panel title="Payroll Period / Cycle"><dl className="detail-list"><dt>Payroll Cycle</dt><dd>{formatAction(run.payroll_cycle)}</dd><dt>Payroll Period Start</dt><dd>{dateValue(run.payroll_period_start)}</dd><dt>Payroll Period End</dt><dd>{dateValue(run.payroll_period_end)}</dd><dt>Pay Date</dt><dd>{dateValue(run.pay_date)}</dd><dt>Run Type</dt><dd>{formatAction(run.payroll_run_type)}</dd></dl></Panel>;
   if (tab === "financial_summary") return <Panel title="Financial Summary"><dl className="detail-list"><dt>Gross Pay Amount</dt><dd>{money(run.gross_pay_amount)}</dd><dt>Reimbursement Amount</dt><dd>{money(run.reimbursement_amount)}</dd><dt>Deduction Amount</dt><dd>{money(run.deduction_amount)}</dd><dt>Estimated Tax Amount</dt><dd>{money(run.estimated_tax_amount)}</dd><dt>Net Pay Amount</dt><dd>{money(run.net_pay_amount)}</dd><dt>Worker Count</dt><dd>{formatCell(run.worker_count)}</dd><dt>Item Count</dt><dd>{formatCell(run.item_count ?? items.length)}</dd><dt>Financial summary</dt><dd><JsonBlock value={detail.financial_summary} /></dd></dl><div className="warning-box">Estimated tax amount is status/readiness only. Tax filing is future scope.</div></Panel>;
   if (tab === "earnings") return <Panel title="Earnings"><ObjectTable rows={items.filter((item) => ["regular", "overtime", "doubletime", "piece_rate", "bonus", "incentive", "adjustment", "correction"].includes(String(item.earning_type)))} columns={["worker_id", "earning_type", "hours_regular", "hours_overtime", "hours_doubletime", "quantity", "rate_regular", "rate_overtime", "rate_doubletime", "piece_rate", "gross_pay_amount", "source_type"]} /><JsonBlock value={detail.earning_summary} /><div className="warning-box">Legal overtime calculation is not performed unless backend explicitly supports it. Approved overtime hours are stored and reviewed.</div></Panel>;
-  if (tab === "reimbursements") return <Panel title="Reimbursements"><ObjectTable rows={items.filter((item) => ["per_diem", "reimbursement"].includes(String(item.earning_type)) || ["per_diem", "reimbursement"].includes(String(item.source_type)))} columns={["worker_id", "source_type", "earning_type", "reimbursement_amount", "description", "evidence_reference"]} /><JsonBlock value={detail.reimbursement_summary} /><div className="warning-box">Reimbursement payment is not executed in this sprint.</div></Panel>;
+  if (tab === "reimbursements") return <Panel title="Reimbursements"><ObjectTable rows={items.filter((item) => ["per_diem", "reimbursement"].includes(String(item.earning_type)) || ["per_diem", "reimbursement"].includes(String(item.source_type)))} columns={["worker_id", "source_type", "earning_type", "reimbursement_amount", "description", "evidence_reference"]} /><JsonBlock value={detail.reimbursement_summary} /><div className="warning-box">Record externally completed reimbursement payments through the authorized payment workflow.</div></Panel>;
   if (tab === "deductions") return <Panel title="Deductions"><ObjectTable rows={items.filter((item) => numberValue(item.deduction_amount, 0) !== 0 || item.earning_type === "deduction" || item.earning_type === "penalty")} columns={["worker_id", "earning_type", "deduction_amount", "description", "manual_reason", "net_pay_amount"]} /><JsonBlock value={detail.deduction_summary} /><div className="warning-box">Benefits, garnishments, tax withholding, and remittance are future workflows.</div></Panel>;
   if (tab === "compliance_tax_readiness") return <Panel title="Compliance / Tax Readiness"><dl className="detail-list"><dt>Compliance Status</dt><dd>{formatAction(run.compliance_status)}</dd><dt>Tax Document Status</dt><dd>{formatAction(run.tax_document_status)}</dd><dt>Classification Distribution</dt><dd>{Array.from(new Set(items.map((item) => String(item.worker_classification ?? "")).filter(Boolean))).map(formatAction).join(", ") || "Not captured"}</dd><dt>Warnings</dt><dd><JsonBlock value={detail.warnings} /></dd><dt>Blockers</dt><dd><JsonBlock value={detail.blockers} /></dd><dt>Compliance summary</dt><dd><JsonBlock value={detail.compliance_summary} /></dd><dt>Tax document summary</dt><dd><JsonBlock value={detail.tax_document_summary} /></dd></dl><ObjectTable rows={items} columns={["worker_id", "worker_classification", "compliance_status", "tax_document_status"]} /><div className="warning-box">Compliance and tax readiness are status fields only. Tax filing, W2, 1099, and payroll tax deposits are future workflows.</div></Panel>;
   if (tab === "holds_disputes") return <Panel title="Holds & Disputes"><dl className="detail-list"><dt>Hold Status</dt><dd>{formatAction(run.hold_status)}</dd><dt>Hold Reason</dt><dd>{textValue(run.hold_reason)}</dd><dt>Hold Note</dt><dd>{textValue(run.hold_note)}</dd><dt>Dispute Status</dt><dd>{formatAction(run.dispute_status)}</dd><dt>Dispute Reason</dt><dd>{textValue(run.dispute_reason)}</dd><dt>Dispute Note</dt><dd>{textValue(run.dispute_note)}</dd><dt>Hold dispute summary</dt><dd><JsonBlock value={detail.hold_dispute_summary} /></dd></dl><div className="form-actions"><ActionButton permission="payroll_run.place_hold" session={session} disabled={runInactive(run)} onClick={() => onAction("place_hold")}>Place Hold</ActionButton><ActionButton permission="payroll_run.release_hold" session={session} disabled={runInactive(run)} onClick={() => onAction("release_hold")}>Release Hold</ActionButton><ActionButton permission="payroll_run.dispute" session={session} disabled={runInactive(run)} onClick={() => onAction("dispute")}>Dispute</ActionButton><ActionButton permission="payroll_run.resolve_dispute" session={session} disabled={runInactive(run)} onClick={() => onAction("resolve_dispute")}>Resolve Dispute</ActionButton></div></Panel>;
@@ -481,14 +494,14 @@ function PayrollTab({ tab, detail, run, items, session, onAction }: { tab: strin
   if (tab === "payroll_readiness") return <Panel title="Payroll Readiness"><dl className="detail-list"><dt>Payroll Readiness Status</dt><dd>{formatAction(run.payroll_readiness_status)}</dd><dt>Net Pay Amount</dt><dd>{money(run.net_pay_amount)}</dd><dt>Compliance Status</dt><dd>{formatAction(run.compliance_status)}</dd><dt>Tax Document Status</dt><dd>{formatAction(run.tax_document_status)}</dd><dt>Hold Status</dt><dd>{formatAction(run.hold_status)}</dd><dt>Dispute Status</dt><dd>{formatAction(run.dispute_status)}</dd><dt>Warnings</dt><dd><JsonBlock value={detail.warnings} /></dd><dt>Blockers</dt><dd><JsonBlock value={detail.blockers} /></dd><dt>Required Override Fields</dt><dd><JsonBlock value={detail.required_override_fields} /></dd><dt>Recommended Next Action</dt><dd>{formatAction(run.recommended_next_action ?? detail.recommended_next_action)}</dd></dl><div className="form-actions"><ActionButton permission="payroll_run.mark_payroll_ready" session={session} disabled={runInactive(run)} onClick={() => onAction("payroll_ready")}>Mark Payroll Ready</ActionButton></div><div className="warning-box">Mark Payroll Ready does not send money, submit payroll, create ACH/card/check, create bank transaction, or file taxes.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "entity_type", "entity_id", "created_at", "actor_user_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail.audit_allowed === false ? <div className="warning-box">You do not have permission to view payroll audit details.</div> : <ObjectTable rows={detail._audit ?? []} columns={["action", "entity_type", "entity_id", "actor_user_id", "created_at"]} />}</Panel>;
-  if (tab === "future_payment") return <PlaceholderPanel title="Future Payment" message="Payment execution is not available in this sprint. Future payment workflows may consume payroll-ready runs." columns={["No payment button", "No mark paid button", "No check/ACH/card action"]} />;
+  if (tab === "future_payment") return <PlaceholderPanel title="Future Payment" message="Payment Execution records approved payroll payment batches and external execution evidence. Payroll-provider submission remains separately configured." columns={["No payment button", "No mark paid button", "No check/ACH/card action"]} />;
   if (tab === "future_payroll_provider") return <PlaceholderPanel title="Future Payroll Provider" message="Payroll provider submission is not available in this sprint." columns={["No provider submission", "No payroll execution", "No external integration"]} />;
-  return <PlaceholderPanel title="Future Tax / Accounting" message="Tax filing, W2/1099 generation, payroll tax deposits, accounting export, and bank reconciliation are not available in this sprint." columns={["No tax filing", "No W2/1099", "No accounting export", "No bank reconciliation"]} />;
+  return <PlaceholderPanel title="Future Tax / Accounting" message="Accounting batch preparation and bank matching are available in their workspaces. Tax filing, statutory forms and payroll tax deposits require separate services." columns={["No tax filing", "No W2/1099", "No accounting export", "No bank reconciliation"]} />;
 }
 
 function PayrollItemsTable({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, item?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No payroll items yet.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Worker", "Worker Classification", "Source Type", "Earning Type", "Status", "Work Date", "Crew", "Project", "Work Order", "Production Record", "Regular Hours", "Overtime Hours", "Doubletime Hours", "Quantity", "Unit", "Regular Rate", "Overtime Rate", "Doubletime Rate", "Piece Rate", "Gross Pay Amount", "Reimbursement Amount", "Deduction Amount", "Estimated Tax Amount", "Net Pay Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{formatAction(row.worker_classification)}</td><td>{formatAction(row.source_type)}</td><td>{formatAction(row.earning_type)}</td><td>{formatAction(row.status)}</td><td>{dateValue(row.work_date)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{projectLink(row.project_id, row.project_name ?? row.project_id)}</td><td>{textValue(row.work_order_id)}</td><td>{textValue(row.production_record_id)}</td><td>{formatCell(row.hours_regular)}</td><td>{formatCell(row.hours_overtime)}</td><td>{formatCell(row.hours_doubletime)}</td><td>{formatCell(row.quantity)}</td><td>{textValue(row.unit)}</td><td>{money(row.rate_regular)}</td><td>{money(row.rate_overtime)}</td><td>{money(row.rate_doubletime)}</td><td>{money(row.piece_rate)}</td><td>{money(row.gross_pay_amount)}</td><td>{money(row.reimbursement_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.estimated_tax_amount)}</td><td>{money(row.net_pay_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td><div className="form-actions"><ActionButton permission="payroll_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payroll_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payroll_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Worker", "Worker Classification", "Source Type", "Earning Type", "Status", "Work Date", "Crew", "Project", "Work Order", "Production Record", "Regular Hours", "Overtime Hours", "Doubletime Hours", "Quantity", "Unit", "Regular Rate", "Overtime Rate", "Doubletime Rate", "Piece Rate", "Gross Pay Amount", "Reimbursement Amount", "Deduction Amount", "Estimated Tax Amount", "Net Pay Amount", "Compliance Status", "Tax Document Status", "Dispute Status", "Hold Status", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{textValue(row.worker_name ?? row.worker_id)}</td><td>{formatAction(row.worker_classification)}</td><td>{formatAction(row.source_type)}</td><td>{formatAction(row.earning_type)}</td><td>{formatAction(row.status)}</td><td>{dateValue(row.work_date)}</td><td>{textValue(row.crew_name ?? row.crew_id)}</td><td>{projectLink(row.project_id, row.project_name ?? row.project_id)}</td><td>{textValue(row.work_order_id)}</td><td>{textValue(row.production_record_id)}</td><td>{formatCell(row.hours_regular)}</td><td>{formatCell(row.hours_overtime)}</td><td>{formatCell(row.hours_doubletime)}</td><td>{formatCell(row.quantity)}</td><td>{textValue(row.unit)}</td><td>{money(row.rate_regular)}</td><td>{money(row.rate_overtime)}</td><td>{money(row.rate_doubletime)}</td><td>{money(row.piece_rate)}</td><td>{money(row.gross_pay_amount)}</td><td>{money(row.reimbursement_amount)}</td><td>{money(row.deduction_amount)}</td><td>{money(row.estimated_tax_amount)}</td><td>{money(row.net_pay_amount)}</td><td>{formatAction(row.compliance_status)}</td><td>{formatAction(row.tax_document_status)}</td><td>{formatAction(row.dispute_status)}</td><td>{formatAction(row.hold_status)}</td><td><div className="form-actions"><ActionButton permission="payroll_item.update" session={session} disabled={itemInactive(row)} onClick={() => onAction("edit_item", row)}>Edit</ActionButton><ActionButton permission="payroll_item.void" session={session} disabled={itemInactive(row)} onClick={() => onAction("void_item", row)}>Void</ActionButton><ActionButton permission="payroll_item.archive" session={session} disabled={row.status === "archived"} onClick={() => onAction("archive_item", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function PayrollModal({ type, payrollRunId, item, related, session, onClose, onSaved }: { type: string; payrollRunId: string; run: SyncRecord; item: SyncRecord | null; related: RelatedData; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -523,7 +536,7 @@ function PayrollModal({ type, payrollRunId, item, related, session, onClose, onS
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -541,7 +554,7 @@ function PayrollModal({ type, payrollRunId, item, related, session, onClose, onS
         {["recalculate", "submit_review", "start_review"].includes(type) ? <div className="warning-box">This lifecycle action uses the Payroll backend and creates no payment, provider submission, bank, tax, or accounting records.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -583,7 +596,7 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   const [token, setToken] = useState(session.token);
   const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
   return <section className="workspace-panel"><div className="section-toolbar"><h2>API Session</h2><span>{session.permissions.length} permissions loaded</span></div><div className="session-grid"><input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" /><input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" /><button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button></div></section>;
@@ -591,20 +604,13 @@ function SessionPanel({ session }: { session: Session }) {
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(payrollDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : payrollDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -836,7 +842,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {
@@ -848,7 +854,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function payrollLink(id: unknown, label: unknown) {

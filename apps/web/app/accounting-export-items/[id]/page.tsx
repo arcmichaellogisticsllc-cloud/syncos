@@ -1,5 +1,5 @@
 import { AccountingExportItemDetail } from "../../accounting-exports/accounting-export-workspace";
 
-export default function AccountingExportItemPage({ params }: { params: { id: string } }) {
-  return <AccountingExportItemDetail accountingExportItemId={params.id} />;
+export default async function AccountingExportItemPage({ params }: { params: Promise<{ id: string }> }) {
+  return <AccountingExportItemDetail accountingExportItemId={(await params).id} />;
 }

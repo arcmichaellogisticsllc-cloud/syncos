@@ -1,6 +1,14 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell, ObjectTable, Panel } from "../dashboard-components";
@@ -17,8 +25,8 @@ const actionTypes = ["call", "email", "text", "portal_message", "internal_note",
 const actionStatuses = ["planned", "completed", "failed", "cancelled", "archived"];
 const contactMethods = ["phone", "email", "sms", "portal", "in_person", "internal"];
 const outcomes = ["no_response", "left_message", "contacted", "promise_received", "payment_received_later", "dispute_reported", "wrong_contact", "follow_up_needed", "escalated", "resolved"];
-const closeReasons = ["paid", "resolved", "duplicate", "opened_in_error", "transferred", "unresolved_close", "future_writeoff_review"];
-const caseTabs = ["overview", "invoice_context", "customer_context", "cash_application_context", "actions", "promise_to_pay", "dispute", "escalation", "writeoff_review", "aging_priority", "timeline", "audit", "future_cash_application", "future_legal", "future_accounting_tax"];
+const closeReasons = ["paid", "resolved", "duplicate", "opened_in_error", "transferred", "unresolved_close"];
+const caseTabs = ["overview", "invoice_context", "customer_context", "cash_application_context", "actions", "promise_to_pay", "dispute", "escalation", "writeoff_review", "aging_priority", "timeline", "audit"];
 
 type Session = ReturnType<typeof useSession>;
 
@@ -106,7 +114,7 @@ export function CollectionCaseQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to manage collection cases and follow-up actions.</div> : null}
       {loading ? <div className="loading-state">Loading collection cases...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -116,7 +124,7 @@ export function CollectionCaseQueue() {
                 <p className="muted">Start with due actions, unassigned cases, promises, disputes, and aging balances.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/collections/new" aria-disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</Link>
+                <Link className="primary-button" href="/collections/new" allowed={hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</Link>
                 <Link className="link-button" href={firstCaseHref(rows.filter((row) => !row.assigned_owner_user_id), "/collections")} aria-disabled={!rows.some((row) => !row.assigned_owner_user_id)}>Assign Owner</Link>
                 <Link className="link-button" href={firstCaseHref(visible, "/collections")} aria-disabled={!visible.length}>Add Collection Action</Link>
                 <button type="button" onClick={() => selectQueue("needs_action")}>Complete Due Action</button>
@@ -133,7 +141,7 @@ export function CollectionCaseQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyCollectionQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptyCollectionQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("needs_action"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -217,6 +225,7 @@ export function CollectionCaseCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Collection Case" purpose="Identify the invoice, customer, responsible owner and follow-up context for this collection case." afterSave="Review the case and add dated follow-up actions; a collection note does not change the invoice balance." />
         <div className="warning-box">Backend validation is authoritative. Creating a case does not update invoice balance, create a cash receipt, create a payment application, or send a message.</div>
         <div className="form-grid">
           <Select label="Invoice" value={form.invoice_id ?? ""} options={["", ...invoices.map((row) => String(row.id))]} labels={labelsFor(invoices, "invoice_number")} onChange={(invoice_id) => setForm({ ...form, invoice_id })} required />
@@ -226,7 +235,7 @@ export function CollectionCaseCreate() {
           <label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} placeholder='{"reason":"Reviewed"}' /></label>
         </div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</button>
+          {hasPermission(session.permissions, "collection_case.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "collection_case.create")}>Create Collection Case</button> : null}
           <Link className="link-button" href="/collections">Cancel</Link>
         </div>
       </form>
@@ -281,6 +290,7 @@ export function CollectionCaseEdit({ caseId }: { caseId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Collection case not found or no access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Collection Case" purpose="Identify the invoice, customer, responsible owner and follow-up context for this collection case." afterSave="Review the case and add dated follow-up actions; a collection note does not change the invoice balance." />
           <div className="warning-box">Cannot edit invoice balance. Status changes must use lifecycle actions.</div>
           <div className="form-grid">
             <input value={form.assigned_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, assigned_owner_user_id: event.target.value })} placeholder="Assigned owner user ID" disabled={archived} />
@@ -292,7 +302,7 @@ export function CollectionCaseEdit({ caseId }: { caseId: string }) {
             <label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} disabled={archived} /></label>
           </div>
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={archived || !hasPermission(session.permissions, "collection_case.update")}>Save Case</button>
+            {hasPermission(session.permissions, "collection_case.update") ? <button className="primary-button" type="submit" disabled={archived || !hasPermission(session.permissions, "collection_case.update")}>Save Case</button> : null}
             <Link className="link-button" href={`/collections/${caseId}`}>Cancel</Link>
           </div>
         </form>
@@ -340,6 +350,7 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
   return (
     <CollectionsShell title="Collection Case Detail" purpose="Show collection truth for an open invoice balance: owner, aging, actions, promise, dispute, escalation, and next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["collection_case","collection_action"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Collection Case Detail.</div> : null}
@@ -359,13 +370,15 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/collections/${caseId}/edit`} aria-disabled={!hasPermission(session.permissions, "collection_case.update")}>Edit Case</Link>
+                <Link className="link-button" href={`/collections/${caseId}/edit`} allowed={hasPermission(session.permissions, "collection_case.update")}>Edit Case</Link>
                 <ActionButton permission="collection_case.assign_owner" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("assign_owner")}>Assign Owner</ActionButton>
                 <ActionButton permission="collection_action.create" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("add_action")}>Add Action</ActionButton>
                 <ActionButton permission="collection_case.close" session={session} disabled={caseInactive(collectionCase)} onClick={() => openAction("close_case")}>Close Case</ActionButton>
-                <ActionButton permission="collection_case.archive" session={session} disabled={collectionCase.case_status === "archived"} onClick={() => openAction("archive_case")}>Archive Case</ActionButton>
               </div>
             </div>
+            {["collection_case.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="collection_case.archive" session={session} disabled={collectionCase.case_status === "archived"} onClick={() => openAction("archive_case")}>Archive Case</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Current Balance" value={money(collectionCase.current_balance)} />
               <Metric label="Original Invoice Amount" value={money(collectionCase.original_invoice_amount)} />
@@ -408,7 +421,7 @@ export function CollectionCaseDetail({ caseId }: { caseId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {caseTabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(caseTabs, "collection_case").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <CollectionCaseTab tab={tab} detail={detail} collectionCase={collectionCase} actions={actions} session={session} onAction={openAction} />
             </section>
@@ -458,7 +471,7 @@ export function CollectionActionQueue() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review collection actions.</div> : null}
       {loading ? <div className="loading-state">Loading collection actions...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -540,6 +553,7 @@ export function CollectionActionDetail({ actionId }: { actionId: string }) {
   return (
     <CollectionsShell title="Collection Action Detail" purpose="Show collection activity context, promise/dispute/escalation data, follow-up fields, timeline, and audit history.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["collection_action"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!action ? <div className="empty-state">Collection action not found or no access.</div> : null}
@@ -557,10 +571,12 @@ export function CollectionActionDetail({ actionId }: { actionId: string }) {
               </div>
               <div className="form-actions">
                 <ActionButton permission="collection_action.complete" session={session} disabled={actionInactive(action)} onClick={() => setModal("complete_action")}>Complete Action</ActionButton>
-                <ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(action)} onClick={() => setModal("cancel_action")}>Cancel Action</ActionButton>
-                <ActionButton permission="collection_action.archive" session={session} disabled={action.action_status === "archived"} onClick={() => setModal("archive_action")}>Archive Action</ActionButton>
               </div>
             </div>
+            {["collection_action.cancel", "collection_action.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(action)} onClick={() => setModal("cancel_action")}>Cancel Action</ActionButton>
+              <ActionButton permission="collection_action.archive" session={session} disabled={action.action_status === "archived"} onClick={() => setModal("archive_action")}>Archive Action</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Action Type" value={formatAction(action.action_type)} />
               <Metric label="Status" value={formatAction(action.action_status)} />
@@ -619,7 +635,7 @@ function CollectionsShell({ title, purpose, children }: { title: string; purpose
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Collections</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -628,12 +644,12 @@ function CollectionsShell({ title, purpose, children }: { title: string; purpose
 }
 
 function CollectionCaseTable({ rows }: { rows: SyncRecord[] }) {
-  return <div className="wide-table"><table><thead><tr>{["Case", "Customer", "Invoice", "Amount Due", "Age / Due Date", "Owner", "Status", "Dispute / Promise", "Next Action Due", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{caseLink(row.id, row.case_number)}<div className="cell-helper">{formatAction(row.collection_priority)} priority</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.current_balance ?? row.original_invoice_amount)}</td><td>{formatAging(row.aging_bucket)}<div className="cell-helper">{dateValue(row.next_action_due_at)}</div></td><td>{textValue(row.assigned_owner_name ?? row.assigned_owner_user_id, "Unassigned")}</td><td>{formatAction(row.case_status)}<div className="cell-helper">{formatAction(row.risk_level)} risk</div></td><td>{collectionPromiseDispute(row)}</td><td>{dateValue(row.next_action_due_at)}</td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collections/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Case", "Customer", "Invoice", "Amount Due", "Age / Due Date", "Owner", "Status", "Dispute / Promise", "Next Action Due", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{caseLink(row.id, row.case_number)}<div className="cell-helper">{formatAction(row.collection_priority)} priority</div></td><td>{organizationLink(row.customer_organization_id, row.customer_organization_name)}</td><td>{invoiceLink(row.invoice_id, row.invoice_number)}</td><td>{money(row.current_balance ?? row.original_invoice_amount)}</td><td>{formatAging(row.aging_bucket)}<div className="cell-helper">{dateValue(row.next_action_due_at)}</div></td><td>{textValue(row.assigned_owner_name ?? row.assigned_owner_user_id, "Unassigned")}</td><td>{formatAction(row.case_status)}<div className="cell-helper">{formatAction(row.risk_level)} risk</div></td><td>{collectionPromiseDispute(row)}</td><td>{dateValue(row.next_action_due_at)}</td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collections/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CollectionActionTable({ rows }: { rows: SyncRecord[] }) {
   if (!rows.length) return <div className="empty-state">No collection actions returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Action", "Case", "Type", "Due Date", "Owner", "Status", "Completed At", "Result / Note", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/collection-actions/${row.id}`}>{formatAction(row.action_type)}</Link></td><td>{caseLink(row.collection_case_id, row.case_number)}</td><td>{formatAction(row.contact_method)}<div className="cell-helper">{formatAction(row.action_type)}</div></td><td>{dateValue(row.due_at ?? row.follow_up_due_at ?? row.action_date)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.completed_at)}</td><td>{formatAction(row.outcome)}<div className="cell-helper">{textValue(row.note)}</div></td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collection-actions/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Action", "Case", "Type", "Due Date", "Owner", "Status", "Completed At", "Result / Note", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td><Link className="table-link" href={`/collection-actions/${row.id}`}>{formatAction(row.action_type)}</Link></td><td>{caseLink(row.collection_case_id, row.case_number)}</td><td>{formatAction(row.contact_method)}<div className="cell-helper">{formatAction(row.action_type)}</div></td><td>{dateValue(row.due_at ?? row.follow_up_due_at ?? row.action_date)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.completed_at)}</td><td>{formatAction(row.outcome)}<div className="cell-helper">{textValue(row.note)}</div></td><td>{nextCollectionAction(row)}</td><td><div className="form-actions"><Link className="link-button" href={`/collection-actions/${row.id}`}>Open Detail</Link></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CollectionCaseTab({ tab, detail, collectionCase, actions, session, onAction }: { tab: string; detail: CollectionCaseDetailShape; collectionCase: SyncRecord; actions: SyncRecord[]; session: Session; onAction: (type: string, action?: SyncRecord) => void }) {
@@ -651,12 +667,12 @@ function CollectionCaseTab({ tab, detail, collectionCase, actions, session, onAc
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view collections audit details.</div>}</Panel>;
   if (tab === "future_cash_application") return <PlaceholderPanel title="Future Cash Application" message="Cash Application is not performed from Collections in this sprint. Use Cash Application workspace to record or apply payments." columns={["Cash receipt button", "Payment application button", "Invoice balance edit"]} />;
   if (tab === "future_legal") return <PlaceholderPanel title="Future Legal" message="Legal filing and collections agency workflows are not available in this sprint." columns={["Legal filing", "Agency referral", "Demand letter"]} />;
-  return <PlaceholderPanel title="Future Accounting / Tax" message="Accounting export, tax write-off, and GL workflows are not available in this sprint." columns={["Accounting export", "Tax write-off", "GL entry"]} />;
+  return <PlaceholderPanel title="Future Accounting / Tax" message="Accounting batch preparation is available separately. Tax write-offs and external general-ledger posting require their own authorization and services." columns={["Accounting export", "Tax write-off", "GL entry"]} />;
 }
 
 function CollectionActionsForCase({ rows, session, onAction }: { rows: SyncRecord[]; session: Session; onAction: (type: string, action?: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No collection actions yet. Add an internal note, promise, dispute, escalation, or follow-up.</div>;
-  return <div className="wide-table"><table><thead><tr>{["Action Type", "Status", "Date", "Due At", "Completed At", "Actor", "Contact Method", "Outcome", "Follow-Up Required", "Follow-Up Due", "Note", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{actionLink(row.id, formatAction(row.action_type))}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.action_date)}</td><td>{dateValue(row.due_at)}</td><td>{dateValue(row.completed_at)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.contact_method)}</td><td>{formatAction(row.outcome)}</td><td>{row.follow_up_required ? "Yes" : "No"}</td><td>{dateValue(row.follow_up_due_at)}</td><td>{textValue(row.note)}</td><td><div className="form-actions"><ActionButton permission="collection_action.complete" session={session} disabled={actionInactive(row)} onClick={() => onAction("complete_action", row)}>Complete</ActionButton><ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(row)} onClick={() => onAction("cancel_action", row)}>Cancel</ActionButton><ActionButton permission="collection_action.archive" session={session} disabled={row.action_status === "archived"} onClick={() => onAction("archive_action", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Action Type", "Status", "Date", "Due At", "Completed At", "Actor", "Contact Method", "Outcome", "Follow-Up Required", "Follow-Up Due", "Note", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{actionLink(row.id, formatAction(row.action_type))}</td><td>{formatAction(row.action_status)}</td><td>{dateValue(row.action_date)}</td><td>{dateValue(row.due_at)}</td><td>{dateValue(row.completed_at)}</td><td>{textValue(row.actor_name ?? row.actor_user_id)}</td><td>{formatAction(row.contact_method)}</td><td>{formatAction(row.outcome)}</td><td>{row.follow_up_required ? "Yes" : "No"}</td><td>{dateValue(row.follow_up_due_at)}</td><td>{textValue(row.note)}</td><td><div className="form-actions"><ActionButton permission="collection_action.complete" session={session} disabled={actionInactive(row)} onClick={() => onAction("complete_action", row)}>Complete</ActionButton><ActionButton permission="collection_action.cancel" session={session} disabled={actionInactive(row)} onClick={() => onAction("cancel_action", row)}>Cancel</ActionButton><ActionButton permission="collection_action.archive" session={session} disabled={row.action_status === "archived"} onClick={() => onAction("archive_action", row)}>Archive</ActionButton></div></td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function CollectionCaseModal({ type, caseId, collectionCase, action, session, onClose, onSaved }: { type: string; caseId: string; collectionCase: SyncRecord; action: SyncRecord | null; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -682,7 +698,7 @@ function CollectionCaseModal({ type, caseId, collectionCase, action, session, on
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -690,7 +706,7 @@ function CollectionCaseModal({ type, caseId, collectionCase, action, session, on
         </div>
         {error ? <div className="error-banner">{error}</div> : null}
         <div className="warning-box">Collections actions do not send email/SMS, apply cash, create payment applications, reduce invoice balances, trigger legal filing, or execute write-offs.</div>
-        {type === "assign_owner" ? <><input value={form.assigned_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, assigned_owner_user_id: event.target.value })} placeholder="Assigned owner user ID" required /><label>Assignment Note<textarea value={form.assignment_note ?? ""} onChange={(event) => setForm({ ...form, assignment_note: event.target.value })} /></label></> : null}
+        {type === "assign_owner" ? <><label>Assigned owner user ID<input value={form.assigned_owner_user_id ?? ""} onChange={(event) => setForm({ ...form, assigned_owner_user_id: event.target.value })} placeholder="Assigned owner user ID" required /></label><label>Assignment Note<textarea value={form.assignment_note ?? ""} onChange={(event) => setForm({ ...form, assignment_note: event.target.value })} /></label></> : null}
         {type === "close_case" ? <><Select label="Close Reason" value={form.close_reason ?? ""} options={["", ...closeReasons]} onChange={(close_reason) => setForm({ ...form, close_reason })} required /><label>Close Note<textarea value={form.close_note ?? ""} onChange={(event) => setForm({ ...form, close_note: event.target.value })} /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label></> : null}
         {type === "archive_case" ? <ArchiveFields form={form} setForm={setForm} /> : null}
         {type === "add_action" || type.startsWith("add_") ? <ActionFields form={form} setForm={setForm} currentBalance={numberValue(collectionCase.current_balance, 0)} /> : null}
@@ -702,7 +718,7 @@ function CollectionCaseModal({ type, caseId, collectionCase, action, session, on
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -722,7 +738,7 @@ function CollectionActionModal({ type, actionId, session, onClose, onSaved }: { 
       setError(plainError((nextError as Error).message));
     }
   }
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "complete_action" ? <><Select label="Outcome" value={form.outcome ?? ""} options={["", ...outcomes]} onChange={(outcome) => setForm({ ...form, outcome })} /><label>Note<textarea value={form.note ?? ""} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label><label><input type="checkbox" checked={form.follow_up_required === "true"} onChange={(event) => setForm({ ...form, follow_up_required: event.target.checked ? "true" : "" })} /> Follow-up Required</label><label>Follow-Up Due At<input type="date" value={form.follow_up_due_at ?? ""} onChange={(event) => setForm({ ...form, follow_up_due_at: event.target.value })} /></label></> : type === "cancel_action" ? <><label>Cancel Reason<textarea value={form.cancel_reason ?? ""} onChange={(event) => setForm({ ...form, cancel_reason: event.target.value })} required /></label><label>Cancel Note<textarea value={form.cancel_note ?? ""} onChange={(event) => setForm({ ...form, cancel_note: event.target.value })} /></label></> : <ArchiveFields form={form} setForm={setForm} />}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></div>;
+  return <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true"><form className="modal-card" onSubmit={(event) => void submit(event)}><div className="section-toolbar"><h2>{modalTitle(type)}</h2><button type="button" onClick={onClose}>Close</button></div>{error ? <div className="error-banner">{error}</div> : null}{type === "complete_action" ? <><Select label="Outcome" value={form.outcome ?? ""} options={["", ...outcomes]} onChange={(outcome) => setForm({ ...form, outcome })} /><label>Note<textarea value={form.note ?? ""} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label><label><input type="checkbox" checked={form.follow_up_required === "true"} onChange={(event) => setForm({ ...form, follow_up_required: event.target.checked ? "true" : "" })} /> Follow-up Required</label><label>Follow-Up Due At<input type="date" value={form.follow_up_due_at ?? ""} onChange={(event) => setForm({ ...form, follow_up_due_at: event.target.value })} /></label></> : type === "cancel_action" ? <><label>Cancel Reason<textarea value={form.cancel_reason ?? ""} onChange={(event) => setForm({ ...form, cancel_reason: event.target.value })} required /></label><label>Cancel Note<textarea value={form.cancel_note ?? ""} onChange={(event) => setForm({ ...form, cancel_note: event.target.value })} /></label></> : <ArchiveFields form={form} setForm={setForm} />}<div className="form-actions"><button className="primary-button" type="submit">Submit</button><button type="button" onClick={onClose}>Cancel</button></div></form></ModalBoundary>;
 }
 
 function ActionFields({ form, setForm, currentBalance }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; currentBalance: number }) {
@@ -753,41 +769,17 @@ function ArchiveFields({ form, setForm }: { form: Record<string, string>; setFor
   return <><label>Archive Reason<textarea value={form.archive_reason ?? ""} onChange={(event) => setForm({ ...form, archive_reason: event.target.value })} required /></label><label>Archive Note<textarea value={form.archive_note ?? ""} onChange={(event) => setForm({ ...form, archive_note: event.target.value })} /></label></>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  const [token, setToken] = useState(session.token);
-  const [permissionText, setPermissionText] = useState(session.permissions.join(", "));
-  return (
-    <section className="workspace-panel">
-      <div className="section-toolbar">
-        <h2>API Session</h2>
-        <span>{session.permissions.length} permissions loaded</span>
-      </div>
-      <div className="session-grid">
-        <input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Bearer token" />
-        <input value={permissionText} onChange={(event) => setPermissionText(event.target.value)} placeholder="Permissions, comma separated" />
-        <button type="button" onClick={() => { saveToken(token); savePermissions(permissionText.split(",").map((item) => item.trim()).filter(Boolean)); window.location.reload(); }}>Save Session</button>
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(collectionsDefaultPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     const nextToken = readToken();
     setToken(nextToken);
     const stored = readPermissions();
-    setPermissions(stored.length ? stored : collectionsDefaultPermissions);
-    if (nextToken) {
-      syncosFetch<{ permissions?: string[] }>("/auth/me/permissions", { token: nextToken }).then((result) => {
-        if (Array.isArray(result.permissions)) {
-          setPermissions(result.permissions);
-          savePermissions(result.permissions);
-        }
-      }).catch(() => undefined);
-    }
+    setPermissions(stored);
+
   }, []);
   return { token, permissions };
 }
@@ -1102,7 +1094,7 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Checklist({ items }: { items: Array<[string, unknown]> }) {
@@ -1114,7 +1106,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-  return <pre className="json-block">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{value === undefined || value === null || value === "" ? "Not captured" : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function caseLink(id: unknown, label: unknown) {

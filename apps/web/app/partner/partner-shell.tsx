@@ -1,0 +1,3987 @@
+"use client";
+import {HistoryPager} from "../history-pager";
+
+import {prepareOfflineContext} from './offline-context';
+import NextLink from "next/link";
+import { FieldEvidence, FieldIncident } from "./field-evidence";
+import { ProductionExports } from "../production-dashboard/production-exports";
+import { PartnerOnboardingEditor } from "./onboarding-editor";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentProps, FormEvent, ReactNode } from "react";
+import { clearAuthContext, endBrowserSession, readPermissions, readToken, sessionEmailFromToken, syncosFetch, SyncosApiError } from "../intelligence/api";
+
+// Shared by navigation, linked cards and direct-route rendering. Empty permissions deny access.
+function portalPermission(section: string, foreman: boolean): string | undefined {
+  const common: Record<string, string> = { dashboard: foreman ? "partner_context.read" : "partner_profile.read", onboarding: "partner_context.read", company: "partner_compliance.profile.read", compliance: "partner_compliance.summary.read", workers: "partner_workforce.worker.read", "worker-detail": "partner_workforce.worker.read", agreements: "partner_agreement.read", "agreement-detail": "partner_agreement.read", vehicles: "partner_vehicle_assignment.read", settlements: "partner_settlement.read", payments: "partner_payment.read", performance: "partner_performance.read_own" };
+  const scoped: Record<string, string[]> = {
+    crews: ["partner_workforce.crew.read", "partner_workforce.foreman_roster.read"], "crew-detail": ["partner_workforce.crew.read", "partner_workforce.foreman_roster.read"], workforce: ["partner_workforce.worker.read", "partner_workforce.foreman_roster.read"],
+    "work-orders": ["partner_work_order.read", "partner_work_order.foreman_summary.read"], "work-order-detail": ["partner_work_order.read", "partner_work_order.foreman_summary.read"], mobilization: ["partner_mobilization.read", "partner_mobilization.foreman.read"],
+    "field-map": ["partner_map.read", "partner_map.read_assigned"], "daily-jsa": ["partner_jsa.read", "partner_jsa.read_own"], "daily-production": ["partner_daily_production.read_org", "partner_daily_production.read"], "review-day": ["partner_daily_production.read_org", "partner_daily_production.read"], "customer-qc": ["partner_customer_qc.read", "partner_customer_qc.read_own"], corrections: ["partner_customer_qc.read", "partner_customer_qc.read_own"],
+  };
+  return scoped[section]?.[foreman ? 1 : 0] ?? common[section];
+}
+function permittedPortalLink(href: string, permissions: string[]) {
+  if (!href.startsWith("/partner") && !href.startsWith("/syncfield")) return true;
+  const part = href.split("/")[2]?.split("?")[0] || "dashboard";
+  const section = ({ today: "dashboard", crew: "crews", workload: "work-orders", map: "field-map", jsa: "daily-jsa", production: "daily-production" } as Record<string, string>)[part] ?? part;
+  const foreman = href.startsWith("/syncfield") || (permissions.includes("partner_workforce.foreman_roster.read") && !permissions.includes("partner_workforce.crew.read"));
+  const permission = portalPermission(section, foreman);
+  return permission ? permissions.includes(permission) : false;
+}
+function Link(props: ComponentProps<typeof NextLink>) {
+  const href = typeof props.href === "string" ? props.href : props.href.pathname ?? "";
+  return permittedPortalLink(href, readPermissions()) ? <NextLink {...props} /> : null;
+}
+
+type Persona = "partner_admin" | "partner_foreman";
+type Section =
+  | "dashboard"
+  | "onboarding"
+  | "company"
+  | "compliance"
+  | "workforce"
+  | "workers"
+  | "worker-detail"
+  | "crews"
+  | "crew-detail"
+  | "agreements"
+  | "agreement-detail"
+  | "work-orders"
+  | "work-order-detail"
+  | "vehicles"
+  | "mobilization"
+  | "field-map"
+  | "daily-jsa"
+  | "daily-production"
+  | "review-day"
+  | "customer-qc"
+  | "corrections"
+  | "settlements"
+  | "payments"
+  | "performance";
+
+type PartnerContext = {
+  workforce_kind?: "internal" | "partner";
+  user: { id: string; display_name: string };
+  persona: Persona;
+  organization: { id: string; name: string; status: string };
+  capacity_provider: { id: string; name: string; status: string; verification_status?: string; contract_status?: string };
+};
+
+type PartnerActions = {
+  allowed_actions?: string[];
+  route_visibility?: Record<string, boolean>;
+};
+
+type ComplianceSummary = {
+  overall_status?: string;
+  profile_status?: string;
+  w9_status?: string;
+  payment_status?: string;
+  insurance_status?: string;
+  blockers?: Array<{ key?: string; category?: string; message?: string }>;
+  blocker_categories?: string[];
+  evaluated_at?: string;
+};
+type CompanySubmission = { id?: string; revision?: number; status?: string; submitted_at?: string; reviewed_at?: string; external_return_reason?: string | null } | null;
+
+type CompanyProfile = Record<string, unknown> | null;
+type TaxProfile = Record<string, unknown> | null;
+type PaymentProfile = Record<string, unknown> | null;
+type InsurancePolicy = Record<string, unknown>;
+type Worker = Record<string, unknown>;
+type Crew = Record<string, unknown>;
+type Agreement = Record<string, unknown>;
+type WorkOrder = Record<string, unknown>;
+type VehicleAssignment = Record<string, unknown>;
+type Readiness = {
+  id?: string;
+  overall_status?: string;
+  passed_check_count?: number;
+  blocker_count?: number;
+  warning_count?: number;
+  blockers?: Array<Record<string, unknown>>;
+  warnings?: Array<Record<string, unknown>>;
+  passed_checks?: Array<Record<string, unknown>>;
+  decision?: Decision;
+};
+type Decision = { decision?: string; external_conditions?: string[]; expires_at?: string | null; revocation_reason?: string | null };
+type Notice = {
+  id?: string;
+  notice_number?: string;
+  version_number?: number;
+  status?: string;
+  production_start_status?: string;
+  production_start_date?: string | null;
+  production_start_time?: string | null;
+  timezone?: string | null;
+  initial_map_work_package_ref?: string | null;
+  initial_work_area?: string | null;
+  external_instructions?: string | null;
+  external_conditions?: string[];
+  production_start?: { authorization_status?: string; start_date?: string | null; start_time?: string | null; timezone?: string | null; map_work_package_ref?: string | null; work_area?: string | null };
+};
+type MapAssignment = {
+  id?: string;
+  status?: string;
+  project?: { id?: string; name?: string };
+  work_order?: { id?: string; work_order_number?: string; scope_summary?: string; primary_work_area?: string | null };
+  crew?: { id?: string; name?: string };
+  map?: { document_id?: string; version_id?: string; name?: string; customer_document_number?: string | null; revision_number?: number; revision_label?: string | null; page_count?: number; processing_status?: string; status?: string; original_filename?: string; file_hash?: string };
+  work_zones?: Array<{ id?: string; name?: string; page_number?: number; x_ratio?: number; y_ratio?: number; zoom_level?: number }>;
+};
+type DesignSegment = {
+  id?: string;
+  production_code_id?: string | null;
+  production_code?: string | null;
+  production_description?: string | null;
+  from_asset_identifier?: string | null;
+  to_asset_identifier?: string | null;
+  design_label?: string | null;
+  design_length_ft?: number | null;
+  design_unit?: string | null;
+  geometry?: { points?: Array<{ x?: number; y?: number }> };
+  status?: string;
+  span_completion_id?: string | null;
+  completion_status?: string | null;
+  production_record_id?: string | null;
+  design_deviation?: boolean | null;
+};
+type AssetObservation = {
+  id?: string;
+  design_segment_id?: string | null;
+  asset_identifier?: string;
+  asset_type?: string;
+  pdf_x?: number;
+  pdf_y?: number;
+  input_tick?: number | null;
+  output_tick?: number | null;
+  tick_difference?: number | null;
+  tick_unit?: string;
+  reel_cable_id?: string | null;
+  fiber_type?: string | null;
+  notes?: string | null;
+  status?: string;
+};
+type CoilObservation = {
+  id?: string;
+  asset_observation_id?: string;
+  design_segment_id?: string | null;
+  span_completion_id?: string | null;
+  production_record_id?: string | null;
+  asset_identifier?: string;
+  easement_type?: string;
+  coil_type?: string;
+  required_length_ft?: number | null;
+  actual_length_ft?: number | null;
+  variance_ft?: number | null;
+  variance_status?: string;
+  rule_source?: string;
+  rule_source_reference?: string | null;
+  reel_cable_id?: string | null;
+  fiber_type?: string | null;
+  commercial_treatment?: string;
+  status?: string;
+};
+type SpanCompletion = {
+  id?: string;
+  design_segment_id?: string | null;
+  production_record_id?: string;
+  from_asset_observation_id?: string | null;
+  to_asset_observation_id?: string | null;
+  from_asset_identifier?: string;
+  to_asset_identifier?: string;
+  redline_geometry?: { points?: Array<{ x?: number; y?: number }> };
+  completion_status?: string;
+  design_deviation?: boolean;
+  deviation_reason?: string | null;
+  reported_quantity?: number | null;
+};
+type DailyJsa = {
+  id?: string;
+  status?: string;
+  work_date?: string;
+  work_location?: string;
+  weather?: string;
+  site_conditions?: string;
+  hazards?: string[];
+  controls?: string[];
+  meeting_completed_at?: string;
+  foreman_certified?: boolean;
+  crew_name?: string;
+  foreman_name?: string;
+  assignment?: Record<string, unknown>;
+  participants?: Array<{ id?: string; worker_id?: string; name?: string; role?: string; participation_status?: string; acknowledged?: boolean }>;
+};
+type JsaCompletionPayload = {
+  work_location: string;
+  weather?: string;
+  site_conditions?: string;
+  hazards: string[];
+  controls: string[];
+  notes?: string;
+  foreman_certified: boolean;
+};
+type ProductionCode = { id?: string; code?: string; description?: string; unit_of_measure?: string; location_type?: string };
+type ProductionRecord = {
+  id?: string;
+  production_code_id?: string;
+  code?: string;
+  description?: string;
+  reported_quantity?: number;
+  unit_of_measure?: string;
+  location_type?: string;
+  status?: string;
+  asset_identifier?: string;
+  from_asset_identifier?: string;
+  to_asset_identifier?: string;
+  map_page?: number;
+  tick_start_label?: string | null;
+  tick_end_label?: string | null;
+  reel_cable_id?: string | null;
+  fiber_type?: string | null;
+  sequence_start?: number | null;
+  sequence_end?: number | null;
+  sequence_direction?: string | null;
+  sequence_calculated_footage?: number | null;
+  sequence_reported_variance?: number | null;
+  sequence_variance_status?: string | null;
+  sequence_variance_explanation?: string | null;
+  notes?: string;
+  locked?: boolean;
+};
+type DailyProduction = {
+  id?: string;
+  status?: string;
+  work_date?: string;
+  work_order_version_id?: string;
+  work_order_number?: string;
+  revision_number?: number;
+  customer_qc_outcome?: string;
+  customer_accepted_quantity?: number;
+  gate?: { allowed?: boolean; blockers?: string[] };
+  records?: ProductionRecord[];
+  annotations?: Array<Record<string, unknown>>;
+  coil_observations?: CoilObservation[];
+  totals?: {
+    by_code?: Array<{ code?: string; description?: string; quantity?: number; unit?: string; count?: number }>;
+    record_count?: number;
+    status_counts?: Record<string, number>;
+    coils?: { coil_observation_count?: number; required_coil_ft?: number; actual_coil_ft?: number; variance_count?: number; commercial_treatment?: string };
+  };
+  annotation_count?: number;
+  submitted_at?: string;
+};
+type CustomerQcDecision = {
+  id?: string;
+  production_record_id?: string;
+  decision?: string;
+  reported_quantity?: number;
+  customer_accepted_quantity?: number | null;
+  unit_of_measure?: string;
+  code?: string;
+  description?: string;
+  customer_reason_code?: string | null;
+  customer_comments?: string | null;
+};
+type CustomerCorrection = {
+  id?: string;
+  correction_type?: string;
+  status?: string;
+  partner_safe_instructions?: string;
+  customer_reason?: string;
+  due_date?: string | null;
+  due_at?: string | null; deadline_status?: string; deadline_time_zone?: string;
+  allowed_fields?: string[];
+  production_record_id?: string;
+};
+type CustomerQcItem = {
+  _history_cursor?:string;
+  report_id?: string;
+  work_date?: string;
+  revision_number?: number;
+  completeness_status?: string;
+  report_outcome?: string;
+  work_order_number?: string;
+  crew_name?: string;
+  cycle_id?: string;
+  cycle_number?: number | null;
+  cycle_status?: string | null;
+  qc_authority_name?: string | null;
+  decision?: CustomerQcDecision | null;
+  correction?: CustomerCorrection | null;
+};
+type ProductionDashboard = {
+  headline?: Record<string, number | string>;
+  reported_vs_accepted?: Array<Record<string, unknown>>;
+  production_by_crew?: Array<Record<string, unknown>>;
+  production_by_work_order?: Array<Record<string, unknown>>;
+  project_to_date?: Array<Record<string, unknown>>;
+  missing_reports?: Record<string, unknown>;
+  customer_qc_aging?: Array<Record<string, unknown>>;
+  correction_aging?: Array<Record<string, unknown>>;
+  recent_reports?: Array<Record<string, unknown>>;
+  reports?: Array<Record<string, unknown>>;
+  closeout?: Record<string, unknown>;
+  artifacts?: Array<Record<string, unknown>>;
+};
+type PartnerSettlement = {
+  id?: string;
+  settlement_number?: string;
+  settlement_period_start?: string;
+  settlement_period_end?: string;
+  net_settlement_amount?: number;
+  pay_when_paid_status?: string;
+  eligible_amount?: number;
+  payment_due_at?: string | null;
+  dispute_deadline?: string | null;
+  items?: Array<{ production_code?: string; accepted_quantity?: number; unit?: string; partner_rate?: number; gross_partner_amount?: number }>;
+};
+type PartnerPayment = {
+  contractor_payable_id?: string;
+  payable_number?: string;
+  net_payable_amount?: number;
+  eligible_amount?: number;
+  paid_amount?: number;
+  in_flight_payment_amount?: number;
+  retained_balance_amount?: number;
+  payment_due_at?: string | null;
+  payment_status?: string;
+  pay_when_paid_status?: string;
+  payments?: Array<{ id?: string; amount?: number; status?: string; provider_reference?: string; requested_at?: string }>;
+};
+type PartnerPerformanceSummary = {
+  overall_status?: string;
+  score?: number;
+  confidence?: string;
+  trend?: string;
+  dimensions?: Array<{ dimension?: string; normalized_score?: number; sample_size?: number; reason_code?: string }>;
+  improvement_items?: string[];
+  boundary?: Record<string, boolean>;
+};
+type OnboardingChecklist = {
+  required_complete?: boolean;
+  ready_for_review?: boolean;
+  readiness_status?: string;
+  items?: Array<{ key?: string; label?: string; requirement?: string; complete?: boolean; route?: string; status?: string }>;
+};
+
+type PortalData = {
+  context?: PartnerContext;
+  actions?: PartnerActions;
+  dashboard?: PartnerDashboardReadModel;
+  readiness?: PartnerReadinessReadModel;
+  loadedAt?: string;
+  onboarding?: OnboardingChecklist;
+  compliance?: ComplianceSummary;
+  submission?: CompanySubmission;
+  company?: CompanyProfile;
+  tax?: TaxProfile;
+  payment?: PaymentProfile;
+  policies?: InsurancePolicy[];
+  workers?: Worker[];
+  crews?: Crew[];
+  rosterByCrew?: Record<string, Worker[]>;
+  readinessByCrew?: Record<string, Readiness>;
+  agreements?: Agreement[];
+  workOrders?: WorkOrder[];
+  vehicles?: VehicleAssignment[];
+  mobilization?: Readiness | null;
+  notice?: Notice | null;
+  mapAssignment?: MapAssignment | null;
+  jsaToday?: DailyJsa | null;
+  jsas?: DailyJsa[];
+  productionToday?: DailyProduction | null;
+  productionCodes?: ProductionCode[];
+  designSegments?: DesignSegment[];
+  assetObservations?: AssetObservation[];
+  coilObservations?: CoilObservation[];
+  spanCompletions?: SpanCompletion[];
+  productionReports?: DailyProduction[];
+  customerQcReports?: CustomerQcItem[];
+  productionDashboard?: ProductionDashboard | null;
+  productionHistory?: ProductionDashboard | null;
+  partnerSettlements?: PartnerSettlement[];
+  partnerPayments?: PartnerPayment[];
+  partnerPerformance?: PartnerPerformanceSummary | null;
+  foremanCrew?: Crew | null;
+  foremanRoster?: Worker[];
+  foremanWorkOrder?: WorkOrder | null;
+  foremanAssignments?: MapAssignment[];
+  selectedAssignment?: MapAssignment | null;
+};
+
+type DashboardActionCategory = "needs_action" | "crew_foreman" | "waiting";
+type DashboardActionSeverity = "critical" | "high" | "medium" | "low" | "info";
+type DashboardAction = {
+  key: string;
+  category: DashboardActionCategory;
+  severity: DashboardActionSeverity;
+  title: string;
+  description: string;
+  sourceLabel?: string;
+  href?: string;
+  cta?: string;
+};
+type PartnerDashboardMoney = { amount?: string; currency?: string };
+type PartnerDashboardAction = {
+  key?: string;
+  reasonCode?: string;
+  category?: "needsYourAction" | "crewForemanAction" | "waitingInformational";
+  severity?: string;
+  title?: string;
+  description?: string;
+  sourceBusinessLabel?: string;
+  ctaRoute?: string;
+  ctaLabel?: string;
+  blocking?: boolean;
+};
+type PartnerDashboardReadModel = {
+  organization?: { name?: string; status?: string; capacity_provider_name?: string };
+  freshness?: { asOf?: string; calculatedAt?: string; staleAfterSeconds?: number };
+  company?: { status?: string; requiredComplete?: number | null; requiredTotal?: number | null };
+  crews?: { active?: number; ready?: number; incomplete?: number; assigned?: number; activeToday?: number; blocked?: number };
+  todayByCrew?: CrewToday[];
+  workOrders?: { active?: number; blocked?: number; items?: PartnerDashboardWorkOrder[] };
+  production?: { pending_review_count?:number; rows?: Array<{ label?: string; code?: string; unit?: string; reported?: string; accepted?: string; open_findings?: string }> };
+  qcCorrections?: { openCorrectionCount?: number; qcPendingCount?: number; items?: Array<Record<string, unknown>> };
+  actions?: {
+    needsYourAction?: PartnerDashboardAction[];
+    crewForemanAction?: PartnerDashboardAction[];
+    waitingInformational?: PartnerDashboardAction[];
+  };
+  financial?: {
+    currency?: string;
+    issuedSettlements?: PartnerDashboardMoney;
+    outstandingPayable?: PartnerDashboardMoney;
+    eligiblePayment?: PartnerDashboardMoney;
+    awaitingFunds?: PartnerDashboardMoney;
+    processing?: PartnerDashboardMoney;
+    paidThisMonth?: PartnerDashboardMoney;
+    acceptedProductionAwaitingSettlement?: Array<{ label?: string; code?: string; unit?: string; quantity?: string; partnerCoilTreatment?: string | null }>;
+  };
+  performance?: PartnerPerformanceSummary | { status?: string; score?: number | null; confidence?: string; trend?: string; criticalRiskCount?: number; signals?: string[] };
+  panelStatus?: Record<string, "READY" | "EMPTY" | "UNAVAILABLE" | "STALE" | "LOCKED">;
+  warnings?: Array<{ panel?: string; code?: string; message?: string }>;
+};
+type PartnerDashboardWorkOrder = {
+  workOrderNumber?: string;
+  projectName?: string;
+  crewName?: string;
+  mapWorkPackageRef?: string | null;
+  status?: string;
+  mobilizationState?: string;
+  productionState?: string;
+  qcState?: string;
+  partnerRateAvailability?: string;
+  route?: string;
+};
+type PartnerReadinessReason = {
+  code?: string;
+  label?: string;
+  owner?: string;
+  severity?: string;
+  description?: string;
+  route?: string;
+};
+type PartnerReadinessItem = {
+  key?: string;
+  group?: string;
+  label?: string;
+  required?: boolean;
+  complete?: boolean;
+  status?: string;
+  route?: string;
+  nextActionLabel?: string;
+};
+type PartnerReadinessReadModel = {
+  organization?: { name?: string; status?: string; capacityProviderName?: string; providerStatus?: string; verificationStatus?: string; contractStatus?: string };
+  freshness?: { asOf?: string; calculatedAt?: string; staleAfterSeconds?: number };
+  onboarding?: { state?: string; requiredComplete?: number; requiredTotal?: number; progressPercent?: number; readyForReview?: boolean; nextAction?: PartnerReadinessItem | null; items?: PartnerReadinessItem[] };
+  companyProfile?: { status?: string; legalBusinessName?: string; dbaName?: string | null; entityType?: string | null; stateOfFormation?: string | null; primaryContact?: Record<string, unknown> | null; complianceContact?: Record<string, unknown> | null; settlementContact?: Record<string, unknown> | null; submittedAt?: string | null; reviewedAt?: string | null; actionRequiredReason?: string | null };
+  tax?: { status?: string; legalNameOnW9?: string | null; taxClassification?: string | null; tinDisplay?: string; submittedAt?: string | null; reviewedAt?: string | null; documentAvailable?: boolean; actionRequiredReason?: string | null };
+  paymentSetup?: { status?: string; method?: string; priorityPassportStatus?: string; accountDisplay?: string; enrollmentContact?: Record<string, unknown> | null; submittedAt?: string | null; reviewedAt?: string | null; actionRequiredReason?: string | null };
+  insurance?: { status?: string; requiredPolicies?: Array<{ type?: string; status?: string; carrier?: string | null; policyReference?: string; effectiveDate?: string | null; expirationDate?: string | null; documentAvailable?: boolean; reviewState?: string; actionRequiredReason?: string | null }> };
+  agreements?: { status?: string; items?: Array<Record<string, unknown>>; blockingReasons?: PartnerReadinessReason[] };
+  workers?: { total?: number; active?: number; foremen?: number; credentialIssues?: number; unassigned?: number; items?: Array<Record<string, unknown>> };
+  foremen?: Array<Record<string, unknown>>;
+  crews?: { total?: number; ready?: number; actionRequired?: number; inactive?: number; items?: Array<Record<string, unknown>> };
+  vehiclesEquipment?: { total?: number; assigned?: number; actionRequired?: number; supportedTypes?: string[]; items?: Array<Record<string, unknown>> };
+  capabilities?: { capabilities?: Array<Record<string, unknown>>; territories?: string[] };
+  territories?: string[];
+  companyApproval?: { state?: string; label?: string; partnerCanApprove?: boolean };
+  blockingReasons?: PartnerReadinessReason[];
+  actionRequired?: PartnerReadinessReason[];
+  panelStatus?: Record<string, "READY" | "EMPTY" | "UNAVAILABLE" | "STALE" | "LOCKED">;
+};
+type CrewToday = {
+  crewName?: string;
+  foreman: string;
+  foremanName?: string;
+  workOrderNumber?: string;
+  projectName?: string;
+  workDate?: string;
+  timezone?: string;
+  readiness: string;
+  jsaStatus: string;
+  productionStatus: string;
+  reported?: Array<{ label?: string; value?: string }>;
+  reportedQuantities?: Array<{ label?: string; quantity?: string; unit?: string }>;
+  qcStatus: string;
+  correctionStatus: string;
+  lastActivity: string;
+};
+
+const adminNavGroups = [
+  { label: "Overview", items: [["Dashboard", "/partner"]] },
+  { label: "Company", items: [["Onboarding", "/partner/onboarding"], ["Company", "/partner/company"], ["Compliance", "/partner/compliance"], ["Agreements", "/partner/agreements"]] },
+  { label: "Workforce", items: [["Workers", "/partner/workers"], ["Crews", "/partner/crews"], ["Vehicles & Equipment", "/partner/vehicles"]] },
+  { label: "Work", items: [["Work Orders", "/partner/work-orders"], ["Mobilization", "/partner/mobilization"], ["Production", "/partner/production"], ["QC & Corrections", "/partner/customer-qc"]] },
+  { label: "Financial", items: [["Settlements", "/partner/settlements"], ["Payments", "/partner/payments"]] },
+  { label: "Performance", items: [["Performance", "/partner/performance"]] },
+] as const;
+
+const syncfieldNav = [
+  ["Today", "/syncfield/today"],
+  ["Crew", "/syncfield/crew"],
+  ["Workload", "/syncfield/workload"],
+  ["Map", "/syncfield/map"],
+  ["Production", "/syncfield/production"],
+  ["Corrections", "/syncfield/corrections"],
+] as const;
+
+const syncfieldAssignmentKey = "syncos.syncfieldAssignmentId";
+const foremanFieldPermissions = ["partner_map.read_assigned", "partner_jsa.read_own", "partner_daily_production.read"];
+
+export function PartnerShell({ section, itemId, product = "partner" }: { section: Section; itemId?: string; product?: "partner" | "syncfield" }) {
+  const [state, setState] = useState<{ loading: boolean; error?: string; denied?: boolean; data: PortalData }>({ loading: true, data: {} });
+  const [message, setMessage] = useState<string | null>(null);
+  const onboardingSubmitLock = useRef(false);
+  const onboardingMutationId = useRef<string | null>(null);
+  const [sessionEmail, setSessionEmail] = useState("");
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
+  const [selectionReady, setSelectionReady] = useState(false);
+
+  useEffect(() => {
+    if (!selectionReady) return;
+    let cancelled = false;
+    async function load() {
+      setState({ loading: true, data: {} });
+      if (!readToken()) {
+        setState({ loading: false, denied: true, error: "Sign in with a Partner account to access SyncOS Partner Portal.", data: {} });
+        return;
+      }
+      try {
+        const context = await syncosFetch<PartnerContext>(product === "syncfield" ? "syncfield/foreman/context" : "partner-personas/me/context");
+        const permissions = readPermissions();
+        const canEnterSyncField = context.persona === "partner_foreman" || foremanFieldPermissions.some((permission) => permissions.includes(permission));
+        if (product === "syncfield" && !canEnterSyncField) {
+          setState({ loading: false, denied: true, error: "SyncField requires an active Foreman assignment.", data: { context } });
+          return;
+        }
+        const actions = product === "syncfield" ? {} : await safeFetch<PartnerActions>("partner-personas/me/actions");
+        const effectiveContext = product === "syncfield" && canEnterSyncField ? { ...context, persona: "partner_foreman" as const } : context;
+        const requiredPermission = portalPermission(section, effectiveContext.persona === "partner_foreman");
+        if (requiredPermission && !permissions.includes(requiredPermission)) {
+          if (!cancelled) setState({ loading: false, denied: true, error: "You do not have access to this workspace.", data: { context: effectiveContext } });
+          return;
+        }
+
+        const data = effectiveContext.persona === "partner_foreman" ? await loadForeman(effectiveContext, actions, section, selectedAssignmentId) : await loadAdmin(effectiveContext, actions, section, itemId);
+        if (!cancelled) {setState({ loading: false, data });if(product==='syncfield'&&data.foremanAssignments)void prepareOfflineContext(data.foremanAssignments).catch(()=>setMessage('Offline recovery could not be prepared on this device. Keep this page open while disconnected.'));}
+      } catch (error) {
+        if(error instanceof SyncosApiError&&[401,403].includes(error.status))localStorage.removeItem("syncos.offlineContext");
+        const text = product === "syncfield" && error instanceof SyncosApiError && error.status === 403 ? "SyncField requires an active Foreman assignment." : error instanceof Error ? error.message : String(error);
+        if (!cancelled) setState({ loading: false, denied: error instanceof SyncosApiError ? [401,403].includes(error.status) : /401|403|forbidden|unauthorized/i.test(text), error: text, data: {} });
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [section, itemId, product, selectedAssignmentId, selectionReady]);
+
+  useEffect(() => {
+    setSessionEmail(sessionEmailFromToken());
+    if (typeof window !== "undefined") setSelectedAssignmentId(window.localStorage.getItem(syncfieldAssignmentKey) ?? "");
+    setSelectionReady(true);
+  }, []);
+
+  const data = state.data;
+  const persona = data.context?.persona;
+  const isSyncField = persona === "partner_foreman";
+  const activeLabel = activeSectionLabel(section, persona);
+  const shellLabel = isSyncField ? "SyncField" : "Partner Portal";
+  const shellHome = isSyncField ? "/syncfield/today" : "/partner";
+  const permissions = useMemo(() => readPermissions(), [state.loading]);
+
+  async function acknowledgeNotice() {
+    if (!data.notice?.id || !persona) return;
+    try {
+      setMessage(null);
+      const path = persona === "partner_foreman" ? `partner-mobilization/foreman/notices/${data.notice.id}/acknowledge` : `partner-mobilization/me/notices/${data.notice.id}/acknowledge`;
+      await syncosFetch(path, { method: "POST", body: {} });
+      setMessage("Notice acknowledgment recorded as receipt only.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Notice acknowledgment failed.");
+    }
+  }
+
+  return (
+    <main className={isSyncField ? "partner-portal-shell syncfield-shell" : "partner-portal-shell"}>
+      <aside className={isSyncField ? "partner-sidebar syncfield-sidebar" : "partner-sidebar"} aria-label={isSyncField ? "SyncField navigation" : "Partner navigation"}>
+        <div className="partner-brand-block">
+          <a className="partner-logo-link" href={shellHome} aria-label={`${shellLabel} home`}>
+            <img src="/brand/sync-comm-systems-logo.png" alt="Sync Comm Systems" />
+          </a>
+          <div>
+            <p className="eyebrow">{shellLabel}</p>
+            <h1>{isSyncField ? "SyncField" : data.context?.organization.name ?? "SyncOS Partner"}</h1>
+            <p className="partner-persona">{isSyncField ? `${data.context?.organization.name ?? "Assigned Crew"} · Field Execution` : personaLabel(persona)}</p>
+          </div>
+        </div>
+        <nav className="partner-nav">
+          {isSyncField
+            ? syncfieldNav.filter(([, href]) => permittedPortalLink(href, permissions)).map(([label, href]) => (
+                <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
+                  {label}
+                </Link>
+              ))
+            : adminNavGroups.filter((group) => group.items.some(([, href]) => permittedPortalLink(href, permissions))).map((group) => (
+                <div className="partner-nav-group" key={group.label}>
+                  <p>{group.label}</p>
+                  {group.items.filter(([, href]) => permittedPortalLink(href, permissions)).map(([label, href]) => (
+                    <Link key={href} className={label === activeLabel ? "partner-nav-link active" : "partner-nav-link"} href={href}>
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              ))}
+          {persona === "partner_admin" && foremanFieldPermissions.some((permission) => permissions.includes(permission)) ? <Link className="partner-nav-link" href="/syncfield/today">SyncField</Link> : null}
+          {persona === "partner_admin" && permissions.includes("partner_daily_production.read_org") ? <Link className="partner-nav-link" href="/partner/field-oversight">Company field oversight</Link> : null}
+          {persona === "partner_foreman" && permissions.includes("partner_daily_production.read") ? <><a className="partner-nav-link" href="/syncfield/offline.html">Prepare offline work</a><Link className="partner-nav-link" href="/syncfield/forms">Assigned forms</Link><Link className="partner-nav-link" href="/syncfield/materials">Crew materials</Link></> : null}
+          {permissions.length > 0 ? <Link className="partner-nav-link" href="/training">Training</Link> : null}
+        </nav>
+        <div className="partner-account-control">
+          <div>
+            <span>{sessionEmail || "Signed in"}</span>
+            <strong>{personaLabel(persona)}</strong>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await endBrowserSession();
+              window.location.assign("/login");
+            }}
+          >
+            Log Out
+          </button>
+        </div>
+      </aside>
+      <section className="partner-main">
+        {state.loading ? <LoadingPortal product={shellLabel} /> : state.denied ? <DeniedPortal message={state.error} /> : state.error ? <ErrorPortal product={shellLabel} message={state.error} /> : (
+          <>
+            <header className="partner-page-header">
+              <div>
+                <p className="eyebrow">{isSyncField ? "SyncField" : personaLabel(persona)}</p>
+                <h2>{pageTitle(section, persona)}</h2>
+              </div>
+              <StatusPill label={isSyncField ? "Assignment Scope" : "Organization"} value={isSyncField ? data.selectedAssignment?.crew?.id || data.foremanCrew?.id ? "crew_assigned" : "pending_assignment" : data.context?.organization.status} />
+            </header>
+            {message ? <div className={/failed|forbidden|error/i.test(message) ? "partner-banner error" : "partner-banner success"}>{message}</div> : null}
+            {isSyncField ? (
+              <AssignmentContext
+                assignments={data.foremanAssignments ?? []}
+                selectedAssignment={data.selectedAssignment}
+                onSelect={(assignmentId) => {
+                  if (typeof window !== "undefined") window.localStorage.setItem(syncfieldAssignmentKey, assignmentId);
+                  setSelectedAssignmentId(assignmentId);
+                  setMessage("SyncField assignment context selected.");
+                }}
+              />
+            ) : null}
+            {!isSyncField && <PartnerOnboardingEditor section={section} permissions={permissions} company={data.company as Record<string, unknown> | undefined} workers={data.workers as unknown as Record<string, unknown>[]} crews={data.crews as unknown as Record<string, unknown>[]} itemId={itemId} onSaved={async () => {
+              if (!data.context) return;
+              const refreshed = await loadAdmin(data.context, data.actions ?? {}, section, itemId);
+              setState(current => ({ ...current, data: refreshed }));
+            }} />}
+            {isSyncField && (data.foremanAssignments?.length ?? 0) > 1 && !data.selectedAssignment
+              ? <EmptyPortal title="Select a SyncField assignment" body="Choose the Crew and Work Order you are working before opening JSA, map, production, or corrections. SyncOS will not silently decide where production is recorded." />
+              : renderSection(section, data, permissions, itemId, acknowledgeNotice, completeJsa, submitOnboarding)}
+          </>
+        )}
+      </section>
+    </main>
+  );
+
+  async function completeJsa(payload: JsaCompletionPayload) {
+    try {
+      setMessage(null);
+      const completed = await syncosFetch<DailyJsa>("syncfield/foreman/jsa/today/complete", {
+        method: "POST",
+        body: {
+          ...payload,
+          assignment_id: data.selectedAssignment?.id,
+        },
+      });
+      setState((current) => ({ ...current, data: { ...current.data, jsaToday: completed } }));
+      setMessage("Daily JSA completed.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Daily JSA completion failed.");
+    }
+  }
+
+  async function submitOnboarding() {
+    if (onboardingSubmitLock.current) return;
+    onboardingSubmitLock.current = true;
+    onboardingMutationId.current ??= crypto.randomUUID();
+    try {
+      setMessage(null);
+      const submission = await syncosFetch<CompanySubmission>("partner-compliance/me/submit", { method: "POST", body: { client_mutation_id: onboardingMutationId.current } });
+      setState((current) => ({ ...current, data: { ...current.data, submission } }));
+      setMessage("Company onboarding submitted for Sync review.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Company onboarding submission failed.");
+    } finally { onboardingSubmitLock.current = false; }
+  }
+}
+
+function AssignmentContext({ assignments, selectedAssignment, onSelect }: { assignments: MapAssignment[]; selectedAssignment?: MapAssignment | null; onSelect: (assignmentId: string) => void }) {
+  if (!assignments.length) return null;
+  if (assignments.length === 1) {
+    const assignment = selectedAssignment ?? assignments[0];
+    return (
+      <section className="syncfield-assignment-strip" aria-label="SyncField assignment context">
+        <div>
+          <p className="eyebrow">Active Workload</p>
+          <strong>{assignment.work_order?.work_order_number || "Assigned Work Order"}</strong>
+          <span>{assignment.project?.name || "Assigned Project"} · {assignment.crew?.name || "Assigned Crew"}</span>
+        </div>
+        <StatusPill label="Context" value="selected" />
+      </section>
+    );
+  }
+  return (
+    <section className="syncfield-assignment-strip multi" aria-label="Choose SyncField assignment context">
+      <div>
+        <p className="eyebrow">Assignment Context Required</p>
+        <strong>Choose today&apos;s Crew and Work Order</strong>
+        <span>Production, JSA, map activity, and offline replay use this context.</span>
+      </div>
+      <div className="syncfield-assignment-options">
+        {assignments.map((assignment) => (
+          <button
+            key={assignment.id}
+            className={selectedAssignment?.id === assignment.id ? "partner-button primary" : "partner-button"}
+            type="button"
+            onClick={() => assignment.id ? onSelect(assignment.id) : undefined}
+          >
+            {assignment.work_order?.work_order_number || "Work Order"} · {assignment.crew?.name || "Crew"}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function loadAdmin(context: PartnerContext, actions: PartnerActions | undefined, section: Section, itemId?: string): Promise<PortalData> {
+  const permissions = readPermissions();
+  const needsDashboard = section === "dashboard";
+  const needsOnboarding = section === "onboarding";
+  const needsCompliance = section === "onboarding" || section === "compliance";
+  const needsCompany = section === "onboarding" || section === "company";
+  const needsCrews = section === "onboarding" || section === "crews" || section === "crew-detail";
+  const needsAgreements = section === "onboarding" || section === "agreements" || section === "agreement-detail";
+  const needsWorkOrders = section === "work-orders" || section === "work-order-detail" || section === "mobilization";
+  const needsVehicles = section === "onboarding" || section === "vehicles";
+  const needsReadiness = ["onboarding", "company", "compliance", "workforce", "workers", "worker-detail", "crews", "crew-detail", "agreements", "agreement-detail", "vehicles"].includes(section);
+  const needsMobilization = section === "mobilization";
+  const [dashboard, readiness, onboarding, compliance, company, tax, payment, policies, workers, crews, agreements, workOrders, vehicles, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance] = await Promise.all([
+    needsDashboard ? safeFetch<PartnerDashboardReadModel>("partner/dashboard") : undefined,
+    needsReadiness ? safeFetch<PartnerReadinessReadModel>("partner/readiness") : undefined,
+    needsOnboarding ? safeFetch<OnboardingChecklist>("partner-invitations/me/onboarding-checklist") : undefined,
+    needsCompliance ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
+    needsCompany ? safeFetch<CompanyProfile>("partner-compliance/me/company-profile") : undefined,
+    needsCompliance ? safeFetch<TaxProfile>("partner-compliance/me/w9") : undefined,
+    needsCompliance ? safeFetch<PaymentProfile>("partner-compliance/me/payment-profile") : undefined,
+    needsCompliance ? safeFetch<InsurancePolicy[]>("partner-compliance/me/insurance-policies", []) : [],
+    section === "onboarding" || section === "workers" || section === "worker-detail" || section === "crews" || section === "crew-detail" ? safeFetch<Worker[]>("partner-workforce/me/workers", []) : [],
+    needsCrews ? safeFetch<Crew[]>("partner-workforce/me/crews", []) : [],
+    needsAgreements ? safeFetch<Agreement[]>("partner-agreements/me/agreements", []) : [],
+    needsWorkOrders ? safeFetch<WorkOrder[]>("partner-agreements/me/work-orders", []) : [],
+    needsVehicles ? safeFetch<VehicleAssignment[]>("partner-agreements/me/vehicle-assignments", []) : [],
+    section === "field-map" && permissions.includes("partner_map.read") ? safeFetch<MapAssignment | null>("syncfield/partner/map-assignment", null) : null,
+    section === "daily-jsa" && permissions.includes("partner_jsa.read") ? safeFetch<DailyJsa[]>("syncfield/partner/jsas", []) : [],
+    (section === "daily-production" || section === "review-day") && permissions.includes("partner_daily_production.read_org") ? safeFetch<DailyProduction[]>("syncfield/partner/production", []) : [],
+    (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read") ? safeFetch<CustomerQcItem[]>("syncfield/partner/customer-qc", []) : [],
+    section === "daily-production" && permissions.includes("partner_production_dashboard.read") ? safeFetch<ProductionDashboard | null>("syncfield/partner/production-dashboard", null) : null,
+    section === "settlements" && permissions.includes("partner_settlement.read") ? safeFetch<PartnerSettlement[]>("accepted-production-financials/partner/settlements", []) : [],
+    section === "payments" && permissions.includes("partner_payment.read") ? safeFetch<PartnerPayment[]>("payment-retainage-adjustments/partner/payments", []) : [],
+    section === "performance" && permissions.includes("partner_performance.read_own") ? safeFetch<PartnerPerformanceSummary | null>("partner-performance/partner/summary", null) : null,
+  ]);
+  const rosterByCrew: Record<string, Worker[]> = {};
+  const readinessByCrew: Record<string, Readiness> = {};
+  const crewsForReadiness = section === "crews" || section === "crew-detail" ? crews ?? [] : [];
+  await Promise.all(crewsForReadiness.map(async (crew) => {
+    const id = str(crew.id);
+    if (!id) return;
+    rosterByCrew[id] = await safeFetch<Worker[]>(`partner-workforce/me/crews/${id}/roster`, []);
+    const readiness = await safeFetch<Readiness | null>(`partner-workforce/me/crews/${id}/readiness`, null);
+    if (readiness) readinessByCrew[id] = readiness;
+  }));
+  const selectedWorkOrder = itemId ? (workOrders ?? []).find((workOrder) => str(workOrder.id) === itemId) : (workOrders ?? [])[0];
+  const versionId = str(selectedWorkOrder?.id);
+  const mobilization = needsMobilization && versionId ? await safeFetch<Readiness | null>(`partner-mobilization/me/work-order-versions/${versionId}/readiness`, null) : null;
+  const notice = needsMobilization && versionId ? await safeFetch<Notice | null>(`partner-mobilization/me/work-order-versions/${versionId}/notice`, null) : null;
+  const submission = needsOnboarding ? await safeFetch<CompanySubmission>("partner-compliance/me/submission", null) : null;
+  return { context, actions, dashboard, readiness, loadedAt: dashboard?.freshness?.calculatedAt ?? readiness?.freshness?.calculatedAt ?? new Date().toISOString(), onboarding, compliance, company, submission, tax, payment, policies, workers, crews, rosterByCrew, readinessByCrew, agreements, workOrders, vehicles, mobilization, notice, mapAssignment, jsas, productionReports, customerQcReports, productionDashboard, partnerSettlements, partnerPayments, partnerPerformance };
+}
+
+async function loadForeman(context: PartnerContext, actions: PartnerActions | undefined, section: Section, selectedAssignmentId?: string): Promise<PortalData> {
+  const permissions = readPermissions();
+  const needsToday = section === "dashboard";
+  const needsCrew = needsToday || section === "crews" || section === "crew-detail" || section === "workforce";
+  const needsAssignment = needsToday || section === "work-orders" || section === "work-order-detail";
+  const needsMobilization = needsToday || section === "mobilization";
+  const needsMap = needsToday || section === "field-map" || section === "daily-production" || section === "review-day";
+  const needsConstruction = section === "field-map" || section === "daily-production" || section === "review-day";
+  const needsJsa = needsToday || section === "crews" || section === "crew-detail" || section === "workforce" || section === "daily-jsa" || section === "daily-production" || section === "review-day";
+  const needsProduction = section === "daily-production" || section === "review-day";
+  const needsProductionHistory = section === "daily-production" || section === "review-day";
+  const foremanAssignments = permissions.includes("partner_map.read_assigned") ? await safeFetch<MapAssignment[]>("syncfield/foreman/assignments", []) : [];
+  const selectedAssignment =
+    selectedAssignmentId && foremanAssignments.some((assignment) => str(assignment.id) === selectedAssignmentId)
+      ? foremanAssignments.find((assignment) => str(assignment.id) === selectedAssignmentId) ?? null
+      : foremanAssignments.length === 1
+        ? foremanAssignments[0]
+        : null;
+  const assignmentQuery = selectedAssignment?.id ? `?assignment_id=${encodeURIComponent(str(selectedAssignment.id))}` : "";
+  if (foremanAssignments.length > 1 && !selectedAssignment) {
+    return { context, actions, foremanAssignments, selectedAssignment: null };
+  }
+  const [compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization, notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, coilObservations, spanCompletions, customerQcReports, productionHistory] = await Promise.all([
+    needsToday ? safeFetch<ComplianceSummary>("partner-compliance/me/summary") : undefined,
+    needsCrew ? safeFetch<Crew | null>("partner-workforce/foreman/crew", null) : null,
+    needsCrew ? safeFetch<Worker[]>("partner-workforce/foreman/crew/roster", []) : [],
+    needsAssignment || needsToday ? safeFetch<WorkOrder | null>("partner-agreements/foreman/work-order", null) : null,
+    needsMobilization ? safeFetch<Readiness | null>("partner-mobilization/foreman/readiness", null) : null,
+    needsMobilization || needsToday ? safeFetch<Notice | null>("partner-mobilization/foreman/notice", null) : null,
+    needsMap && permissions.includes("partner_map.read_assigned") ? safeFetch<MapAssignment | null>(`syncfield/foreman/map-assignment${assignmentQuery}`, null) : null,
+    needsJsa && permissions.includes("partner_jsa.read_own") ? safeFetch<DailyJsa | null>(`syncfield/foreman/jsa/today${assignmentQuery}`, null) : null,
+    needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<DailyProduction | null>(`syncfield/foreman/production/today${assignmentQuery}`, null) : null,
+    needsProduction && permissions.includes("partner_daily_production.read") ? safeFetch<ProductionCode[]>(`syncfield/foreman/production/codes${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<DesignSegment[]>(`syncfield/foreman/design-segments${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<AssetObservation[]>(`syncfield/foreman/asset-observations${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<CoilObservation[]>(`syncfield/foreman/coil-observations${assignmentQuery}`, []) : [],
+    needsConstruction && permissions.includes("partner_map.read_assigned") ? safeFetch<SpanCompletion[]>(`syncfield/foreman/span-completions${assignmentQuery}`, []) : [],
+    (section === "customer-qc" || section === "corrections") && permissions.includes("partner_customer_qc.read_own") ? safeFetch<CustomerQcItem[]>("syncfield/foreman/customer-qc", []) : [],
+    needsProductionHistory && permissions.includes("partner_production_history.read_own") ? safeFetch<ProductionDashboard | null>("syncfield/foreman/production-history", null) : null,
+  ]);
+  const internalReadiness = context.workforce_kind === "internal" && selectedAssignment
+    ? await syncosFetch<{readiness:Readiness;notice:Notice}>(`syncfield/foreman/internal-readiness${assignmentQuery}`) : null;
+  return { context, actions, compliance, foremanCrew, foremanRoster, foremanWorkOrder, mobilization: internalReadiness?.readiness ?? mobilization, notice: internalReadiness?.notice ?? notice, mapAssignment, jsaToday, productionToday, productionCodes, designSegments, assetObservations, coilObservations, spanCompletions, customerQcReports, productionHistory, foremanAssignments, selectedAssignment: selectedAssignment ?? mapAssignment };
+}
+
+async function safeFetch<T>(path: string, fallback?: T): Promise<T> {
+  try {
+    return await syncosFetch<T>(path);
+  } catch (error) {
+    if (fallback !== undefined) return fallback;
+    throw error;
+  }
+}
+
+function renderSection(section: Section, data: PortalData, permissions: string[], itemId: string | undefined, acknowledgeNotice: () => Promise<void>, completeJsa: (payload: JsaCompletionPayload) => Promise<void>, submitOnboarding: () => Promise<void>) {
+    if (data.context?.persona === "partner_foreman" && ["onboarding", "company", "compliance", "workers", "worker-detail", "agreements", "agreement-detail", "vehicles", "settlements", "payments", "performance"].includes(section)) {
+    return <DeniedPortal message="This Partner workspace is not available to Foreman users." />;
+  }
+  if (data.context?.persona === "partner_foreman") {
+    if (section === "dashboard") return <><ForemanToday data={data} acknowledgeNotice={acknowledgeNotice} />{permissions.includes("partner_daily_production.create") && <FieldIncident key={data.selectedAssignment?.id} assignmentId={data.selectedAssignment?.id} />}</>;
+    if (section === "crews" || section === "crew-detail" || section === "workforce") return <ForemanCrew data={data} />;
+    if (section === "work-orders" || section === "work-order-detail") return <ForemanWorkload data={data} />;
+    if (section === "field-map") return <FieldMapWorkspace data={data} />;
+    if (section === "daily-jsa") return <DailyJsaWorkspace data={data} completeJsa={completeJsa} />;
+    if (section === "daily-production") return <DailyProductionWorkspace data={data} permissions={permissions} />;
+    if (section === "review-day") return <><ReviewDayWorkspace data={data} permissions={permissions} />{data.productionToday?.id && <FieldEvidence key={data.productionToday.id} reportId={data.productionToday.id} canUpload={permissions.includes("partner_production_record.create")} />}</>;
+    if (section === "customer-qc" || section === "corrections") return <ForemanCorrectionsWorkspace data={data} permissions={permissions} />;
+    if (section === "mobilization") return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
+  }
+
+  switch (section) {
+    case "dashboard":
+      return <AdminDashboard data={data} acknowledgeNotice={acknowledgeNotice} />;
+    case "onboarding":
+      return <OnboardingChecklistWorkspace data={data} submitOnboarding={submitOnboarding} />;
+    case "company":
+      return <CompanyWorkspace data={data} permissions={permissions} />;
+    case "compliance":
+      return <ComplianceWorkspace data={data} permissions={permissions} />;
+    case "workforce":
+      return <WorkforceWorkspace data={data} />;
+    case "workers":
+      return <WorkersWorkspace data={data} />;
+    case "worker-detail":
+      return <WorkerDetail data={data} itemId={itemId} />;
+    case "crews":
+      return <CrewsWorkspace data={data} />;
+    case "crew-detail":
+      return <CrewDetail data={data} itemId={itemId} />;
+    case "agreements":
+      return <AgreementsWorkspace data={data} />;
+    case "agreement-detail":
+      return <AgreementDetail data={data} itemId={itemId} />;
+    case "work-orders":
+      return <WorkOrdersWorkspace data={data} />;
+    case "work-order-detail":
+      return <WorkOrderDetail data={data} itemId={itemId} />;
+    case "vehicles":
+      return <VehiclesWorkspace data={data} />;
+    case "mobilization":
+      return <MobilizationWorkspace data={data} acknowledgeNotice={acknowledgeNotice} />;
+    case "daily-jsa":
+      return <AdminJsaWorkspace data={data} />;
+    case "daily-production":
+    case "review-day":
+      return <AdminProductionWorkspace data={data} />;
+    case "customer-qc":
+    case "corrections":
+      return <CustomerQcWorkspace data={data} />;
+    case "settlements":
+      return <PartnerSettlementsWorkspace data={data} />;
+    case "payments":
+      return <PartnerPaymentsWorkspace data={data} />;
+    case "performance":
+      return <PartnerPerformanceWorkspace data={data} />;
+    case "field-map":
+      return <FieldMapWorkspace data={data} />;
+    default:
+      return <EmptyPortal title="Workspace unavailable" body="This Partner workspace is not available." />;
+  }
+}
+
+function OnboardingChecklistWorkspace({ data, submitOnboarding }: { data: PortalData; submitOnboarding: () => Promise<void> }) {
+  const [submitting, setSubmitting] = useState(false);
+  const readiness = data.readiness;
+  const checklist = data.onboarding;
+  const items = readiness?.onboarding?.items ?? checklist?.items ?? [];
+  const steps = onboardingSteps(data);
+  const completedRequired = readiness?.onboarding?.requiredComplete ?? steps.filter((step) => step.required).filter((step) => step.complete).length;
+  const totalRequired = readiness?.onboarding?.requiredTotal ?? steps.filter((step) => step.required).length;
+  const companyApproved = readiness?.companyApproval?.state === "APPROVED" || /approved/.test(str(data.context?.organization.status).toLowerCase());
+  const readyForReview = Boolean(readiness?.onboarding?.readyForReview || checklist?.ready_for_review || checklist?.readiness_status === "READY_FOR_REVIEW");
+  const c2aReady = Boolean(data.company && data.tax && data.payment && (data.policies?.length ?? 0) >= 5);
+  const companyGate = companyApproved ? "approved" : readyForReview ? "ready for sync review" : "not ready";
+  const crewGate = crewReadinessStatus(data);
+  const mobilizationGate = data.mobilization?.overall_status ?? "locked";
+  const nextStep = steps.find((step) => !step.complete && step.required) ?? steps.find((step) => !step.complete);
+  const progress = readiness?.onboarding?.progressPercent ?? (totalRequired ? Math.round((completedRequired / totalRequired) * 100) : 0);
+  const groupedSteps = onboardingStepGroups(steps);
+  return (
+    <div className="partner-stack onboarding-workflow">
+      <section className="partner-panel onboarding-hero">
+        <div className="onboarding-hero-copy">
+          <p className="eyebrow">Partner Onboarding</p>
+          <h3>{data.context?.organization.name ?? "Partner company"}</h3>
+          <p>{nextStep ? `Next step: ${nextStep.action}` : readiness?.onboarding?.state === "UNDER_REVIEW" ? "Under Sync review." : "Ready for Sync review."}</p>
+        </div>
+        <div className="onboarding-status-card">
+          <span>Status</span>
+          <strong>{statusLabel(readiness?.onboarding?.state ?? (companyApproved ? "Approved" : readyForReview ? "Ready for Sync Review" : "Not Ready"))}</strong>
+          <small>{completedRequired} of {totalRequired} required gates complete</small>
+          <div className="onboarding-progress" aria-label={`${progress}% complete`}><span style={{ width: `${progress}%` }} /></div>
+        </div>
+      </section>
+
+      <section className="onboarding-gates" aria-label="Readiness gates">
+        <GateCard title="Company Approved" status={companyGate} body="Company approval admits the Partner into the Sync Partner network." />
+        <GateCard title="Crew Ready" status={crewGate} body="Crew readiness is specific to each crew's people, equipment, and compliance." />
+        <GateCard title="Project Mobilization" status={mobilizationGate} body="Mobilization approval is issued per Work Order before production starts." />
+      </section>
+
+      <section className="partner-panel">
+        <div className="panel-header onboarding-section-header">
+          <div>
+            <p className="eyebrow">Readiness Checklist</p>
+            <h3>Required order</h3>
+            {nextStep ? <p className="partner-safe-text">Next: {nextStep.label}</p> : <p className="partner-safe-text">Ready for Sync review.</p>}
+          </div>
+          <OnboardingStatusBadge status={readiness?.onboarding?.state ?? (readyForReview ? "READY_FOR_REVIEW" : "ACCOUNT_ACTIVATED")} />
+        </div>
+        <div className="onboarding-layout">
+          <nav className="onboarding-step-list" aria-label="Partner-controlled onboarding tasks">
+            {groupedSteps.map((group) => (
+              <div className="onboarding-step-group" key={group.label}>
+                <h4>{group.label}</h4>
+                {group.steps.map((step, index) => (
+                  <Link key={step.key} className={step.complete ? "onboarding-step complete" : "onboarding-step"} href={step.route} aria-current={nextStep?.key === step.key ? "step" : undefined}>
+                    <span className="onboarding-step-index">{step.complete ? "Done" : String(index + 1)}</span>
+                    <div className="onboarding-step-body">
+                      <strong>{step.label}</strong>
+                      <span>{step.action}</span>
+                    </div>
+                    <OnboardingStatusBadge status={step.complete ? "complete" : step.status} />
+                  </Link>
+                ))}
+              </div>
+            ))}
+          </nav>
+          <section className="onboarding-current-step">
+            <p className="eyebrow">Current Step</p>
+            <h3>{nextStep?.label ?? "Review & Submit"}</h3>
+            <p>{nextStep?.detail ?? "Sync can review the company package once the required Partner-controlled tasks are complete."}</p>
+            {nextStep ? <Link className="partner-button primary" href={nextStep.route}>Continue</Link> : <span className="partner-button primary disabled-action">Ready for Sync Review</span>}
+            <div className="onboarding-review-note">
+              <strong>What happens after you submit?</strong>
+              <ol>
+                <li>Sync reviews company information.</li>
+                <li>Sync verifies compliance and agreements.</li>
+                <li>Approved crews become eligible for work.</li>
+                <li>Project-specific mobilization begins after Work Order assignment.</li>
+              </ol>
+            </div>
+          </section>
+        </div>
+        {!items.length ? <EmptyPortal title="No checklist available" body="The onboarding checklist appears after the Partner Admin invitation is accepted." /> : null}
+        <div className="onboarding-submit-row">
+          {data.submission?.status === "submitted" || data.submission?.status === "under_review" || data.submission?.status === "resubmitted"
+            ? <span className="partner-button primary disabled-action">Submitted for Sync Review</span>
+            : readPermissions().includes("partner_compliance.submission.submit") ? <button className="partner-button primary" type="button" onClick={async () => { setSubmitting(true); try { await submitOnboarding(); } finally { setSubmitting(false); } }} disabled={!c2aReady || submitting}>{submitting ? "Submitting for review…" : "Submit for Sync Review"}</button> : null}
+          <span>{data.submission?.status === "action_required" ? `Action Required: ${data.submission.external_return_reason || "Review the requested corrections."}` : c2aReady ? "Sync Admin will review the Partner-controlled package. Approval remains separate." : "Approval remains locked until required gates are complete. Complete the required Partner-controlled tasks before submitting."}</span>
+        </div>
+        <ActionList blockers={readiness?.actionRequired ?? []} />
+      </section>
+
+      <section className="partner-panel">
+        <div className="panel-header onboarding-section-header">
+          <div>
+            <p className="eyebrow">After Approval</p>
+            <h3>Partner Portal</h3>
+          </div>
+          <StatusPill label="Portal" value={companyApproved ? "active" : "locked"} />
+        </div>
+        <div className="portal-workspace-grid">
+          {[
+            ["Company", "/partner/company"],
+            ["Compliance", "/partner/compliance"],
+            ["Workers", "/partner/workers"],
+            ["Crews", "/partner/crews"],
+            ["Equipment", "/partner/vehicles"],
+            ["Work Orders", "/partner/work-orders"],
+            ["Production", "/partner/production"],
+            ["Corrections", "/partner/corrections"],
+            ["Settlements", "/partner/settlements"],
+            ["Performance", "/partner/performance"],
+          ].map(([label, route]) => <Link key={route} className="portal-workspace-link" href={route}>{label}</Link>)}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type OnboardingStep = { key: string; label: string; detail: string; route: string; required: boolean; complete: boolean; status: string };
+type OnboardingStepGroup = "Company" | "Workforce" | "Capacity" | "Final";
+
+type GroupedOnboardingStep = OnboardingStep & { group: OnboardingStepGroup; action: string };
+
+function onboardingSteps(data: PortalData): GroupedOnboardingStep[] {
+  const readinessItems = data.readiness?.onboarding?.items ?? [];
+  const byKey = new Map([...(data.onboarding?.items ?? []), ...readinessItems].map((item) => [item.key ?? "", item]));
+  const fromItem = (key: string) => byKey.get(key);
+  const itemComplete = (key: string) => Boolean(fromItem(key)?.complete);
+  const itemStatus = (key: string) => fromItem(key)?.status ?? "required";
+  const itemAction = (key: string, fallback: string) => {
+    const item = fromItem(key) as PartnerReadinessItem | undefined;
+    return str(item?.nextActionLabel) || fallback;
+  };
+  const vehiclesComplete = itemComplete("equipment") || (data.vehicles ?? []).length > 0;
+  const safetyComplete = itemComplete("insurance") && (itemComplete("credentials") || (data.readiness?.workers?.credentialIssues ?? 0) === 0);
+  const finalReviewComplete = Boolean(data.readiness?.onboarding?.readyForReview || data.onboarding?.ready_for_review || data.onboarding?.readiness_status === "READY_FOR_REVIEW");
+  return [
+    { group: "Company", key: "company_setup", label: "Company Setup", action: itemAction("company_profile", "Complete company profile"), detail: "Legal company name, DBA, tax classification, address, contacts, territories, capabilities, and emergency contact.", route: "/partner/company", required: true, complete: itemComplete("company_profile"), status: itemStatus("company_profile") },
+    { group: "Company", key: "w9_tax", label: "W-9 / Tax Information", action: itemAction("w9", "Upload signed W-9"), detail: "Signed W-9 and secure tax profile for internal Sync review.", route: "/partner/compliance", required: true, complete: itemComplete("w9"), status: itemStatus("w9") },
+    { group: "Company", key: "payment_setup", label: "Payment Setup", action: itemAction("payment_setup", "Complete payment setup"), detail: "Payment contact, remittance email, setup method, and required authorization. This does not enable automatic payouts.", route: "/partner/compliance", required: true, complete: itemComplete("payment_setup"), status: itemStatus("payment_setup") },
+    { group: "Company", key: "insurance", label: "Insurance", action: itemAction("insurance", "Upload insurance documents"), detail: "General liability, auto liability, Workers' Comp, umbrella coverage, COI, limits, and expiration tracking.", route: "/partner/compliance", required: true, complete: itemComplete("insurance"), status: itemStatus("insurance") },
+    { group: "Company", key: "agreements", label: "Agreements", action: itemAction("agreements", "Review issued agreements"), detail: "Master Partner Agreement, NDA, safety acknowledgements, payment terms, and countersignature status.", route: "/partner/agreements", required: true, complete: itemComplete("agreements"), status: itemStatus("agreements") },
+    { group: "Workforce", key: "workers", label: "Workers", action: itemAction("workers", "Add workforce roster"), detail: "Worker roster, role, phone, email where needed, certifications, credential evidence, and headshot status.", route: "/partner/workers", required: true, complete: itemComplete("workers"), status: itemStatus("workers") },
+    { group: "Workforce", key: "crews", label: "Crews", action: itemAction("crews", "Create crew structure"), detail: "Crew name, Foreman, worker count, capabilities, availability, home market, travel radius, and deployable status.", route: "/partner/crews", required: true, complete: itemComplete("crews"), status: itemStatus("crews") },
+    { group: "Capacity", key: "equipment", label: "Vehicles / Equipment", action: "Add deployable equipment", detail: "Trucks, bucket trucks, reel trailers, lashers, drills, trailers, inspections, and crew assignments.", route: "/partner/vehicles", required: false, complete: vehiclesComplete, status: vehiclesComplete ? "complete" : "pending" },
+    { group: "Capacity", key: "safety", label: "Safety / Compliance", action: "Clear safety documentation", detail: "Insurance, worker qualifications, headshots, credentials, safety acknowledgements, and missing documentation.", route: "/partner/compliance", required: true, complete: safetyComplete, status: safetyComplete ? "complete" : "required" },
+    { group: "Capacity", key: "capabilities", label: "Capabilities / Territories", action: itemAction("capabilities", "Report capabilities"), detail: "Partner-reported capabilities and canonical territories remain separate from Sync-verified capacity.", route: "/partner/company", required: true, complete: itemComplete("capabilities"), status: itemStatus("capabilities") },
+    { group: "Final", key: "final_review", label: "Review & Submit", action: "Review company package", detail: "Sync reviews the completed company package. Partner approval, crew readiness, and project mobilization stay separate.", route: "/partner/onboarding", required: false, complete: finalReviewComplete, status: finalReviewComplete ? "ready for sync review" : "locked" },
+  ];
+}
+
+function onboardingStepGroups(steps: GroupedOnboardingStep[]) {
+  const order: OnboardingStepGroup[] = ["Company", "Workforce", "Capacity", "Final"];
+  return order.map((label) => ({ label, steps: steps.filter((step) => step.group === label) })).filter((group) => group.steps.length);
+}
+
+function OnboardingStatusBadge({ status }: { status: string }) {
+  const label = partnerReadinessStatusLabel(status);
+  return <span className={`partner-status-pill ${statusClass(label)}`} aria-label={`Status: ${label}`}>{label}</span>;
+}
+
+function crewReadinessStatus(data: PortalData) {
+  if (data.readiness?.crews) {
+    if (!data.readiness.crews.total) return "not ready";
+    if ((data.readiness.crews.ready ?? 0) > 0) return (data.readiness.crews.actionRequired ?? 0) > 0 ? "some crews ready" : "ready";
+    return "setup required";
+  }
+  const crews = data.crews ?? [];
+  if (!crews.length) return "not ready";
+  const readiness = crews.map((crew) => data.readinessByCrew?.[str(crew.id)]?.overall_status).filter(Boolean);
+  if (readiness.some((status) => /ready|conditional/i.test(String(status)))) return "some crews ready";
+  return "setup required";
+}
+
+function GateCard({ title, status, body }: { title: string; status: string; body: string }) {
+  return (
+    <section className="partner-panel onboarding-gate-card">
+      <div className="panel-header">
+        <h3>{title}</h3>
+        <StatusPill label={title} value={status} />
+      </div>
+      <p>{body}</p>
+    </section>
+  );
+}
+
+function AdminDashboard({ data, acknowledgeNotice }: { data: PortalData; acknowledgeNotice: () => Promise<void> }) {
+  const dashboard = data.dashboard;
+  if (!dashboard) return <ErrorPortal product="Partner Portal" message="Partner Dashboard data is unavailable." />;
+  const company = dashboard.company ?? {};
+  const crews = dashboard.crews ?? {};
+  const workOrders = dashboard.workOrders ?? {};
+  const financial = dashboard.financial ?? {};
+  const productionRows = dashboard.production?.rows ?? [];
+  const actions = dashboardActionsFromReadModel(dashboard.actions);
+  return (
+    <div className="partner-stack partner-dashboard-command">
+      <section className="partner-dashboard-hero" aria-label="Partner Dashboard identity and freshness">
+        <div>
+          <p className="eyebrow">Partner Portal</p>
+          <h3>{dashboard.organization?.name ?? data.context?.organization.name ?? "Partner Company"}</h3>
+          <p>{personaLabel(data.context?.persona)} · {dashboard.organization?.capacity_provider_name ?? data.context?.capacity_provider?.name ?? "Authorized Partner organization"}</p>
+        </div>
+        <div className="partner-dashboard-refresh">
+          <span>{freshnessLabel(dashboard.freshness?.calculatedAt ?? dashboard.freshness?.asOf)}</span>
+          <button className="partner-button" type="button" onClick={() => window.location.reload()}>Refresh</button>
+        </div>
+      </section>
+
+      <section className="partner-dashboard-metrics" aria-label="Daily operating summary">
+        <MetricTile label="Company Status" value={statusLabel(company.status ?? dashboard.organization?.status)} />
+        <MetricTile label="Onboarding Requirements" value={dashboard.panelStatus?.company === "UNAVAILABLE" || company.requiredComplete == null || company.requiredTotal == null ? "Unavailable" : `${company.requiredComplete} of ${company.requiredTotal}`} />
+        <MetricTile label="Ready Crews" value={`${crews.ready ?? 0} of ${crews.active ?? 0}`} />
+        <MetricTile label="Active Work Orders" value={workOrders.active ?? 0} />
+        <MetricTile label="Open Corrections" value={dashboard.qcCorrections?.openCorrectionCount ?? 0} />
+        <MetricTile label="Eligible Payment" value={dashboardMoney(financial.eligiblePayment)} />
+      </section>
+
+      <div className="partner-dashboard-layout">
+        <PartnerActionCenter actions={actions} />
+        <TodayByCrewPanel rows={dashboard.todayByCrew ?? []} />
+      </div>
+
+      <Panel title="Active Work Orders" eyebrow="Partner-safe operating status">
+        <div className="partner-card-grid">
+          {(workOrders.items ?? []).slice(0, 6).map((workOrder) => (
+            <RecordCard key={str(workOrder.workOrderNumber)} title={str(workOrder.workOrderNumber) || "Work Order"} status={statusLabel(workOrder.status)} href={workOrder.route ?? "/partner/work-orders"}>
+              <StatusRows rows={[
+                ["Project", str(workOrder.projectName) || "Assigned project"],
+                ["Assigned Crew", str(workOrder.crewName) || "Not assigned"],
+                ["Map Package", str(workOrder.mapWorkPackageRef) || "Not issued"],
+                ["Mobilization", statusLabel(workOrder.mobilizationState)],
+                ["Production", statusLabel(workOrder.productionState)],
+                ["QC", statusLabel(workOrder.qcState)],
+                ["Partner Rate", str(workOrder.partnerRateAvailability) || "See Work Order detail"],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!(workOrders.items ?? []).length ? <EmptyPortal title="No active Work Orders" body="Assigned Work Orders appear here after Sync issues Partner work." /> : null}
+      </Panel>
+
+      <div className="partner-dashboard-layout">
+        <Panel title="Production & QC" eyebrow="Reviewed quantities, customer acceptance, and open findings">
+          <p>{dashboard.production?.pending_review_count ?? 0} production records await quantity review. They are excluded from reviewed totals.</p>
+          <div className="dashboard-quantity-grid">
+            {productionRows.map((row) => (
+              <div className="dashboard-quantity-row" key={`${row.code ?? row.label}:${row.unit}`}>
+                <strong>{row.label ?? row.code ?? "Production"}</strong>
+                <span>Reviewed: {quantityText(row.reported ?? "0", row.unit)}</span>
+                <span>Customer Accepted: {quantityText(row.accepted ?? "0", row.unit)}</span>
+                <span>Open findings: {row.open_findings ?? "0"}</span>
+              </div>
+            ))}
+          </div>
+          {!productionRows.length ? <EmptyPortal title="No production submitted" body="Daily production summaries appear after Foremen submit field production." /> : null}
+          <div className="partner-actions-row">
+            <Link className="partner-button" href="/partner/production">View Production</Link>
+            <Link className="partner-button" href="/partner/customer-qc">View QC & Corrections</Link>
+          </div>
+        </Panel>
+
+        <Panel title="Settlements & Payments" eyebrow="Server-returned amounts only">
+          <div className="dashboard-finance-grid">
+            <MetricTile label="Accepted Production Awaiting Settlement" value={acceptedAwaitingSettlementText(financial.acceptedProductionAwaitingSettlement)} />
+            <MetricTile label="Issued Settlements" value={dashboardMoney(financial.issuedSettlements)} />
+            <MetricTile label="Outstanding Payable" value={dashboardMoney(financial.outstandingPayable)} />
+            <MetricTile label="Eligible" value={dashboardMoney(financial.eligiblePayment)} />
+            <MetricTile label="Awaiting Customer Funds" value={dashboardMoney(financial.awaitingFunds)} />
+            <MetricTile label="Processing" value={dashboardMoney(financial.processing)} />
+            <MetricTile label="Paid This Month" value={dashboardMoney(financial.paidThisMonth)} />
+          </div>
+          <p className="partner-safe-text">Settlement, payable, eligibility, processing, and paid states remain separate. Amounts are returned by the Partner Dashboard read model and formatted in the browser.</p>
+          <div className="partner-actions-row">
+            <Link className="partner-button" href="/partner/settlements">View Settlements</Link>
+            <Link className="partner-button" href="/partner/payments">View Payments</Link>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="Performance" eyebrow="Partner-only signal">
+        <PerformanceSummaryInline summary={dashboard.performance as PartnerPerformanceSummary | null | undefined} />
+        {dashboard.panelStatus?.performance === "UNAVAILABLE" ? <p className="partner-safe-text">Performance data unavailable. Refresh to try again.</p> : null}
+      </Panel>
+
+      {data.notice?.id && readPermissions().includes(data.context?.persona === "partner_foreman" ? "partner_notice.foreman.acknowledge" : "partner_notice.acknowledge") ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+    </div>
+  );
+}
+
+function PartnerActionCenter({ actions }: { actions: DashboardAction[] }) {
+  return (
+    <Panel title="Needs Attention" eyebrow="Partner Action Center">
+      {(["needs_action", "crew_foreman", "waiting"] as DashboardActionCategory[]).map((category) => {
+        const grouped = actions.filter((action) => action.category === category);
+        return (
+          <div className="dashboard-action-group" key={category}>
+            <h4>{actionCategoryLabel(category)}</h4>
+            {grouped.length ? grouped.map((action) => <DashboardActionCard key={action.key} action={action} />) : <p className="partner-safe-text">{emptyActionText(category)}</p>}
+          </div>
+        );
+      })}
+    </Panel>
+  );
+}
+
+function DashboardActionCard({ action }: { action: DashboardAction }) {
+  const body = (
+    <>
+      <div>
+        <StatusPill label="Severity" value={action.severity} />
+        <strong>{action.title}</strong>
+        <span>{action.description}</span>
+        {action.sourceLabel ? <small>{action.sourceLabel}</small> : null}
+      </div>
+      {action.cta ? <b>{action.cta}</b> : null}
+    </>
+  );
+  return action.href ? <Link className="dashboard-action-card" href={action.href}>{body}</Link> : <div className="dashboard-action-card static">{body}</div>;
+}
+
+function TodayByCrewPanel({ rows }: { rows: CrewToday[] }) {
+  return (
+    <Panel title="Today by Crew" eyebrow="Operational status">
+      <div className="today-crew-list">
+        {rows.map((row) => (
+          <div className="today-crew-card" key={`${row.crewName ?? "crew"}:${row.workOrderNumber ?? "work"}`}>
+            <div className="today-crew-title">
+              <div>
+                <strong>{str(row.crewName) || "Crew"}</strong>
+                <span>{row.foremanName ?? row.foreman} · {row.workOrderNumber || "No active Work Order"}</span>
+              </div>
+              <StatusPill label="Readiness" value={row.readiness} />
+            </div>
+            <StatusRows rows={[
+              ["JSA", row.jsaStatus],
+              ["Production", row.productionStatus],
+              ["Reported", reportedQuantitiesText(row)],
+              ["Customer QC", row.qcStatus],
+              ["Corrections", row.correctionStatus],
+              ["Last Activity", row.lastActivity],
+              ["Work Date", workDateLabel(row.workDate, row.timezone)],
+            ]} />
+            <div className="partner-actions-row compact-actions">
+              <Link className="partner-button" href="/partner/crews">View Crew</Link>
+              <Link className="partner-button" href="/partner/work-orders">View Work Order</Link>
+            </div>
+          </div>
+        ))}
+      </div>
+      {!rows.length ? <EmptyPortal title="No crews working today" body="Current Crew work appears after Sync authorizes a Crew and Work Order assignment." /> : null}
+    </Panel>
+  );
+}
+
+function dashboardActionsFromReadModel(actions?: PartnerDashboardReadModel["actions"]): DashboardAction[] {
+  const mapAction = (category: DashboardActionCategory) => (action: PartnerDashboardAction): DashboardAction => ({
+    key: str(action.key) || `${str(action.reasonCode)}:${str(action.sourceBusinessLabel)}`,
+    category,
+    severity: dashboardSeverity(action.severity),
+    title: str(action.title) || "Dashboard action",
+    description: str(action.description) || "Review this Dashboard item.",
+    sourceLabel: str(action.sourceBusinessLabel),
+    href: str(action.ctaRoute),
+    cta: str(action.ctaLabel),
+  });
+  return [
+    ...(actions?.needsYourAction ?? []).map(mapAction("needs_action")),
+    ...(actions?.crewForemanAction ?? []).map(mapAction("crew_foreman")),
+    ...(actions?.waitingInformational ?? []).map(mapAction("waiting")),
+  ];
+}
+
+function dashboardSeverity(value: unknown): DashboardActionSeverity {
+  const normalized = str(value).toLowerCase();
+  if (["critical", "high", "medium", "low", "info"].includes(normalized)) return normalized as DashboardActionSeverity;
+  return "info";
+}
+
+function dashboardMoney(value?: PartnerDashboardMoney) {
+  return currency(value?.amount ?? "0");
+}
+
+type AcceptedAwaitingSettlementRow = NonNullable<NonNullable<PartnerDashboardReadModel["financial"]>["acceptedProductionAwaitingSettlement"]>[number];
+
+function acceptedAwaitingSettlementText(rows?: AcceptedAwaitingSettlementRow[]) {
+  if (!rows?.length) return "No accepted quantities awaiting settlement";
+  return rows.map((row: AcceptedAwaitingSettlementRow) => quantityText(row.quantity ?? "0", row.unit)).join("; ");
+}
+
+function reportedQuantitiesText(row: CrewToday) {
+  const quantities = row.reportedQuantities?.length ? row.reportedQuantities.map((item) => quantityText(item.quantity ?? "0", item.unit)) : row.reported?.map((item) => str(item.value)).filter(Boolean);
+  return quantities?.join("; ") || "No report";
+}
+
+
+function freshnessLabel(value?: string | null) {
+  if (!value) return "Updated time unavailable";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Updated time unavailable";
+  const minutes = Math.max(Math.floor((Date.now() - date.getTime()) / 60000), 0);
+  if (minutes < 1) return "Updated just now";
+  if (minutes === 1) return "Updated 1 minute ago";
+  if (minutes > 15) return `Data may be stale · updated ${minutes} minutes ago`;
+  return `Updated ${minutes} minutes ago`;
+}
+
+function latestDateLabel(values: Array<string | undefined | null>) {
+  const dates = values
+    .map((value) => value ? new Date(value) : null)
+    .filter((date): date is Date => date !== null && Number.isFinite(date.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime());
+  if (!dates.length) return "No server activity";
+  return dates[0].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function workDateLabel(value?: string, timezone?: string) {
+  return value ? `Work date ${value}${timezone ? ` · ${timezone}` : ""}` : timezone ? `Timezone ${timezone}` : "Work date not set";
+}
+
+function statusLabel(value?: unknown) {
+  return partnerReadinessStatusLabel(value);
+}
+
+const partnerReadinessStatusLabels: Record<string, string> = {
+  discovered: "Discovered",
+  researched: "Researched",
+  qualified: "Qualified",
+  relationship_opened: "Relationship Opened",
+  strategic: "Strategic",
+  dormant: "Dormant",
+  archived: "Archived",
+  prospect: "Prospect",
+  verification_pending: "Verification Pending",
+  contract_pending: "Contract Pending",
+  contracted: "Contracted",
+  activated: "Activated",
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  submitted: "Submitted",
+  under_review: "Under Review",
+  action_required: "Action Required",
+  complete: "Complete",
+  completed: "Complete",
+  approved: "Approved",
+  conditional: "Conditional",
+  hold: "On Hold",
+  locked: "Locked",
+  expired: "Expired",
+  suspended: "Suspended",
+  unavailable: "Unavailable",
+  pending: "Pending",
+  active: "Active",
+  inactive: "Inactive",
+  accepted: "Accepted",
+  active_custody: "Active Custody",
+  approved_to_mobilize: "Approved to Mobilize",
+  assigned: "Assigned",
+  authorized: "Authorized",
+  awaiting_customer_funds: "Awaiting Customer Funds",
+  awaiting_customer_reinspection: "Awaiting Customer Reinspection",
+  confirmed: "Paid",
+  correction_required: "Correction Required",
+  customer_correction_required: "Customer Correction Required",
+  corrected: "Corrected",
+  conditionally_approved: "Conditionally Approved",
+  draft: "Draft",
+  effective: "Effective",
+  eligible: "Eligible",
+  failed: "Failed",
+  held: "On Hold",
+  on_hold: "On Hold",
+  open: "Open",
+  not_authorized: "Not Authorized",
+  not_evaluated: "Not Evaluated",
+  not_issued: "Not Issued",
+  not_ready: "Not Ready",
+  paid: "Paid",
+  partially_accepted: "Partially Accepted",
+  payment_processing: "Processing",
+  processing: "Processing",
+  qc_pending: "QC Pending",
+  ready: "Ready",
+  ready_for_review: "Ready for Sync Review",
+  rejected: "Rejected",
+  returned: "Action Required",
+  revoked: "Revoked",
+  setup_required: "Setup Required",
+  some_crews_ready: "Some Crews Ready",
+  terminated: "Terminated",
+  voided: "Voided",
+  account_activated: "Not Started",
+  verified: "Complete",
+  executed: "Complete",
+  issued: "Submitted",
+  blocked: "Action Required",
+  crew_assigned: "Crew Assigned",
+  pending_assignment: "Pending Assignment",
+  selected: "Selected",
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  missing: "Action Required",
+  required: "Action Required",
+  incomplete: "Action Required",
+  see_production: "See Production",
+  see_qc: "See QC",
+  synced: "Synced",
+  review_required: "Review Required",
+  within_tolerance: "Within Tolerance",
+  within_expectation: "Within Expectation",
+  variance: "Variance",
+  not_applicable: "Not Applicable",
+  draft_editable: "Draft — Editable",
+  read_only_submitted: "Submitted — Read Only",
+};
+
+function partnerReadinessStatusLabel(value?: unknown) {
+  const code = str(value).trim().toLowerCase().replace(/[ -]+/g, "_");
+  return partnerReadinessStatusLabels[code] ?? "Status Unavailable";
+}
+
+const partnerBlockerLabels: Record<string, string> = {
+  COMPANY_PROFILE_INCOMPLETE: "Complete Company Profile",
+  COMPANY_PROFILE_UNDER_REVIEW: "Company Profile Under Sync Review",
+  W9_MISSING: "W-9 Required",
+  W9_UNDER_REVIEW: "W-9 Under Sync Review",
+  PAYMENT_PROFILE_INCOMPLETE: "Complete Payment Setup",
+  GENERAL_LIABILITY_MISSING: "General Liability Insurance Required",
+  AUTO_LIABILITY_MISSING: "Auto Liability Insurance Required",
+  WORKERS_COMP_MISSING: "Workers’ Compensation Required",
+  INSURANCE_MISSING: "Insurance Required",
+  INSURANCE_EXPIRED: "Insurance Expired",
+  INSURANCE_UNDER_REVIEW: "Insurance Under Sync Review",
+  NO_ACTIVE_WORKERS: "Active Workers Required",
+  WORKER_PROFILE_UNAPPROVED: "Worker Approval Required",
+  WORKER_CREDENTIAL_EXPIRED: "Worker Credential Required",
+  AGREEMENT_UNSIGNED: "Agreement Signature Required",
+  CREW_MISSING_FOREMAN: "Primary Foreman Required",
+  CREW_MISSING_WORKERS: "Additional Crew Members Required",
+  EQUIPMENT_INSPECTION_EXPIRED: "Equipment Inspection Required",
+  EQUIPMENT_MISSING: "Required Equipment Missing",
+  CREW_MISSING_CAPABILITY: "Crew Capability Required",
+  PARTNER_UNDER_REVIEW: "Under Sync Review",
+  PARTNER_ACTION_REQUIRED: "Action Required",
+  ONBOARDING_INCOMPLETE: "Complete Partner Onboarding",
+  INSUFFICIENT_SCHEDULE_DATA: "Schedule Information Unavailable",
+};
+
+function partnerBlockerLabel(value?: unknown) {
+  return partnerBlockerLabels[str(value).trim().toUpperCase()] ?? "Action Required";
+}
+
+function partnerReasonListLabel(values: string[]) {
+  return values.map(partnerBlockerLabel).join(", ");
+}
+
+const partnerDescriptorLabels: Record<string, string> = {
+  aerial: "Aerial",
+  alternate_foreman: "Alternate Foreman",
+  bucket_truck: "Bucket Truck",
+  express_splice: "Express Splice",
+  front_easement: "Front Easement",
+  commercial_auto: "Commercial Auto",
+  commercial_general_liability: "Commercial General Liability",
+  corporation: "Corporation",
+  driver_operator: "Driver / Operator",
+  employers_liability: "Employer’s Liability",
+  foreman: "Foreman",
+  llc: "LLC",
+  member: "Crew Member",
+  other: "Other",
+  rear_easement: "Rear Easement",
+  subcontractor: "Subcontractor",
+  umbrella_excess: "Umbrella / Excess",
+  workers_compensation: "Workers’ Compensation",
+};
+
+function partnerDescriptorLabel(value?: unknown) {
+  const text = str(value).trim();
+  if (!text) return "Not Available";
+  const code = text.toLowerCase().replace(/[ -]+/g, "_");
+  return partnerDescriptorLabels[code] ?? (/[_-]/.test(text) ? "Not Available" : text);
+}
+
+const partnerFieldLabels: Record<string, string> = {
+  asset_identifier: "Asset Identifier",
+  notes: "Notes",
+};
+
+function partnerFieldLabel(value?: unknown) {
+  const code = str(value).trim().toLowerCase();
+  return partnerFieldLabels[code] ?? "Details";
+}
+
+function actionCategoryLabel(category: DashboardActionCategory) {
+  if (category === "needs_action") return "Needs Your Action";
+  if (category === "crew_foreman") return "Crew / Foreman Action";
+  return "Waiting / Informational";
+}
+
+function emptyActionText(category: DashboardActionCategory) {
+  if (category === "needs_action") return "No Partner Admin-controlled blockers.";
+  if (category === "crew_foreman") return "No Foreman execution items require attention.";
+  return "No waiting items to track right now.";
+}
+
+function dedupeDashboardActions(actions: DashboardAction[]) {
+  const seen = new Set<string>();
+  return actions.filter((action) => {
+    if (seen.has(action.key)) return false;
+    seen.add(action.key);
+    return true;
+  });
+}
+
+function severityRank(severity: DashboardActionSeverity) {
+  return { critical: 0, high: 1, medium: 2, low: 3, info: 4 }[severity];
+}
+
+function PerformanceSummaryInline({ summary }: { summary?: PartnerPerformanceSummary | null }) {
+  if (!summary) return <EmptyPortal title="Performance unavailable" body="Partner performance appears after enough Partner-safe operational data exists." />;
+  return (
+    <div className="dashboard-performance-row">
+      <MetricTile label="Overall Score" value={summary.score === undefined ? "Not scored" : summary.score} />
+      <MetricTile label="Confidence" value={partnerDescriptorLabel(summary.confidence)} />
+      <MetricTile label="Trend" value={partnerDescriptorLabel(summary.trend)} />
+      <MetricTile label="Open Signals" value={(summary.dimensions ?? []).filter((dimension) => Number(dimension.normalized_score ?? 100) < 70).length} />
+      <p className="partner-safe-text">{(summary.improvement_items ?? []).slice(0, 2).map(str).filter(Boolean).join(" · ") || "No Partner-safe improvement signal is currently published."}</p>
+    </div>
+  );
+}
+
+function ForemanToday({ data, acknowledgeNotice }: { data: PortalData; acknowledgeNotice: () => Promise<void> }) {
+  const notice = data.notice;
+  const map = data.mapAssignment?.map;
+  const jsa = data.jsaToday;
+
+  return (
+    <div className="partner-field-layout">
+      <section className="field-status-band" aria-label="Today assignment">
+        <div>
+          <p className="eyebrow">Today</p>
+          <h3>{str(data.foremanWorkOrder?.project_name) || "Assigned Project"}</h3>
+          <p>{str(data.foremanWorkOrder?.scope_summary) || "Current Work Order assignment"}</p>
+        </div>
+        <StatusPill label="Production Start" value={notice?.production_start?.authorization_status ?? "not_authorized"} />
+      </section>
+      <div className="partner-dashboard-grid">
+        <Panel title="Start Instructions" eyebrow="Notice to Proceed">
+          <StatusRows rows={[
+            ["Mobilization", statusLabel(data.mobilization?.decision?.decision ?? "pending")],
+            ["Notice", statusLabel(notice?.status ?? "not_issued")],
+            ["Start Date", notice?.production_start_date ?? notice?.production_start?.start_date ?? "Not authorized"],
+            ["Start Time", notice?.production_start_time ?? notice?.production_start?.start_time ?? "Not authorized"],
+            ["Timezone", notice?.timezone ?? notice?.production_start?.timezone ?? "Not set"],
+            ["Map Package", notice?.initial_map_work_package_ref ?? str(data.foremanWorkOrder?.map_work_package_ref) ?? "Not issued"],
+            ["Initial Work Area", notice?.initial_work_area ?? "Not assigned"],
+            ["Map Version", map?.name ? `${map.name} Rev ${map.revision_number ?? "0"}` : "Not assigned"],
+            ["Daily JSA", jsa?.status === "completed" ? `Complete — ${shortTime(jsa.meeting_completed_at)}` : "Required"],
+          ]} />
+          <p className="partner-safe-text">{notice?.external_instructions || "Use the authorized start instructions when issued. Production remains blocked until the day is ready for field submission."}</p>
+          {notice?.id && readPermissions().includes(data.context?.persona === "partner_foreman" ? "partner_notice.foreman.acknowledge" : "partner_notice.acknowledge") ? <button className="partner-button primary wide-touch" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+          <div className="partner-actions-row">
+            {map?.status === "ready" ? <Link className="partner-button wide-touch" href="/syncfield/map">Open Map</Link> : null}
+            <Link className="partner-button wide-touch" href="/syncfield/jsa">{jsa?.status === "completed" || !readPermissions().includes("partner_jsa.complete") ? "View Daily JSA" : "Complete JSA"}</Link>
+            <Link className="partner-button wide-touch" href="/syncfield/production">Open Production</Link>
+          </div>
+        </Panel>
+        <Panel title="Crew" eyebrow={str(data.foremanCrew?.name)}>
+          <StatusRows rows={[["Crew Readiness", statusLabel(data.mobilization?.overall_status ?? "not_evaluated")], ["Roster", `${data.foremanRoster?.length ?? 0} active Workers`]]} />
+          <RosterList roster={data.foremanRoster ?? []} foreman />
+        </Panel>
+        <Panel title="Workload" eyebrow="Assigned work package">
+          <StatusRows rows={[
+            ["Work Order", str(data.foremanWorkOrder?.work_order_number) || "Not assigned"],
+            ["Customer", str(data.foremanWorkOrder?.customer_name) || "Not shown"],
+            ["Vehicle", vehicleLabel(data.foremanWorkOrder?.vehicle as Record<string, unknown> | undefined)],
+            ["Operator", "Use assigned vehicle authorization"],
+            ["Field Work", data.productionToday?.status ? "Production record available" : "Open Production to record work"],
+          ]} />
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function FieldMapWorkspace({ data }: { data: PortalData }) {
+  const assignment = data.mapAssignment;
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [zoom, setZoom] = useState(100);
+  const versionId = assignment?.map?.version_id;
+  const assignmentId = assignment?.id;
+  const canReadFile = data.context?.persona === "partner_foreman";
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+    setPdfUrl(null);
+    setMapError(null);
+    setPageNumber(1);
+    setZoom(100);
+    if (!versionId || !canReadFile) return;
+    void syncosFetch<{ mime_type: string; content_base64: string }>(`syncfield/foreman/map-versions/${encodeURIComponent(versionId)}/bytes${assignmentId ? `?assignment_id=${encodeURIComponent(assignmentId)}` : ""}`)
+      .then((file) => {
+        if (disposed) return;
+        if (file.mime_type !== "application/pdf") throw new Error("The assigned document is not a PDF.");
+        const bytes = Uint8Array.from(atob(file.content_base64), character => character.charCodeAt(0));
+        objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+        setPdfUrl(objectUrl);
+      }).catch(() => {
+        if (!disposed) setMapError("The assigned PDF could not be opened. Refresh to retry or contact your supervisor.");
+      });
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [versionId, assignmentId, canReadFile]);
+  if (!assignment?.map || assignment.map.status !== "ready") {
+    return <EmptyPortal title="No assigned field map" body="A read-only field map appears after Sync assigns a READY Map Version to your Work Order and Crew." />;
+  }
+  const zones = assignment.work_zones ?? [];
+  const designSegments = data.designSegments ?? [];
+  const spanCompletions = data.spanCompletions ?? [];
+  const observations = data.assetObservations ?? [];
+  const coils = data.coilObservations ?? [];
+  return (
+    <div className="field-map-shell">
+      <section className="field-map-header" aria-label="Field map context">
+        <div>
+          <p className="eyebrow">Assigned field map</p>
+          <h3>{assignment.map.name} Rev {assignment.map.revision_number ?? 0}</h3>
+          <p>{assignment.work_order?.work_order_number} · {assignment.crew?.name}</p>
+        </div>
+        <StatusPill label="Map" value={assignment.map.processing_status} />
+      </section>
+      <section className="field-map-viewer" aria-label="PDF map viewer">
+        <div className="field-map-toolbar" aria-label="Map controls">
+          <button className="partner-button" type="button" aria-label="Previous PDF page" disabled={!pdfUrl || pageNumber <= 1} onClick={() => setPageNumber(pageNumber - 1)}>Page -</button>
+          <span role="status" aria-live="polite">Page {pageNumber} / {assignment.map.page_count ?? 1} · {zoom}%</span>
+          <button className="partner-button" type="button" aria-label="Next PDF page" disabled={!pdfUrl || pageNumber >= (assignment.map.page_count ?? 1)} onClick={() => setPageNumber(pageNumber + 1)}>Page +</button>
+          <button className="partner-button" type="button" aria-label="Zoom out" disabled={!pdfUrl || zoom <= 50} onClick={() => setZoom(Math.max(50, zoom - 25))}>-</button>
+          <button className="partner-button" type="button" aria-label="Zoom in" disabled={!pdfUrl || zoom >= 300} onClick={() => setZoom(Math.min(300, zoom + 25))}>+</button>
+        </div>
+        {mapError ? <p role="alert" className="partner-safe-text error-text">{mapError}</p> : !canReadFile ? <p className="partner-safe-text">PDF preview is available to the assigned foreman in SyncField.</p> : !pdfUrl ? <p role="status">Loading assigned PDF…</p> : <>
+          <iframe key={`${pdfUrl}:${pageNumber}:${zoom}`} title={`Assigned PDF map: ${assignment.map.name}`} src={`${pdfUrl}#page=${pageNumber}&zoom=${zoom}`} style={{ width: "100%", height: "65vh", minHeight: 360, border: 0 }} />
+          <a className="partner-button" href={pdfUrl} target="_blank" rel="noopener noreferrer">Open assigned PDF</a>
+          <p className="partner-safe-text">Use your device’s PDF viewer if the preview is unavailable. Production marks are listed below; they are not drawn on this original PDF.</p>
+        </>}
+      </section>
+      <Panel title="Work Zones" eyebrow="Navigation bookmarks">
+        <div className="partner-actions-row">
+          {zones.map((zone) => <button className="partner-button" type="button" key={zone.id} disabled={!pdfUrl} onClick={() => {
+            setPageNumber(Math.max(1, Math.min(assignment.map?.page_count ?? 1, zone.page_number ?? 1)));
+            setZoom(Math.max(50, Math.min(300, Math.round((zone.zoom_level ?? 1) * 100))));
+          }}>Jump to {zone.name} · Pg {zone.page_number}</button>)}
+          {!zones.length ? <span className="partner-safe-text">No Work Zones assigned.</span> : null}
+        </div>
+      </Panel>
+      <Panel title="Field Access" eyebrow="Assigned print">
+        <StatusRows rows={[["State", pdfUrl ? "Available" : mapError ? "Unavailable" : canReadFile ? "Loading" : "Foreman access required"], ["Source", "Read-only field map"], ["Map Package", assignment.map.name], ["Production Entry", "Use the Production workspace"]]} />
+      </Panel>
+      <Panel title="Production marks" eyebrow="Authoritative quantity remains ProductionRecord">
+        <StatusRows rows={[
+          ["Planned Segments", String(designSegments.length)],
+          ["Completed Redlines", String(spanCompletions.length)],
+          ["Pole Observations", String(observations.length)],
+          ["Coil / Slack", `${coils.length} records · ${quantityText(coilActualTotal(coils), "FT")} actual`],
+        ]} />
+        <div className="field-construction-list" aria-label="Visible construction spans">
+          {designSegments.slice(0, 4).map((segment) => (
+            <div className="field-construction-list-item design" key={segment.id}>
+              <span>DESIGN</span>
+              <strong>{constructionSpanLabel(segment.from_asset_identifier, segment.to_asset_identifier, segment.design_label)}</strong>
+            </div>
+          ))}
+          {spanCompletions.slice(0, 4).map((span) => (
+            <div className="field-construction-list-item redline" key={span.id}>
+              <span>REDLINE</span>
+              <strong>{constructionSpanLabel(span.from_asset_identifier, span.to_asset_identifier)}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="partner-safe-text">Planned segments, completed spans, and annotation records are construction evidence. Production records remain the source of reported quantities.</p>
+        <p className="partner-safe-text">Recorded coil/slack is material traceability only. It does not create billable production, settlement, payable, or payment eligibility.</p>
+        <Link className="partner-button wide-touch" href="/syncfield/production">Open Production</Link>
+      </Panel>
+    </div>
+  );
+}
+
+function constructionSpanLabel(from?: string | null, to?: string | null, fallback?: string | null) {
+  if (from || to) return `${from ?? "From"} -> ${to ?? "To"}`;
+  return fallback || "Unlabeled span";
+}
+
+type ChecklistOption = readonly [string, string];
+
+const jsaScopeOptions: ChecklistOption[] = [
+  ["aerial_fiber", "Aerial Fiber"],
+  ["underground_hdd", "Underground / HDD"],
+  ["fiber_pulling", "Fiber Pulling"],
+  ["splicing", "Splicing"],
+  ["electrical", "Electrical"],
+  ["civil", "Civil"],
+] as const;
+
+const jsaHazardOptions: ChecklistOption[] = [
+  ["fall_exposure", "Falls from elevation"],
+  ["trip_hazards", "Slip, trip, falls"],
+  ["traffic", "Vehicle traffic"],
+  ["energized_utilities", "Electrical shock / energized utilities"],
+  ["overhead_utilities", "Overhead utilities"],
+  ["underground_utilities", "Underground utilities"],
+  ["heat_stress", "Heat stress"],
+  ["cold_stress", "Cold stress"],
+  ["chemical_exposure", "Chemical exposure"],
+  ["rf_exposure", "RF / EME exposure"],
+  ["noise_exposure", "Noise exposure"],
+  ["rough_terrain", "Rough terrain"],
+  ["environmental", "Environmental"],
+  ["lead_asbestos", "Lead / asbestos"],
+  ["site_security", "Site security"],
+  ["inner_city", "Inner city"],
+  ["night_work", "Night work"],
+  ["rural", "Rural"],
+  ["locked_access", "Locked fences / access doors"],
+  ["lighting_required", "Lighting required"],
+  ["trash_debris_dunnage", "Trash / debris / dunnage"],
+  ["other", "Other"],
+] as const;
+
+const jsaControlGroups: Array<{ title: string; options: ChecklistOption[] }> = [
+  {
+    title: "Required PPE",
+    options: [
+      ["ppe_reviewed", "PPE reviewed"],
+      ["hard_hat", "Hard hat"],
+      ["safety_glasses", "Safety glasses"],
+      ["hearing_protection", "Hearing protection"],
+      ["gloves", "Gloves"],
+      ["fall_protection_reviewed", "Fall protection"],
+      ["respirator_protection", "Respirator protection"],
+    ],
+  },
+  {
+    title: "Required Training",
+    options: [
+      ["rf_site_safety_awareness", "RF site safety awareness"],
+      ["competent_climber", "Competent climber"],
+      ["equipment_operation_training", "Equipment operation"],
+      ["first_aid_cpr", "First Aid / CPR"],
+      ["fall_protection_plan", "Fall protection plan"],
+      ["lockout_tagout", "Lockout / tagout"],
+      ["confined_space", "Confined space"],
+      ["competent_person_identified", "Competent person identified"],
+    ],
+  },
+  {
+    title: "Work Zone / Emergency",
+    options: [
+      ["traffic_control_reviewed", "Traffic control plan"],
+      ["proper_signage", "Proper work-area signage"],
+      ["cones_tapers", "Adequate cones and tapers"],
+      ["drop_zone", "Drop zone"],
+      ["barriers_barricades", "Barriers / barricades"],
+      ["storm_drains_protected", "Storm drains protected"],
+      ["emergency_procedures_reviewed", "Emergency action plan"],
+      ["muster_area", "Muster area"],
+      ["first_aid_kit_supplied", "First aid kit supplied"],
+      ["fire_extinguishers_inspected", "Fire extinguishers inspected"],
+      ["stop_work_authority_reviewed", "Stop-work authority reviewed"],
+      ["incident_reporting_reviewed", "Incident reporting reviewed"],
+    ],
+  },
+  {
+    title: "Electrical / Underground / Civil",
+    options: [
+      ["utilities_reviewed", "Utilities reviewed"],
+      ["underground_utilities_located", "Underground utilities located"],
+      ["utilities_potholed", "Utilities potholed and located"],
+      ["gfci", "GFCI"],
+      ["electrical_ppe", "Electrical PPE"],
+      ["electrical_equipment_inspection", "Electrical equipment inspection"],
+      ["electrical_tools_tested", "Electrical tools and testing equipment"],
+      ["drill_equipment_grounded", "Drill equipment grounded"],
+      ["drilling_fluid_containment", "Drilling fluid containment"],
+      ["certified_equipment_operators", "Certified equipment operators"],
+      ["startup_inspections", "Equipment startup inspections"],
+      ["excavation_trench_inspection", "Excavation / trench inspection"],
+      ["shore_bench_slope_shield", "Shore / bench / slope / shield"],
+      ["egress_every_25ft", "Egress every 25 ft"],
+    ],
+  },
+  {
+    title: "Site Readiness",
+    options: [
+      ["aerial_hazards_reviewed", "Aerial hazards reviewed"],
+      ["equipment_inspection_complete", "Equipment inspection complete"],
+      ["communication_confirmed", "Communication confirmed"],
+      ["exclusion_zone_established", "Exclusion zone established"],
+      ["eye_wash_station", "Eye wash station"],
+      ["rubber_boots_gloves", "Rubber boots / gloves"],
+      ["wash_basin_hose", "Wash basin / hose"],
+      ["dust_control", "Dust control"],
+      ["formwork_stability", "Formwork stability"],
+      ["ladders_good_condition", "Ladders in good condition"],
+      ["msds_available", "MSDS available"],
+      ["mobile_equipment_good_condition", "Mobile equipment in good condition"],
+      ["general_neatness", "General neatness of work area"],
+    ],
+  },
+];
+
+const requiredJsaControls = ["ppe_reviewed", "emergency_procedures_reviewed", "stop_work_authority_reviewed"];
+
+function DailyJsaWorkspace({ data, completeJsa }: { data: PortalData; completeJsa: (payload: JsaCompletionPayload) => Promise<void> }) {
+  const jsa = data.jsaToday;
+  const [revisionReason, setRevisionReason] = useState("");
+  const [revisionBusy, setRevisionBusy] = useState(false);
+  const [revisionError, setRevisionError] = useState("");
+
+  const defaultWorkLocation = jsa?.work_location || data.mapAssignment?.work_order?.primary_work_area || data.notice?.initial_work_area || "Assigned work area";
+  const [workLocation, setWorkLocation] = useState(defaultWorkLocation);
+  const [weather, setWeather] = useState(jsa?.weather ?? "");
+  const [siteConditions, setSiteConditions] = useState(jsa?.site_conditions ?? "");
+  const [scope, setScope] = useState<string[]>([]);
+  const [hazards, setHazards] = useState<string[]>(jsa?.hazards ?? []);
+  const [controls, setControls] = useState<string[]>(jsa?.controls ?? []);
+  const [taskNotes, setTaskNotes] = useState("");
+  const [otherScope, setOtherScope] = useState("");
+  const [certified, setCertified] = useState(Boolean(jsa?.foreman_certified));
+  const requiredMissing = requiredJsaControls.filter((control) => !controls.includes(control));
+  const canComplete = hazards.length > 0 && requiredMissing.length === 0 && certified && workLocation.trim().length > 0;
+
+  function toggle(value: string, values: string[], setter: (next: string[]) => void) {
+    setter(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedScope = jsaScopeOptions.filter(([value]) => scope.includes(value)).map(([, label]) => label);
+    void completeJsa({
+      work_location: workLocation,
+      weather,
+      site_conditions: siteConditions,
+      hazards,
+      controls,
+      foreman_certified: certified,
+      notes: [
+        selectedScope.length ? `Scope: ${selectedScope.join(", ")}` : null,
+        otherScope.trim() ? `Other scope: ${otherScope.trim()}` : null,
+        taskNotes.trim() ? `Daily task / hazard / procedure notes: ${taskNotes.trim()}` : null,
+      ].filter(Boolean).join("\n"),
+    });
+  }
+
+  return (
+    <div className="partner-stack">
+      <Panel title="Daily JSA" eyebrow={jsa?.work_date || "Today"}>
+        <NextLink className="partner-button wide-touch" href="/work-safety">My safety acknowledgment and pre-bore review</NextLink>
+        <StatusRows rows={[
+          ["Status", jsa?.status === "completed" ? "complete" : "required"],
+          ["Work Area", jsa?.work_location || data.mapAssignment?.work_order?.primary_work_area || data.notice?.initial_work_area || "Assigned work area"],
+          ["Map", data.mapAssignment?.map?.name ? `${data.mapAssignment.map.name} Rev ${data.mapAssignment.map.revision_number ?? 0}` : "Not assigned"],
+          ["Completed", jsa?.meeting_completed_at ? shortTime(jsa.meeting_completed_at) : "Not completed"],
+          ["Production", data.productionToday?.status ?? "Open Production after JSA"],
+        ]} />
+        {jsa?.status === "completed" ? <p className="partner-safe-text">Foreman attestation is complete for today. This does not create production, QC, billable, settlement, payable, or payment records.</p> : null}
+      </Panel>
+      {jsa?.status === "completed" && readPermissions().includes("partner_jsa.complete") ? <Panel title="Location or conditions changed" eyebrow="New safety review required">
+        <p>Keep the completed JSA as history and start a new review before continuing production. Foreman certification does not represent individual worker signatures.</p>
+        <form onSubmit={async event => {
+          event.preventDefault(); if (revisionBusy) return;
+          setRevisionBusy(true); setRevisionError("");
+          try {
+            await syncosFetch("syncfield/foreman/jsa/today/revise", { method: "POST", body: { assignment_id: data.selectedAssignment?.id, work_date: jsa.work_date, prior_jsa_id: jsa.id, revision_reason: revisionReason, work_location: workLocation } });
+            window.location.reload();
+          } catch (error) { setRevisionError(error instanceof Error ? error.message : "Revision failed. Refresh and try again."); setRevisionBusy(false); }
+        }}>
+          <label>Reason for new review<textarea required disabled={revisionBusy} value={revisionReason} onChange={event => setRevisionReason(event.target.value)} /></label>
+          <button className="partner-button wide-touch" disabled={revisionBusy || !revisionReason.trim()}>{revisionBusy ? "Starting review…" : "Start JSA revision"}</button>
+          {revisionError ? <p role="alert">{revisionError}</p> : null}
+        </form>
+      </Panel> : null}
+      {jsa?.status !== "completed" && readPermissions().includes("partner_jsa.complete") ? (
+        <form className="field-jsa-form partner-stack" onSubmit={submit}>
+          <Panel title="Project / Site" eyebrow="Tailgate setup">
+            <div className="partner-form-grid">
+              <label>Work Area<input value={workLocation} onChange={(event) => setWorkLocation(event.target.value)} required /></label>
+              <label>Weather<input value={weather} onChange={(event) => setWeather(event.target.value)} placeholder="Current weather / conditions" /></label>
+              <label>Site Conditions<textarea value={siteConditions} onChange={(event) => setSiteConditions(event.target.value)} placeholder="Access, traffic, terrain, lighting, unusual conditions" /></label>
+              <label>Daily Task / Hazard / Procedure Notes<textarea value={taskNotes} onChange={(event) => setTaskNotes(event.target.value)} placeholder="Task, potential hazard, recommended action or procedure" /></label>
+            </div>
+          </Panel>
+          <Panel title="Scope of Work" eyebrow="Select all that apply">
+            <ChecklistGrid options={jsaScopeOptions} values={scope} onToggle={(value) => toggle(value, scope, setScope)} />
+            <label className="field-jsa-other">Other scope<textarea value={otherScope} onChange={(event) => setOtherScope(event.target.value)} placeholder="Describe other scope of work" /></label>
+          </Panel>
+          <Panel title="Site Hazards" eyebrow="Physical, health, and site-security hazards">
+            <ChecklistGrid options={jsaHazardOptions} values={hazards} onToggle={(value) => toggle(value, hazards, setHazards)} />
+          </Panel>
+          {jsaControlGroups.map((group) => (
+            <Panel key={group.title} title={group.title} eyebrow="Mitigation measures">
+              <ChecklistGrid options={group.options} values={controls} onToggle={(value) => toggle(value, controls, setControls)} />
+            </Panel>
+          ))}
+          <Panel title="Review and Certification" eyebrow="Required before production">
+            {requiredMissing.length ? <div className="partner-banner error">Required controls missing: {requiredMissing.map(jsaLabel).join(", ")}.</div> : null}
+            {!hazards.length ? <div className="partner-banner error">At least one hazard must be selected.</div> : null}
+            <label className="field-jsa-certify"><input type="checkbox" checked={certified} onChange={(event) => setCertified(event.target.checked)} /> I reviewed this JSA with the Crew, confirmed stop-work authority, and certify the site is ready for today&apos;s assigned work.</label>
+            <button className="partner-button primary wide-touch" type="submit" disabled={!canComplete}>Complete JSA</button>
+          </Panel>
+        </form>
+      ) : (
+        <Panel title="Hazards and Controls" eyebrow="Completed tailgate review">
+          <StatusRows rows={[
+            ["Hazards", (jsa?.hazards ?? []).map(jsaLabel).join(", ") || "Not recorded"],
+            ["Controls", (jsa?.controls ?? []).map(jsaLabel).join(", ") || "Not recorded"],
+            ["Certification", jsa?.foreman_certified ? "Foreman certified" : "Required before completion"],
+          ]} />
+        </Panel>
+      )}
+      <Panel title="Crew Attendance" eyebrow="Resolved from P4 Crew membership">
+        <RosterList roster={data.foremanRoster ?? []} foreman />
+      </Panel>
+    </div>
+  );
+}
+
+function ChecklistGrid({ options, values, onToggle }: { options: ChecklistOption[]; values: string[]; onToggle: (value: string) => void }) {
+  return (
+    <div className="field-jsa-check-grid">
+      {options.map(([value, label]) => (
+        <label key={value}>
+          <input type="checkbox" checked={values.includes(value)} onChange={() => onToggle(value)} />
+          <span>{label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function jsaLabel(value: string) {
+  const options: ChecklistOption[] = [...jsaScopeOptions, ...jsaHazardOptions, ...jsaControlGroups.flatMap((group) => group.options)];
+  return options.find(([optionValue]) => optionValue === value)?.[1] ?? "Safety Item";
+}
+
+function AdminJsaWorkspace({ data }: { data: PortalData }) {
+  const [jsas,setJsas] = useState(data.jsas ?? []);
+  useEffect(()=>setJsas(data.jsas??[]),[data.jsas]);
+  return (
+    <Panel title="Daily JSAs" eyebrow="Partner Admin-safe history"><HistoryPager rows={jsas} path="syncfield/partner/jsas" label="company safety records" onRows={setJsas}/>
+      <div className="partner-card-grid">
+        {jsas.map((jsa) => (
+          <RecordCard key={jsa.id} title={`${jsa.work_date || "Work date"} · ${jsa.work_location || "Work area"}`} status={jsa.status}>
+            <StatusRows rows={[["Crew", str(jsa.crew_name)], ["Foreman", str(jsa.foreman_name)], ["Completed", shortTime(jsa.meeting_completed_at)], ["Hazards", (jsa?.hazards ?? []).join(", ") || "Not set"]]} />
+          </RecordCard>
+        ))}
+      </div>
+      {!jsas.length ? <EmptyPortal title="No Daily JSAs" body="Completed Foreman safety attestations appear here." /> : null}
+    </Panel>
+  );
+}
+
+function DailyProductionWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const [report, setReport] = useState(data.productionToday);
+  useEffect(() => setReport(data.productionToday), [data.productionToday]);
+  const blockers = report?.gate?.blockers ?? [];
+  const codes = data.productionCodes ?? [];
+  const queue = useFieldProductionQueue(data);
+  const fiber = codes.find((code) => code.code === "FIBER") ?? codes.find((code) => code.location_type === "route");
+  const transfer = codes.find((code) => code.code === "TRANSFER") ?? codes.find((code) => code.location_type === "asset");
+  const labor = codes.find((code) => code.code === "LABOR") ?? codes.find((code) => code.location_type === "daily");
+  const designSegments = data.designSegments ?? [];
+  const availableDesignSegments = designSegments.filter((segment) => !segment.span_completion_id);
+  const selectedDesignSegment = availableDesignSegments[0] ?? designSegments[0];
+  const localRecords = localProductionRecords(queue.mutations, codes);
+  const visibleRecords = [...(report?.records ?? []), ...localRecords];
+  const visibleTotals = mergeProductionTotals(report?.totals, localRecords);
+  const visibleAnnotationCount = (report?.annotation_count ?? 0) + localRecords.filter((record) => record.location_type !== "daily").length;
+  const coilObservations = uniqueCoils([...(data.coilObservations ?? []), ...(report?.coil_observations ?? [])]);
+  const assetObservations = data.assetObservations ?? [];
+  const selectedAssetObservation = assetObservations[0];
+  const [error, setError] = useState<string | null>(null);
+  const [entryKind, setEntryKind] = useState<"asset" | "route" | "daily" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const uncertainMutation = useRef<{ key: string; payload: Record<string, unknown> } | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [entry, setEntry] = useState({ quantity: "", asset: "", assetType: "", page: "", x: "", y: "", notes: "" });
+  const [spanForm, setSpanForm] = useState({
+    designSegmentId: selectedDesignSegment?.id ?? "", from: "", to: "", fromInput: "", fromOutput: "", toInput: "", toOutput: "",
+    reel: "", fiberType: "", start: "", end: "", reported: "", explanation: "", page: "", startX: "", startY: "", endX: "", endY: "",
+  });
+  const [coilForm, setCoilForm] = useState({
+    assetObservationId: selectedAssetObservation?.id ?? "", easementType: "front", coilType: "front_easement",
+    required: "", actual: "", reel: "", fiberType: "", ruleSource: "work_order_rule", sourceReference: "", notes: "",
+  });
+  const canCreate = permissions.includes("partner_production_record.create");
+  const sequenceCalc = sequencePreview(spanForm.start, spanForm.end, spanForm.reported);
+  const selectedSegment = designSegments.find((segment) => segment.id === spanForm.designSegmentId) ?? selectedDesignSegment;
+  const selectedCoilAsset = assetObservations.find((observation) => observation.id === coilForm.assetObservationId) ?? selectedAssetObservation;
+  const coilVariance = coilVariancePreview(coilForm.required, coilForm.actual);
+
+  async function saveEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const code = entryKind === "asset" ? transfer : labor;
+    if (!code?.id || !entryKind || !canCreate) return;
+    if (!entry.quantity.trim() || !Number.isFinite(Number(entry.quantity)) || Number(entry.quantity) <= 0) { setError("Enter a quantity greater than zero."); return; }
+    if (entryKind === "asset" && [entry.page, entry.x, entry.y].some((value) => !value.trim() || !Number.isFinite(Number(value)))) { setError("Enter the map page and asset position."); return; }
+    const saved = await saveProduction({
+      client_mutation_id: crypto.randomUUID(), assignment_id: data.selectedAssignment?.id, work_date: report?.work_date,
+      production_code_id: code.id, location_type: entryKind, reported_quantity: Number(entry.quantity), status: "complete",
+      ...(entryKind === "asset" ? { map_page: Number(entry.page), asset_type: entry.assetType, asset_identifier: entry.asset,
+        x_ratio: Number(entry.x) / 100, y_ratio: Number(entry.y) / 100 } : {}), notes: entry.notes,
+    });
+    if (saved) setEntry({ quantity: "", asset: "", assetType: "", page: "", x: "", y: "", notes: "" });
+  }
+
+  async function saveFiberSpan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!fiber?.id) return;
+    if ([spanForm.start, spanForm.end, spanForm.reported, spanForm.page, spanForm.startX, spanForm.startY, spanForm.endX, spanForm.endY].some((value) => !value.trim() || !Number.isFinite(Number(value))) || Number(spanForm.reported) <= 0) { setError("Enter the observed footage, sequence readings, map page and endpoints."); return; }
+    if (sequenceCalc.status === "review_required" && !spanForm.explanation.trim()) {
+      setError("Sequence variance needs a short field explanation before save.");
+      return;
+    }
+    const saved = await saveProduction({
+      client_mutation_id: crypto.randomUUID(),
+      assignment_id: data.selectedAssignment?.id,
+      work_date: report?.work_date,
+      production_code_id: fiber.id,
+      location_type: "route",
+      reported_quantity: Number(spanForm.reported),
+      status: sequenceCalc.status === "review_required" ? "partial" : "complete",
+      map_page: Number(spanForm.page),
+      from_asset_identifier: spanForm.from,
+      to_asset_identifier: spanForm.to,
+      tick_start_label: `${spanForm.from} start`,
+      tick_end_label: `${spanForm.to} end`,
+      start_x_ratio: Number(spanForm.startX) / 100,
+      start_y_ratio: Number(spanForm.startY) / 100,
+      end_x_ratio: Number(spanForm.endX) / 100,
+      end_y_ratio: Number(spanForm.endY) / 100,
+      reel_cable_id: spanForm.reel,
+      fiber_type: spanForm.fiberType,
+      sequence_start: Number(spanForm.start),
+      sequence_end: Number(spanForm.end),
+      sequence_variance_explanation: spanForm.explanation || undefined,
+      notes: "Fiber span entered from field tick and sequence workflow.",
+    });
+    if (saved) clearSpanEntry();
+  }
+
+  function clearSpanEntry() {
+    setSpanForm((current) => ({ ...current, from: "", to: "", fromInput: "", fromOutput: "", toInput: "", toOutput: "", reel: "", fiberType: "", start: "", end: "", reported: "", explanation: "", page: "", startX: "", startY: "", endX: "", endY: "" }));
+  }
+
+  async function completeDesignSpan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!fiber?.id || !selectedSegment?.id) return;
+    if ([spanForm.reported, spanForm.start, spanForm.end, spanForm.fromInput, spanForm.fromOutput, spanForm.toInput, spanForm.toOutput].some((value) => !value.trim() || !Number.isFinite(Number(value))) || Number(spanForm.reported) <= 0) { setError("Enter the observed footage and every sequence and pole reading."); return; }
+    const geometryPoints = selectedSegment.geometry?.points;
+    if (!geometryPoints || geometryPoints.length < 2) { setError("This planned segment has no map geometry. Ask Operations to prepare the segment before recording completion."); return; }
+    const mutationId = crypto.randomUUID();
+    const spanMutation = {
+      client_mutation_id: mutationId,
+      assignment_id: data.selectedAssignment?.id,
+      work_date: report?.work_date,
+      design_segment_id: selectedSegment.id,
+      production_code_id: fiber.id,
+      from_asset_identifier: spanForm.from,
+      to_asset_identifier: spanForm.to,
+      reported_quantity: Number(spanForm.reported),
+      sequence_start: Number(spanForm.start),
+      sequence_end: Number(spanForm.end),
+      sequence_variance_explanation: spanForm.explanation || undefined,
+      reel_cable_id: spanForm.reel,
+      fiber_type: spanForm.fiberType,
+      from_observation: {
+        asset_type: "pole",
+        asset_identifier: spanForm.from,
+        pdf_x: geometryPoints[0].x,
+        pdf_y: geometryPoints[0].y,
+        input_tick: Number(spanForm.fromInput),
+        output_tick: Number(spanForm.fromOutput),
+        notes: "From pole observation for completed design span.",
+      },
+      to_observation: {
+        asset_type: "pole",
+        asset_identifier: spanForm.to,
+        pdf_x: geometryPoints[geometryPoints.length - 1].x,
+        pdf_y: geometryPoints[geometryPoints.length - 1].y,
+        input_tick: Number(spanForm.toInput),
+        output_tick: Number(spanForm.toOutput),
+        notes: "To pole observation for completed design span.",
+      },
+      redline_geometry: { points: geometryPoints },
+      design_deviation: false,
+      notes: "Completed against planned design segment.",
+    };
+    if (await saveConstructionMutation("CREATE_SPAN_COMPLETION", spanMutation)) clearSpanEntry();
+  }
+
+  async function saveCoilObservation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCoilAsset?.id) {
+      setError("Create or select a pole observation before recording coil/slack.");
+      return;
+    }
+    if (coilForm.coilType === "other" && !coilForm.notes.trim()) {
+      setError("Notes are required for OTHER coil/slack type.");
+      return;
+    }
+    const saved = await saveConstructionMutation("CREATE_COIL_OBSERVATION", {
+      client_mutation_id: crypto.randomUUID(),
+      assignment_id: data.selectedAssignment?.id,
+      work_date: report?.work_date,
+      asset_observation_id: selectedCoilAsset.id,
+      design_segment_id: selectedCoilAsset.design_segment_id ?? selectedSegment?.id,
+      asset_identifier: selectedCoilAsset.asset_identifier,
+      easement_type: coilForm.easementType,
+      coil_type: coilForm.coilType,
+      required_length_ft: coilForm.required.trim() ? Number(coilForm.required) : undefined,
+      actual_length_ft: coilForm.actual.trim() ? Number(coilForm.actual) : undefined,
+      rule_source: coilForm.ruleSource,
+      rule_source_reference: coilForm.sourceReference,
+      reel_cable_id: coilForm.reel,
+      fiber_type: coilForm.fiberType,
+      notes: coilForm.notes || undefined,
+    });
+    if (saved) setCoilForm((current) => ({ ...current, required: "", actual: "", reel: "", fiberType: "", sourceReference: "", notes: "" }));
+  }
+
+  function setCoilType(nextType: string) {
+    const defaults = coilDefaults(nextType);
+    setCoilForm({
+      ...coilForm,
+      coilType: nextType,
+      easementType: defaults.easementType,
+      required: "",
+      ruleSource: defaults.ruleSource,
+      sourceReference: "",
+    });
+  }
+
+  async function saveProduction(mutation: Record<string, unknown>) {
+    return saveConstructionMutation("CREATE_PRODUCTION", mutation);
+  }
+
+  async function saveConstructionMutation(operation: OfflineMutation["operation"], mutation: Record<string, unknown>): Promise<boolean> {
+    if (!canCreate || savingRef.current) return false;
+    savingRef.current = true;
+    setError(null);
+    setSavedMessage(null);
+    setSaving(true);
+    const { client_mutation_id: ignoredId, ...facts } = mutation;
+    const key = JSON.stringify({ operation, facts });
+    const payload = uncertainMutation.current?.key === key ? uncertainMutation.current.payload : mutation;
+    uncertainMutation.current = { key, payload };
+    try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await queue.enqueue({ operation, payload });
+        uncertainMutation.current = null;
+        setSavedMessage("Saved on this device. Reconnect to synchronize.");
+        return true;
+      }
+      try {
+        await syncosFetch(fieldMutationEndpoint(operation), { method: "POST", body: payload });
+      } catch (caught) {
+        if (!isTransientNetworkError(caught)) {
+          uncertainMutation.current = null;
+          throw caught;
+        }
+        // The first request may have succeeded: replay the same request ID, never a new write.
+        await queue.enqueue({ operation, payload });
+        uncertainMutation.current = null;
+        setSavedMessage("Saved on this device. Reconnect to synchronize.");
+        return true;
+      }
+      uncertainMutation.current = null;
+      setSavedMessage("Production saved. Review your report before submitting.");
+      try {
+        const query = new URLSearchParams({ ...(data.selectedAssignment?.id ? { assignment_id: data.selectedAssignment.id } : {}), ...(report?.work_date ? { work_date: report.work_date } : {}) });
+        setReport(await syncosFetch<DailyProduction>(`syncfield/foreman/production/today?${query}`));
+      } catch { setSavedMessage("Production saved. Reopen Review & Submit to refresh the report."); }
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? safeSyncError(caught.message) : "Production save failed. Your entries remain here.");
+      return false;
+    } finally { savingRef.current = false; setSaving(false); }
+  }
+  return (
+    <div className="partner-stack">
+      <Panel title="Daily Production" eyebrow={report?.work_date || "Today"}>
+        <StatusRows rows={[
+          ["Report", statusLabel(report?.status ?? "not_started")],
+          ["Gate", blockers.length ? partnerReasonListLabel(blockers) : "Ready"],
+          ["Sync", queue.label],
+          ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
+          ["Daily JSA", statusLabel(data.jsaToday?.status ?? "required")],
+        ]} />
+        {error ? <p role="alert" className="partner-safe-text error-text">{error}</p> : null}
+        {savedMessage ? <p role="status">{savedMessage}</p> : null}
+        {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
+        <div className="field-action-bar">
+          {canCreate && transfer ? <button className="partner-button primary wide-touch" type="button" onClick={() => setEntryKind("asset")}>Asset</button> : null}
+          {canCreate && fiber ? <button className="partner-button primary wide-touch" type="button" onClick={() => { setEntryKind("route"); document.getElementById("fiber-span-form")?.scrollIntoView({ behavior: "auto", block: "center" }); document.getElementById("fiber-span-form")?.querySelector("input")?.focus(); }}>Route / Span</button> : null}
+          {canCreate && labor ? <button className="partner-button wide-touch" type="button" onClick={() => setEntryKind("daily")}>Daily</button> : null}
+          {permissions.includes("partner_daily_production.submit") ? <Link className="partner-button wide-touch" href="/syncfield/production/review">Review & Submit</Link> : null}
+        </div>
+      </Panel>
+      {canCreate && entryKind && entryKind !== "route" ? <Panel title={entryKind === "asset" ? "Asset entry" : "Daily entry"} eyebrow="Enter observed work">
+        <form aria-label="Production entry" className="partner-form-grid compact-form" onSubmit={(event) => void saveEntry(event)}>
+          <p>{entryKind === "asset" ? transfer?.description : labor?.description} · Unit: {entryKind === "asset" ? transfer?.unit_of_measure : labor?.unit_of_measure}</p>
+          <label>Quantity<input required type="number" min="0.01" step="any" value={entry.quantity} onChange={(event) => setEntry({ ...entry, quantity: event.target.value })} /></label>
+          {entryKind === "asset" ? <>
+            <label>Asset type<select aria-label="Asset type" required value={entry.assetType} onChange={(event) => setEntry({ ...entry, assetType: event.target.value })}><option value="">Select asset type</option>{["pole", "pedestal", "handhole", "vault", "cabinet", "enclosure", "terminal", "riser", "anchor", "other"].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+            <label>Asset identifier<input required value={entry.asset} onChange={(event) => setEntry({ ...entry, asset: event.target.value })} /></label>
+            <label>Map page<input required type="number" min="1" value={entry.page} onChange={(event) => setEntry({ ...entry, page: event.target.value })} /></label>
+            <p>Locate the asset on the assigned map: left and top edges are 0%; right and bottom edges are 100%.</p>
+            <label>Across page (%)<input required type="number" min="0" max="100" step="any" value={entry.x} onChange={(event) => setEntry({ ...entry, x: event.target.value })} /></label>
+            <label>Down page (%)<input required type="number" min="0" max="100" step="any" value={entry.y} onChange={(event) => setEntry({ ...entry, y: event.target.value })} /></label>
+          </> : null}
+          <label>Work notes<textarea required value={entry.notes} onChange={(event) => setEntry({ ...entry, notes: event.target.value })} /></label>
+          <button className="partner-button primary wide-touch" disabled={saving || blockers.length > 0} type="submit">{saving ? "Saving…" : "Save production"}</button>
+          <button className="partner-button wide-touch" type="button" onClick={() => setEntryKind(null)}>Cancel</button>
+        </form>
+      </Panel> : null}
+      {canCreate ? <>
+      <Panel title="Fiber Span" eyebrow="Ticks, poles, sequence">
+        <form id="fiber-span-form" aria-label="Fiber span entry" className="partner-form-grid compact-form" onSubmit={(event) => void saveFiberSpan(event)}>
+          <label>From pole<input required value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
+          <label>To pole<input required value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
+          <label>Reel / cable<input required value={spanForm.reel} onChange={(event) => setSpanForm({ ...spanForm, reel: event.target.value })} /></label>
+          <label>Fiber type<input required value={spanForm.fiberType} onChange={(event) => setSpanForm({ ...spanForm, fiberType: event.target.value })} /></label>
+          <label>Sequence start<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.start} onChange={(event) => setSpanForm({ ...spanForm, start: event.target.value })} /></label>
+          <label>Sequence end<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.end} onChange={(event) => setSpanForm({ ...spanForm, end: event.target.value })} /></label>
+          <label>Reported footage<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
+          <label>Variance explanation<input value={spanForm.explanation} onChange={(event) => setSpanForm({ ...spanForm, explanation: event.target.value })} placeholder={sequenceCalc.status === "review_required" ? "Required" : "Optional"} /></label>
+          <label>Map page<input required type="number" min="1" value={spanForm.page} onChange={(event) => setSpanForm({ ...spanForm, page: event.target.value })} /></label>
+          <p>Enter each endpoint location on the assigned PDF as a percentage from its left and top edges.</p>
+          {([['startX', 'Start across page (%)'], ['startY', 'Start down page (%)'], ['endX', 'End across page (%)'], ['endY', 'End down page (%)']] as const).map(([key, label]) => <label key={key}>{label}<input required type="number" min="0" max="100" step="any" value={spanForm[key]} onChange={(event) => setSpanForm({ ...spanForm, [key]: event.target.value })} /></label>)}
+          <StatusRows rows={[
+            ["Calculated Footage", quantityText(sequenceCalc.calculated, "FT")],
+            ["Variance", quantityText(sequenceCalc.variance, "FT")],
+            ["Review", statusLabel(sequenceCalc.status)],
+          ]} />
+          <button className="partner-button primary wide-touch" disabled={saving || blockers.length > 0} type="submit">Save Fiber Span</button>
+        </form>
+      </Panel>
+      <Panel title="Complete Planned Span" eyebrow="Yellow design to redline">
+        <form className="partner-form-grid compact-form" onSubmit={(event) => void completeDesignSpan(event)}>
+          <label>Planned segment<select value={spanForm.designSegmentId} onChange={(event) => {
+            const next = designSegments.find((segment) => segment.id === event.target.value);
+            setSpanForm({
+              ...spanForm,
+              designSegmentId: event.target.value,
+              from: next?.from_asset_identifier ?? spanForm.from,
+              to: next?.to_asset_identifier ?? spanForm.to,
+              reported: "",
+            });
+          }}>
+            {designSegments.map((segment) => <option key={segment.id} value={segment.id}>{segment.design_label || `${segment.from_asset_identifier ?? "From"} to ${segment.to_asset_identifier ?? "To"}`} {segment.completion_status ? `(${segment.completion_status})` : ""}</option>)}
+          </select></label>
+          <label>From pole<input required value={spanForm.from} onChange={(event) => setSpanForm({ ...spanForm, from: event.target.value })} /></label>
+          <label>From input tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.fromInput} onChange={(event) => setSpanForm({ ...spanForm, fromInput: event.target.value })} /></label>
+          <label>From output tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.fromOutput} onChange={(event) => setSpanForm({ ...spanForm, fromOutput: event.target.value })} /></label>
+          <label>To pole<input required value={spanForm.to} onChange={(event) => setSpanForm({ ...spanForm, to: event.target.value })} /></label>
+          <label>To input tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.toInput} onChange={(event) => setSpanForm({ ...spanForm, toInput: event.target.value })} /></label>
+          <label>To output tick<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.toOutput} onChange={(event) => setSpanForm({ ...spanForm, toOutput: event.target.value })} /></label>
+          <label>Reported footage<input required type="number" min="0" step="any" inputMode="decimal" value={spanForm.reported} onChange={(event) => setSpanForm({ ...spanForm, reported: event.target.value })} /></label>
+          <StatusRows rows={[
+            ["Design Footage", selectedSegment?.design_length_ft ? `${selectedSegment.design_length_ft} FT` : "Not provided"],
+            ["From Tick Difference", quantityText(sequenceFootage(spanForm.fromInput, spanForm.fromOutput), "FT")],
+            ["To Tick Difference", quantityText(sequenceFootage(spanForm.toInput, spanForm.toOutput), "FT")],
+            ["Financial Authority", "ProductionRecord after Customer QC"],
+          ]} />
+          <button className="partner-button primary wide-touch" type="submit" disabled={saving || blockers.length > 0 || !selectedSegment?.id}>Mark Complete / Redline</button>
+        </form>
+        {!designSegments.length ? <p className="partner-safe-text">No planned design segments are prepared for this map revision yet. Use Fiber Span for manual field production until Sync Operations prepares the print.</p> : null}
+      </Panel>
+      <Panel title="Coil / Slack" eyebrow="Construction material truth only">
+        <form className="partner-form-grid compact-form" onSubmit={(event) => void saveCoilObservation(event)}>
+          <label>Pole / asset<select value={coilForm.assetObservationId} onChange={(event) => setCoilForm({ ...coilForm, assetObservationId: event.target.value })}>
+            {assetObservations.map((observation) => <option key={observation.id} value={observation.id}>{observation.asset_identifier || observation.id}</option>)}
+          </select></label>
+          <label>Easement<select value={coilForm.easementType} onChange={(event) => setCoilForm({ ...coilForm, easementType: event.target.value })}>
+            <option value="front">Front</option>
+            <option value="rear">Rear</option>
+            <option value="unknown">Unknown</option>
+            <option value="not_applicable">Not applicable</option>
+          </select></label>
+          <label>Coil / slack type<select value={coilForm.coilType} onChange={(event) => setCoilType(event.target.value)}>
+            <option value="front_easement">Front easement</option>
+            <option value="rear_easement">Rear easement</option>
+            <option value="express_splice">Express splice</option>
+            <option value="butt_splice">Butt splice</option>
+            <option value="riser_slack">Riser slack</option>
+            <option value="general_slack">General slack</option>
+            <option value="customer_required">Customer required</option>
+            <option value="field_condition">Field condition</option>
+            <option value="other">Other</option>
+          </select></label>
+          <label>Required FT<input inputMode="decimal" value={coilForm.required} onChange={(event) => setCoilForm({ ...coilForm, required: event.target.value })} /></label>
+          <label>Actual FT<input inputMode="decimal" value={coilForm.actual} onChange={(event) => setCoilForm({ ...coilForm, actual: event.target.value })} /></label>
+          <label>Reel / cable<input value={coilForm.reel} onChange={(event) => setCoilForm({ ...coilForm, reel: event.target.value })} /></label>
+          <label>Fiber type<input value={coilForm.fiberType} onChange={(event) => setCoilForm({ ...coilForm, fiberType: event.target.value })} /></label>
+          <label>Rule source<select value={coilForm.ruleSource} onChange={(event) => setCoilForm({ ...coilForm, ruleSource: event.target.value })}>
+            <option value="project_rule">Project rule</option>
+            <option value="work_order_rule">Work Order rule</option>
+            <option value="customer_design">Customer design</option>
+            <option value="customer_direction">Customer direction</option>
+            <option value="field_requirement">Field requirement</option>
+            <option value="manual">Manual</option>
+            <option value="other">Other</option>
+          </select></label>
+          <label>Source / notes<input value={coilForm.sourceReference} onChange={(event) => setCoilForm({ ...coilForm, sourceReference: event.target.value })} /></label>
+          <label>Field notes<textarea value={coilForm.notes} onChange={(event) => setCoilForm({ ...coilForm, notes: event.target.value })} placeholder={coilForm.coilType === "other" ? "Required for OTHER" : "Optional field condition notes"} /></label>
+          <StatusRows rows={[
+            ["Input / Output Tick", selectedCoilAsset ? `${selectedCoilAsset.input_tick ?? "not set"} / ${selectedCoilAsset.output_tick ?? "not set"}` : "Create pole observation first"],
+            ["Tick Difference", selectedCoilAsset?.tick_difference === null || selectedCoilAsset?.tick_difference === undefined ? "unknown" : quantityText(selectedCoilAsset.tick_difference, "FT")],
+            ["Coil Variance", quantityText(coilVariance.variance, "FT")],
+            ["Variance Status", statusLabel(coilVariance.status)],
+            ["Commercial Treatment", "not configured"],
+          ]} />
+          <button className="partner-button primary wide-touch" type="submit" disabled={saving || blockers.length > 0 || !selectedCoilAsset?.id}>Save Coil / Slack</button>
+        </form>
+        {!assetObservations.length ? <p className="partner-safe-text">Record a pole observation through completed span workflow before adding coil/slack.</p> : null}
+      </Panel>
+      </> : null}
+      <Panel title="Today's Production" eyebrow={`${visibleRecords.length} records`}>
+        <ProductionList records={visibleRecords} />
+      </Panel>
+      <Panel title="Construction Evidence" eyebrow="Subordinate to ProductionRecord">
+        <StatusRows rows={[
+          ["Planned Segments", String(designSegments.length)],
+          ["Redlines", String((data.spanCompletions ?? []).length)],
+          ["Pole Observations", String((data.assetObservations ?? []).length)],
+          ["Coil / Slack", `${coilObservations.length} records`],
+          ["Actual Coil", quantityText(coilActualTotal(coilObservations), "FT")],
+        ]} />
+        <div className="field-construction-list" aria-label="Coil and slack evidence">
+          {coilObservations.slice(0, 4).map((coil) => (
+            <div className="field-construction-list-item coil" key={coil.id}>
+              <span>{partnerDescriptorLabel(coil.coil_type)}</span>
+              <strong>{coil.asset_identifier || "Asset"} · actual {quantityText(coil.actual_length_ft, "FT")}</strong>
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="Daily Totals" eyebrow="Derived from ProductionRecords">
+        <TotalsView totals={visibleTotals} annotationCount={visibleAnnotationCount} coilActual={coilActualTotal(coilObservations)} />
+      </Panel>
+    </div>
+  );
+}
+
+function ReviewDayWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const [report, setReport] = useState(data.productionToday);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const submittingRef = useRef(false);
+  const submission = useRef<{ key: string; mutationId: string } | null>(null);
+  const contextKey = `${data.selectedAssignment?.id ?? ""}:${data.productionToday?.id ?? ""}:${data.productionToday?.work_date ?? ""}`;
+  const currentContext = useRef(contextKey);
+  currentContext.current = contextKey;
+  useEffect(() => {
+    setReport(data.productionToday);
+    setSubmitMessage("");
+    setSubmitError("");
+  }, [data.productionToday, data.selectedAssignment?.id]);
+  const queue = useFieldProductionQueue(data);
+  const unsynced = queue.unsyncedCount;
+  async function submitDay() {
+    if (unsynced || submittingRef.current || report?.status === "submitted") return;
+    const key = contextKey;
+    if (submission.current?.key !== key) submission.current = { key, mutationId: crypto.randomUUID() };
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitMessage("");
+    setSubmitError("");
+    try {
+      const submitted = await syncosFetch<DailyProduction>("syncfield/foreman/production/review-day/submit", { method: "POST", body: { assignment_id: data.selectedAssignment?.id, work_date: report?.work_date, client_mutation_id: submission.current.mutationId, general_notes: "Foreman reviewed daily production." } });
+      if (currentContext.current !== key) return;
+      setReport(submitted);
+      setSubmitMessage("Daily production submitted. Records are read-only and awaiting customer QC.");
+    } catch (error) {
+      if (currentContext.current !== key) return;
+      setSubmitError(error instanceof Error ? safeSyncError(error.message) : "Submission could not be confirmed. Reconnect and retry; your report is preserved.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+  return (
+    <div className="partner-stack">
+      <Panel title="Review & Submit" eyebrow={report?.work_date || "Today"}>
+        <StatusRows rows={[
+          ["Report", statusLabel(report?.status ?? "not_started")],
+          ["Daily JSA", statusLabel(data.jsaToday?.status ?? "required")],
+          ["Map Revision", data.mapAssignment?.map?.revision_number === undefined ? "Not assigned" : `Rev ${data.mapAssignment.map.revision_number}`],
+          ["Record Count", String(report?.totals?.record_count ?? 0)],
+          ["Map Annotation Count", String(report?.annotation_count ?? 0)],
+          ["Unsynced Mutations", String(unsynced)],
+          ["Sync", queue.label],
+          ["Submitted", report?.submitted_at ?? "Not submitted"],
+        ]} />
+        {queue.failedMessages.length ? <SyncFailureList messages={queue.failedMessages} onRetry={() => void queue.replay()} /> : null}
+        {permissions.includes("partner_daily_production.submit") ? <button className="partner-button primary wide-touch" type="button" disabled={submitting || Boolean(unsynced) || report?.status === "submitted"} onClick={() => void submitDay()}>
+          {submitting ? "Submitting…" : "Submit Daily Production"}
+        </button> : null}
+        {submitMessage ? <p role="status">{submitMessage}</p> : null}
+        {submitError ? <p role="alert">{submitError}</p> : null}
+        {unsynced ? <p className="partner-safe-text">Submission disabled: sync unsynced field mutations first.</p> : null}
+      </Panel>
+      <Panel title="Daily Totals" eyebrow="No billing calculation">
+        <TotalsView totals={report?.totals} annotationCount={report?.annotation_count ?? 0} />
+      </Panel>
+      <Panel title="Production Records" eyebrow="Submitted records become read-only">
+        <ProductionList records={report?.records ?? []} />
+      </Panel>
+      <Panel title="Production History" eyebrow="Own Crew">
+        <div className="partner-card-grid">
+          {(data.productionHistory?.reports ?? []).map((history) => (
+            <RecordCard key={str(history.id)} title={`${str(history.work_date) || "Work date"} · ${str(history.work_order_number) || "Work Order"}`} status={statusLabel(history.customer_qc_outcome)}>
+              <StatusRows rows={[
+                ["Reported", quantityText(history.reported_quantity, "")],
+                ["Customer Accepted", quantityText(history.customer_accepted_quantity, "")],
+                ["Records", str(history.record_count)],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!(data.productionHistory?.reports ?? []).length ? <EmptyPortal title="No submitted production history" body="Submitted days for your assigned Crew appear here." /> : null}
+        <ProductionExports reports={data.productionHistory?.reports ?? []} artifacts={data.productionHistory?.artifacts ?? []} mode="foreman" />
+      </Panel>
+    </div>
+  );
+}
+
+function AdminProductionWorkspace({ data }: { data: PortalData }) {
+  const dashboard = data.productionDashboard;
+  const [reports,setReports]=useState(data.productionReports??[]);
+  useEffect(()=>setReports(data.productionReports??[]),[data.productionReports]);
+  return (
+    <div className="partner-stack">
+      <Panel title="Production Dashboard" eyebrow="Partner Admin-safe">
+        <div className="summary-grid">
+          <MetricTile label="Reported Records" value={dashboard?.headline?.production_record_count ?? data.productionReports?.length ?? 0} />
+          <MetricTile label="Pending Customer QC" value={dashboard?.headline?.pending_customer_qc ?? 0} />
+          <MetricTile label="Corrections Required" value={dashboard?.headline?.correction_required ?? 0} />
+          <MetricTile label="Blocked / Rework" value={dashboard?.headline?.blocked_rework ?? 0} />
+        </div>
+        <StatusRows rows={[
+          ["Closeout", statusLabel(dashboard?.closeout?.status ?? "in_progress")],
+          ["Missing Reports", partnerBlockerLabel(dashboard?.missing_reports?.status ?? "insufficient_schedule_data")],
+          ["Artifacts", str(dashboard?.closeout?.artifact_count) || "0"],
+          ["Recorded Coil / Slack", quantityText(dashboard?.headline?.recorded_coil_slack_ft ?? 0, "FT")],
+          ["Coil Commercial Treatment", str(dashboard?.headline?.coil_commercial_treatment) || "not configured"],
+        ]} />
+      </Panel>
+      <Panel title="Reported vs Customer Accepted" eyebrow="Unit-aware totals">
+        <ProductionMetricRows rows={dashboard?.reported_vs_accepted ?? []} />
+      </Panel>
+      <Panel title="Daily Production" eyebrow="Submitted reports"><HistoryPager rows={reports} path="syncfield/partner/production" label="company production reports" onRows={setReports}/>
+        <div className="partner-card-grid">
+          {(reports).map((report) => (
+            <RecordCard key={str(report.id)} title={str(report.work_date) || "Work date"} status={statusLabel(report.customer_qc_outcome ?? report.status)}>
+              <StatusRows rows={[["Work Order", str(report.work_order_number) || "Work Order Unavailable"], ["Submitted", str(report.submitted_at) || "Not submitted"], ["Revision", str(report.revision_number) || "1"], ["Customer Accepted", quantityText(report.customer_accepted_quantity, "")]]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!(reports).length ? <EmptyPortal title="No Daily Production" body="Draft and submitted field reports appear here after Foreman entry." /> : null}
+      </Panel>
+      <ProductionExports reports={reports} artifacts={dashboard?.artifacts ?? []} mode="partner" />
+      <Panel title="Aging" eyebrow="Customer QC and corrections">
+        <StatusRows rows={[["Awaiting Customer QC", String(dashboard?.customer_qc_aging?.length ?? 0)], ["Open Corrections", String(dashboard?.correction_aging?.length ?? 0)]]} />
+      </Panel>
+    </div>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string | number }) {
+  return <div className="partner-metric-tile"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function ProductionMetricRows({ rows }: { rows: Array<Record<string, unknown>> }) {
+  if (!rows.length) return <EmptyPortal title="No accepted-production totals" body="Production summaries appear after submitted field reports exist." />;
+  return (
+    <div className="partner-card-grid">
+      {rows.map((row) => (
+        <RecordCard key={`${str(row.code)}-${str(row.unit_of_measure)}`} title={str(row.description) || str(row.code)} status={str(row.unit_of_measure)}>
+          <StatusRows rows={[
+            ["Reported", quantityText(row.reported_quantity, row.unit_of_measure)],
+            ["Customer Accepted", row.customer_accepted_quantity ? quantityText(row.customer_accepted_quantity, row.unit_of_measure) : "Pending Customer QC"],
+            ["Variance", quantityText(row.variance, row.unit_of_measure)],
+            ["Variance %", row.variance_percent === null || row.variance_percent === undefined ? "Not set" : `${row.variance_percent}%`],
+          ]} />
+        </RecordCard>
+      ))}
+    </div>
+  );
+}
+
+function CustomerQcWorkspace({ data }: { data: PortalData }) {
+  const [reports,historyControls] = useCustomerQcHistory(data.customerQcReports??EMPTY_QC_HISTORY,false);
+  return (
+    <div className="partner-stack">{historyControls}
+      <Panel title="Customer QC" eyebrow="Customer authority decisions">
+        <div className="partner-card-grid">
+          {reports.map((report) => (
+            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_order_number || "Work Order"} · ${report.work_date || "Work date"}`} status={statusLabel(report.report_outcome)}>
+              <StatusRows rows={[
+                ["Crew", report.crew_name],
+                ["Completeness", statusLabel(report.completeness_status)],
+                ["Submitted Revision", str(report.revision_number)],
+                ["Customer Outcome", statusLabel(report.report_outcome)],
+                ["QC Authority", report.qc_authority_name || "Not assigned"],
+                ["Decision", statusLabel(report.decision?.decision ?? "pending")],
+                ["Accepted Quantity", report.decision?.customer_accepted_quantity === null || report.decision?.customer_accepted_quantity === undefined ? "Not set" : `${report.decision.customer_accepted_quantity} ${report.decision.unit_of_measure ?? ""}`],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!reports.length ? <EmptyPortal title="No Customer QC decisions" body="Customer QC outcomes appear here after Sync records decisions from the configured QC authority." /> : null}
+      </Panel>
+      <Panel title="Correction History" eyebrow="Partner-safe relay">
+        <CorrectionList reports={reports} />
+      </Panel>
+    </div>
+  );
+}
+
+function PartnerSettlementsWorkspace({ data }: { data: PortalData }) {
+  const settlements = data.partnerSettlements ?? [];
+  return (
+    <div className="partner-stack">
+      <Panel title="Weekly Settlements" eyebrow="Partner Admin financial view">
+        <div className="partner-card-grid">
+          {settlements.map((settlement) => (
+            <RecordCard key={str(settlement.id)} title={str(settlement.settlement_number)} status={str(settlement.pay_when_paid_status) || "awaiting_customer_funds"}>
+              <StatusRows rows={[
+                ["Period", `${str(settlement.settlement_period_start)} to ${str(settlement.settlement_period_end)}`],
+                ["Net Settlement", currency(settlement.net_settlement_amount)],
+                ["Customer-Funded Eligibility", currency(settlement.eligible_amount)],
+                ["Due Date", str(settlement.payment_due_at) || "Awaiting cleared customer funds"],
+                ["Dispute Deadline", str(settlement.dispute_deadline)],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!settlements.length ? <EmptyPortal title="No settlement statements" body="Weekly settlement statements appear after Customer-accepted production is converted by Sync Finance." /> : null}
+      </Panel>
+      <Panel title="Statement Lines" eyebrow="No Customer rate or margin">
+        {settlements.flatMap((settlement) => settlement.items ?? []).length ? (
+          <div className="partner-list">
+            {settlements.flatMap((settlement) => settlement.items ?? []).map((item, index) => (
+              <div className="partner-list-row static" key={`${str(item.production_code)}-${index}`}>
+                <span><strong>{str(item.production_code)}</strong><small>{quantityText(item.accepted_quantity, item.unit)} Customer Accepted</small></span>
+                <StatusPill label="Partner Rate" value={`${currency(item.partner_rate)} / ${str(item.unit)}`} kind="text" />
+                <StatusPill label="Gross" value={currency(item.gross_partner_amount)} kind="text" />
+              </div>
+            ))}
+          </div>
+        ) : <EmptyPortal title="No settlement line items" body="Accepted production line items appear after settlement creation." />}
+      </Panel>
+    </div>
+  );
+}
+
+function PartnerPaymentsWorkspace({ data }: { data: PortalData }) {
+  const [payables,setPayables] = useState<PartnerPayment[]>(data.partnerPayments ?? []);
+  useEffect(()=>setPayables(data.partnerPayments??[]),[data.partnerPayments]);
+  return (
+    <div className="partner-stack">
+      <Panel title="Payments" eyebrow="Partner Admin payment status"><HistoryPager rows={payables} path="payment-retainage-adjustments/partner/payments" label="company payments" onRows={setPayables}/>
+        <div className="partner-card-grid">
+          {payables.map((payable) => (
+            <RecordCard key={str(payable.contractor_payable_id)} title={str(payable.payable_number)} status={paymentDisplayStatus(payable)}>
+              <StatusRows rows={[
+                ["Net Payable", currency(payable.net_payable_amount)],
+                ["Eligible Amount", currency(payable.eligible_amount)],
+                ["In Flight", currency(payable.in_flight_payment_amount)],
+                ["Paid", currency(payable.paid_amount)],
+                ["Retainage Held", currency(payable.retained_balance_amount)],
+                ["Due Date", str(payable.payment_due_at) || "Awaiting customer funds"],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!payables.length ? <EmptyPortal title="No payment records" body="Payment status appears after eligible Contractor Payables receive controlled internal payment instructions." /> : null}
+      </Panel>
+      <Panel title="Payment Instructions" eyebrow="No Customer rate or bank data">
+        {payables.flatMap((payable) => payable.payments ?? []).length ? (
+          <div className="partner-list">
+            {payables.flatMap((payable) => payable.payments ?? []).map((payment) => (
+              <div className="partner-list-row static" key={str(payment.id)}>
+                <span><strong>{currency(payment.amount)}</strong><small>{str(payment.provider_reference) || "Provider reference pending"}</small></span>
+                <StatusPill label="Status" value={str(payment.status)} />
+                <StatusPill label="Requested" value={shortTime(payment.requested_at)} kind="text" />
+              </div>
+            ))}
+          </div>
+        ) : <EmptyPortal title="No payment instructions" body="Confirmed and processing payment instructions appear here without provider secrets or raw payment account digits." />}
+      </Panel>
+    </div>
+  );
+}
+
+function PartnerPerformanceWorkspace({ data }: { data: PortalData }) {
+  const summary = data.partnerPerformance;
+  const dimensions = summary?.dimensions ?? [];
+  return (
+    <div className="partner-stack">
+      <Panel title="Performance Summary" eyebrow="Own organization only">
+        {summary ? (
+          <>
+            <div className="summary-grid">
+              <MetricTile label="Operational Status" value={partnerPerformanceLabel(summary.overall_status)} />
+              <MetricTile label="Score" value={summary.score ?? "Pending"} />
+              <MetricTile label="Confidence" value={partnerPerformanceLabel(summary.confidence)} />
+              <MetricTile label="Trend" value={partnerPerformanceLabel(summary.trend)} />
+            </div>
+            <div className="warning-box">This summary is operational feedback for your organization only. It does not show competitive rankings, internal strategy, Worker rankings, rates, or margin.</div>
+          </>
+        ) : <EmptyPortal title="No performance snapshot" body="Performance summaries appear after Sync recalculates derived Partner intelligence." />}
+      </Panel>
+      <Panel title="Dimensions" eyebrow="Source-derived feedback">
+        {dimensions.length ? (
+          <div className="partner-list">
+            {dimensions.map((dimension) => (
+              <div className="partner-list-row static" key={str(dimension.dimension)}>
+                <span><strong>{partnerPerformanceLabel(dimension.dimension)}</strong><small>Sample {dimension.sample_size ?? 0}</small></span>
+                <StatusPill label="Score" value={String(dimension.normalized_score ?? 0)} kind="text" />
+                <StatusPill label="Reason" value={partnerPerformanceLabel(dimension.reason_code)} kind="text" />
+              </div>
+            ))}
+          </div>
+        ) : <EmptyPortal title="No dimension evidence" body="Dimension evidence appears after a score snapshot is calculated." />}
+      </Panel>
+      <Panel title="Improvement Items" eyebrow="Partner-safe">
+        {summary?.improvement_items?.length ? (
+          <div className="partner-list">
+            {summary.improvement_items.map((item) => <div className="partner-list-row static" key={item}><span><strong>{partnerPerformanceLabel(item)}</strong></span></div>)}
+          </div>
+        ) : <EmptyPortal title="No current improvement items" body="Partner-safe improvement items appear when a dimension needs attention." />}
+      </Panel>
+    </div>
+  );
+}
+
+const partnerPerformanceLabels: Record<string, string> = {
+  available_low_confidence: "Available — Low Confidence",
+  customer_acceptance: "Customer Acceptance",
+  documentation: "Documentation",
+  low: "Low",
+  medium: "Medium",
+  production: "Production",
+  quality: "Quality",
+  suspend_review: "Suspension Review",
+  workmanship: "Workmanship",
+};
+
+function partnerPerformanceLabel(value: unknown) {
+  const text = str(value).trim();
+  if (!text) return "None";
+  const code = text.toLowerCase();
+  return partnerPerformanceLabels[code] ?? (/[_-]/.test(text) ? "Performance Unavailable" : text);
+}
+
+const EMPTY_QC_HISTORY:CustomerQcItem[]=[];
+function useCustomerQcHistory(initial:CustomerQcItem[],field:boolean):[CustomerQcItem[],React.ReactNode]{
+ const [rows,setRows]=useState(initial),[next,setNext]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{setRows(initial);setNext(initial.length===100?initial.at(-1)?._history_cursor??null:null);},[initial]);
+ async function older(){if(busy||!next)return;setBusy(true);try{const found=await syncosFetch<CustomerQcItem[]>('syncfield/'+(field?'foreman':'partner')+'/customer-qc?before='+encodeURIComponent(next));setRows(old=>[...old,...found.filter(r=>!old.some(p=>p._history_cursor===r._history_cursor))]);setNext(found.length===100?found.at(-1)?._history_cursor??null:null);setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return [rows,<div key="qc-history">{error&&<p role="alert">{error}</p>}{next&&<button className="partner-button" disabled={busy} onClick={()=>void older()}>Older customer QC and corrections</button>}</div>];
+}
+
+function ForemanCorrectionsWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const [reports,historyControls] = useCustomerQcHistory(data.customerQcReports??EMPTY_QC_HISTORY,true);
+  return (
+    <div className="partner-stack">{historyControls}
+      <section className="field-status-band" aria-label="Customer correction status">
+        <div>
+          <p className="eyebrow">Corrections</p>
+          <h3>{str(data.foremanWorkOrder?.work_order_number) || "Assigned Work Order"}</h3>
+          <p>Customer decisions and correction instructions for your assigned Crew.</p>
+        </div>
+        <StatusPill label="Open" value={String(openCorrections(reports).length)} kind="text" />
+      </section>
+      <Panel title="Corrections Required" eyebrow="Customer QC relay">
+        <CorrectionList reports={reports} field canResubmit={permissions.includes("partner_correction.resubmit")} />
+      </Panel>
+      <Panel title="Customer QC Status" eyebrow="Own Crew">
+        <div className="partner-card-grid">
+          {reports.map((report) => (
+            <RecordCard key={`${report.report_id}-${report.cycle_id ?? "no-cycle"}-${report.decision?.id ?? "no-decision"}`} title={`${report.work_date || "Work date"} · Rev ${report.revision_number ?? 1}`} status={statusLabel(report.report_outcome)}>
+              <StatusRows rows={[
+                ["Work Order", report.work_order_number],
+                ["Completeness", statusLabel(report.completeness_status)],
+                ["Customer Outcome", statusLabel(report.report_outcome)],
+                ["QC Authority", report.qc_authority_name || "Not assigned"],
+                ["Decision", statusLabel(report.decision?.decision ?? "pending")],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!reports.length ? <EmptyPortal title="No Customer QC status" body="Customer decisions for your Crew appear after Sync records them from the QC authority." /> : null}
+      </Panel>
+    </div>
+  );
+}
+
+function CorrectionList({ reports, field = false, canResubmit = false }: { reports: CustomerQcItem[]; field?: boolean; canResubmit?: boolean }) {
+  const corrections = openCorrections(reports);
+  if (!corrections.length) return <EmptyPortal title="No open corrections" body="Correction-required Customer decisions appear here with Partner-safe instructions." />;
+  return (
+    <div className="partner-card-grid">
+      {corrections.map(({ report, correction }) => (
+        <RecordCard key={correction.id} title={`${report.work_order_number || "Work Order"} · ${partnerFieldLabel(correction.correction_type)}`} status={statusLabel(correction.status)}>
+          <StatusRows rows={[
+            ["Work Date", report.work_date],
+            ["QC Cycle", report.cycle_number === undefined || report.cycle_number === null ? "Current" : `Cycle ${report.cycle_number}`],
+            ["QC Authority", report.qc_authority_name || "Not assigned"],
+            ["Production", report.decision?.description || report.decision?.code],
+            ["Reported Quantity", report.decision?.reported_quantity === undefined ? "Not set" : `${report.decision.reported_quantity} ${report.decision.unit_of_measure ?? ""}`],
+            ["Customer Instruction", correction.partner_safe_instructions || correction.customer_reason],
+            ["Allowed Fields", (correction.allowed_fields ?? []).map(partnerFieldLabel).join(", ") || "Correction scope required"],
+            ["Due", correction.deadline_status === "scheduled" && correction.due_at ? `${new Date(correction.due_at).toLocaleString(undefined,{timeZone:correction.deadline_time_zone})} (${correction.deadline_time_zone})` : (correction.deadline_status ?? "Deadline policy review required").replaceAll("_"," ")],
+          ]} />
+          {field && canResubmit && correction.id && ["open", "acknowledged", "in_progress"].includes(correction.status ?? "") ? <CorrectionEditor correction={correction} /> : null}
+        </RecordCard>
+      ))}
+    </div>
+  );
+}
+
+function CorrectionEditor({ correction }: { correction: CustomerCorrection }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [reviewing, setReviewing] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [mutationId] = useState(() => crypto.randomUUID());
+  const [options, setOptions] = useState<{daily_report_id:string; production_record_id:string; codes:{id:string;code:string;description:string}[]; evidence:{id:string;file_name:string}[]} | null>(null);
+  const [evidence, setEvidence] = useState<string[]>([]);
+  async function loadOptions() { setOptions(await syncosFetch(`syncfield/foreman/corrections/${correction.id}/options`)); }
+  useEffect(() => { void loadOptions().catch(error => setMessage(error.message)); }, [correction.id]);
+  const labels: Record<string, string> = { reported_quantity: "Corrected quantity", asset_identifier: "Corrected asset identifier", route_endpoint: "Corrected route endpoint", notes: "Correction notes", production_code_id: "Corrected production code", map_location: "Corrected map location", evidence: "Correction evidence" };
+  const fields = (correction.allowed_fields ?? []).filter((field) => labels[field]);
+  async function resubmit() {
+    if (pending || submitted) return;
+    setPending(true); setMessage("");
+    try {
+      const body: Record<string, unknown> = { client_mutation_id: mutationId };
+      for (const field of fields) if (!["map_location","evidence"].includes(field) && values[field]?.trim()) body[field] = field === "reported_quantity" ? Number(values[field]) : values[field].trim();
+      if (fields.includes("evidence") && evidence.length) body.evidence = evidence;
+      if (fields.includes("map_location") && [values.map_page,values.map_x,values.map_y].some(value=>value?.trim())) {
+        if (![values.map_page,values.map_x,values.map_y].every(value=>value?.trim())) throw new Error("Enter the page and both map positions.");
+        body.map_location = { page: Number(values.map_page), x_ratio: Number(values.map_x)/100, y_ratio: Number(values.map_y)/100 };
+      }
+      await syncosFetch(`syncfield/foreman/corrections/${correction.id}/resubmit`, { method: "POST", body });
+      setSubmitted(true); setMessage("Correction submitted for customer reinspection. The original report is preserved; customer acceptance is still pending.");
+    } catch (caught) { setMessage(caught instanceof Error ? safeSyncError(caught.message) : "Correction could not be submitted. Your entries remain here; retry when connected."); }
+    finally { setPending(false); }
+  }
+  if (submitted) return <p role="status">{message}</p>;
+  if (!fields.length) return <p>This correction requires evidence or a map change. Contact your supervisor to complete that correction; no editable field is available here.</p>;
+  return <>{fields.includes("evidence") && options && <FieldEvidence reportId={options.daily_report_id} recordId={options.production_record_id} canUpload={readPermissions().includes("partner_production_record.create")} onSaved={() => void loadOptions()} />}<form aria-label="Correction editor" className="partner-form-grid compact-form" onSubmit={(event) => {
+    event.preventDefault();
+    if (!fields.some((field) => values[field]?.trim()) && !evidence.length && !values.map_page) { setMessage("Enter at least one requested correction."); return; }
+    setMessage(""); setReviewing(true);
+  }}>
+    {(correction.allowed_fields ?? []).some((field) => !labels[field]) ? <p role="status">Some requested changes need evidence, map editing, or a production code change. Ask your supervisor to complete those parts; this form only sends the fields shown below.</p> : null}
+    <p>Only the requested fields can change. Review your entries before sending a new revision for customer reinspection.</p>
+    {fields.includes("evidence") && options && <><fieldset><legend>Select evidence for this correction</legend>{options.evidence.map(item => <label key={item.id}><input type="checkbox" disabled={pending || reviewing} checked={evidence.includes(item.id)} onChange={e => setEvidence(e.target.checked ? [...evidence,item.id] : evidence.filter(id => id!==item.id))} />{item.file_name}</label>)}</fieldset></>}
+    {fields.includes("production_code_id") && <label>Corrected production code<select disabled={pending || reviewing} value={values.production_code_id ?? ""} onChange={e => setValues({...values,production_code_id:e.target.value})}><option value="">Keep current code</option>{options?.codes.map(item => <option key={item.id} value={item.id}>{item.code} — {item.description}</option>)}</select></label>}
+    {fields.includes("map_location") && <fieldset><legend>Corrected position on assigned map</legend><p>Enter page and position measured from the top-left of the assigned map. Original map evidence remains preserved.</p>{[["map_page","Page"],["map_x","Horizontal position (%)"],["map_y","Vertical position (%)"]].map(([key,label]) => <label key={key}>{label}<input type="number" min={key==="map_page"?1:0} max={key==="map_page"?undefined:100} step={key==="map_page"?1:"any"} disabled={pending||reviewing} value={values[key]??""} onChange={e=>setValues({...values,[key]:e.target.value})} /></label>)}</fieldset>}
+    {fields.filter(field=>!["evidence","production_code_id","map_location"].includes(field)).map((field) => <label key={field}>{labels[field]}<input disabled={pending || reviewing} type={field === "reported_quantity" ? "number" : "text"} min={field === "reported_quantity" ? "0" : undefined} step={field === "reported_quantity" ? "any" : undefined} value={values[field] ?? ""} onChange={(event) => setValues({ ...values, [field]: event.target.value })} /></label>)}
+    {message ? <p role="alert">{message}</p> : null}
+    {reviewing ? <>
+      <p role="status">Review ready. These changes are not sent until you select Resubmit Correction.</p>
+      <button className="partner-button wide-touch" type="button" disabled={pending} onClick={() => setReviewing(false)}>Edit correction</button>
+      <button className="partner-button primary wide-touch" type="button" disabled={pending} onClick={() => void resubmit()}>{pending ? "Submitting…" : "Resubmit Correction"}</button>
+    </> : <button className="partner-button wide-touch" type="submit">Review correction</button>}
+  </form></>;
+}
+
+function ProductionList({ records }: { records: ProductionRecord[] }) {
+  if (!records.length) return <EmptyPortal title="No production records" body="Saved Asset, Route, and Daily production records appear here." />;
+  return (
+    <div className="partner-card-grid">
+      {records.map((record) => (
+        <RecordCard key={record.id} title={recordTitle(record)} status={record.status}>
+          <StatusRows rows={[
+            ["Production", record.description || record.code],
+            ["Quantity", `${record.reported_quantity ?? 0} ${record.unit_of_measure ?? ""}`],
+            ["Location", record.location_type],
+            ["Ticks", [record.tick_start_label, record.tick_end_label].filter(Boolean).join(" -> ")],
+            ["Reel / Cable", record.reel_cable_id || ""],
+            ["Fiber Sequence", fiberSequenceText(record)],
+            ["Sequence Variance", record.sequence_reported_variance === null || record.sequence_reported_variance === undefined ? "" : quantityText(record.sequence_reported_variance, "FT")],
+            ["Sequence Review", statusLabel(record.sequence_variance_status)],
+            ["Record", statusLabel(record.locked ? "read_only_submitted" : "draft_editable")],
+          ]} />
+        </RecordCard>
+      ))}
+    </div>
+  );
+}
+
+function SyncFailureList({ messages, onRetry }: { messages: string[]; onRetry: () => void }) {
+  return (
+    <div className="partner-sync-failures" role="status" aria-live="polite">
+      {messages.map((message) => <p key={message} className="partner-safe-text error-text">{message}</p>)}
+      <button className="partner-button wide-touch" type="button" onClick={onRetry}>Retry Sync</button>
+    </div>
+  );
+}
+
+function TotalsView({ totals, annotationCount, coilActual = 0 }: { totals?: DailyProduction["totals"]; annotationCount: number; coilActual?: number }) {
+  const reported = (totals?.by_code ?? []).reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
+  const apiCoilActual = Number(totals?.coils?.actual_coil_ft ?? 0);
+  const actualCoil = apiCoilActual || coilActual;
+  return (
+    <StatusRows rows={[
+      ...((totals?.by_code ?? []).map((row) => [row.description || row.code || "Production", `${row.quantity ?? 0} ${row.unit ?? ""}`] as [string, string])),
+      ["Production Records", String(totals?.record_count ?? 0)],
+      ["Recorded Coil / Slack", quantityText(actualCoil, "FT")],
+      ["Estimated Cable Consumption", quantityText(reported + actualCoil, "FT")],
+      ["Coil Commercial Treatment", totals?.coils?.commercial_treatment ?? "not configured"],
+      ["Complete", String(totals?.status_counts?.complete ?? 0)],
+      ["Partial", String(totals?.status_counts?.partial ?? 0)],
+      ["Blocked", String(totals?.status_counts?.blocked ?? 0)],
+      ["Rework", String(totals?.status_counts?.rework ?? 0)],
+      ["Map Annotations", String(annotationCount)],
+    ]} />
+  );
+}
+
+function CompanyWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const profile = data.readiness?.companyProfile;
+  if (!data.company && !profile) return <EmptyPortal title="Company profile not submitted" body="Submit the company profile through the approved Partner compliance workflow." />;
+  return (
+    <Panel title="Company" eyebrow="Partner Admin">
+      <StatusRows rows={[
+        ["Legal Business Name", profile?.legalBusinessName ?? str(data.company?.legal_business_name)],
+        ["DBA", (profile?.dbaName ?? str(data.company?.dba_name)) || "None"],
+        ["Entity Type", partnerDescriptorLabel(profile?.entityType ?? data.company?.entity_type)],
+        ["State of Formation", profile?.stateOfFormation ?? str(data.company?.state_of_formation)],
+        ["Business Contact", contactLine(profile?.primaryContact ?? data.company ?? {}, "primary")],
+        ["Compliance Contact", contactLine(profile?.complianceContact ?? data.company ?? {}, "compliance")],
+        ["Settlement Contact", contactLine(profile?.settlementContact ?? data.company ?? {}, "settlement")],
+        ["Profile Review", statusLabel(profile?.status ?? data.company?.status)],
+        ["Company Approval", statusLabel(data.readiness?.companyApproval?.state ?? data.context?.organization.status)],
+        ["Correction Reason", (profile?.actionRequiredReason ?? str(data.company?.external_return_reason)) || "None"],
+        ["Updated", freshnessLabel(data.readiness?.freshness?.calculatedAt ?? data.loadedAt)],
+      ]} />
+      <CapabilityRows readiness={data.readiness} />
+      <ActionPermission permission="partner_compliance.profile.submit" permissions={permissions} label="Profile edits use the certified P3 submission workflow." />
+    </Panel>
+  );
+}
+
+function ComplianceWorkspace({ data, permissions }: { data: PortalData; permissions: string[] }) {
+  const readiness = data.readiness;
+  const tax = readiness?.tax;
+  const payment = readiness?.paymentSetup;
+  const policies = (readiness?.insurance?.requiredPolicies ?? data.policies ?? []) as Array<Record<string, unknown>>;
+  return (
+    <div className="partner-stack">
+      <Panel title="Compliance Summary" eyebrow="Company readiness">
+        <StatusRows rows={[
+          ["Overall", statusLabel(readiness?.onboarding?.state ?? data.compliance?.overall_status)],
+          ["Company Profile", statusLabel(readiness?.companyProfile?.status ?? data.compliance?.profile_status)],
+          ["W-9", statusLabel(tax?.status ?? data.compliance?.w9_status ?? statusFrom(data.tax, "status"))],
+          ["Tax ID", tax?.tinDisplay ?? "Tax information securely on file"],
+          ["Payment Setup", statusLabel(payment?.status ?? data.compliance?.payment_status ?? statusFrom(data.payment, "status"))],
+          ["Payment Method", payment?.accountDisplay ?? "Payment setup status only"],
+          ["Insurance", statusLabel(readiness?.insurance?.status ?? data.compliance?.insurance_status)],
+          ["Evaluated", readiness?.freshness?.calculatedAt ?? data.compliance?.evaluated_at],
+        ]} />
+        <ActionList blockers={readiness?.actionRequired ?? externalBlockers(undefined, data.compliance)} />
+      </Panel>
+      <Panel title="Insurance" eyebrow="Structured policies">
+        <div className="partner-card-grid">
+          {policies.map((policy, index) => (
+            <RecordCard key={`${str(policy.type ?? policy.policy_type)}-${index}`} title={partnerDescriptorLabel(policy.type ?? policy.policy_type)} status={statusLabel(policy.status)}>
+              <StatusRows rows={[
+                ["Carrier", str(policy.carrier)],
+                ["Effective", str(policy.effectiveDate ?? policy.effective_date)],
+                ["Expires", str(policy.expirationDate ?? policy.expiration_date)],
+                ["Document", policy.documentAvailable ? "Private file on record" : "Not submitted"],
+                ["Review", statusLabel(policy.reviewState ?? policy.status)],
+                ["Correction", str(policy.actionRequiredReason ?? policy.external_return_reason) || "None"],
+              ]} />
+            </RecordCard>
+          ))}
+        </div>
+        {!policies.length ? <EmptyPortal title="No insurance policies" body="Insurance requirements appear here after submission." /> : null}
+        <ActionPermission permission="partner_compliance.insurance.submit" permissions={permissions} label="Insurance updates use the certified P3 submission workflow." />
+      </Panel>
+    </div>
+  );
+}
+
+function WorkforceWorkspace({ data }: { data: PortalData }) {
+  const workerCount = data.readiness?.workers?.total ?? data.workers?.length ?? 0;
+  const crewCount = data.readiness?.crews?.total ?? data.crews?.length ?? 0;
+  return (
+    <div className="partner-dashboard-grid">
+      <Panel title="Workers" eyebrow={`${workerCount} records`}><WorkersList workers={data.workers ?? []} readinessWorkers={data.readiness?.workers?.items} /></Panel>
+      <Panel title="Crews" eyebrow={`${crewCount} records`}><CrewsList data={data} /></Panel>
+    </div>
+  );
+}
+
+function WorkersWorkspace({ data }: { data: PortalData }) {
+  return (
+    <div className="partner-stack">
+      <Panel title="Workers" eyebrow="Partner Admin-safe roster">
+        <StatusRows rows={[
+          ["Active Workers", String(data.readiness?.workers?.active ?? data.workers?.length ?? 0)],
+          ["Foremen", String(data.readiness?.workers?.foremen ?? 0)],
+          ["Credential Issues", String(data.readiness?.workers?.credentialIssues ?? 0)],
+          ["Unassigned Workers", String(data.readiness?.workers?.unassigned ?? 0)],
+        ]} />
+        <WorkersList workers={data.workers ?? []} readinessWorkers={data.readiness?.workers?.items} />
+      </Panel>
+    </div>
+  );
+}
+
+function WorkerDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
+  const worker = (data.workers ?? []).find((candidate) => str(candidate.id) === itemId);
+  if (!worker) return <DeniedPortal message="Worker not found in your Partner organization." />;
+  return (
+    <Panel title={workerName(worker)} eyebrow="Worker detail">
+      <StatusRows rows={[
+        ["Role", str(worker.worker_role)],
+        ["Status", str(worker.status)],
+        ["Review", str(worker.review_status)],
+        ["Reference", str(worker.partner_worker_reference)],
+        ["Action", str(worker.external_return_reason) || "None"],
+      ]} />
+      <p className="partner-safe-text">Restricted Worker PII and full credential evidence are not rendered in the Partner Portal shell.</p>
+    </Panel>
+  );
+}
+
+function CrewsWorkspace({ data }: { data: PortalData }) {
+  return (
+    <Panel title="Crews" eyebrow="Current Crew readiness">
+      <StatusRows rows={[
+        ["Ready", String(data.readiness?.crews?.ready ?? 0)],
+        ["Action Required", String(data.readiness?.crews?.actionRequired ?? 0)],
+        ["Inactive", String(data.readiness?.crews?.inactive ?? 0)],
+        ["Crew Readiness", crewReadinessStatus(data)],
+      ]} />
+      <CrewsList data={data} />
+    </Panel>
+  );
+}
+
+function CrewDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
+  const crew = (data.crews ?? []).find((candidate) => str(candidate.id) === itemId);
+  if (!crew) return <DeniedPortal message="Crew not found in your Partner organization." />;
+  return (
+    <Panel title={str(crew.name)} eyebrow={str(crew.crew_type)}>
+      <StatusRows rows={[
+        ["Lifecycle", str(crew.lifecycle_status)],
+        ["Target Staffing", str(crew.target_staffing_level)],
+        ["Readiness", data.readinessByCrew?.[str(crew.id)]?.overall_status ?? "not_evaluated"],
+        ["Blockers", String(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0)],
+      ]} />
+      <RosterList roster={data.rosterByCrew?.[str(crew.id)] ?? []} />
+    </Panel>
+  );
+}
+
+function ForemanCrew({ data }: { data: PortalData }) {
+  const [participants, setParticipants] = useState(data.jsaToday?.participants ?? []);
+  const [issueNote, setIssueNote] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const jsaStatus = data.jsaToday?.status ?? "required";
+
+  async function updateParticipant(workerId: string | undefined, participationStatus: "present" | "absent" | "not_applicable") {
+    if (!workerId) return;
+    try {
+      setMessage(null);
+      const updated = await syncosFetch<{ worker_id?: string; participation_status?: string; acknowledged?: boolean }>(`syncfield/foreman/jsa/today/participants/${workerId}`, {
+        method: "PATCH",
+        body: { assignment_id: data.selectedAssignment?.id, work_date: data.jsaToday?.work_date, participation_status: participationStatus, issue_note: issueNote || undefined },
+      });
+      setParticipants((current) => {
+        const found = current.some((participant) => participant.worker_id === workerId);
+        const next = current.map((participant) => participant.worker_id === workerId ? { ...participant, ...updated } : participant);
+        return found ? next : [...next, updated];
+      });
+      setIssueNote("");
+      setMessage("Crew participation updated for today's JSA.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Crew participation update failed.");
+    }
+  }
+
+  const participantByWorker = new Map(participants.map((participant) => [participant.worker_id, participant]));
+  return (
+    <div className="partner-stack">
+      <Panel title={str(data.foremanCrew?.name) || "Assigned Crew"} eyebrow="Foreman-safe crew view">
+        <StatusRows rows={[["Crew Type", str(data.foremanCrew?.crew_type)], ["Lifecycle", str(data.foremanCrew?.lifecycle_status)], ["Target Staffing", str(data.foremanCrew?.target_staffing_level)], ["Daily Participation", jsaStatus === "completed" ? "confirmed" : "open"]]} />
+        <p className="partner-safe-text">SyncField lets Foremen confirm today's active crew participation and report issues. Add/remove roster changes remain Partner Admin or Sync Admin work.</p>
+        {message ? <p role="status" aria-live="polite" aria-atomic="true" className={/failed|error|invalid/i.test(message) ? "partner-safe-text error-text" : "partner-safe-text success-text"}>{message}</p> : null}
+      </Panel>
+      <Panel title="Daily Crew Participation" eyebrow={data.jsaToday?.work_date || "Today"}>
+        <div className="partner-form-grid compact-form">
+          {readPermissions().includes("partner_jsa.complete") ? <label>Issue note<input value={issueNote} onChange={(event) => setIssueNote(event.target.value)} placeholder="Missing crew member, late arrival, safety concern" /></label> : null}
+        </div>
+        <div className="syncfield-roster-list">
+          {(data.foremanRoster ?? []).map((worker) => {
+            const workerId = str(worker.id);
+            const participant = participantByWorker.get(workerId);
+            const workerName = str(worker.display_name) || `${str(worker.first_name)} ${str(worker.last_name)}`.trim() || "Worker";
+            return (
+              <div className="syncfield-roster-row" key={workerId || str(worker.display_name)}>
+                <div>
+                  <strong>{str(worker.display_name) || `${str(worker.first_name)} ${str(worker.last_name)}`.trim() || "Worker"}</strong>
+                  <span>{str(worker.membership_role) || str(participant?.role) || "crew"} · {participant?.participation_status ?? "not_marked"}</span>
+                </div>
+                {readPermissions().includes("partner_jsa.complete") ? <div className="partner-actions-row compact-actions">
+                  <button className="partner-button" type="button" aria-label={`${workerName}: Present`} aria-pressed={participant?.participation_status === "present"} onClick={() => void updateParticipant(workerId, "present")}>Present</button>
+                  <button className="partner-button" type="button" aria-label={`${workerName}: Absent`} aria-pressed={participant?.participation_status === "absent"} onClick={() => void updateParticipant(workerId, "absent")}>Absent</button>
+                  <button className="partner-button" type="button" aria-label={`${workerName}: N/A`} aria-pressed={participant?.participation_status === "not_applicable"} onClick={() => void updateParticipant(workerId, "not_applicable")}>N/A</button>
+                </div> : null}
+              </div>
+            );
+          })}
+        </div>
+        {!(data.foremanRoster ?? []).length ? <EmptyPortal title="No active roster" body="Crew members appear here after Partner Admin or Sync Admin assigns active Workers to the Crew." /> : null}
+      </Panel>
+    </div>
+  );
+}
+
+function AgreementsWorkspace({ data }: { data: PortalData }) {
+  const readinessAgreements = (data.readiness?.agreements?.items ?? []) as Array<Record<string, unknown>>;
+  return (
+    <Panel title="Agreements" eyebrow="Executed artifacts use P5 authorization">
+      <div className="partner-card-grid">
+        {readinessAgreements.length ? readinessAgreements.map((agreement, index) => (
+          <RecordCard key={`${str(agreement.name)}-${index}`} title={str(agreement.name) || "Agreement"} status={statusLabel(agreement.status)}>
+            <StatusRows rows={[["Version", str(agreement.version)], ["Effective", str(agreement.effectiveDate)], ["Partner Signature", statusLabel(agreement.partnerSignature)], ["Sync Countersignature", statusLabel(agreement.syncCountersignature)], ["Execution", statusLabel(agreement.executionState)]]} />
+          </RecordCard>
+        )) : (data.agreements ?? []).map((agreement) => (
+          <RecordCard key={str(agreement.version_id)} title={str(agreement.contract_number) || str(agreement.name)} status={str(agreement.status)} href={`/partner/agreements/${str(agreement.version_id)}`}>
+            <StatusRows rows={[["Version", str(agreement.version_number)], ["Effective", str(agreement.effective_date)], ["Artifact", "Authorized through P5 only"]]} />
+          </RecordCard>
+        ))}
+      </div>
+      {!readinessAgreements.length && !(data.agreements ?? []).length ? <EmptyPortal title="No Agreements" body="Executed Agreements appear after Sync issues them." /> : null}
+    </Panel>
+  );
+}
+
+function AgreementDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
+  const agreement = (data.agreements ?? []).find((candidate) => str(candidate.version_id) === itemId);
+  if (!agreement) return <DeniedPortal message="Agreement not found for your Partner organization." />;
+  return (
+    <Panel title={str(agreement.contract_number) || "Agreement"} eyebrow="Partner-safe Agreement">
+      <StatusRows rows={[["Name", str(agreement.name)], ["Status", str(agreement.status)], ["Version", str(agreement.version_number)], ["Effective", str(agreement.effective_date)], ["Execution", "Secure artifact access is handled by certified P5 APIs"]]} />
+    </Panel>
+  );
+}
+
+function WorkOrdersWorkspace({ data }: { data: PortalData }) {
+  const workOrders = data.context?.persona === "partner_foreman" && data.foremanWorkOrder ? [data.foremanWorkOrder] : data.workOrders ?? [];
+  return (
+    <Panel title="Work Orders" eyebrow="Partner-safe assignments">
+      <div className="partner-card-grid">
+        {workOrders.map((workOrder) => (
+          <RecordCard key={str(workOrder.id) || str(workOrder.work_order_id)} title={str(workOrder.work_order_number) || "Work Order"} status={statusLabel(workOrder.status)} href={data.context?.persona === "partner_foreman" ? "/partner/work-orders" : `/partner/work-orders/${str(workOrder.id)}`}>
+            <StatusRows rows={[
+              ["Project", str(workOrder.project_name)],
+              ["Customer", str(workOrder.customer_name)],
+              ["Scope", str(workOrder.scope_summary)],
+              ["Map Package", str(workOrder.map_work_package_ref)],
+              ...(data.context?.persona === "partner_foreman" ? [] : [["Partner Rate", rateLabel(workOrder.partner_rate as Record<string, unknown> | undefined)] as [string, string]]),
+            ]} />
+          </RecordCard>
+        ))}
+      </div>
+      {!workOrders.length ? <EmptyPortal title="No Work Orders" body="Work Orders appear after assignment." /> : null}
+    </Panel>
+  );
+}
+
+function WorkOrderDetail({ data, itemId }: { data: PortalData; itemId?: string }) {
+  const workOrder = (data.workOrders ?? []).find((candidate) => str(candidate.id) === itemId);
+  if (!workOrder) return <DeniedPortal message="Work Order not found for your Partner organization." />;
+  return <WorkOrderSummary workOrder={workOrder} foreman={false} />;
+}
+
+function ForemanWorkload({ data }: { data: PortalData }) {
+  if (!data.foremanWorkOrder) return <EmptyPortal title="No current workload" body="Assigned Work Orders and work areas appear here after Sync assigns them to your Crew." />;
+  return <WorkOrderSummary workOrder={data.foremanWorkOrder} foreman />;
+}
+
+function WorkOrderSummary({ workOrder, foreman }: { workOrder: WorkOrder; foreman: boolean }) {
+  return (
+    <Panel title={str(workOrder.work_order_number) || "Work Order"} eyebrow={foreman ? "Assigned workload" : "Partner Admin"}>
+      <StatusRows rows={[
+        ["Project", str(workOrder.project_name)],
+        ["Customer", str(workOrder.customer_name)],
+        ["Status", str(workOrder.status)],
+        ["Scope", str(workOrder.scope_summary)],
+        ["Map Package", str(workOrder.map_work_package_ref)],
+        ["Vehicle", vehicleLabel(workOrder.vehicle as Record<string, unknown> | undefined)],
+        ...(foreman ? [] : [["Partner Rate", rateLabel(workOrder.partner_rate as Record<string, unknown> | undefined)] as [string, string]]),
+      ]} />
+      <p className="partner-safe-text">Use this workload view to confirm the assigned scope, map package, vehicle, and work area before recording field production.</p>
+    </Panel>
+  );
+}
+
+function VehiclesWorkspace({ data }: { data: PortalData }) {
+  const readinessVehicles = (data.readiness?.vehiclesEquipment?.items ?? []) as Array<Record<string, unknown>>;
+  return (
+    <Panel title="Vehicles & Equipment" eyebrow="Assigned equipment">
+      <StatusRows rows={[
+        ["Total Assets", String(data.readiness?.vehiclesEquipment?.total ?? data.vehicles?.length ?? 0)],
+        ["Assigned", String(data.readiness?.vehiclesEquipment?.assigned ?? 0)],
+        ["Action Required", String(data.readiness?.vehiclesEquipment?.actionRequired ?? 0)],
+        ["Supported Types", data.readiness?.vehiclesEquipment?.supportedTypes?.join(", ") || "Configured by Sync"],
+      ]} />
+      <div className="partner-card-grid">
+        {readinessVehicles.length ? readinessVehicles.map((vehicle, index) => (
+          <RecordCard key={`${str(vehicle.name)}-${index}`} title={str(vehicle.name) || "Equipment"} status={statusLabel(vehicle.status)}>
+            <StatusRows rows={[
+              ["Type", partnerDescriptorLabel(vehicle.type)],
+              ["Assigned Crew", str(vehicle.assignedCrew) || "None"],
+              ["Availability", statusLabel(vehicle.availability)],
+              ["Inspection", statusLabel(vehicle.inspectionStatus)],
+              ["Inspection Expiration", str(vehicle.inspectionExpiration)],
+              ["Document", vehicle.documentAvailable ? "Private file on record" : "Not submitted"],
+            ]} />
+          </RecordCard>
+        )) : (data.vehicles ?? []).map((vehicle) => (
+          <RecordCard key={str(vehicle.id)} title={str(vehicle.equipment_name) || "Equipment"} status={statusLabel(vehicle.status)}>
+            <StatusRows rows={[
+              ["Type", str(vehicle.equipment_type)],
+              ["Crew", str(vehicle.crew_name) || "Assigned Crew"],
+              ["Custody Start", str(vehicle.partner_custody_start_date)],
+              ["Return", str(vehicle.partner_return_release_date) || "Not returned"],
+              ["Allocation Preview", "Available in assignment detail"],
+              ["Condition", str(vehicle.odometer_at_assignment) ? "Recorded" : "Pending"],
+            ]} />
+          </RecordCard>
+        ))}
+      </div>
+      {!readinessVehicles.length && !(data.vehicles ?? []).length ? <EmptyPortal title="No assigned vehicles" body="Vehicle assignments appear after Sync assigns equipment." /> : null}
+    </Panel>
+  );
+}
+
+function MobilizationWorkspace({ data, acknowledgeNotice }: { data: PortalData; acknowledgeNotice: () => Promise<void> }) {
+  const readiness = data.mobilization;
+  const notice = data.notice;
+  return (
+    <div className="partner-stack">
+      <div className="mobilization-lanes" aria-label="Mobilization states">
+        <Panel title="Readiness" eyebrow="Derived evaluation">
+          <StatusRows rows={[["Status", statusLabel(readiness?.overall_status ?? "not_evaluated")], ["Passed Checks", String(readiness?.passed_check_count ?? 0)], ["Blockers", String(readiness?.blocker_count ?? 0)], ["Warnings", String(readiness?.warning_count ?? 0)]]} />
+        </Panel>
+        <Panel title="Approval to Mobilize" eyebrow="Internal Sync decision">
+          <StatusRows rows={[["Decision", statusLabel(readiness?.decision?.decision ?? "pending")], ["Conditions", readiness?.decision?.external_conditions?.join("; ") || "None"], ["Expires", readiness?.decision?.expires_at ?? "No expiration"], ["Revocation", readiness?.decision?.revocation_reason ?? "None"]]} />
+        </Panel>
+        <Panel title="Production Start" eyebrow="Operational authorization">
+          <StatusRows rows={[["Authorization", statusLabel(notice?.production_start?.authorization_status ?? notice?.production_start_status ?? "not_authorized")], ["Start Date", notice?.production_start_date ?? notice?.production_start?.start_date ?? "Not authorized"], ["Start Time", notice?.production_start_time ?? notice?.production_start?.start_time ?? "Not authorized"], ["Timezone", notice?.timezone ?? notice?.production_start?.timezone ?? "Not set"]]} />
+        </Panel>
+      </div>
+      <Panel title="Partner-Safe Blockers and Warnings" eyebrow="No internal notes">
+        <ActionList blockers={externalBlockers(readiness, data.compliance, notice)} />
+        <WarningsList warnings={readiness?.warnings ?? []} />
+      </Panel>
+      <Panel title="Notice to Proceed" eyebrow={notice?.notice_number ?? "Not issued"}>
+        <StatusRows rows={[
+          ["Version", notice?.version_number ? String(notice.version_number) : "None"],
+          ["Status", statusLabel(notice?.status ?? "not_issued")],
+          ["Map Package", notice?.initial_map_work_package_ref ?? "Not issued"],
+          ["Initial Work Area", notice?.initial_work_area ?? "Not assigned"],
+          ["Instructions", notice?.external_instructions ?? "None issued"],
+          ["Conditions", notice?.external_conditions?.join("; ") || "None"],
+        ]} />
+        {notice?.id && readPermissions().includes(data.context?.persona === "partner_foreman" ? "partner_notice.foreman.acknowledge" : "partner_notice.acknowledge") ? <button className="partner-button primary" type="button" onClick={() => void acknowledgeNotice()}>Acknowledge Notice</button> : null}
+      </Panel>
+    </div>
+  );
+}
+
+function WorkersList({ workers, readinessWorkers }: { workers: Worker[]; readinessWorkers?: Array<Record<string, unknown>> }) {
+  if (readinessWorkers?.length) {
+    return (
+      <div className="partner-list">
+        {readinessWorkers.map((worker, index) => (
+          <div className="partner-list-row static" key={`${str(worker.name)}-${index}`}>
+            <Avatar name={str(worker.name) || "Worker"} status={str(worker.status)} />
+            <span><strong>{str(worker.name) || "Worker"}</strong><small>{partnerDescriptorLabel(worker.role)} · {statusLabel(worker.reviewStatus)}</small></span>
+            <StatusPill label="Readiness" value={str(worker.ready) === "true" ? "ready" : str(worker.credentialStatus) || str(worker.reviewStatus)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (!workers.length) return <EmptyPortal title="No Workers" body="Workers appear after they are added through P4." />;
+  return (
+    <div className="partner-list">
+      {workers.map((worker) => (
+        <Link className="partner-list-row" key={str(worker.id)} href={`/partner/workers/${str(worker.id)}`}>
+          <Avatar name={workerName(worker)} status={str(worker.status)} />
+          <span><strong>{workerName(worker)}</strong><small>{partnerDescriptorLabel(worker.worker_role)} · {statusLabel(worker.review_status ?? worker.status)}</small></span>
+          <StatusPill label="Readiness" value={statusLabel(worker.review_status ?? worker.status)} />
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function CrewsList({ data }: { data: PortalData }) {
+  const readinessCrews = (data.readiness?.crews?.items ?? []) as Array<Record<string, unknown>>;
+  if (readinessCrews.length) {
+    return (
+      <div className="partner-card-grid">
+        {readinessCrews.map((crew, index) => (
+          <RecordCard key={`${str(crew.name)}-${index}`} title={str(crew.name) || "Crew"} status={statusLabel(crew.status)}>
+            <StatusRows rows={[
+              ["Type", partnerDescriptorLabel(crew.type)],
+              ["Primary Foreman", str(crew.primaryForeman) || "Not assigned"],
+              ["Workers", `${str(crew.workerCount) || "0"} of ${str(crew.targetStaffing) || "target"}`],
+              ["Equipment", Array.isArray(crew.equipment) && crew.equipment.length ? crew.equipment.map(str).join(", ") : "Not assigned"],
+              ["Availability", statusLabel(crew.availability)],
+              ["Missing", Array.isArray(crew.blockingReasons) && crew.blockingReasons.length ? crew.blockingReasons.map(partnerBlockerLabel).join(", ") : "None"],
+            ]} />
+          </RecordCard>
+        ))}
+      </div>
+    );
+  }
+  if (!(data.crews ?? []).length) return <EmptyPortal title="No Crews" body="Crews appear after they are created through P4." />;
+  return (
+    <div className="partner-card-grid">
+      {(data.crews ?? []).map((crew) => (
+        <RecordCard key={str(crew.id)} title={str(crew.name)} status={statusLabel(data.readinessByCrew?.[str(crew.id)]?.overall_status ?? crew.lifecycle_status)} href={`/partner/crews/${str(crew.id)}`}>
+          <StatusRows rows={[["Type", partnerDescriptorLabel(crew.crew_type)], ["Target Staffing", str(crew.target_staffing_level)], ["Active Staffing", String(data.rosterByCrew?.[str(crew.id)]?.length ?? 0)], ["Blockers", String(data.readinessByCrew?.[str(crew.id)]?.blocker_count ?? 0)]]} />
+        </RecordCard>
+      ))}
+    </div>
+  );
+}
+
+function RosterStrip({ roster }: { roster: Worker[] }) {
+  if (!roster.length) return null;
+  return <div className="roster-strip">{roster.slice(0, 6).map((worker) => <Avatar key={str(worker.id)} name={workerName(worker)} status={str(worker.headshot_status) || str(worker.status)} />)}</div>;
+}
+
+function RosterList({ roster, foreman = false }: { roster: Worker[]; foreman?: boolean }) {
+  if (!roster.length) return <EmptyPortal title="No active Crew members" body="Crew roster appears after membership is assigned." />;
+  return (
+    <div className="partner-list">
+      {roster.map((worker) => (
+        <div className="partner-list-row static" key={str(worker.id)}>
+          <Avatar name={workerName(worker)} status={str(worker.headshot_status) || str(worker.status)} />
+          <span><strong>{workerName(worker)}</strong><small>{str(worker.membership_role) || str(worker.worker_role)} · {statusLabel(worker.headshot_status ?? "pending")}</small></span>
+          <StatusPill label={foreman ? "Safe status" : "Readiness"} value={str(worker.status) || str(worker.review_status)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Panel({ title, eyebrow, children }: { title: string; eyebrow?: string | null; children: ReactNode }) {
+  return <section className="partner-panel"><p className="eyebrow">{eyebrow}</p><h3>{title}</h3>{children}</section>;
+}
+
+function RecordCard({ title, status, href, children }: { title: string; status?: string; href?: string; children: ReactNode }) {
+  const body = <><div className="record-card-header"><h4>{title || "Record"}</h4><StatusPill label="Status" value={status} /></div>{children}</>;
+  return href ? <Link className="partner-record-card" href={href}>{body}</Link> : <div className="partner-record-card">{body}</div>;
+}
+
+function StatusRows({ rows }: { rows: Array<[string, string | undefined | null]> }) {
+  return <dl className="partner-status-rows">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "Not set"}</dd></div>)}</dl>;
+}
+
+function StatusPill({ label, value, kind = "status" }: { label: string; value?: string | null; kind?: "status" | "text" }) {
+  const presentation = kind === "status" ? partnerReadinessStatusLabel(value) : str(value).trim() || "Not Available";
+  return <span className={`partner-status-pill ${kind === "status" ? statusClass(presentation) : "neutral"}`} aria-label={`${label}: ${presentation}`}>{presentation}</span>;
+}
+
+function ActionList({ blockers }: { blockers: Array<Record<string, unknown>> }) {
+  if (!blockers.length) return <p className="partner-safe-text">No Partner-facing blockers.</p>;
+  return <ul className="partner-action-list">{blockers.map((blocker, index) => <li key={`${str(blocker.code) || str(blocker.requirement_code) || str(blocker.key)}-${index}`}><strong>{str(blocker.label) || partnerBlockerLabel(blocker.code ?? blocker.requirement_code ?? blocker.key)}</strong><span>{str(blocker.description) || str(blocker.external_detail) || str(blocker.message) || "Partner action is required."}</span></li>)}</ul>;
+}
+
+function WarningsList({ warnings }: { warnings: Array<Record<string, unknown>> }) {
+  if (!warnings.length) return null;
+  return <ul className="partner-warning-list">{warnings.map((warning, index) => <li key={`${str(warning.requirement_code)}-${index}`}>{str(warning.external_detail) || partnerBlockerLabel(warning.requirement_code)}</li>)}</ul>;
+}
+
+function ActionPermission({ permission, permissions, label }: { permission: string; permissions: string[]; label: string }) {
+  if (!permissions.includes(permission)) return null;
+  return <p className="partner-safe-text">{label}</p>;
+}
+
+function CapabilityRows({ readiness }: { readiness?: PartnerReadinessReadModel }) {
+  const capabilities = readiness?.capabilities?.capabilities ?? [];
+  if (!capabilities.length && !readiness?.territories?.length) return null;
+  return (
+    <div className="readiness-inline-section" aria-label="Capabilities and territories">
+      <StatusRows rows={[
+        ["Capabilities", capabilities.map((item) => partnerDescriptorLabel(item.capability)).filter(Boolean).join(", ") || "Not reported"],
+        ["Territories", readiness?.territories?.join(", ") || "Not assigned"],
+        ["Capacity Status", capabilities.map((item) => statusLabel(item.verification)).filter(Boolean)[0] || "Partner reported"],
+      ]} />
+    </div>
+  );
+}
+
+function Avatar({ name, status }: { name: string; status?: string }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "W";
+  const statusPresentation = partnerReadinessStatusLabel(status);
+  return <span className={`partner-avatar ${statusClass(statusPresentation)}`} aria-label={`${name} headshot status ${statusPresentation}`}>{initials}</span>;
+}
+
+function LoadingPortal({ product = "Partner Portal" }: { product?: string }) {
+  return <div className="partner-panel loading-state" role="status" aria-live="polite">Loading {product}...</div>;
+}
+
+function DeniedPortal({ message }: { message?: string }) {
+  return <div className="partner-panel error-state"><h2>Access denied</h2><p>{message || "Your current SyncOS session is not authorized for this Partner workspace."}</p></div>;
+}
+
+function ErrorPortal({ message, product = "Partner Portal" }: { message?: string; product?: string }) {
+  if (/PARTNER_ACCOUNT_ORGANIZATION_CONFLICT|conflicting company access|another Partner organization|Multiple Partner organization/i.test(message ?? "")) {
+    return (
+      <div className="partner-panel error-state">
+        <p className="eyebrow">Partner Portal</p>
+        <h2>Unable to open Partner Portal</h2>
+        <p>Your account has conflicting company access. Contact Sync Comm Systems support so we can correct your account.</p>
+        <p className="partner-safe-text">Reference: PARTNER_ACCOUNT_ORGANIZATION_CONFLICT</p>
+        <button
+          type="button"
+          className="partner-button"
+          onClick={async () => {
+            await endBrowserSession();
+            window.location.assign("/login");
+          }}
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
+  return <div className="partner-panel error-state"><h2>Unable to load {product}</h2><p>{message || "The Partner Portal API request failed."}</p></div>;
+}
+
+function EmptyPortal({ title, body }: { title: string; body: string }) {
+  return <div className="empty-state"><h3>{title}</h3><p>{body}</p></div>;
+}
+
+function activeSectionLabel(section: Section, persona?: Persona) {
+  if (persona === "partner_foreman") {
+    if (section === "dashboard") return "Today";
+    if (section === "crews" || section === "crew-detail" || section === "workforce") return "Crew";
+    if (section === "work-orders" || section === "work-order-detail") return "Workload";
+    if (section === "field-map") return "Map";
+    if (section === "daily-jsa") return "Daily JSA";
+    if (section === "daily-production") return "Production";
+    if (section === "review-day") return "Production";
+    if (section === "corrections" || section === "customer-qc") return "Corrections";
+    if (section === "mobilization") return "Today";
+    return "Today";
+  }
+  if (section === "onboarding") return "Onboarding";
+  if (section === "worker-detail") return "Workers";
+  if (section === "crew-detail") return "Crews";
+  if (section === "agreement-detail") return "Agreements";
+  if (section === "work-order-detail") return "Work Orders";
+  if (section === "vehicles") return "Vehicles & Equipment";
+  if (section === "daily-production") return "Production";
+  if (section === "customer-qc" || section === "corrections") return "QC & Corrections";
+  const labels: Record<string, string> = { dashboard: "Dashboard", onboarding: "Onboarding", company: "Company", compliance: "Compliance", workforce: "Workers", workers: "Workers", crews: "Crews", agreements: "Agreements", "work-orders": "Work Orders", vehicles: "Vehicles", mobilization: "Mobilization", "field-map": "Field Map", "daily-jsa": "Daily JSA", "daily-production": "Daily Production", "review-day": "Review Day", "customer-qc": "Customer QC", corrections: "Customer QC", settlements: "Settlements", payments: "Payments", performance: "Performance" };
+  return labels[section] ?? "Dashboard";
+}
+
+function pageTitle(section: Section, persona?: Persona) {
+  if (persona === "partner_foreman" && section === "dashboard") return "Today";
+  if (section === "onboarding") return "Onboarding Checklist";
+  if (section === "work-order-detail") return persona === "partner_foreman" ? "Workload" : "Work Order";
+  if (section === "worker-detail") return "Worker";
+  if (section === "crew-detail") return "Crew";
+  if (section === "agreement-detail") return "Agreement";
+  if (section === "field-map") return persona === "partner_foreman" ? "Map" : "Field Map";
+  if (section === "daily-jsa") return "Daily JSA";
+  if (section === "daily-production") return "Production";
+  if (section === "review-day") return persona === "partner_foreman" ? "Production Review" : "Review Day";
+  if (section === "customer-qc") return "QC & Corrections";
+  if (section === "corrections") return "Corrections";
+  if (section === "settlements") return "Settlements";
+  if (section === "payments") return "Payments";
+  if (section === "performance") return "Performance";
+  return activeSectionLabel(section, persona);
+}
+
+function personaLabel(persona?: Persona) {
+  if (persona === "partner_foreman") return "Partner Foreman";
+  if (persona === "partner_admin") return "Partner Admin";
+  return "Partner";
+}
+
+function externalBlockers(readiness?: Readiness | null, compliance?: ComplianceSummary, notice?: Notice | null) {
+  const blockers = [...(readiness?.blockers ?? [])];
+  for (const blocker of compliance?.blockers ?? []) blockers.push(blocker);
+  for (const category of compliance?.blocker_categories ?? []) blockers.push({ key: category });
+  const productionStartStatus = notice?.production_start?.authorization_status ?? notice?.production_start_status;
+  if (!productionStartStatus || ["not_authorized", "held", "revoked"].includes(productionStartStatus)) blockers.push({ key: "production_start_not_authorized", message: "Production start is not yet authorized." });
+  return blockers;
+}
+
+function openCorrections(reports: CustomerQcItem[]) {
+  const rows: Array<{ report: CustomerQcItem; correction: CustomerCorrection }> = [];
+  for (const report of reports) {
+    if (report.correction && !["resolved", "cancelled"].includes(str(report.correction.status))) rows.push({ report, correction: report.correction });
+  }
+  return rows;
+}
+
+function statusFrom(row: Record<string, unknown> | null | undefined, key: string) {
+  return str(row?.[key]) || "not_started";
+}
+
+function str(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function quantityText(quantity: unknown, unit: unknown) {
+  if (quantity === null || quantity === undefined || quantity === "") return "Pending Customer QC";
+  return [str(quantity), str(unit)].filter(Boolean).join(" ");
+}
+
+function sequencePreview(start: string, end: string, reported: string) {
+  const startNumber = Number(start);
+  const endNumber = Number(end);
+  const reportedNumber = Number(reported);
+  if (![startNumber, endNumber, reportedNumber].every(Number.isFinite)) return { calculated: "", variance: "", status: "not_applicable" };
+  const calculated = Math.abs(endNumber - startNumber);
+  const variance = reportedNumber - calculated;
+  return { calculated, variance, status: Math.abs(variance) > 25 ? "review_required" : "within_tolerance" };
+}
+
+function coilDefaults(coilType: string) {
+  if (coilType === "front_easement") return { easementType: "front", required: "150", ruleSource: "work_order_rule", sourceReference: "Default front easement slack requirement" };
+  if (coilType === "rear_easement") return { easementType: "rear", required: "80", ruleSource: "work_order_rule", sourceReference: "Default rear easement slack requirement" };
+  return { easementType: "unknown", required: "", ruleSource: "manual", sourceReference: "Manual field requirement" };
+}
+
+function coilVariancePreview(required: string, actual: string) {
+  const requiredNumber = Number(required);
+  const actualNumber = Number(actual);
+  if (![requiredNumber, actualNumber].every(Number.isFinite)) return { variance: "", status: "unknown" };
+  const variance = Number((actualNumber - requiredNumber).toFixed(2));
+  return { variance, status: Math.abs(variance) > 5 ? "variance" : "within_expectation" };
+}
+
+function coilActualTotal(coils: CoilObservation[]) {
+  return Number(coils.reduce((sum, coil) => sum + Number(coil.actual_length_ft ?? 0), 0).toFixed(2));
+}
+
+function uniqueCoils(coils: CoilObservation[]) {
+  const byId = new Map<string, CoilObservation>();
+  coils.forEach((coil, index) => byId.set(str(coil.id) || `${coil.asset_identifier ?? "asset"}:${coil.coil_type ?? "coil"}:${index}`, coil));
+  return [...byId.values()];
+}
+
+function fiberSequenceText(record: ProductionRecord) {
+  if (record.sequence_start === null || record.sequence_start === undefined) return "";
+  return `${record.sequence_start} -> ${record.sequence_end} (${record.sequence_direction || "direction not set"}; calc ${record.sequence_calculated_footage ?? 0} FT)`;
+}
+
+function currency(value: unknown) {
+  const number = Number(value ?? 0);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number.isFinite(number) ? number : 0);
+}
+
+function paymentDisplayStatus(payable: PartnerPayment) {
+  if (Number(payable.paid_amount ?? 0) >= Number(payable.net_payable_amount ?? 0) && Number(payable.net_payable_amount ?? 0) > 0) return "paid";
+  if (Number(payable.in_flight_payment_amount ?? 0) > 0) return "payment_processing";
+  if (Number(payable.eligible_amount ?? 0) > Number(payable.paid_amount ?? 0)) return "eligible";
+  return str(payable.pay_when_paid_status) || str(payable.payment_status) || "awaiting_customer_funds";
+}
+
+function workerName(worker?: Record<string, unknown>) {
+  if (!worker) return "Worker";
+  return [worker.first_name, worker.last_name].map(str).filter(Boolean).join(" ") || str(worker.display_name) || "Worker";
+}
+
+function contactLine(row: Record<string, unknown>, prefix: "primary" | "compliance" | "settlement") {
+  return [row.name ?? row[`${prefix}_contact_name`], row.email ?? row[`${prefix}_contact_email`], row.phone ?? row[`${prefix}_contact_phone`]].map(str).filter(Boolean).join(" · ");
+}
+
+function vehicleLabel(vehicle?: Record<string, unknown>) {
+  if (!vehicle) return "Not assigned";
+  return [vehicle.equipment_name, vehicle.equipment_type].map(str).filter(Boolean).join(" · ") || str(vehicle.assignment_id) || "Assigned vehicle";
+}
+
+function shortTime(value?: string | null) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function recordTitle(record: ProductionRecord) {
+  if (record.location_type === "route") return `${record.from_asset_identifier ?? "Start"} -> ${record.to_asset_identifier ?? "End"}`;
+  if (record.location_type === "asset") return record.asset_identifier || "Asset production";
+  return record.description || record.code || "Daily production";
+}
+
+type OfflineMutationStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT";
+type FieldMutationOperation = "CREATE_PRODUCTION" | "CREATE_ASSET_OBSERVATION" | "CREATE_SPAN_COMPLETION" | "CREATE_COIL_OBSERVATION";
+type OfflineMutation = {
+  mutationId: string;
+  operation: FieldMutationOperation;
+  scopeKey: string;
+  reportId?: string;
+  localEntityId: string;
+  serverEntityId?: string;
+  payload: Record<string, unknown>;
+  status: OfflineMutationStatus;
+  createdAt: string;
+  sequence: number;
+  retryCount: number;
+  lastAttemptAt?: string;
+  lastSafeError?: string;
+  canonical?: Record<string, unknown>;
+};
+
+const queueDbName = "syncos-field-production";
+const queueStoreName = "mutations";
+const legacyQueueKey = "syncos.fieldMutations";
+const maxAutoRetries = 3;
+
+function useFieldProductionQueue(data: PortalData) {
+  const scopeKey = fieldQueueScope(data);
+  const [mutations, setMutations] = useState<OfflineMutation[]>([]);
+  const [online, setOnline] = useState(true);
+
+  useEffect(() => {
+    setOnline(typeof navigator === "undefined" ? true : navigator.onLine);
+  }, []);
+
+  useEffect(() => {
+    if (!scopeKey) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        await migrateLegacyQueue(scopeKey);
+        const next = await listFieldMutations(scopeKey);
+        if (!cancelled) setMutations(next);
+      } catch {
+        if (!cancelled) setMutations([]);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [scopeKey]);
+
+  async function replay() {
+    if (!scopeKey || (typeof navigator !== "undefined" && !navigator.onLine)) return;
+    try {
+      await replayFieldMutations(scopeKey, setMutations, true);
+    } catch {
+      setMutations((current) => current.map((mutation) => isUnsyncedMutation(mutation) ? { ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." } : mutation));
+    }
+  }
+
+  useEffect(() => {
+    if (!scopeKey) return;
+    const handleOnline = () => {
+      setOnline(true);
+      void replayFieldMutations(scopeKey, setMutations).catch(() => {
+        setMutations((current) => current.map((mutation) => isUnsyncedMutation(mutation) ? { ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." } : mutation));
+      });
+    };
+    const handleOffline = () => setOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    if (typeof navigator !== "undefined" && navigator.onLine) handleOnline();
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [scopeKey]);
+
+  async function enqueue(entry: { operation: FieldMutationOperation; payload: Record<string, unknown> }) {
+    if (!scopeKey) return;
+    const payload = { ...entry.payload, client_mutation_id: str(entry.payload.client_mutation_id) || crypto.randomUUID() };
+    const mutation: OfflineMutation = {
+      mutationId: String(payload.client_mutation_id),
+      operation: entry.operation,
+      scopeKey,
+      reportId: data.productionToday?.id,
+      localEntityId: crypto.randomUUID(),
+      payload,
+      status: "PENDING",
+      createdAt: new Date().toISOString(),
+      sequence: Date.now(),
+      retryCount: 0,
+    };
+    await saveFieldMutation(mutation);
+    try {
+      setMutations(await listFieldMutations(scopeKey));
+    } catch {
+      setMutations((current) => [...current, { ...mutation, status: "FAILED", lastSafeError: "Local field queue is unavailable." }]);
+    }
+  }
+
+  const unsynced = mutations.filter(isUnsyncedMutation);
+  const failedMessages = [...new Set(mutations.filter((mutation) => mutation.status === "FAILED" || mutation.status === "CONFLICT").map((mutation) => mutation.lastSafeError ?? "Sync failed."))];
+  return {
+    mutations,
+    unsyncedCount: unsynced.length,
+    failedMessages,
+    enqueue,
+    replay,
+    label: syncLabel(mutations, online),
+  };
+}
+
+function syncLabel(mutations: OfflineMutation[], online: boolean) {
+  const failed = mutations.filter((mutation) => mutation.status === "FAILED" || mutation.status === "CONFLICT").length;
+  if (failed) return "Sync Failed";
+  const syncing = mutations.filter((mutation) => mutation.status === "SYNCING").length;
+  if (syncing) return "Syncing";
+  const pending = mutations.filter((mutation) => mutation.status === "PENDING").length;
+  if (pending && !online) return `Offline — ${pending} ${pending === 1 ? "change" : "changes"} saved locally`;
+  if (pending) return `Syncing — ${pending} pending ${pending === 1 ? "change" : "changes"}`;
+  return online ? "Synchronized" : "Offline";
+}
+
+function fieldQueueScope(data: PortalData) {
+  const userId = data.context?.user.id;
+  const organizationId = data.context?.organization.id;
+  const report = data.productionToday;
+  const reportScope = report?.id ?? report?.work_date;
+  if (!userId || !organizationId || !reportScope) return "";
+  return ["tenant", tokenTenantId(), "user", userId, "org", organizationId, "report", reportScope].join(":");
+}
+
+function tokenTenantId() {
+  const token = readToken();
+  const payload = token.split(".")[1];
+  if (!payload) return "unknown";
+  try {
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { tenant_id?: string };
+    return decoded.tenant_id ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function replayFieldMutations(scopeKey: string, setMutations: (mutations: OfflineMutation[]) => void, manual = false) {
+  const run = () => replayFieldMutationsLocked(scopeKey, setMutations, manual);
+  // Serialize tabs where supported. Server idempotency remains authoritative everywhere.
+  if (typeof navigator !== "undefined" && navigator.locks) return navigator.locks.request(`syncos-field-replay:${scopeKey}`, run);
+  return run();
+}
+
+function queueSessionMatches(scopeKey: string) {
+  try {
+    const token = readToken();
+    const claims = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return !!claims.sub && !!claims.tenant_id && scopeKey.startsWith(`tenant:${claims.tenant_id}:user:${claims.sub}:`) && (!claims.exp || Number(claims.exp) * 1000 > Date.now());
+  } catch { return false; }
+}
+
+async function replayFieldMutationsLocked(scopeKey: string, setMutations: (mutations: OfflineMutation[]) => void, manual: boolean) {
+  let syncedCount = 0;
+  const queue = (await listFieldMutations(scopeKey)).filter(isReplayableMutation).sort((left, right) => left.sequence - right.sequence);
+  for (const queued of queue) {
+    if (!queueSessionMatches(scopeKey) || !navigator.onLine) break;
+    // A deliberate retry resets only the attempt budget, never payload or identity.
+    const mutation = manual ? { ...queued, retryCount: 0 } : queued;
+    if (mutation.retryCount >= maxAutoRetries) {
+      await saveFieldMutation({ ...mutation, status: "FAILED", lastSafeError: "Sync failed. Retry when connection is stable." });
+      setMutations(await listFieldMutations(scopeKey));
+      continue;
+    }
+    const syncing = { ...mutation, status: "SYNCING" as const, retryCount: mutation.retryCount + 1, lastAttemptAt: new Date().toISOString() };
+    await saveFieldMutation(syncing);
+    setMutations(await listFieldMutations(scopeKey));
+    try {
+      if (!queueSessionMatches(scopeKey)) break;
+      const canonical = await syncosFetch<Record<string, unknown>>(fieldMutationEndpoint(mutation.operation), { method: "POST", body: mutation.payload });
+      await saveFieldMutation({ ...syncing, status: "SYNCED", serverEntityId: str(canonical.id), canonical, lastSafeError: undefined });
+      syncedCount += 1;
+      setMutations(await listFieldMutations(scopeKey));
+    } catch (error) {
+      const message = safeSyncError(error instanceof Error ? error.message : "Sync failed.");
+      const status: OfflineMutationStatus = isConflictMessage(message) ? "CONFLICT" : isTransientNetworkError(error) ? "PENDING" : "FAILED";
+      await saveFieldMutation({ ...mutation, status, retryCount: mutation.retryCount + 1, lastAttemptAt: new Date().toISOString(), lastSafeError: message });
+      setMutations(await listFieldMutations(scopeKey));
+      if (status === "PENDING") break;
+    }
+  }
+  const remainingUnsynced = (await listFieldMutations(scopeKey)).filter(isUnsyncedMutation).length;
+  return { syncedCount, remainingUnsynced };
+}
+
+function fieldMutationEndpoint(operation: FieldMutationOperation) {
+  if (operation === "CREATE_ASSET_OBSERVATION") return "syncfield/foreman/asset-observations";
+  if (operation === "CREATE_SPAN_COMPLETION") return "syncfield/foreman/span-completions";
+  if (operation === "CREATE_COIL_OBSERVATION") return "syncfield/foreman/coil-observations";
+  return "syncfield/foreman/production/records";
+}
+
+function isReplayableMutation(mutation: OfflineMutation) {
+  return mutation.status === "PENDING" || mutation.status === "FAILED" || mutation.status === "SYNCING";
+}
+
+function isUnsyncedMutation(mutation: OfflineMutation) {
+  return mutation.status === "PENDING" || mutation.status === "SYNCING" || mutation.status === "FAILED" || mutation.status === "CONFLICT";
+}
+
+function localProductionRecords(mutations: OfflineMutation[], codes: ProductionCode[]): ProductionRecord[] {
+  const codeById = new Map(codes.map((code) => [code.id, code]));
+  return mutations.filter(isUnsyncedMutation).map((mutation) => {
+    const code = codeById.get(str(mutation.payload.production_code_id));
+    return {
+      id: mutation.localEntityId,
+      production_code_id: str(mutation.payload.production_code_id),
+      code: code?.code,
+      description: code?.description ?? "Unsynced production",
+      reported_quantity: Number(mutation.payload.reported_quantity ?? 0),
+      unit_of_measure: code?.unit_of_measure,
+      location_type: str(mutation.payload.location_type),
+      status: mutation.status === "CONFLICT" || mutation.status === "FAILED" ? "blocked" : str(mutation.payload.status) || "complete",
+      asset_identifier: str(mutation.payload.asset_identifier),
+      from_asset_identifier: str(mutation.payload.from_asset_identifier),
+      to_asset_identifier: str(mutation.payload.to_asset_identifier),
+      map_page: mutation.payload.map_page === undefined ? undefined : Number(mutation.payload.map_page),
+      tick_start_label: str(mutation.payload.tick_start_label),
+      tick_end_label: str(mutation.payload.tick_end_label),
+      reel_cable_id: str(mutation.payload.reel_cable_id),
+      fiber_type: str(mutation.payload.fiber_type),
+      sequence_start: mutation.payload.sequence_start === undefined ? null : Number(mutation.payload.sequence_start),
+      sequence_end: mutation.payload.sequence_end === undefined ? null : Number(mutation.payload.sequence_end),
+      sequence_direction: sequenceDirection(mutation.payload.sequence_start, mutation.payload.sequence_end),
+      sequence_calculated_footage: sequenceFootage(mutation.payload.sequence_start, mutation.payload.sequence_end),
+      sequence_reported_variance: sequenceVariance(mutation.payload.sequence_start, mutation.payload.sequence_end, mutation.payload.reported_quantity),
+      sequence_variance_status: sequenceVarianceStatus(mutation.payload.sequence_start, mutation.payload.sequence_end, mutation.payload.reported_quantity),
+      notes: mutation.status === "PENDING" ? "Saved locally; waiting to sync." : mutation.lastSafeError ?? "Syncing saved field entry.",
+      locked: false,
+    };
+  });
+}
+
+function sequenceFootage(start: unknown, end: unknown) {
+  const startNumber = Number(start);
+  const endNumber = Number(end);
+  if (!Number.isFinite(startNumber) || !Number.isFinite(endNumber)) return null;
+  return Math.abs(endNumber - startNumber);
+}
+
+function sequenceVariance(start: unknown, end: unknown, reported: unknown) {
+  const calculated = sequenceFootage(start, end);
+  const reportedNumber = Number(reported);
+  if (calculated === null || !Number.isFinite(reportedNumber)) return null;
+  return reportedNumber - calculated;
+}
+
+function sequenceVarianceStatus(start: unknown, end: unknown, reported: unknown) {
+  const variance = sequenceVariance(start, end, reported);
+  if (variance === null) return "not_applicable";
+  return Math.abs(variance) > 25 ? "review_required" : "within_tolerance";
+}
+
+function sequenceDirection(start: unknown, end: unknown) {
+  const startNumber = Number(start);
+  const endNumber = Number(end);
+  if (!Number.isFinite(startNumber) || !Number.isFinite(endNumber)) return null;
+  if (endNumber > startNumber) return "increasing";
+  if (endNumber < startNumber) return "decreasing";
+  return "same";
+}
+
+function mergeProductionTotals(totals: DailyProduction["totals"], localRecords: ProductionRecord[]): DailyProduction["totals"] {
+  if (!localRecords.length) return totals;
+  const byCode = new Map<string, { code?: string; description?: string; quantity: number; unit?: string; count: number }>();
+  for (const row of totals?.by_code ?? []) byCode.set(row.code ?? row.description ?? crypto.randomUUID(), { ...row, quantity: Number(row.quantity ?? 0), count: Number(row.count ?? 0) });
+  const status_counts: Record<string, number> = { complete: totals?.status_counts?.complete ?? 0, partial: totals?.status_counts?.partial ?? 0, blocked: totals?.status_counts?.blocked ?? 0, rework: totals?.status_counts?.rework ?? 0 };
+  for (const record of localRecords) {
+    const key = record.code ?? record.production_code_id ?? record.description ?? "local";
+    const current = byCode.get(key) ?? { code: record.code, description: record.description, quantity: 0, unit: record.unit_of_measure, count: 0 };
+    current.quantity += Number(record.reported_quantity ?? 0);
+    current.count += 1;
+    byCode.set(key, current);
+    const status = record.status ?? "complete";
+    status_counts[status] = (status_counts[status] ?? 0) + 1;
+  }
+  return { by_code: [...byCode.values()], record_count: (totals?.record_count ?? 0) + localRecords.length, status_counts };
+}
+
+async function migrateLegacyQueue(scopeKey: string) {
+  if (typeof window === "undefined") return;
+  const legacy = window.localStorage.getItem(legacyQueueKey);
+  if (!legacy) return;
+  try {
+    const parsed = JSON.parse(legacy) as Array<{ operation?: string; payload?: Record<string, unknown>; createdAt?: string; retryCount?: number; status?: string }>;
+    for (const entry of parsed) {
+      if (entry.operation !== "CREATE_PRODUCTION" || !entry.payload) continue;
+      const payload = { ...entry.payload, client_mutation_id: str(entry.payload.client_mutation_id) || crypto.randomUUID() };
+      await saveFieldMutation({
+        mutationId: String(payload.client_mutation_id),
+        operation: "CREATE_PRODUCTION",
+        scopeKey,
+        localEntityId: crypto.randomUUID(),
+        payload,
+        status: "PENDING",
+        createdAt: entry.createdAt ?? new Date().toISOString(),
+        sequence: Date.now(),
+        retryCount: Number(entry.retryCount ?? 0),
+      });
+    }
+    window.localStorage.removeItem(legacyQueueKey);
+  } catch {
+    window.localStorage.removeItem(legacyQueueKey);
+  }
+}
+
+async function listFieldMutations(scopeKey: string): Promise<OfflineMutation[]> {
+  if (typeof window === "undefined") return [];
+  const store = await fieldQueueStore();
+  return store.list(scopeKey);
+}
+
+async function saveFieldMutation(mutation: OfflineMutation) {
+  if (typeof window === "undefined") return;
+  const store = await fieldQueueStore();
+  await store.save(mutation);
+}
+
+async function fieldQueueStore(): Promise<{ list(scopeKey: string): Promise<OfflineMutation[]>; save(mutation: OfflineMutation): Promise<void> }> {
+  if (!("indexedDB" in window)) return localStorageQueueStore();
+  return indexedDbQueueStore();
+}
+
+async function indexedDbQueueStore() {
+  async function transact<T>(mode:IDBTransactionMode,operation:(store:IDBObjectStore)=>IDBRequest):Promise<T>{
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{const q=indexedDB.open(queueDbName,1);q.onupgradeneeded=()=>{const store=q.result.createObjectStore(queueStoreName,{keyPath:"mutationId"});store.createIndex("scopeKey","scopeKey",{unique:false});};q.onsuccess=()=>{q.result.onversionchange=()=>q.result.close();resolve(q.result);};q.onerror=()=>reject(q.error??new Error("Device queue unavailable."));});
+    try{return await new Promise<T>((resolve,reject)=>{const tx=db.transaction(queueStoreName,mode),q=operation(tx.objectStore(queueStoreName));tx.oncomplete=()=>resolve(q.result as T);tx.onerror=tx.onabort=()=>reject(tx.error??new Error("Device queue save was not confirmed."));});}finally{db.close();}
+  }
+  return {
+    async list(scopeKey:string){return (await transact<OfflineMutation[]>("readonly",store=>store.index("scopeKey").getAll(scopeKey))).sort((left,right)=>left.sequence-right.sequence);},
+    async save(mutation:OfflineMutation){await transact("readwrite",store=>store.put(mutation));}
+  };
+}
+
+function localStorageQueueStore() {
+  const storageKey = "syncos.fieldProductionMutations";
+  return {
+    async list(scopeKey: string) {
+      try {
+        const all = JSON.parse(window.localStorage.getItem(storageKey) || "[]") as OfflineMutation[];
+        return all.filter((mutation) => mutation.scopeKey === scopeKey).sort((left, right) => left.sequence - right.sequence);
+      } catch {
+        return [];
+      }
+    },
+    async save(mutation: OfflineMutation) {
+      const all = JSON.parse(window.localStorage.getItem(storageKey) || "[]") as OfflineMutation[];
+      const next = all.filter((candidate) => candidate.mutationId !== mutation.mutationId);
+      next.push(mutation);
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
+    },
+  };
+}
+
+function isTransientNetworkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|network|load failed|offline/i.test(message);
+}
+
+function isConflictMessage(message: string) {
+  return /submitted|read-only|already submitted/i.test(message);
+}
+
+function safeSyncError(message: string) {
+  if (/work_order_or_project_not_open_for_production/i.test(message)) return "This work is closed or on hold. Contact your Sync supervisor before reporting more work. Local changes were not applied.";
+  if (/submitted|read-only|only draft/i.test(message)) return "REPORT ALREADY SUBMITTED - LOCAL CHANGES NOT APPLIED";
+  if (/production_start_not_authorized/i.test(message)) return "Production start is no longer authorized. Local changes were not applied.";
+  if (/daily_jsa_incomplete/i.test(message)) return "Daily JSA is no longer complete. Local changes were not applied.";
+  if (/permission|forbidden/i.test(message)) return "You do not have permission to sync this field change.";
+  if (/production code/i.test(message)) return "Production code is no longer available for this Work Order.";
+  return message || "Sync failed.";
+}
+
+function rateLabel(rate?: Record<string, unknown>) {
+  if (!rate?.amount) return "Not shown";
+  return `${str(rate.amount)} / ${str(rate.unit) || "unit"}`;
+}
+
+function statusClass(status?: string | null) {
+  const value = (status ?? "").toLowerCase();
+  if (/ready|active|approved|authorized|executed|verified|current|acknowledged/.test(value)) return "ok";
+  if (/conditional|warning|pending|submitted|review|scheduled/.test(value)) return "warn";
+  if (/blocked|hold|held|revoked|rejected|expired|inactive|suspended|missing|denied/.test(value)) return "bad";
+  return "neutral";
+}

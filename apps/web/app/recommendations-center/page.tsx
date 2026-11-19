@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandShell, CountList, ObjectTable, Panel } from "../dashboard-components";
-import { getDashboardData, valueAt } from "../dashboard-data";
+import { valueAt } from "../dashboard-data";
 
-export default async function RecommendationsCenterPage() {
-  const data = await getDashboardData("recommendations");
+export default function RecommendationsCenterPage() {
+  const dashboard = useDashboardData("recommendations");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Recommendation Inbox" state={dashboard} />;
   return (
     <CommandShell title="Recommendation Inbox" purpose="Recommendations requiring action, approval, deferral, completion, or measurement.">
       <div className="grid">

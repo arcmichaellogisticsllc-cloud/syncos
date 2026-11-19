@@ -6,9 +6,9 @@
   "scripts": {
     "build:deps": "npm run build -w @syncos/auth && npm run build -w @syncos/database && npm run build -w @syncos/events && npm run build -w @syncos/permissions && npm run build -w @syncos/shared",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "dev": "npm run build:deps && nest start --watch",
+    "dev": "npm run build:deps && node scripts/dev.js",
     "start": "node dist/main.js",
-    "build": "npm run clean && npm run build:deps && nest build",
+    "build": "npm run clean && npm run build:deps && tsc --project tsconfig.json --noEmitOnError",
     "validate:env": "node scripts/validate-env.js",
     "smoke:security": "node scripts/security-smoke.js",
     "smoke:sprint1": "node scripts/sprint1-smoke.js",
@@ -25,6 +25,9 @@
     "smoke:sprint12": "node scripts/sprint12-smoke.js",
     "smoke:sprint13": "node scripts/sprint13-smoke.js",
     "smoke:sprint14": "node scripts/sprint14-smoke.js",
+    "smoke:sprint15": "node scripts/sprint15-smoke.js",
+    "smoke:sprint16": "node scripts/sprint16-smoke.js",
+    "smoke:sprint17": "node scripts/sprint17-smoke.js",
     "smoke:intelligence": "node scripts/intelligence-smoke.js",
     "smoke:organization": "node scripts/organization-smoke.js",
     "smoke:contact": "node scripts/contact-smoke.js",
@@ -51,22 +54,26 @@
     "typecheck": "npm run build:deps && tsc --noEmit"
   },
   "dependencies": {
-    "@nestjs/common": "^10.4.1",
-    "@nestjs/core": "^10.4.1",
-    "@nestjs/platform-express": "^10.4.1",
+    "@nestjs/common": "^11.2.5",
+    "@nestjs/core": "^11.2.5",
+    "@nestjs/platform-express": "^11.2.5",
     "@syncos/auth": "file:../../packages/auth",
     "@syncos/database": "file:../../packages/database",
     "@syncos/events": "file:../../packages/events",
     "@syncos/permissions": "file:../../packages/permissions",
     "@syncos/shared": "file:../../packages/shared",
+    "fflate": "^0.8.3",
+    "jose": "^6.2.12",
+    "luxon": "^3.7.2",
+    "nodemailer": "^10.6.0",
     "pg": "^8.12.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
-    "@nestjs/cli": "^10.4.5",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.0",
     "@types/node": "^20.14.10",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.11.6",
     "typescript": "^5.5.4"
   }
