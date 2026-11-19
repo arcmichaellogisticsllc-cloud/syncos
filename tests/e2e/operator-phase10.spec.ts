@@ -122,8 +122,9 @@ test.describe("Operator UI Phase 10 mobile, accessibility, and UAT readiness", (
     await openWithPersona(page, "/production/d07f0f37-b932-50c0-a3c2-f007b62be454", personas.readOnlyAuditor.storageState);
 
     await expect(page.getByText(/You are viewing this record in read-only mode/i)).toBeVisible();
-    await expect(page.getByText(/Read-only users cannot perform lifecycle actions/i)).toBeVisible();
-    await expect(page.getByLabel("Next Action")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /lifecycle actions are unavailable/i })).toBeVisible();
+    await expect(page.getByLabel("Next Action", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(Submit|Start Review|Approve|Reject|Mark Billable|Archive)$/i })).toHaveCount(0);
     await expectNoBodyOverflow(page);
     await expectNoDevSessionUi(page);
 

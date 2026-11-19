@@ -1,10 +1,11 @@
 "use client";
+import {ScrollableRegion} from "../../scrollable-region";
 
-import Link from "next/link";
+
+import { PermissionLink as Link } from "../../access-control";
 import { useEffect, useMemo, useState } from "react";
 import {
   dateValue,
-  defaultOpportunityPermissions,
   hasPermission,
   numberValue,
   readPermissions,
@@ -46,6 +47,7 @@ type OnboardingData = {
 
 type AccountOnboardingRecord = {
   id: string;
+  profileId?: string;
   organization: SyncRecord;
   accountType: "Prime / Customer" | "Contractor / Vendor";
   company: string;
@@ -80,12 +82,10 @@ export function AccountOnboardingWorkbench() {
   const [activeStage, setActiveStage] = useState<OnboardingStage>("Identified");
   const [lane, setLane] = useState<AccountLane>("all");
   const [query, setQuery] = useState("");
-  const permissions = useMemo(() => {
-    const stored = readPermissions();
-    return stored.length ? stored : defaultOpportunityPermissions;
-  }, []);
+  const [permissions, setPermissions] = useState<string[]>([]);
 
   useEffect(() => {
+    setPermissions(readPermissions());
     async function load() {
       setLoading(true);
       setError("");
@@ -113,10 +113,10 @@ export function AccountOnboardingWorkbench() {
   }
 
   return (
-    <IntelligenceShell title="Account Onboarding Workbench" purpose="Track prime/customer and contractor/vendor onboarding readiness from first identification through mobilization using current SyncOS intelligence records.">
+    <IntelligenceShell title="Account Onboarding Workbench" purpose="Review customer and contractor accounts, identify missing information, and plan the next step.">
       <div className="boundary-notice">
-        <strong>Account onboarding boundary</strong>
-        <span>Account onboarding tracks internal relationship, compliance, commercial, market, and mobilization readiness. It does not create contracts, payables, payroll, invoices, tax filings, insurance verification, customer assignments, or guaranteed work unless a separate supported workflow exists.</span>
+        <strong>Account readiness and work approval</strong>
+        <span>Track relationship and commercial readiness here. Company approval, crew readiness, and work-order mobilization each require their own review before work starts.</span>
       </div>
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       <UnsupportedNotice unavailable={data.unavailable} />
@@ -125,11 +125,11 @@ export function AccountOnboardingWorkbench() {
         <div className="section-toolbar">
           <div>
             <h2>Onboarding pipeline</h2>
-            <p className="muted">Stages are inferred from existing organization, contact, candidate, capacity provider, contract, and rate schedule fields until a dedicated onboarding lifecycle exists.</p>
+            <p className="muted">Stages use saved onboarding profiles where available. Other accounts show an estimate from their existing records; confirm readiness before assigning work.</p>
           </div>
           <div className="form-actions">
-            <Link className="link-button" href="/intelligence/organizations/new" aria-disabled={!hasPermission(permissions, "organization.create")}>Create Organization</Link>
-            <Link className="primary-button link-button" href="/opportunities/candidates/new" aria-disabled={!hasPermission(permissions, "opportunity_candidate.create")}>Create Candidate</Link>
+            {hasPermission(permissions, "organization.create") ? <Link className="link-button" href="/intelligence/organizations/new">Create Organization</Link> : null}
+            {hasPermission(permissions, "opportunity_candidate.create") ? <Link className="primary-button link-button" href="/opportunities/candidates/new">Create Candidate</Link> : null}
           </div>
         </div>
         <div className="summary-grid">
@@ -140,6 +140,7 @@ export function AccountOnboardingWorkbench() {
               value={card.count}
               helper={card.helper}
               active={activeStage === card.stage}
+              disabled={loading}
               onClick={() => selectStage(card.stage)}
             />
           ))}
@@ -150,13 +151,13 @@ export function AccountOnboardingWorkbench() {
         <div className="section-toolbar">
           <div>
             <h2>Account filters</h2>
-            <p className="muted">Use the Prime / Customer lane for companies that may send work to Sync. Use the Contractor / Vendor lane for companies that may become usable capacity.</p>
+            <p className="muted">Filter customers who may send work to Sync or contractors who may supply crews and equipment.</p>
           </div>
           <button type="button" onClick={() => { setActiveStage("Identified"); setLane("all"); setQuery(""); }}>Reset</button>
         </div>
         <div className="queue-tabs" role="tablist" aria-label="Account onboarding stages">
           {onboardingStages.map((stage) => (
-            <button key={stage} type="button" role="tab" aria-selected={activeStage === stage} className={activeStage === stage ? "active" : ""} onClick={() => selectStage(stage)}>
+            <button key={stage} type="button" role="tab" disabled={loading} aria-selected={activeStage === stage} className={activeStage === stage ? "active" : ""} onClick={() => selectStage(stage)}>
               {stage}
             </button>
           ))}
@@ -181,37 +182,37 @@ export function AccountOnboardingWorkbench() {
         <div className="section-toolbar">
           <div>
             <h2>{activeStage}</h2>
-            <p className="muted">{emptyMessage(activeStage)}</p>
+            <p className="muted">{stageHelper(activeStage)}</p>
           </div>
           <span className="badge">{visible.length} shown</span>
         </div>
         {loading ? <div className="empty-state">Loading account onboarding records...</div> : null}
         {!loading && records.length === 0 ? <div className="empty-state">No prime, customer, contractor, vendor, equipment provider, or staffing partner organizations are available for onboarding review yet.</div> : null}
         {!loading && records.length > 0 && visible.length === 0 ? <div className="empty-state">{emptyMessage(activeStage)}</div> : null}
-        {visible.length > 0 ? <OnboardingTable rows={visible} /> : null}
+        {visible.length > 0 ? <OnboardingTable rows={visible} permissions={permissions} /> : null}
       </section>
 
       {data.onboardingProfiles.length === 0 ? <section className="workspace-panel">
         <div className="section-toolbar">
           <div>
-            <h2>Current schema gaps</h2>
-            <p className="muted">These fields are part of the desired onboarding process but are not explicit first-class onboarding fields in the current API response.</p>
+            <h2>Start an onboarding profile</h2>
+            <p className="muted">Open an account to create its onboarding profile, capture follow-up ownership and define program document requirements.</p>
           </div>
         </div>
         <div className="detail-grid">
-          <GapCard title="Explicit onboarding stage" body="Current workbench infers the stage from organization, contact, candidate, provider, contract, rate, and territory fields." />
-          <GapCard title="Required and missing documents" body="Compliance document summary by account is not exposed here yet, so document fields are shown as schema gaps instead of hardcoded counts." />
-          <GapCard title="Customer programs and rate sheet detail" body="Current contracts and rate schedules expose partial commercial context, but program membership and rate sheet readiness need dedicated fields." />
-          <GapCard title="Deadline and probability" body="Deadlines are approximated from candidate or opportunity review dates when present. Probability uses current scores and should become an explicit onboarding field later." />
+          <GapCard title="Explicit onboarding stage" body="Accounts without a profile show an inferred stage. Create a profile to record and review its actual onboarding progress." />
+          <GapCard title="Required and missing documents" body="A saved profile supports governing originals, versioned program policies and reviewed document requirements." />
+          <GapCard title="Customer programs and rate sheet detail" body="Review program documents on the profile. Agreements and approved rate schedules remain the commercial source of truth." />
+          <GapCard title="Deadline and probability" body="Capture the actual next action and deadline in the profile. Inferred account scores are not a commitment of work." />
         </div>
       </section> : null}
     </IntelligenceShell>
   );
 }
 
-function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
+function OnboardingTable({ rows, permissions }: { rows: AccountOnboardingRecord[]; permissions: string[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -238,7 +239,7 @@ function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              <td><Link className="table-link" href={`/intelligence/organizations/${row.id}`}>{row.company}</Link></td>
+              <td>{hasPermission(permissions, "organization.read") ? <Link className="table-link" href={`/intelligence/organizations/${row.id}`}>{row.company}</Link> : <span>{row.company}</span>}</td>
               <td>{row.accountType}</td>
               <td>{row.stateRegion}</td>
               <td>{row.accountOwner}</td>
@@ -258,6 +259,7 @@ function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
               <td>
                 <div className="row-actions">
                   <Link className="table-link" href={`/intelligence/organizations/${row.id}`}>Open Account</Link>
+                  {row.profileId ? <Link className="table-link" href={`/intelligence/account-onboarding/${row.profileId}`}>Review Onboarding</Link> : <Link className="table-link" href={`/intelligence/account-onboarding/new?organization_id=${row.id}`}>Start Onboarding</Link>}
                   {row.candidates[0]?.id ? <Link className="table-link" href={`/opportunities/candidates/${row.candidates[0].id}`}>Open Candidate</Link> : null}
                 </div>
               </td>
@@ -265,13 +267,13 @@ function OnboardingTable({ rows }: { rows: AccountOnboardingRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
-function SummaryCard({ label, value, helper, active, onClick }: { label: string; value: number; helper: string; active: boolean; onClick: () => void }) {
+function SummaryCard({ label, value, helper, active, onClick, disabled }: { label: string; value: number; helper: string; active: boolean; onClick: () => void; disabled: boolean }) {
   return (
-    <button type="button" className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}>
+    <button type="button" disabled={disabled} className={`summary-card ${active ? "active-summary-card" : ""}`} aria-pressed={active} onClick={onClick}>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{helper}</small>
@@ -322,9 +324,22 @@ async function loadOnboardingData(): Promise<OnboardingData> {
 
 async function optionalList(path: string, unavailable: Record<string, string>, key: string) {
   try {
-    return await syncosFetch<SyncRecord[]>(path);
+    if (!["/account-onboarding", "/organizations", "/contacts", "/opportunity-candidates", "/opportunities"].includes(path)) return await syncosFetch<SyncRecord[]>(path);
+    const rows: SyncRecord[] = [];
+    const seen = new Set<string>();
+    for (let offset = 0; ; offset += 200) {
+      const page = await syncosFetch<SyncRecord[]>(`${path}?limit=200&offset=${offset}`);
+      if (!Array.isArray(page)) throw new Error("Invalid list response");
+      for (const row of page) {
+        const id = String(row.id ?? "");
+        if (!id || seen.has(id)) throw new Error("Account list changed while loading. Reload to obtain a complete list.");
+        seen.add(id);
+        rows.push(row);
+      }
+      if (page.length < 200) return rows;
+    }
   } catch {
-    unavailable[key] = "Current API or permissions do not expose this onboarding slice.";
+    unavailable[key] = "This account information could not be loaded completely. Check your access and reload before making a readiness decision.";
     return [];
   }
 }
@@ -343,14 +358,12 @@ const emptyData: OnboardingData = {
 };
 
 function buildRecords(data: OnboardingData): AccountOnboardingRecord[] {
-  if (data.onboardingProfiles.length > 0) {
-    return data.onboardingProfiles
-      .map((profile) => buildContractRecord(profile, data))
-      .sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || probabilityNumber(b.probabilityOfReceivingWork) - probabilityNumber(a.probabilityOfReceivingWork) || a.company.localeCompare(b.company));
-  }
-  return data.organizations
-    .filter((organization) => isOnboardingAccount(organization))
-    .map((organization) => buildRecord(organization, data))
+  const profiledIds = new Set(data.onboardingProfiles.map((profile) => String(profile.organization_id ?? profile.id)));
+  const profiles = data.onboardingProfiles.map((profile) => buildContractRecord(profile, data));
+  const unprofiled = data.organizations
+    .filter((organization) => !profiledIds.has(String(organization.id)) && !organization.deleted_at && organization.status !== "archived" && isOnboardingAccount(organization))
+    .map((organization) => buildRecord(organization, data));
+  return [...profiles, ...unprofiled]
     .sort((a, b) => stageIndex(a.stage) - stageIndex(b.stage) || probabilityNumber(b.probabilityOfReceivingWork) - probabilityNumber(a.probabilityOfReceivingWork) || a.company.localeCompare(b.company));
 }
 
@@ -368,6 +381,7 @@ function buildContractRecord(profile: SyncRecord, data: OnboardingData): Account
   const contactTitle = profile.contact_title ?? profile.primary_contact_title ?? profile.primary_contact_role;
   return {
     id: organizationId,
+    profileId: String(profile.id),
     organization,
     accountType,
     company: textValue(profile.organization_name ?? organization.name),
@@ -379,8 +393,8 @@ function buildContractRecord(profile: SyncRecord, data: OnboardingData): Account
     lastInteraction: dateValue(profile.last_interaction_at ?? profile.primary_contact_last_contacted_at ?? profile.updated_at),
     nextAction: textValue(profile.next_action_label ?? profile.next_action, nextActionText(stage, organization, contacts, candidates, capacityProviders, contracts, rateSchedules)),
     deadline: dateValue(profile.next_action_deadline),
-    requiredDocuments: listText(profile.required_documents, "No required documents captured"),
-    missingDocuments: listText(profile.missing_documents, Number(profile.missing_document_count ?? 0) > 0 ? `${profile.missing_document_count} missing document(s)` : "No missing documents captured"),
+    requiredDocuments: Number(profile.program_count) > 0 ? `${profile.program_required_count} requirements across ${profile.program_count} programs` : listText(profile.required_documents, "No required documents captured"),
+    missingDocuments: Number(profile.program_count) > 0 ? `${profile.program_unresolved_count} documents unresolved; ${profile.program_policy_gap_count} programs need a current policy` : listText(profile.missing_documents, Number(profile.missing_document_count ?? 0) > 0 ? `${profile.missing_document_count} missing document(s)` : "No missing documents captured"),
     marketAvailability: listText(profile.market_summary ?? profile.market_availability, "Market not assigned"),
     customerPrograms: listText(profile.customer_programs, "Not captured yet"),
     rateSheet: profile.rate_schedule_name ? `${textValue(profile.rate_schedule_name)} (${textValue(profile.rate_sheet_status ?? profile.rate_schedule_current_status)})` : formatLabel(profile.rate_sheet_status ?? "not_captured"),
@@ -518,13 +532,12 @@ function deadlineText(candidates: SyncRecord[], opportunities: SyncRecord[]) {
 }
 
 function requiredDocumentsText(accountType: AccountOnboardingRecord["accountType"], providers: SyncRecord[]) {
-  if (providers.some((provider) => ["verification_pending", "contract_pending"].includes(String(provider.status)))) return "Compliance packet, contract packet";
-  return accountType === "Contractor / Vendor" ? "Schema gap: W-9, insurance, safety, rate packet" : "Schema gap: vendor packet, insurance, safety, program terms";
+  return "Requirements not configured; review the governing program policy";
 }
 
 function missingDocumentsText(providers: SyncRecord[]) {
   if (providers.some((provider) => ["verified", "contracted", "activated"].includes(String(provider.status)))) return "No missing document summary exposed";
-  return "Schema gap: missing document summary required";
+  return "Document readiness not reviewed";
 }
 
 function programsText(opportunities: SyncRecord[]) {

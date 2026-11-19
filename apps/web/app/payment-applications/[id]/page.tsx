@@ -1,5 +1,5 @@
 import { PaymentApplicationDetail } from "../../cash/cash-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <PaymentApplicationDetail applicationId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <PaymentApplicationDetail applicationId={(await params).id} />;
 }

@@ -1,12 +1,17 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../modal-boundary";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
 import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, readPermissions, readToken, savePermissions, saveToken, syncosFetch, textValue, type SyncRecord } from "../intelligence/api";
-import { DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
+import { DangerZone, DetailBoundaryNotice, DetailNextActionCard, FormBoundaryNotice, FormPurposeHeader, FormSection, ReadOnlyBanner, RequiredFieldNote } from "../operator-page-templates";
 
 const productionTypes = ["daily_production", "progress_update", "completion_submission", "correction_submission", "inspection_submission", "restoration_submission", "delay_report", "no_work_report", "safety_observation", "material_issue", "access_issue", "weather_delay", "customer_issue", "other"];
 const productionStatuses = ["draft", "submitted", "under_review", "correction_required", "corrected", "approved", "rejected", "voided", "archived", "billable"];
@@ -16,7 +21,7 @@ const units = ["feet", "miles", "drops", "addresses", "passings", "splice_cases"
 const evidenceTypes = ["photo", "document", "form", "test_result", "gps_point", "map_markup", "customer_signature", "inspector_signature", "material_ticket", "permit_document", "restoration_photo", "before_photo", "after_photo", "other"];
 const archiveReasons = ["duplicate", "no_longer_relevant", "replaced", "created_in_error", "project_cancelled", "other"];
 const issueTypes = new Set(["delay_report", "no_work_report", "safety_observation", "material_issue", "access_issue", "weather_delay", "customer_issue", "other"]);
-const tabs = ["overview", "work_order", "project", "performer", "quantity", "evidence", "location_time", "qc", "corrections", "billable", "timeline", "audit", "future_qc", "future_billable"];
+const tabs = ["overview", "work_order", "project", "performer", "quantity", "evidence", "location_time", "qc", "corrections", "billable", "timeline", "audit"];
 
 type ProductionDetailShape = {
   production_record?: SyncRecord;
@@ -54,6 +59,11 @@ export function ProductionDirectory() {
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "production_date_desc", queue: "draft" });
 
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project_id");
+    if (projectId) setFilters((current) => ({ ...current, project_id: projectId, queue: "all" }));
+  }, []);
+
   async function load() {
     setLoading(true);
     setError("");
@@ -74,12 +84,12 @@ export function ProductionDirectory() {
   useEffect(() => {
     if (session.token) void load();
     else setLoading(false);
-  }, [session.token, filters.archived]);
+  }, [session.token, filters.archived, filters.project_id]);
 
   const visible = useMemo(() => sortProduction(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
   const activeQueue = filters.queue ?? "draft";
-  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "production_date_desc", queue, ...nextFilters });
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "production_date_desc", queue, ...(filters.project_id ? { project_id: filters.project_id } : {}), ...nextFilters });
 
   return (
     <ProductionShell title="Production Board" purpose="Track field production from draft through review, correction, approval, and billable readiness.">
@@ -88,7 +98,7 @@ export function ProductionDirectory() {
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to submit, review, correct, and prepare field production.</div> : null}
       {loading ? <div className="loading-state">Loading production records...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -98,10 +108,10 @@ export function ProductionDirectory() {
                 <p className="muted">Start with corrections, submitted work, and approved records that can move toward billable readiness.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/production/new" aria-disabled={!hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production Record</Link>
-                <button type="button" onClick={() => setQueue("submitted", { status: "submitted" })}>Review Submitted Production</button>
+                <Link className="primary-button" href="/production/new" allowed={hasAnyPermission(session.permissions, ["production_record.create"])}>Create Production Record</Link>
+                {hasAnyPermission(session.permissions, ["production.review"]) ? <button type="button" onClick={() => setQueue("submitted", { status: "submitted" })}>Review Submitted Production</button> : null}
                 <button type="button" onClick={() => setQueue("correction_required", { status: "correction_required" })}>Open Corrections</button>
-                <button type="button" onClick={() => setQueue("billable_ready", { status: "approved" })}>Mark Approved Billable</button>
+                {hasPermission(session.permissions, "production.mark_billable") ? <button type="button" onClick={() => setQueue("billable_ready", { status: "approved" })}>Mark Approved Billable</button> : null}
               </div>
             </div>
             <div className="summary-grid priority-grid">
@@ -193,7 +203,7 @@ export function ProductionCreate() {
     try {
       const created = await syncosFetch<SyncRecord>("/production-records", { method: "POST", body: buildProductionPayload(form, true), token: session.token });
       const after = created.afterState as SyncRecord | undefined;
-      const record = after?.production_record as SyncRecord | undefined;
+      const record = (created.production_record ?? after?.production_record) as SyncRecord | undefined;
       const id = String(created.id ?? created.entityId ?? record?.id ?? after?.id ?? "");
       router.push(id ? `/production/${id}` : "/production");
     } catch (nextError) {
@@ -214,7 +224,7 @@ export function ProductionCreate() {
           <ProductionFormFields form={form} setForm={setForm} related={related} includeRequired />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.create", "production.create"])}>Create Production</button>
+          {hasAnyPermission(session.permissions, ["production_record.create"]) ? <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.create"])}>Create Production</button> : null}
           <Link className="link-button" href="/production">Cancel</Link>
         </div>
       </form>
@@ -303,10 +313,11 @@ export function ProductionEdit({ productionId }: { productionId: string }) {
       {loading ? <div className="empty-state">Loading production record...</div> : null}
       {!loading ? (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Production" purpose="Keep quantities, dates and location consistent with the work performed and its supporting evidence." afterSave="Review the saved production record and submit through the applicable QC and customer-acceptance steps." />
           <div className="warning-box">Approved, rejected, voided, billable, and archived records are backend read-only. Status changes use lifecycle routes.</div>
           <ProductionFormFields form={form} setForm={setForm} related={related} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}>Save Production</button>
+            {hasAnyPermission(session.permissions, ["production_record.update"]) ? <button className="primary-button" type="submit" disabled={!hasAnyPermission(session.permissions, ["production_record.update"])}>Save Production</button> : null}
             <Link className="link-button" href={`/production/${productionId}`}>Cancel</Link>
           </div>
         </form>
@@ -359,15 +370,15 @@ export function ProductionDetail({ productionId }: { productionId: string }) {
       {!record && session.token && !error ? <div className="empty-state">Production record not found or you do not have access.</div> : null}
       {record && detail ? (
         <>
-          {!hasAnyPermission(session.permissions, ["production_record.update", "production.update"]) ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {!hasAnyPermission(session.permissions, ["production_record.update"]) ? <ReadOnlyBanner /> : null}
+          {hasAnyPermission(session.permissions, ["production_record.update"]) ? <DetailNextActionCard
             status={formatAction(record.status)}
             nextActionLabel={nextProductionAction(record)}
             helperText="Review field truth, evidence, correction status, QC state, and billable readiness before moving this record forward."
-            disabled={!hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}
+            disabled={!hasAnyPermission(session.permissions, ["production_record.update"])}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Mark Billable makes approved production eligible for billing workflow. It does not create settlement, invoice, cash, or accounting export records."
-          />
+          /> : null}
           <DetailBoundaryNotice>Production actions move field truth through review, correction, approval, and billable readiness. They do not create settlement, invoice, cash, payment, payroll, bank, or accounting records.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -381,18 +392,20 @@ export function ProductionDetail({ productionId }: { productionId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/production/${productionId}/edit`} aria-disabled={!hasAnyPermission(session.permissions, ["production_record.update", "production.update"])}>Edit Production</Link>
-                <ActionButton permissions={["production_record.submit", "production.submit"]} session={session} disabled={String(record.status) !== "draft" && String(record.status) !== "corrected"} onClick={() => setModal("submit")}>Submit</ActionButton>
-                <ActionButton permissions={["production.review", "qc.review"]} session={session} disabled={!["submitted", "corrected"].includes(String(record.status))} onClick={() => setModal("start_review")}>Start Review</ActionButton>
-                <ActionButton permissions={["qc.approve", "production.approve"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permissions={["qc.reject", "production.reject"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("reject")}>Reject</ActionButton>
-                <ActionButton permissions={["production.request_correction", "production_record.correction_required"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("correction")}>Request Correction</ActionButton>
+                <Link className="link-button" href={`/production/${productionId}/edit`} allowed={hasAnyPermission(session.permissions, ["production_record.update"])}>Edit Production</Link>
+                <ActionButton permissions={["production_record.submit"]} session={session} disabled={String(record.status) !== "draft" && String(record.status) !== "corrected"} onClick={() => setModal("submit")}>Submit</ActionButton>
+                <ActionButton permissions={["production.review"]} session={session} disabled={!["submitted", "corrected"].includes(String(record.status))} onClick={() => setModal("start_review")}>Start Review</ActionButton>
+                <ActionButton permissions={["qc.approve"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("approve")}>Approve</ActionButton>
+                <ActionButton permissions={["production.request_correction"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("correction")}>Request Correction</ActionButton>
                 <ActionButton permissions={["production.mark_corrected"]} session={session} disabled={String(record.status) !== "correction_required"} onClick={() => setModal("corrected")}>Mark Corrected</ActionButton>
                 <ActionButton permissions={["production.mark_billable"]} session={session} disabled={String(record.status) !== "approved"} onClick={() => setModal("billable")}>Mark Billable</ActionButton>
-                <ActionButton permissions={["production.void"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permissions={["production_record.archive", "production.archive"]} session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
                 <ActionButton permissions={["production_evidence.create"]} session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("evidence")}>Add Evidence Metadata</ActionButton>
               </div>
+              {(hasPermission(session.permissions, "qc.reject") || hasPermission(session.permissions, "production.void") || hasPermission(session.permissions, "production_record.archive")) ? <DangerZone>
+                <ActionButton permissions={["qc.reject"]} session={session} disabled={!["submitted", "under_review", "corrected"].includes(String(record.status))} onClick={() => setModal("reject")}>Reject</ActionButton>
+                <ActionButton permissions={["production.void"]} session={session} disabled={["voided", "archived"].includes(String(record.status))} onClick={() => setModal("void")}>Void</ActionButton>
+                <ActionButton permissions={["production_record.archive"]} session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <Metric label="Claimed Quantity" value={quantity(record.claimed_quantity, record.unit)} />
@@ -435,7 +448,7 @@ export function ProductionDetail({ productionId }: { productionId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "production").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <ProductionTab tab={tab} detail={detail} record={record} session={session} onArchiveEvidence={(evidenceId) => setModal(`archive_evidence:${evidenceId}`)} />
             </section>
@@ -471,7 +484,7 @@ function ProductionShell({ title, purpose, children }: { title: string; purpose:
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Production</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -481,7 +494,7 @@ function ProductionShell({ title, purpose, children }: { title: string; purpose:
 
 function ProductionTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -512,7 +525,7 @@ function ProductionTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -524,7 +537,7 @@ function ProductionTab({ tab, detail, record, session, onArchiveEvidence }: { ta
   if (tab === "quantity") return <Panel title="Quantity Summary"><dl className="detail-list"><dt>Claimed quantity</dt><dd>{quantity(record.claimed_quantity, record.unit)}</dd><dt>Approved quantity</dt><dd>{quantity(record.approved_quantity, record.unit)}</dd><dt>Rejected quantity</dt><dd>{quantity(record.rejected_quantity, record.unit)}</dd><dt>Corrected quantity</dt><dd>{quantity(record.corrected_quantity, record.unit)}</dd><dt>Billable quantity</dt><dd>{quantity(record.billable_quantity, record.unit)}</dd><dt>Work Order planned</dt><dd>{quantity(detail.work_order_context?.planned_quantity, detail.work_order_context?.unit)}</dd><dt>Work Order completed</dt><dd>{quantity(detail.work_order_context?.completed_quantity, detail.work_order_context?.unit)}</dd><dt>Work Order approved</dt><dd>{quantity(detail.work_order_context?.approved_quantity, detail.work_order_context?.unit)}</dd><dt>Work Order billable</dt><dd>{quantity(detail.work_order_context?.billable_quantity, detail.work_order_context?.unit)}</dd></dl><div className="warning-box">Claimed quantity comes from field submission. Approved quantity comes from QC. Billable quantity comes from billable review. Settlement consumes billable items later.</div></Panel>;
   if (tab === "evidence") return <Panel title="Evidence Metadata"><EvidenceTable rows={detail.evidence ?? []} session={session} onArchive={onArchiveEvidence} />{!(detail.evidence ?? []).length ? <div className="empty-state">No evidence metadata has been attached yet.</div> : null}<div className="warning-box">Evidence is metadata-only in this workspace. Binary upload storage is not implemented here.</div></Panel>;
   if (tab === "location_time") return <Panel title="Location / Time"><dl className="detail-list"><dt>Production date</dt><dd>{dateValue(record.production_date)}</dd><dt>Started at</dt><dd>{dateValue(record.started_at)}</dd><dt>Ended at</dt><dd>{dateValue(record.ended_at)}</dd><dt>Submitted at</dt><dd>{dateValue(record.submitted_at)}</dd><dt>Reviewed at</dt><dd>{dateValue(record.reviewed_at)}</dd><dt>Approved at</dt><dd>{dateValue(record.approved_at)}</dd><dt>Rejected at</dt><dd>{dateValue(record.rejected_at)}</dd><dt>Location summary</dt><dd>{textValue(record.location_summary)}</dd><dt>Route name</dt><dd>{textValue(record.route_name)}</dd><dt>Node ID</dt><dd>{textValue(record.node_id)}</dd><dt>Segment ID</dt><dd>{textValue(record.segment_id)}</dd><dt>Address range</dt><dd>{textValue(record.address_range)}</dd><dt>Latitude</dt><dd>{formatCell(record.latitude)}</dd><dt>Longitude</dt><dd>{formatCell(record.longitude)}</dd></dl><div className="warning-box">GPS values are displayed only when captured by the backend. This UI does not fake GPS.</div></Panel>;
-  if (tab === "qc") return <Panel title="QC Summary"><dl className="detail-list"><dt>QC status</dt><dd>{formatAction(record.qc_status)}</dd><dt>Reviewed at</dt><dd>{dateValue(record.reviewed_at)}</dd><dt>Approved at</dt><dd>{dateValue(record.approved_at)}</dd><dt>Rejected at</dt><dd>{dateValue(record.rejected_at)}</dd><dt>Approved quantity</dt><dd>{quantity(record.approved_quantity, record.unit)}</dd><dt>Rejected quantity</dt><dd>{quantity(record.rejected_quantity, record.unit)}</dd><dt>Rejection reason</dt><dd>{textValue(record.rejection_reason)}</dd><dt>Rejection note</dt><dd>{textValue(record.rejection_note)}</dd><dt>Correction reason</dt><dd>{textValue(record.correction_reason)}</dd><dt>Correction note</dt><dd>{textValue(record.correction_note)}</dd><dt>Correction due date</dt><dd>{dateValue(record.correction_due_date)}</dd><dt>Correction owner</dt><dd>{textValue(record.correction_owner_user_id)}</dd><dt>Source QC Review</dt><dd>{textValue(record.source_qc_review_id)}</dd></dl><div className="warning-box">Full QC Workspace is not available in this sprint. These actions use Production backend review routes.</div></Panel>;
+  if (tab === "qc") return <Panel title="QC Summary"><dl className="detail-list"><dt>QC status</dt><dd>{formatAction(record.qc_status)}</dd><dt>Reviewed at</dt><dd>{dateValue(record.reviewed_at)}</dd><dt>Approved at</dt><dd>{dateValue(record.approved_at)}</dd><dt>Rejected at</dt><dd>{dateValue(record.rejected_at)}</dd><dt>Approved quantity</dt><dd>{quantity(record.approved_quantity, record.unit)}</dd><dt>Rejected quantity</dt><dd>{quantity(record.rejected_quantity, record.unit)}</dd><dt>Rejection reason</dt><dd>{textValue(record.rejection_reason)}</dd><dt>Rejection note</dt><dd>{textValue(record.rejection_note)}</dd><dt>Correction reason</dt><dd>{textValue(record.correction_reason)}</dd><dt>Correction note</dt><dd>{textValue(record.correction_note)}</dd><dt>Correction due date</dt><dd>{dateValue(record.correction_due_date)}</dd><dt>Correction owner</dt><dd>{textValue(record.correction_owner_user_id)}</dd><dt>Source QC Review</dt><dd>{textValue(record.source_qc_review_id)}</dd></dl><div className="warning-box">Review findings and corrections in the QC workspace. Customer acceptance remains a separate requirement before finance.</div></Panel>;
   if (tab === "corrections") return <Panel title="Corrections"><dl className="detail-list"><dt>Parent Production Record</dt><dd>{productionLink(record.parent_production_record_id)}</dd><dt>Source QC Review</dt><dd>{textValue(record.source_qc_review_id)}</dd><dt>Correction reason</dt><dd>{textValue(record.correction_reason)}</dd><dt>Correction note</dt><dd>{textValue(record.correction_note)}</dd><dt>Corrected quantity</dt><dd>{quantity(record.corrected_quantity, record.unit)}</dd><dt>Correction due date</dt><dd>{dateValue(record.correction_due_date)}</dd><dt>Correction owner</dt><dd>{textValue(record.correction_owner_user_id)}</dd><dt>Correction status</dt><dd>{formatAction(record.status)}</dd></dl></Panel>;
   if (tab === "billable") return <Panel title="Billable Summary"><dl className="detail-list"><dt>Billable status</dt><dd>{formatAction(record.billable_status)}</dd><dt>Billable quantity</dt><dd>{quantity(record.billable_quantity, record.unit)}</dd><dt>Related billable item count</dt><dd>{formatCell(record.billable_item_count ?? detail.billable_summary?.billable_item_count)}</dd><dt>Billable candidate state</dt><dd>{formatAction(record.billable_status)}</dd></dl><div className="warning-box">Marking production billable does not create settlement, invoice, AR, payment, cash, payroll, or tax records.</div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
@@ -532,8 +545,8 @@ function ProductionTab({ tab, detail, record, session, onArchiveEvidence }: { ta
     if (!hasAnyPermission(session.permissions, ["production.audit.read"])) return <Panel title="Audit"><div className="empty-state">You do not have permission to view production audit details.</div></Panel>;
     return <Panel title="Audit"><ObjectTable rows={detail._audit ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} /></Panel>;
   }
-  if (tab === "future_qc") return <PlaceholderPanel title="Future QC Workspace" message="Full QC Workspace is not available in this sprint. Production review actions remain backend lifecycle actions here." columns={["QC review", "Reviewer", "Evidence findings", "Correction quantity", "Customer acceptance"]} />;
-  if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Billable Workspace is not available in this sprint. Production billable status does not create finance records." columns={["Billable item", "Rate", "Billing package", "Ready for settlement", "Settlement"]} />;
+  if (tab === "future_qc") return <PlaceholderPanel title="Future QC Workspace" message="Use QC for findings, corrections, evidence review and closure. Customer acceptance remains separate from internal QC." columns={["QC review", "Reviewer", "Evidence findings", "Correction quantity", "Customer acceptance"]} />;
+  if (tab === "future_billable") return <PlaceholderPanel title="Future Billable Workspace" message="Use Billable or Accepted Work to Finance for the controlled financial handoff. Production status alone does not create financial records." columns={["Billable item", "Rate", "Billing package", "Ready for settlement", "Settlement"]} />;
   return null;
 }
 
@@ -567,7 +580,7 @@ function LifecycleModal({ type, productionId, record, detail, related, session, 
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -584,7 +597,7 @@ function LifecycleModal({ type, productionId, record, detail, related, session, 
         {actionType !== "evidence" ? <div className="warning-box">Lifecycle action uses the backend route. The backend remains authoritative for validation, permissions, tenant boundaries, events, audit, and system actions.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit">{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -637,11 +650,11 @@ function EvidenceFormFields({ form, setForm }: { form: Record<string, string>; s
 
 function EvidenceTable({ rows, session, onArchive }: { rows: SyncRecord[]; session: Session; onArchive: (id: string) => void }) {
   if (!rows.length) return null;
-  return <div className="wide-table"><table><thead><tr>{["Evidence Type", "Filename / Reference", "Caption", "Uploaded By", "Uploaded At", "Captured At", "GPS", "Archived", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.evidence_type)}</td><td>{textValue(row.filename ?? row.storage_reference ?? row.file_url ?? row.source_url)}</td><td>{textValue(row.caption ?? row.description ?? row.summary)}</td><td>{textValue(row.uploaded_by)}</td><td>{dateValue(row.uploaded_at)}</td><td>{dateValue(row.captured_at)}</td><td>{gps(row.geo_latitude, row.geo_longitude)}</td><td>{row.archived_at || row.status === "archived" ? "Yes" : "No"}</td><td><button type="button" disabled={!hasPermission(session.permissions, "production_evidence.archive") || Boolean(row.archived_at)} onClick={() => onArchive(String(row.id))}>Archive</button></td></tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{["Evidence Type", "Filename / Reference", "Caption", "Uploaded By", "Uploaded At", "Captured At", "GPS", "Archived", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={String(row.id)}><td>{formatAction(row.evidence_type)}</td><td>{textValue(row.filename ?? row.storage_reference ?? row.file_url ?? row.source_url)}</td><td>{textValue(row.caption ?? row.description ?? row.summary)}</td><td>{textValue(row.uploaded_by)}</td><td>{dateValue(row.uploaded_at)}</td><td>{dateValue(row.captured_at)}</td><td>{gps(row.geo_latitude, row.geo_longitude)}</td><td>{row.archived_at || row.status === "archived" ? "Yes" : "No"}</td><td>{hasPermission(session.permissions, "production_evidence.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "production_evidence.archive") || Boolean(row.archived_at)} onClick={() => onArchive(String(row.id))}>Archive</button> : null}</td></tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test production actions.</p></div><button type="button" onClick={session.applyDefaults}>Use production defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -650,7 +663,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : productionDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -745,7 +758,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permissions, session, disabled, onClick, children }: { permissions: string[]; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasAnyPermission(session.permissions, permissions)} onClick={onClick}>{children}</button>;
+  return (hasAnyPermission(session.permissions, permissions) ? <ContextualRecordAction destructive={permissions.some(permission => /\.(archive|void|cancel|override)$/.test(permission))} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {
@@ -758,7 +771,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -779,7 +792,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildSummary(rows: SyncRecord[]) {
@@ -1022,7 +1035,7 @@ function plainError(message: string) {
   if (message.includes("Unauthorized") || message.includes("Forbidden")) return "You do not have permission to perform this action.";
   if (message.includes("not found")) return "Production record not found or you do not have access.";
   if (message.includes("production eligible")) return "Work Order is not production eligible.";
-  if (message.includes("ready_for_work") || message.includes("active")) return "Project must be ready for work or active.";
+  if (message.includes("Project must be ready_for_work or active")) return "Project must be ready for work or active.";
   if (message.includes("performer")) return "Performer context is required.";
   if (message.includes("evidence")) return "Evidence is required or an override reason is needed.";
   if (message.includes("approved_quantity")) return "Approved quantity cannot exceed claimed quantity without override.";

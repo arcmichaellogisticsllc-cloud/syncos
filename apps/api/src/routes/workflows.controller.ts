@@ -295,17 +295,27 @@ export class WorkflowsController {
   @Patch("workflow-tasks/:id")
   @RequirePermission("workflow_task.update")
   async updateTask(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
-    const values = pick(body, ["task_name", "title", "assigned_to", "assigned_role", "due_at"]);
+    const values = pick(body, ["task_name", "title", "due_at"]);
+    if(body.assigned_to!==undefined||body.assigned_role!==undefined||body.assigned_user_id!==undefined||body.assigned_role_id!==undefined)throw new BadRequestException("Assignment changes must use the reassignment action");
     if (body.status !== undefined) throw new BadRequestException("status changes must use lifecycle action routes");
-    return this.writeUpdate(request, "workflow_tasks", id, "workflow_task", "workflow_task.update", "workflow_task.updated", values, body.reason);
+    return this.write(request,"workflow_task.update","workflow_task.updated","workflow_task",async client=>{
+      await client.query('SELECT id FROM workflow_tasks WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[request.auth.tenantId,id]);
+      const before=await this.requireRecord(client,'workflow_tasks',request.auth.tenantId,id,'workflow task not found');
+      await this.requireTaskAuthority(client,request,before);
+      if(['completed','cancelled','canceled','archived','voided'].includes(String(before.status)))throw new BadRequestException('Closed tasks cannot be edited');
+      const after=await updateTenantRecord(client,'workflow_tasks',request.auth.tenantId,id,values);
+      return {entityType:'workflow_task',entityId:id,beforeState:before,afterState:after};
+    },body.reason);
   }
 
   @Post("workflow-tasks/:id/complete")
   @RequirePermission("workflow_task.complete")
   async completeTask(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     return this.write(request, "workflow_task.complete", "workflow_task.completed", "workflow_task", async (client) => {
+      await client.query('SELECT id FROM workflow_tasks WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[request.auth.tenantId,id]);
       const before = await this.requireRecord(client, "workflow_tasks", request.auth.tenantId, id, "workflow task not found");
-      if (!["open", "in_progress"].includes(String(before.status))) throw new BadRequestException("workflow task must be open or in_progress");
+      await this.requireTaskAuthority(client,request,before);
+      if (!["open", "in_progress", "reassigned", "escalated"].includes(String(before.status))) throw new BadRequestException("workflow task must be active");
       const after = await updateTenantRecord(client, "workflow_tasks", request.auth.tenantId, id, { status: "completed", completed_at: new Date(), completion_note: body.completion_note });
       if (!after) throw new NotFoundException("workflow task not found");
       const nextStep = await this.nextStep(client, request.auth.tenantId, before.workflow_instance_id, before.step_id);
@@ -324,13 +334,17 @@ export class WorkflowsController {
     const reason = this.requireString(body.reason, "reason is required");
     if (!body.assigned_to && !body.assigned_role) throw new BadRequestException("new assigned_to or assigned_role is required");
     return this.write(request, "workflow_task.reassign", "workflow_task.reassigned", "workflow_task", async (client) => {
+      await client.query("SELECT id FROM workflow_tasks WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[request.auth.tenantId,id]);
       const before = await this.requireRecord(client, "workflow_tasks", request.auth.tenantId, id, "workflow task not found");
       await this.requireTaskAuthority(client, request, before);
+      if (["completed","cancelled","canceled","archived","voided"].includes(String(before.status))) throw new BadRequestException("Closed tasks cannot be reassigned or escalated");
       if (body.assigned_to) await this.requireTenantUser(client, request.auth.tenantId, this.requiredId(body.assigned_to, "assigned_to"));
+      const assignedRole=body.assigned_role?await this.requireTaskRole(client,request.auth.tenantId,String(body.assigned_role)):null;
       const after = await updateTenantRecord(client, "workflow_tasks", request.auth.tenantId, id, {
-        assigned_to: body.assigned_to,
-        assigned_user_id: body.assigned_to,
-        assigned_role: body.assigned_role,
+        assigned_to: body.assigned_to ?? null,
+        assigned_user_id: body.assigned_to ?? null,
+        assigned_role: body.assigned_role ?? null,
+        assigned_role_id: assignedRole,
         reassignment_reason: reason,
         reassigned_at: new Date(),
         status: "reassigned",
@@ -345,8 +359,12 @@ export class WorkflowsController {
   async escalateTask(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const reason = this.requireString(body.reason, "reason is required");
     return this.write(request, "workflow_task.escalate", "workflow_task.escalated", "workflow_task", async (client) => {
+      await client.query("SELECT id FROM workflow_tasks WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[request.auth.tenantId,id]);
       const before = await this.requireRecord(client, "workflow_tasks", request.auth.tenantId, id, "workflow task not found");
       await this.requireTaskAuthority(client, request, before);
+      if (["completed","cancelled","canceled","archived","voided"].includes(String(before.status))) throw new BadRequestException("Closed tasks cannot be reassigned or escalated");
+      const target=this.requireString(body.escalated_to_role,"Escalation role is required");
+      await this.requireTaskRole(client,request.auth.tenantId,target);
       const after = await updateTenantRecord(client, "workflow_tasks", request.auth.tenantId, id, { status: "escalated", escalation_reason: reason, escalated_at: new Date() });
       if (!after) throw new NotFoundException("workflow task not found");
       const escalation = await insertTenantRecord(client, "workflow_escalations", request.auth.tenantId, {
@@ -413,9 +431,19 @@ export class WorkflowsController {
     return result.rows[0] ?? null;
   }
 
+  private async requireTaskRole(client:PoolClient,tenant:string,role:string){
+    const found=await client.query("SELECT id FROM roles WHERE tenant_id=$1 AND name=$2 AND deleted_at IS NULL",[tenant,role]);
+    if(!found.rows[0])throw new BadRequestException('Choose an existing role in this tenant');
+    return found.rows[0].id as string;
+  }
+
   private async requireTaskAuthority(client: PoolClient, request: AuthenticatedRequest, task: Record<string, unknown>) {
     const instance = await this.requireRecord(client, "workflow_instances", request.auth.tenantId, String(task.workflow_instance_id), "workflow instance not found");
     if (task.assigned_to === request.auth.userId || instance.owner_user_id === request.auth.userId) return;
+    if(!task.assigned_to&&!task.assigned_user_id&&(task.assigned_role_id||task.assigned_role)){
+      const member=await client.query(`SELECT 1 FROM tenant_users tu JOIN user_roles ur ON ur.tenant_user_id=tu.id JOIN roles r ON r.id=ur.role_id AND r.tenant_id=tu.tenant_id WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND tu.status='active' AND r.deleted_at IS NULL AND (($3::uuid IS NOT NULL AND r.id=$3) OR ($3::uuid IS NULL AND r.name=$4)) LIMIT 1`,[request.auth.tenantId,request.auth.userId,task.assigned_role_id??null,task.assigned_role??null]);
+      if(member.rows[0])return;
+    }
     await this.requireAnyRole(client, request.auth.tenantId, request.auth.userId, ["System Admin"], "workflow task authority is required");
   }
 
@@ -487,7 +515,7 @@ export class WorkflowsController {
       SELECT 1
       FROM tenant_users tu
       JOIN user_roles ur ON ur.tenant_user_id = tu.id
-      JOIN roles r ON r.id = ur.role_id
+      JOIN roles r ON r.id = ur.role_id AND r.tenant_id = tu.tenant_id
       WHERE tu.tenant_id = $1
         AND tu.user_id = $2
         AND tu.status = 'active'

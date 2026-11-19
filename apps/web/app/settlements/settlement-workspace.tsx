@@ -1,6 +1,14 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -10,7 +18,7 @@ import { dateValue, defaultOpportunityPermissions, hasPermission, numberValue, r
 const settlementTypes = ["customer_billable", "contractor_payable", "mixed", "internal_adjustment", "retainage_release", "correction_adjustment", "chargeback"];
 const itemTypes = ["customer_billable", "contractor_payable", "retainage_hold", "retainage_release", "deduction", "chargeback", "adjustment", "correction"];
 const readinessStatuses = ["not_ready", "needs_review", "ready_with_warning", "ready_for_approval", "blocked"];
-const tabs = ["overview", "items", "customer_billable", "contractor_payable", "retainage", "deductions_chargebacks", "margin", "readiness", "invoice_readiness", "payable_readiness", "holds_disputes", "timeline", "audit", "future_invoice", "future_payment_payroll"];
+const tabs = ["overview", "items", "customer_billable", "contractor_payable", "retainage", "deductions_chargebacks", "margin", "readiness", "invoice_readiness", "payable_readiness", "holds_disputes", "timeline", "audit"];
 
 type SettlementDetailShape = {
   settlement?: SyncRecord;
@@ -90,7 +98,7 @@ export function SettlementQueue() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review settlement totals and invoice-readiness blockers.</div> : null}
       {loading ? <div className="empty-state">Loading settlements...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -103,7 +111,7 @@ export function SettlementQueue() {
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0), "/settlements")} aria-disabled={!rows.some((row) => row.readiness_status === "blocked" || arrayValue(row.blockers).length > 0)}>Recalculate Readiness</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed" || row.has_dispute), "/settlements")} aria-disabled={!rows.some((row) => row.status === "disputed" || row.has_dispute)}>Open Disputes</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.invoice_ready), "/settlements")} aria-disabled={!rows.some((row) => row.invoice_ready)}>Open Invoice Ready</Link>
-                <Link className="link-button" href="/settlements/new" aria-disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</Link>
+                <Link className="link-button" href="/settlements/new" allowed={hasPermission(session.permissions, "settlement.create")}>Create Settlement</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -115,7 +123,7 @@ export function SettlementQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptySettlementQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptySettlementQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("draft"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -181,10 +189,11 @@ export function SettlementCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Settlement" purpose="Check the customer, project, settlement period and accepted-work sources for this settlement." afterSave="Review included items, totals and approval requirements before marking the settlement invoice-ready." />
         <div className="warning-box">Backend validation enforces tenant scope, approved settlement types, settlement number uniqueness, and event/audit/system_action behavior.</div>
         <SettlementFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</button>
+          {hasPermission(session.permissions, "settlement.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "settlement.create")}>Create Settlement</button> : null}
           <Link className="link-button" href="/settlements">Cancel</Link>
         </div>
       </form>
@@ -249,10 +258,11 @@ export function SettlementEdit({ settlementId }: { settlementId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Settlement not found or you do not have access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Settlement" purpose="Check the customer, project, settlement period and accepted-work sources for this settlement." afterSave="Review included items, totals and approval requirements before marking the settlement invoice-ready." />
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, invoice-created, and payable-created future states are read-only.</div>
           <SettlementFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "settlement.update")}>Save Settlement</button>
+            {hasPermission(session.permissions, "settlement.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "settlement.update")}>Save Settlement</button> : null}
             <Link className="link-button" href={`/settlements/${settlementId}`}>Cancel</Link>
           </div>
         </form>
@@ -305,6 +315,7 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
   return (
     <SettlementShell title="Settlement Detail" purpose="Show financial commitment truth, settlement items, readiness, timeline, and audit without creating downstream finance records.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["settlement","settlement_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Settlement Detail.</div> : null}
@@ -324,23 +335,25 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/settlements/${settlementId}/edit`} aria-disabled={!hasPermission(session.permissions, "settlement.update")}>Edit Settlement</Link>
+                <Link className="link-button" href={`/settlements/${settlementId}/edit`} allowed={hasPermission(session.permissions, "settlement.update")}>Edit Settlement</Link>
                 <ActionButton permission="settlement.recalculate_readiness" session={session} disabled={viewOnly(record)} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="settlement.add_item" session={session} disabled={viewOnly(record)} onClick={() => setModal("add_item")}>Add Settlement Item</ActionButton>
                 <ActionButton permission="settlement.submit_review" session={session} disabled={viewOnly(record) || !items.length || blockers.length > 0} onClick={() => setModal("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="settlement.start_review" session={session} disabled={String(record.status) !== "ready_for_review"} onClick={() => setModal("start_review")}>Start Review</ActionButton>
                 <ActionButton permission="settlement.approve" session={session} disabled={viewOnly(record) || blockers.length > 0} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permission="settlement.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
                 <ActionButton permission="settlement.mark_invoice_ready" session={session} disabled={String(record.status) !== "approved" || Boolean(record.invoice_ready)} onClick={() => setModal("invoice_ready")}>Mark Invoice Ready</ActionButton>
                 <ActionButton permission="settlement.mark_payable_ready" session={session} disabled={String(record.status) !== "approved" || Boolean(record.payable_ready)} onClick={() => setModal("payable_ready")}>Mark Payable Ready</ActionButton>
                 <ActionButton permission="settlement.place_hold" session={session} disabled={viewOnly(record) || String(record.status) === "held"} onClick={() => setModal("hold")}>Place Hold</ActionButton>
                 <ActionButton permission="settlement.release_hold" session={session} disabled={String(record.status) !== "held"} onClick={() => setModal("release")}>Release Hold</ActionButton>
-                <ActionButton permission="settlement.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="settlement.resolve_dispute" session={session} disabled={String(record.status) !== "disputed"} onClick={() => setModal("resolve")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="settlement.void" session={session} disabled={viewOnly(record) || Boolean(record.invoice_ready || record.payable_ready)} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permission="settlement.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["settlement.reject", "settlement.dispute", "settlement.void", "settlement.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="settlement.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
+              <ActionButton permission="settlement.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="settlement.void" session={session} disabled={viewOnly(record) || Boolean(record.invoice_ready || record.payable_ready)} onClick={() => setModal("void")}>Void</ActionButton>
+              <ActionButton permission="settlement.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Gross Billable Amount" value={money(record.gross_billable_amount)} />
               <Metric label="Contractor Payable Amount" value={money(record.contractor_payable_amount)} />
@@ -385,7 +398,7 @@ export function SettlementDetail({ settlementId }: { settlementId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "settlement").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <SettlementTab tab={tab} detail={detail} settlement={record} items={items} onItemAction={openItemModal} session={session} />
             </section>
@@ -423,7 +436,7 @@ function SettlementShell({ title, purpose, children }: { title: string; purpose:
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Settlements</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -433,7 +446,7 @@ function SettlementShell({ title, purpose, children }: { title: string; purpose:
 
 function SettlementTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -470,7 +483,7 @@ function SettlementTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -488,14 +501,14 @@ function SettlementTab({ tab, detail, settlement, items, session, onItemAction }
   if (tab === "holds_disputes") return <Panel title="Holds & Disputes"><dl className="detail-list"><dt>Hold reason</dt><dd>{textValue(settlement.hold_reason)}</dd><dt>Hold note</dt><dd>{textValue(settlement.hold_note)}</dd><dt>Dispute reason</dt><dd>{textValue(settlement.dispute_reason)}</dd><dt>Dispute note</dt><dd>{textValue(settlement.dispute_note)}</dd><dt>Status</dt><dd>{formatAction(settlement.status)}</dd><dt>Resolution state</dt><dd>{["held", "disputed"].includes(String(settlement.status)) ? "Open" : "No active hold or dispute"}</dd></dl></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view settlement audit details.</div>}</Panel>;
-  if (tab === "future_invoice") return <PlaceholderPanel title="Future Invoice" message="Invoice creation is not available in this sprint. Invoice, invoice item, AR, payment, and cash workflows require future rules and backend approval." columns={["Invoice", "Invoice item", "AR", "Payment", "Cash"]} />;
-  return <PlaceholderPanel title="Future Payment / Payroll" message="Payment, payroll, ACH, card payout, and bank transaction workflows are not available in this sprint." columns={["Payment", "Payroll", "ACH", "Card payout", "Bank transaction"]} />;
+  if (tab === "future_invoice") return <PlaceholderPanel title="Future Invoice" message="Use the approved invoice workflow after accepted work and agreement checks. Invoice creation, delivery, customer acceptance and cash allocation are separate steps." columns={["Invoice", "Invoice item", "AR", "Payment", "Cash"]} />;
+  return <PlaceholderPanel title="Future Payment / Payroll" message="Use the separate payroll, partner payment and bank-matching workflows. Recording an approved batch does not send money." columns={["Payment", "Payroll", "ACH", "Card payout", "Bank transaction"]} />;
 }
 
 function SettlementItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]; session: Session; onItemAction: (type: string, item: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No settlement items returned. Add items from ready billable items.</div>;
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{["Item Type", "Status", "Billable Item", "Project", "Work Order", "Production Record", "QC Review", "Customer", "Provider", "Crew", "Quantity", "Unit", "Unit Rate", "Gross Amount", "Retainage Amount", "Deduction Amount", "Chargeback Amount", "Net Amount", "Contractor Rate", "Contractor Payable Amount", "Margin Amount", "Margin Percent", "Billing Package Status", "Documentation Status", "Customer Acceptance", "Prime Acceptance", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
@@ -530,7 +543,7 @@ function SettlementItemsTable({ rows, session, onItemAction }: { rows: SyncRecor
           </tr>)}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -560,7 +573,7 @@ function SettlementLifecycleModal({ type, settlementId, settlement, related, blo
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -586,7 +599,7 @@ function SettlementLifecycleModal({ type, settlementId, settlement, related, blo
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -599,7 +612,7 @@ function SettlementFormFields({ form, setForm, related, includeCreate = false, d
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test settlement actions.</p></div><button type="button" onClick={session.applyDefaults}>Use settlement defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -608,7 +621,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : settlementDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -709,7 +722,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {
@@ -718,7 +731,7 @@ function Select({ label, value, options, labels = {}, onChange, disabled = false
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function WarningList({ title, rows, empty }: { title: string; rows: SyncRecord[]; empty: string }) {
@@ -735,7 +748,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 const settlementQueues = [

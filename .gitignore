@@ -9,3 +9,9 @@ playwright-report/
 test-results/
 tests/e2e/.auth/
 tests/e2e/artifacts/
+
+# Runtime field maps and restricted evidence are backed up outside source control.
+storage/
+
+# Isolated security verification builds
+apps/web/.next-security*/

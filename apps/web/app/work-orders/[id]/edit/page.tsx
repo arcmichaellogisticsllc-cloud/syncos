@@ -1,5 +1,5 @@
 import { WorkOrderEdit } from "../../work-order-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <WorkOrderEdit workOrderId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <WorkOrderEdit workOrderId={(await params).id} />;
 }

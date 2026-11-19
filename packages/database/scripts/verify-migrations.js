@@ -29,7 +29,7 @@ async function main() {
   const verifyClient = new Client({ connectionString });
   await verifyClient.connect();
   const migrationCount = await verifyClient.query("SELECT count(*)::int AS count FROM schema_migrations");
-  const tenantCount = await verifyClient.query("SELECT count(*)::int AS count FROM tenants WHERE slug = 'jackson-telcom'");
+  const tenantCount = await verifyClient.query("SELECT count(*)::int AS count FROM tenants WHERE slug = 'sync-comm-systems'");
   const roleCount = await verifyClient.query("SELECT count(*)::int AS count FROM roles");
   const permissionCount = await verifyClient.query("SELECT count(*)::int AS count FROM permissions");
   const eventTable = await verifyClient.query("SELECT to_regclass('public.events') AS name");
@@ -38,7 +38,7 @@ async function main() {
 
   const expectedMigrationCount = fs.readdirSync(path.join(__dirname, "../migrations")).filter((file) => file.endsWith(".sql")).length;
   assertEqual(migrationCount.rows[0].count, expectedMigrationCount, `expected ${expectedMigrationCount} applied migrations`);
-  assertEqual(tenantCount.rows[0].count, 1, "expected Jackson Telcom tenant");
+  assertEqual(tenantCount.rows[0].count, 1, "expected Sync Comm Systems tenant");
   if (roleCount.rows[0].count < 19) {
     throw new Error("expected core roles to be seeded");
   }

@@ -1,6 +1,12 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -16,7 +22,7 @@ const billableStatuses = ["not_billable", "pending_approval", "billable", "bille
 const assignmentTypes = ["unassigned", "internal_crew", "subcontractor", "partner_contractor", "vendor_equipment", "staffing_source"];
 const units = ["feet", "miles", "drops", "addresses", "passings", "splice_cases", "nodes", "poles", "permits", "inspections", "restoration_items", "days", "crews", "workers", "equipment_units", "each"];
 const archiveReasons = ["duplicate", "no_longer_relevant", "replaced", "created_in_error", "project_cancelled", "other"];
-const tabs = ["overview", "project", "coverage", "assignment", "schedule", "scope", "quantity", "readiness", "production", "qc", "billable", "constraints", "timeline", "audit", "future_production", "future_settlement"];
+const tabs = ["overview", "project", "coverage", "assignment", "schedule", "scope", "quantity", "readiness", "production", "qc", "billable", "constraints", "timeline", "audit"];
 
 type WorkOrderDetailShape = {
   work_order: SyncRecord;
@@ -55,6 +61,11 @@ export function WorkOrderDirectory() {
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({ archived: "false", sort: "default", queue: "ready_to_start" });
 
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project_id");
+    if (projectId) setFilters((current) => ({ ...current, project_id: projectId, queue: "all" }));
+  }, []);
+
   async function load() {
     setLoading(true);
     setError("");
@@ -75,12 +86,12 @@ export function WorkOrderDirectory() {
   useEffect(() => {
     if (session.token) void load();
     else setLoading(false);
-  }, [session.token, filters.archived]);
+  }, [session.token, filters.archived, filters.project_id]);
 
   const visible = useMemo(() => sortWorkOrders(rows.filter((row) => matchesFilters(row, filters)), filters.sort), [rows, filters]);
   const summary = useMemo(() => buildSummary(rows), [rows]);
   const activeQueue = filters.queue ?? "ready_to_start";
-  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "default", queue, ...nextFilters });
+  const setQueue = (queue: string, nextFilters: Record<string, string>) => setFilters({ archived: "false", sort: "default", queue, ...(filters.project_id ? { project_id: filters.project_id } : {}), ...nextFilters });
 
   return (
     <WorkOrderShell title="Work Orders" purpose="Plan, assign, and monitor executable telecom work before production and QC.">
@@ -89,7 +100,7 @@ export function WorkOrderDirectory() {
       {error ? <div className="error-banner" role="alert">{plainError(error)}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to plan, assign, and monitor executable telecom work.</div> : null}
       {loading ? <div className="loading-state">Loading work orders...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -99,7 +110,7 @@ export function WorkOrderDirectory() {
                 <p className="muted">Start with blocked work, ready execution, and work orders that need production or QC movement.</p>
               </div>
               <div className="form-actions">
-                <Link className="primary-button" href="/work-orders/new" aria-disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</Link>
+                <Link className="primary-button" href="/work-orders/new" allowed={hasPermission(session.permissions, "work_order.create")}>Create Work Order</Link>
                 <button type="button" onClick={() => setQueue("blocked", { hasBlockers: "true" })}>Open Next Blocked Work Order</button>
                 <button type="button" onClick={() => setQueue("active", { status: "in_progress" })}>Review Active Work</button>
               </div>
@@ -214,7 +225,7 @@ export function WorkOrderCreate() {
           <WorkOrderFormFields form={form} setForm={setForm} related={related} includeRequired />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</button>
+          {hasPermission(session.permissions, "work_order.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.create")}>Create Work Order</button> : null}
           <Link className="link-button" href="/work-orders">Cancel</Link>
         </div>
       </form>
@@ -298,10 +309,11 @@ export function WorkOrderEdit({ workOrderId }: { workOrderId: string }) {
       {loading ? <div className="empty-state">Loading work order...</div> : null}
       {!loading ? (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Work Order" purpose="Check the assigned company, crew, scope, location and planned dates against the approved project." afterSave="Review work readiness, safety requirements and crew authorization before starting field work." />
           <div className="warning-box">Status changes use lifecycle actions from Work Order Detail. Assignment uses the Assign action. This form does not create production or finance records.</div>
           <WorkOrderFormFields form={form} setForm={setForm} related={related} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.update")}>Save Work Order</button>
+            {hasPermission(session.permissions, "work_order.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "work_order.update")}>Save Work Order</button> : null}
             <Link className="link-button" href={`/work-orders/${workOrderId}`}>Cancel</Link>
           </div>
         </form>
@@ -354,14 +366,14 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
       {workOrder && detail ? (
         <>
           {!hasPermission(session.permissions, "work_order.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "work_order.update") ? <DetailNextActionCard
             status={formatAction(workOrder.status)}
             nextActionLabel={nextWorkOrderAction(workOrder)}
             helperText="Use this detail page to understand field execution state, assignment, production readiness, QC movement, and billable readiness before taking an action."
             disabled={!hasPermission(session.permissions, "work_order.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Work order actions manage field execution state. They do not create production, QC approval, invoice, cash, or payment records unless a separate supported action exists."
-          />
+          /> : null}
           <DetailBoundaryNotice>Work order actions manage field execution state. They do not create production, QC approval, invoice, cash, payment, payroll, bank, or accounting records unless a separate supported action exists.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -375,7 +387,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/work-orders/${workOrderId}/edit`} aria-disabled={!hasPermission(session.permissions, "work_order.update")}>Edit Work Order</Link>
+                <Link className="link-button" href={`/work-orders/${workOrderId}/edit`} allowed={hasPermission(session.permissions, "work_order.update")}>Edit Work Order</Link>
                 <ActionButton permission="work_order.recalculate_readiness" session={session} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="work_order.mark_ready" session={session} disabled={String(workOrder.status) !== "draft"} onClick={() => setModal("mark_ready")}>Mark Ready To Assign</ActionButton>
                 <ActionButton permission="work_order.assign" session={session} disabled={closedStatus(workOrder)} onClick={() => setModal("assign")}>Assign Provider/Crew</ActionButton>
@@ -388,11 +400,13 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
                 <ActionButton permission="work_order.mark_billable" session={session} disabled={closedStatus(workOrder)} onClick={() => setModal("billable")}>Mark Billable</ActionButton>
                 <ActionButton permission="work_order.place_hold" session={session} disabled={closedStatus(workOrder) || String(workOrder.status) === "on_hold"} onClick={() => setModal("hold")}>Place On Hold</ActionButton>
                 <ActionButton permission="work_order.release_hold" session={session} disabled={String(workOrder.status) !== "on_hold"} onClick={() => setModal("release")}>Release Hold</ActionButton>
-                <ActionButton permission="work_order.cancel" session={session} disabled={!["draft", "ready_to_assign", "assigned", "scheduled", "on_hold"].includes(String(workOrder.status))} onClick={() => setModal("cancel")}>Cancel</ActionButton>
                 <ActionButton permission="work_order.close" session={session} disabled={!["approved", "billable"].includes(String(workOrder.status))} onClick={() => setModal("close")}>Close</ActionButton>
-                <ActionButton permission="work_order.archive" session={session} disabled={String(workOrder.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["work_order.cancel", "work_order.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="work_order.cancel" session={session} disabled={!["draft", "ready_to_assign", "assigned", "scheduled", "on_hold"].includes(String(workOrder.status))} onClick={() => setModal("cancel")}>Cancel</ActionButton>
+              <ActionButton permission="work_order.archive" session={session} disabled={String(workOrder.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Work Order Readiness" value={scoreValue(workOrder.readiness_score)} />
               <Metric label="Readiness Status" value={formatAction(workOrder.readiness_status)} />
@@ -431,7 +445,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "work_order").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <WorkOrderTab tab={tab} detail={detail} workOrder={workOrder} session={session} />
             </section>
@@ -467,7 +481,7 @@ function WorkOrderShell({ title, purpose, children }: { title: string; purpose: 
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Work Orders</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -477,7 +491,7 @@ function WorkOrderShell({ title, purpose, children }: { title: string; purpose: 
 
 function WorkOrderTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -514,7 +528,7 @@ function WorkOrderTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -542,19 +556,19 @@ function WorkOrderTab({ tab, detail, workOrder, session }: { tab: string; detail
   if (tab === "assignment") return <Panel title="Assignment"><dl className="detail-list"><dt>Assignment type</dt><dd>{formatAction(workOrder.assignment_type)}</dd><dt>Assigned organization</dt><dd>{textValue(workOrder.assigned_organization_name ?? workOrder.assigned_organization_id)}</dd><dt>Assigned capacity provider</dt><dd>{providerLink(workOrder.assigned_capacity_provider_id, workOrder.assigned_capacity_provider_name)}</dd><dt>Assigned crew</dt><dd>{textValue(workOrder.assigned_crew_name ?? workOrder.assigned_crew_id)}</dd><dt>Assigned equipment</dt><dd>{textValue(workOrder.assigned_equipment_id)}</dd><dt>Assigned by</dt><dd>{textValue(workOrder.assigned_by)}</dd><dt>Assigned at</dt><dd>{dateValue(workOrder.assigned_at)}</dd><dt>Assignment note</dt><dd>{textValue(workOrder.assignment_note)}</dd></dl><WarningList title="Assignment Warnings" rows={arrayValue(detail.warnings).filter((row) => /assignment|provider|crew|equipment|coverage_source/i.test(JSON.stringify(row)))} empty="No assignment warnings returned." /></Panel>;
   if (tab === "schedule") return <Panel title="Schedule"><dl className="detail-list"><dt>Planned start</dt><dd>{dateValue(workOrder.planned_start_date)}</dd><dt>Planned end</dt><dd>{dateValue(workOrder.planned_end_date)}</dd><dt>Scheduled start</dt><dd>{dateValue(workOrder.scheduled_start_date)}</dd><dt>Scheduled end</dt><dd>{dateValue(workOrder.scheduled_end_date)}</dd><dt>Actual start</dt><dd>{dateValue(workOrder.actual_start_date)}</dd><dt>Actual end</dt><dd>{dateValue(workOrder.actual_end_date)}</dd></dl></Panel>;
   if (tab === "scope") return <Panel title="Scope & Location"><dl className="detail-list"><dt>Scope</dt><dd>{textValue(workOrder.scope_summary)}</dd><dt>Location</dt><dd>{textValue(workOrder.location_summary)}</dd><dt>Route</dt><dd>{textValue(workOrder.route_name)}</dd><dt>Node ID</dt><dd>{textValue(workOrder.node_id)}</dd><dt>Segment ID</dt><dd>{textValue(workOrder.segment_id)}</dd><dt>Address range</dt><dd>{textValue(workOrder.address_range)}</dd><dt>Permit reference</dt><dd>{textValue(workOrder.permit_reference)}</dd><dt>Map link</dt><dd>{textValue(workOrder.map_link)}</dd><dt>Territory</dt><dd>{textValue(workOrder.territory_name ?? workOrder.territory_id)}</dd><dt>Work type</dt><dd>{formatAction(workOrder.work_type)}</dd></dl></Panel>;
-  if (tab === "quantity") return <Panel title="Quantity"><dl className="detail-list"><dt>Planned quantity</dt><dd>{quantity(workOrder.planned_quantity, workOrder.unit)}</dd><dt>Completed quantity</dt><dd>{quantity(workOrder.completed_quantity, workOrder.unit)}</dd><dt>Approved quantity</dt><dd>{quantity(workOrder.approved_quantity, workOrder.unit)}</dd><dt>Billable quantity</dt><dd>{quantity(workOrder.billable_quantity, workOrder.unit)}</dd><dt>Unit</dt><dd>{formatAction(workOrder.unit)}</dd></dl><div className="warning-box">Completed quantity will be driven by Production later. Approved quantity will be driven by QC later. Billable quantity will feed Settlement later. This sprint only displays and moves Work Order lifecycle states.</div></Panel>;
+  if (tab === "quantity") return <Panel title="Quantity"><dl className="detail-list"><dt>Planned quantity</dt><dd>{quantity(workOrder.planned_quantity, workOrder.unit)}</dd><dt>Completed quantity</dt><dd>{quantity(workOrder.completed_quantity, workOrder.unit)}</dd><dt>Approved quantity</dt><dd>{quantity(workOrder.approved_quantity, workOrder.unit)}</dd><dt>Billable quantity</dt><dd>{quantity(workOrder.billable_quantity, workOrder.unit)}</dd><dt>Unit</dt><dd>{formatAction(workOrder.unit)}</dd></dl><div className="warning-box">Check the underlying production, QC and customer acceptance records. A work-order status or summary quantity alone does not authorize billing.</div></Panel>;
   if (tab === "readiness") return <Panel title="Readiness"><div className="summary-grid"><Metric label="Readiness score" value={scoreValue(workOrder.readiness_score)} /><Metric label="Readiness status" value={formatAction(workOrder.readiness_status)} /><Metric label="Readiness band" value={formatAction(workOrder.readiness_band)} /><Metric label="Production eligible" value={workOrder.production_eligible ? "Yes" : "No"} /><Metric label="Next action" value={formatAction(workOrder.recommended_next_action)} /></div><WarningList title="Warnings" rows={detail.warnings ?? []} empty="No warnings returned." /><WarningList title="Blockers" rows={detail.blockers ?? []} empty="No blockers returned." /><Checklist items={readinessChecklist(workOrder, detail)} /></Panel>;
-  if (tab === "production") return <Panel title="Production Summary"><dl className="detail-list"><dt>Production eligible</dt><dd>{workOrder.production_eligible ? "Yes" : "No"}</dd><dt>Production record count</dt><dd>{formatCell(detail.production_summary?.production_record_count ?? workOrder.production_record_count)}</dd><dt>Completed quantity</dt><dd>{quantity(workOrder.completed_quantity, workOrder.unit)}</dd><dt>Production status summary</dt><dd><JsonBlock value={detail.production_summary} /></dd></dl><div className="warning-box">Production entry is not available in this sprint. Production records will capture field-completed work against this work order.</div></Panel>;
-  if (tab === "qc") return <Panel title="QC Summary"><dl className="detail-list"><dt>QC status</dt><dd>{formatAction(workOrder.qc_status)}</dd><dt>Corrections state</dt><dd>{String(workOrder.status) === "corrections_required" ? "Corrections required" : "No active correction state returned"}</dd><dt>Approved quantity</dt><dd>{quantity(workOrder.approved_quantity, workOrder.unit)}</dd></dl><WarningList title="QC Warnings" rows={arrayValue(detail.warnings).filter((row) => /qc|correction|approved/i.test(JSON.stringify(row)))} empty="No QC warnings returned." /><div className="warning-box">QC evidence and detailed inspection workflow are not available in this sprint. Work Order status can reflect QC review state, but evidence remains a future workflow.</div></Panel>;
-  if (tab === "billable") return <Panel title="Billable Summary"><dl className="detail-list"><dt>Billable status</dt><dd>{formatAction(workOrder.billable_status)}</dd><dt>Billable quantity</dt><dd>{quantity(workOrder.billable_quantity, workOrder.unit)}</dd><dt>Billing package requirements</dt><dd><JsonBlock value={workOrder.billing_package_requirements ?? detail.billable_summary?.billing_package_requirements} /></dd><dt>Customer validation requirements</dt><dd><JsonBlock value={workOrder.customer_validation_requirements} /></dd></dl><div className="warning-box">Marking a work order billable does not create settlement, invoice, payment, AR, cash, or payroll records. It only prepares the work order for a future billing workflow.</div></Panel>;
+  if (tab === "production") return <Panel title="Production Summary"><dl className="detail-list"><dt>Production eligible</dt><dd>{workOrder.production_eligible ? "Yes" : "No"}</dd><dt>Production record count</dt><dd>{formatCell(detail.production_summary?.production_record_count ?? workOrder.production_record_count)}</dd><dt>Completed quantity</dt><dd>{quantity(workOrder.completed_quantity, workOrder.unit)}</dd><dt>Production status summary</dt><dd><JsonBlock value={detail.production_summary} /></dd></dl><div className="warning-box">Record completed work and evidence in the field or Production workspace. Review the linked records before relying on this summary.</div></Panel>;
+  if (tab === "qc") return <Panel title="QC Summary"><dl className="detail-list"><dt>QC status</dt><dd>{formatAction(workOrder.qc_status)}</dd><dt>Corrections state</dt><dd>{String(workOrder.status) === "corrections_required" ? "Corrections required" : "No active correction state returned"}</dd><dt>Approved quantity</dt><dd>{quantity(workOrder.approved_quantity, workOrder.unit)}</dd></dl><WarningList title="QC Warnings" rows={arrayValue(detail.warnings).filter((row) => /qc|correction|approved/i.test(JSON.stringify(row)))} empty="No QC warnings returned." /><div className="warning-box">Review findings, corrections and evidence in QC. Internal QC and customer acceptance are separate steps.</div></Panel>;
+  if (tab === "billable") return <Panel title="Billable Summary"><dl className="detail-list"><dt>Billable status</dt><dd>{formatAction(workOrder.billable_status)}</dd><dt>Billable quantity</dt><dd>{quantity(workOrder.billable_quantity, workOrder.unit)}</dd><dt>Billing package requirements</dt><dd><JsonBlock value={workOrder.billing_package_requirements ?? detail.billable_summary?.billing_package_requirements} /></dd><dt>Customer validation requirements</dt><dd><JsonBlock value={workOrder.customer_validation_requirements} /></dd></dl><div className="warning-box">Marking a work order billable does not create settlement, invoice, payment, AR, cash, or payroll records. Finance requires accepted work and approved agreement terms.</div></Panel>;
   if (tab === "constraints") return <Panel title="Constraints / Risks"><ObjectTable rows={constraintRows(detail.constraints_summary)} columns={["type", "severity", "status", "owner", "due_date", "hard_stop", "recommended_action"]} /><div className="form-actions"><Link className="link-button" href="/constraints-center">Open Constraints</Link></div></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") {
     if (!hasPermission(session.permissions, "work_order.audit.read")) return <Panel title="Audit"><div className="empty-state">You do not have permission to view work order audit details.</div></Panel>;
     return <Panel title="Audit"><ObjectTable rows={detail._audit ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} /></Panel>;
   }
-  if (tab === "future_production") return <PlaceholderPanel title="Future Production" message="Production entry is not available in this sprint. Production records will capture field-completed work against this work order." columns={["Date", "Crew/provider", "Quantity completed", "Unit", "Evidence/photos", "QC status", "Billable status"]} />;
-  if (tab === "future_settlement") return <PlaceholderPanel title="Future Settlement" message="Settlement and finance execution are not available in this sprint. Work Order billable state only prepares future billing workflow." columns={["Settlement package", "Invoice", "Payment", "AR", "Cash", "Payroll"]} />;
+  if (tab === "future_production") return <PlaceholderPanel title="Future Production" message="Record completed work and evidence in the field or Production workspace. Review the linked records before relying on this summary." columns={["Date", "Crew/provider", "Quantity completed", "Unit", "Evidence/photos", "QC status", "Billable status"]} />;
+  if (tab === "future_settlement") return <PlaceholderPanel title="Future Settlement" message="Use Accepted Work to Finance for the controlled financial handoff. Billing requires customer-accepted work and approved agreement terms." columns={["Settlement package", "Invoice", "Payment", "AR", "Cash", "Payroll"]} />;
   return null;
 }
 
@@ -593,7 +607,7 @@ function LifecycleModal({ type, workOrderId, workOrder, detail, related, session
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -614,7 +628,7 @@ function LifecycleModal({ type, workOrderId, workOrder, detail, related, session
         {type === "recalculate" ? <div className="warning-box">Readiness recalculation updates Work Order readiness only.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit" disabled={blocked}>{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -659,7 +673,7 @@ function WorkOrderFormFields({ form, setForm, related, includeRequired = false }
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test work order actions.</p></div><button type="button" onClick={session.applyDefaults}>Use work order defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -668,7 +682,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -744,7 +758,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {
@@ -757,7 +771,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -778,7 +792,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildSummary(rows: SyncRecord[]) {

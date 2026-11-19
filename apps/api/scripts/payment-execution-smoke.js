@@ -1,3 +1,4 @@
+const {attachSyntheticPayableLineage}=require('./synthetic-payable-lineage');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -17,8 +18,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -36,10 +37,11 @@ async function main() {
     const forbiddenBefore = await forbiddenCounts(client, tenantId);
     await expectStatus("invalid batch_type rejected", "POST", "/payment-batches", `Bearer ${token}`, 400, { batch_type: "bad_type", payment_method: "manual" });
     await expectStatus("invalid payment_method rejected", "POST", "/payment-batches", `Bearer ${token}`, 400, { batch_type: "contractor_payable", payment_method: "bad_method" });
-    await expectStatus("mixed_later blocked unless override", "POST", "/payment-batches", `Bearer ${token}`, 400, { batch_type: "mixed_later", payment_method: "manual" });
+    const mixedDraft = await expectStatus("empty mixed draft can be prepared", "POST", "/payment-batches", `Bearer ${token}`, 201, { batch_type: "mixed_later", payment_method: "manual" });
 
     const payableFixture = await createPaymentReadyPayable(client, tenantId, userId, marker);
     const payrollFixture = await createPayrollReadyRun(client, tenantId, userId, marker);
+    await expectStatus("mixed source requires approved finance exception", "POST", `/payment-batches/${mixedDraft.id}/items/contractor-payable`, `Bearer ${token}`, 400, { contractor_payable_id: payableFixture.payableId });
 
     const batch = await expectStatus("payment batch creation works", "POST", "/payment-batches", `Bearer ${token}`, 201, {
       batch_type: "contractor_payable",
@@ -91,12 +93,16 @@ async function main() {
     if (payrollPaymentItem.source_type !== "payroll" || payrollPaymentItem.worker_id !== payrollFixture.workerId) throw new Error("Payroll payment item was incorrect");
 
     const failureBatch = await createApiBatchWithPayable(client, token, tenantId, userId, `${marker}FAIL`);
+    await expectStatus("draft batch cannot be marked failed", "POST", `/payment-batches/${failureBatch.id}/mark-failed`, `Bearer ${token}`, 400, { failure_reason: "manual_rejection" });
+    await expectStatus("failure fixture submits review", "POST", `/payment-batches/${failureBatch.id}/submit-review`, `Bearer ${token}`, 201);
+    await expectStatus("failure fixture approves", "POST", `/payment-batches/${failureBatch.id}/approve`, `Bearer ${token}`, 201, { approval_note: "Synthetic failure-path review." });
+    await expectStatus("failure fixture submits execution", "POST", `/payment-batches/${failureBatch.id}/submit-execution`, `Bearer ${token}`, 201, { submit_note: "Synthetic local status only." });
     await expectStatus("failure handling requires reason", "POST", `/payment-batches/${failureBatch.id}/mark-failed`, `Bearer ${token}`, 400, {});
     const failed = await expectStatus("failure handling works", "POST", `/payment-batches/${failureBatch.id}/mark-failed`, `Bearer ${token}`, 201, { failure_reason: "manual_rejection" });
     if (failed.status !== "failed" || failed.execution_status !== "failed") throw new Error("Failure handling did not set failed status");
 
     const terminalBatch = await createApiBatchWithPayable(client, token, tenantId, userId, `${marker}TERM`);
-    const updatedItem = await expectStatus("item update recalculates totals", "PATCH", `/payment-items/${terminalBatch.item.id}`, `Bearer ${token}`, 200, { payment_amount: 75, payee_name: "Updated Payee" });
+    const updatedItem = await expectStatus("draft item update recalculates totals within source limits", "PATCH", `/payment-items/${terminalBatch.item.id}`, `Bearer ${token}`, 200, { payment_amount: 75, payee_name: "Updated Payee" });
     if (Number(updatedItem.payment_amount) !== 75) throw new Error("Payment item update failed");
     await expectStatus("item void excludes from totals", "POST", `/payment-items/${terminalBatch.item.id}/void`, `Bearer ${token}`, 201, { void_reason: "duplicate" });
     const archiveBatch = await createApiBatchWithPayable(client, token, tenantId, userId, `${marker}ARCHITEM`);
@@ -166,6 +172,7 @@ async function createPaymentReadyPayable(client, tenantId, userId, marker) {
     "INSERT INTO contractor_payables (tenant_id, payable_number, payable_type, payable_party_type, capacity_provider_id, net_payable_amount, created_by, updated_by) VALUES ($1, $2, 'subcontractor', 'capacity_provider', $3, 150, $4, $4) RETURNING id",
     [tenantId, `PAY-NOTREADY-${marker}-${crypto.randomUUID().slice(0, 6)}`, provider.rows[0].id, userId],
   );
+  await attachSyntheticPayableLineage(client,tenantId,userId,ready.rows[0].id);
   return { providerId: provider.rows[0].id, payableId: ready.rows[0].id, notReadyPayableId: notReady.rows[0].id };
 }
 

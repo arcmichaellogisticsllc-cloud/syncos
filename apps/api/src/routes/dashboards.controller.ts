@@ -1,3 +1,4 @@
+import { reviewedProductionSummary } from "./production-reporting";
 import { Controller, Get, Inject, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
@@ -57,7 +58,8 @@ export class DashboardsController {
       activatedProviders: await this.scalar(client, "SELECT count(*)::numeric FROM capacity_providers WHERE tenant_id = $1 AND status = 'activated' AND deleted_at IS NULL", tenantId),
       crewCounts: await this.groupCounts(client, tenantId, "crews", "crew_type"),
       capacityGaps: await this.latestCapacityGaps(client, tenantId),
-      productionVolume: await this.scalar(client, "SELECT coalesce(sum(quantity_submitted), 0)::numeric FROM production_records WHERE tenant_id = $1 AND deleted_at IS NULL", tenantId),
+      productionVolume: null, // Retained as an empty legacy field; mixed-unit totals are invalid.
+      productionQuantities: await reviewedProductionSummary(client, tenantId),
       correctionRate: await this.latestKpi(client, tenantId, "correction_rate"),
       qcScore: {
         approvalRate: await this.latestKpi(client, tenantId, "production_approval_rate"),

@@ -116,7 +116,7 @@ test.describe("Operator UI Phase 6 cash and collections workbenches", () => {
     await page.goto("/cash");
 
     await expect(page.getByRole("heading", { name: "Cash Application Workbench" })).toBeVisible();
-    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Cash Receipt" })).toHaveAttribute("aria-disabled", "true");
+    await expect(page.locator(".workspace-main").getByRole("link", { name: "Create Cash Receipt" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Open Detail" }).first()).toBeVisible();
 
     await context.close();

@@ -1,6 +1,14 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
+import {ScrollableRegion} from "../../scrollable-region";
 
-import Link from "next/link";
+import {ReadOnlyBanner} from "../../operator-page-templates";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
+import {CreateRecordConstraint,AddContactToRelationship} from "../record-workflow-actions";
+import { permittedRecordTabs } from "../api";
+
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -146,7 +154,7 @@ export function RelationshipMapDirectory() {
             <h2>Relationship Map Directory</h2>
             <p className="muted">Filters are shown over the tenant-scoped enriched relationship read model.</p>
           </div>
-          <Link className="primary-button link-button" href="/intelligence/relationship-maps/new" aria-disabled={!hasPermission(session.permissions, "relationship_map.create")}>Create Relationship Map</Link>
+          <Link className="primary-button link-button" href="/intelligence/relationship-maps/new" allowed={hasPermission(session.permissions, "relationship_map.create")}>Create Relationship Map</Link>
         </div>
         <div className="filter-grid">
           <input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Search maps, organizations, contacts" />
@@ -185,7 +193,7 @@ export function RelationshipMapDirectory() {
         {loading ? <div className="empty-state">Loading relationship maps...</div> : null}
         {!loading && maps.length === 0 ? (
           <div className="empty-state">
-            <p>No relationship maps yet. Create a map to define who Jackson needs access to and how that access may be built.</p>
+            <p>No relationship maps yet. Create a map to define who Sync Comm Systems needs access to and how that access may be built.</p>
             <Link className="primary-button link-button" href="/intelligence/relationship-maps/new">Create Relationship Map</Link>
           </div>
         ) : null}
@@ -279,11 +287,12 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
   }
 
   return (
-    <IntelligenceShell title={mode === "create" ? "Create Relationship Map" : "Edit Relationship Map"} purpose="Define who Jackson needs access to and which existing backend relationship fields can support that access target.">
+    <IntelligenceShell title={mode === "create" ? "Create Relationship Map" : "Edit Relationship Map"} purpose="Define who Sync Comm Systems needs access to and which existing backend relationship fields can support that access target.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <UnsupportedNotice />
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Relationship map" purpose="Name the map and choose the target organization or contact. Record the relationships and sources that support the intended access path." afterSave="Review the map and supporting evidence. Saving relationship information does not verify a contact or approve an opportunity." />
         <div className="form-grid">
           <label>Map name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
           <label>Map type<SelectInline value={form.map_type} options={mapTypes} onChange={(map_type) => setForm({ ...form, map_type })} /></label>
@@ -301,7 +310,7 @@ export function RelationshipMapForm({ mode, mapId }: { mode: "create" | "edit"; 
         </div>
         <div className="warning-box">This form uses the hardened relationship map API. Owner choices appear when the backend exposes tenant users to the UI.</div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update")}>{mode === "create" ? "Create Relationship Map" : "Save Relationship Map"}</button>
+          {hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "relationship_map.create" : "relationship_map.update")}>{mode === "create" ? "Create Relationship Map" : "Save Relationship Map"}</button> : null}
           <Link href={mapId ? `/intelligence/relationship-maps/${mapId}` : "/intelligence/relationship-maps"}>Cancel</Link>
         </div>
       </form>
@@ -351,6 +360,7 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
   return (
     <IntelligenceShell title="Relationship Map Detail" purpose="See the access target, best path, relationship gaps, and supported next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["relationship_map","relationship_path","constraint"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {!map ? (
         <section className="workspace-panel"><div className="empty-state">Relationship map not found or you do not have access.</div></section>
@@ -369,12 +379,14 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
               </div>
               <div className="form-actions">
                 <Link href={`/intelligence/relationship-maps/${map.id}/edit`}>Edit Map</Link>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_path.create") || map.status === "archived"} onClick={() => setModal("path")}>Add Path</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("status")}>Update Status</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("introduction")}>Request Introduction</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.archive") || map.status === "archived"} onClick={() => setModal("archive")}>Archive Map</button>
+                {hasPermission(session.permissions, "relationship_path.create") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_path.create") || map.status === "archived"} onClick={() => setModal("path")}>Add Path</button> : null}
+                {hasPermission(session.permissions, "relationship_map.status") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("status")}>Update Status</button> : null}
+                {hasPermission(session.permissions, "relationship_map.status") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.status") || map.status === "archived"} onClick={() => setModal("introduction")}>Request Introduction</button> : null}
                 <button type="button" onClick={() => setModal("analysis")}>Analyze Relationship</button>
               </div>
+              {(hasPermission(session.permissions, "relationship_map.archive")) ? <DangerZone>
+                {hasPermission(session.permissions, "relationship_map.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "relationship_map.archive") || map.status === "archived"} onClick={() => setModal("archive")}>Archive Map</button> : null}
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <SummaryMetric label="Relationship Access Score" value={`${map.accessScore}`} />
@@ -407,7 +419,7 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "relationship_map").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <RelationshipTab tab={tab} map={map} data={data} permissions={session.permissions} onRank={load} onEditPath={(path) => setModal(`edit-path:${path.id}`)} />
             </section>
@@ -426,7 +438,7 @@ export function RelationshipMapDetail({ mapId }: { mapId: string }) {
 
 function RelationshipMapTable({ maps }: { maps: MapView[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -455,7 +467,7 @@ function RelationshipMapTable({ maps }: { maps: MapView[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -472,12 +484,12 @@ function RelationshipTab({ tab, map, data, permissions, onRank, onEditPath }: { 
     );
   }
   if (tab === "paths") return <PathList map={map} data={data} permissions={permissions} onRank={onRank} onEditPath={onEditPath} />;
-  if (tab === "gaps") return <GapList gaps={map.gaps} permissions={permissions} />;
+  if (tab === "gaps") return <GapList gaps={map.gaps} permissions={permissions} map={map} />;
   if (tab === "organization") return <ObjectSlice title="Target Organization" rows={map.targetOrganization ? [map.targetOrganization] : []} columns={["name", "organization_type", "actor_roles", "status", "territory_name", "relationship_owner_name", "strategic_flag", "influence_score", "work_relevance_score", "capacity_relevance_score", "payment_relevance_score"]} empty="No target organization is attached. Attach a target organization before building paths." />;
   if (tab === "contact") return <ObjectSlice title="Target Contact" rows={map.targetContact ? [map.targetContact] : []} columns={["full_name", "title", "organization_name", "contact_role", "verification_status", "email", "phone", "mobile", "influence_score", "decision_authority_score", "relationship_strength_score", "last_contacted_at", "last_verified_at"]} empty="No target contact identified. Add or research the person who controls, influences, validates, or pays for the work." />;
   if (tab === "candidate") return <ObjectSlice title="Related Candidate" rows={map.candidate ? [map.candidate] : []} columns={["name", "status", "confidence_score", "estimated_value", "work_type", "owner_name"]} empty="No candidate or opportunity is linked to this relationship map." />;
   if (tab === "opportunity") return <ObjectSlice title="Related Opportunity" rows={map.opportunity ? [map.opportunity] : []} columns={["name", "status", "estimated_value", "pursuit_score", "capacity_coverage", "relationship_access_score", "owner_name", "decision_date"]} empty="No opportunity is linked to this relationship map." />;
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(map, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this relationship map." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={relatedConstraints(map, data)} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this relationship map." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="relationship_map" objectId={map.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={relatedRecommendations(map, data)} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this relationship map." />;
   if (tab === "workflow") return <ObjectSlice title="Workflow Tasks" rows={data.workflowTasks.filter((task) => task.source_object_type === "relationship_map" && task.source_object_id === map.id)} columns={["task_name", "title", "assigned_to", "due_at", "status"]} empty="Workflow task linkage for relationship maps is not available yet." />;
   if (tab === "timeline") return <ObjectSlice title="Timeline" rows={data.timelineByMap[map.id] ?? []} columns={["event_type", "actor_name", "timestamp", "summary"]} empty="No relationship timeline entries are available yet." />;
@@ -502,10 +514,10 @@ function PathList({ map, data, permissions, onRank, onEditPath }: { map: MapView
               </div>
             </div>
             <div className="form-actions">
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.update")} onClick={() => onEditPath(path)}>Edit Path</button>
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, Math.max(1, numberValue(path.rank, 1) - 1), onRank)}>Move Up</button>
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, numberValue(path.rank, 1) + 1, onRank)}>Move Down</button>
-              <button type="button" disabled={!hasPermission(permissions, "relationship_path.archive")} onClick={() => void archivePath(path, onRank)}>Archive Path</button>
+              {hasPermission(permissions, "relationship_path.update") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.update")} onClick={() => onEditPath(path)}>Edit Path</button> : null}
+              {hasPermission(permissions, "relationship_path.rank") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, Math.max(1, numberValue(path.rank, 1) - 1), onRank)}>Move Up</button> : null}
+              {hasPermission(permissions, "relationship_path.rank") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.rank")} onClick={() => void rankPath(path, numberValue(path.rank, 1) + 1, onRank)}>Move Down</button> : null}
+              {hasPermission(permissions, "relationship_path.archive") ? <button type="button" disabled={!hasPermission(permissions, "relationship_path.archive")} onClick={() => void archivePath(path, onRank)}>Archive Path</button> : null}
             </div>
           </div>
           <dl>
@@ -904,7 +916,7 @@ function relatedRecommendations(map: MapView, data: RelationshipData) {
   );
 }
 
-function GapList({ gaps, permissions }: { gaps: RelationshipGap[]; permissions: string[] }) {
+function GapList({ gaps, permissions, map }: { gaps: RelationshipGap[]; permissions: string[]; map:MapView }) {
   if (!gaps.length) return <div className="empty-state">No deterministic relationship gaps are visible from the current backend data.</div>;
   return (
     <div className="workspace-panel">
@@ -913,7 +925,7 @@ function GapList({ gaps, permissions }: { gaps: RelationshipGap[]; permissions: 
           <strong>{formatAction(gap.type)}</strong>
           <span>{formatAction(gap.severity)} severity</span>
           <p>{gap.suggestedAction}</p>
-          {hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : null}
+          {hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="relationship_map" objectId={map.id}/> : null}
         </div>
       ))}
     </div>
@@ -936,7 +948,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {!rows.length ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead>
             <tbody>
@@ -947,7 +959,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );
@@ -955,7 +967,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -963,28 +975,11 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 
-function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return (
-    <section className="workspace-panel">
-      <div className="section-toolbar">
-        <div>
-          <h2>Session</h2>
-          <p className="muted">Paste a JWT and comma-separated permissions to test permission-aware relationship actions.</p>
-        </div>
-        <button type="button" onClick={() => session.applyDefaults()}>Use relationship defaults</button>
-      </div>
-      <div className="session-grid">
-        <input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" />
-        <input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" />
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) { return null; }
 
 function SummaryCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
   return <button type="button" className="summary-card" onClick={onClick}><span>{label}</span><strong>{value}</strong></button>;
@@ -1017,7 +1012,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function useSession() {
   const [token, setTokenState] = useState(readToken());
-  const [permissions, setPermissionsState] = useState<string[]>(unique([...defaultRelationshipPermissions, ...readPermissions()]));
+  const [permissions, setPermissionsState] = useState<string[]>(readPermissions());
   function setToken(next: string) {
     setTokenState(next);
     saveToken(next);

@@ -1,6 +1,12 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import { ModalBoundary } from "../modal-boundary";
+import { InvoicePackages } from "../accepted-production-financials/invoice-packages";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CommandShell } from "../dashboard-components";
@@ -16,7 +22,7 @@ const collectionStatuses = ["not_due", "due", "overdue", "in_collection", "dispu
 const paymentTerms = ["due_on_receipt", "net_7", "net_15", "net_30", "net_45", "net_60", "custom"];
 const packageStatuses = ["not_started", "incomplete", "ready", "attached", "submitted", "accepted", "rejected"];
 const acceptanceStatuses = ["not_required", "pending", "accepted", "rejected", "correction_required", "disputed"];
-const tabs = ["overview", "items", "customer", "settlement", "project", "financial_summary", "receivable_state", "approval", "delivery", "package_documentation", "disputes", "timeline", "audit", "future_cash_application", "future_collections"];
+const tabs = ["overview", "items", "customer", "settlement", "project", "financial_summary", "receivable_state", "approval", "delivery", "package_documentation", "disputes", "timeline", "audit"];
 
 type InvoiceDetailShape = {
   invoice?: SyncRecord;
@@ -94,7 +100,7 @@ export function InvoiceQueue() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review invoice state, disputes, and aging.</div> : null}
       {loading ? <div className="empty-state">Loading invoices...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -107,7 +113,7 @@ export function InvoiceQueue() {
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "approved" || row.approval_status === "approved"), "/invoices")} aria-disabled={!rows.some((row) => row.status === "approved" || row.approval_status === "approved")}>Open Approved Invoices</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed" || row.collection_status === "disputed"), "/invoices")} aria-disabled={!rows.some((row) => row.status === "disputed" || row.collection_status === "disputed")}>Open Disputes</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0), "/invoices")} aria-disabled={!rows.some((row) => String(row.collection_status) === "overdue" || numberValue(row.aging_days, 0) > 0)}>Open Aging Invoices</Link>
-                <Link className="link-button" href="/invoices/new" aria-disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</Link>
+                <Link className="link-button" href="/invoices/new" allowed={hasPermission(session.permissions, "invoice.create")}>Create Invoice</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -119,7 +125,7 @@ export function InvoiceQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyInvoiceQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} invoice${visible.length === 1 ? "" : "s"} in this view.` : emptyInvoiceQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("draft"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -195,7 +201,7 @@ export function InvoiceCreate() {
           <InvoiceFormFields form={form} setForm={setForm} related={related} includeCreate />
         </FormSection>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</button>
+          {hasPermission(session.permissions, "invoice.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "invoice.create")}>Create Invoice</button> : null}
           <Link className="link-button" href="/invoices">Cancel</Link>
         </div>
       </form>
@@ -262,10 +268,11 @@ export function InvoiceEdit({ invoiceId }: { invoiceId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!record ? <div className="empty-state">Invoice not found or you do not have access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Invoice" purpose="Check the customer, invoice dates, supporting accepted work and approved commercial terms." afterSave="Review the invoice package and approval requirements before delivery and customer acceptance." />
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, sent, paid-later, and fully-applied-later invoices are read-only unless backend policy explicitly allows updates.</div>
           <InvoiceFormFields form={form} setForm={setForm} related={related} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "invoice.update")}>Save Invoice</button>
+            {hasPermission(session.permissions, "invoice.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "invoice.update")}>Save Invoice</button> : null}
             <Link className="link-button" href={`/invoices/${invoiceId}`}>Cancel</Link>
           </div>
         </form>
@@ -326,7 +333,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       {record && detail ? (
         <>
           {!hasPermission(session.permissions, "invoice.update") ? <ReadOnlyBanner /> : null}
-          <DetailNextActionCard
+          {hasPermission(session.permissions, "invoice.update") ? <DetailNextActionCard
             variant="finance"
             status={formatAction(record.status)}
             nextActionLabel={nextInvoiceAction(record)}
@@ -334,7 +341,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             disabled={!hasPermission(session.permissions, "invoice.update")}
             disabledReason="Read-only users cannot perform lifecycle actions."
             boundaryText="Invoice status tracks internal workflow. Mark Sent records external/manual send status only. SyncOS does not email the customer, collect payment, apply cash, or post accounting entries."
-          />
+          /> : null}
           <DetailBoundaryNotice>Invoice status tracks internal workflow. Mark Sent records external/manual send status only. SyncOS does not email the customer, collect payment, apply cash, move money, or post accounting entries.</DetailBoundaryNotice>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -350,18 +357,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/invoices/${invoiceId}/edit`} aria-disabled={!hasPermission(session.permissions, "invoice.update")}>Edit Invoice</Link>
+                <Link className="link-button" href={`/invoices/${invoiceId}/edit`} allowed={hasPermission(session.permissions, "invoice.update")}>Edit Invoice</Link>
                 <ActionButton permission="invoice.add_item" session={session} disabled={viewOnly(record)} onClick={() => setModal("add_item")}>Add Invoice Item</ActionButton>
                 <ActionButton permission="invoice.recalculate_totals" session={session} disabled={viewOnly(record)} onClick={() => setModal("recalculate")}>Recalculate Totals</ActionButton>
                 <ActionButton permission="invoice.submit_review" session={session} disabled={viewOnly(record) || !items.length} onClick={() => setModal("submit_review")}>Submit Review</ActionButton>
                 <ActionButton permission="invoice.approve" session={session} disabled={viewOnly(record) || !items.length || blockers.length > 0} onClick={() => setModal("approve")}>Approve</ActionButton>
-                <ActionButton permission="invoice.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
                 <ActionButton permission="invoice.mark_sent" session={session} disabled={viewOnly(record) || String(record.approval_status) !== "approved"} onClick={() => setModal("mark_sent")}>Mark Sent</ActionButton>
                 <ActionButton permission="invoice.mark_ready_for_cash_application" session={session} disabled={viewOnly(record) || !["approved", "sent"].includes(String(record.status)) || String(record.cash_application_status) === "ready_for_cash_application"} onClick={() => setModal("cash_ready")}>Mark Ready For Cash Application</ActionButton>
-                <ActionButton permission="invoice.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="invoice.resolve_dispute" session={session} disabled={String(record.status) !== "disputed"} onClick={() => setModal("resolve")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="invoice.void" session={session} disabled={viewOnly(record) || ["paid_later", "fully_applied_later"].includes(String(record.cash_application_status))} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permission="invoice.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
             <div className="summary-grid">
@@ -377,10 +380,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               <Metric label="Delivery Status" value={formatAction(record.delivery_status)} />
               <Metric label="Item Count" value={formatCell(record.item_count ?? items.length)} />
             </div>
-            <div className="warning-box">Invoice owns receivable state. Ready for Cash Application does not create cash. Payments and cash application are future workflows.</div>
-            <DangerZone description="Reject, dispute, void, and archive actions change lifecycle state and should stay separated from routine invoice review work. Existing modals continue to control the actual submit behavior.">
-              <span>Danger actions available in the action bar: Reject, Dispute, Void, Archive.</span>
-            </DangerZone>
+            <div className="warning-box">Invoice owns receivable state. Ready for Cash Application does not create cash. Record received funds and apply them through their separate, authorized workflows.</div>
+            {["invoice.reject", "invoice.dispute", "invoice.void", "invoice.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change the invoice lifecycle. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="invoice.reject" session={session} disabled={viewOnly(record)} onClick={() => setModal("reject")}>Reject</ActionButton>
+              <ActionButton permission="invoice.dispute" session={session} disabled={viewOnly(record) || String(record.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="invoice.void" session={session} disabled={viewOnly(record) || ["paid_later", "fully_applied_later"].includes(String(record.cash_application_status))} onClick={() => setModal("void")}>Void</ActionButton>
+              <ActionButton permission="invoice.archive" session={session} disabled={String(record.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
           </section>
 
           <div className="organization-layout">
@@ -409,7 +415,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "invoice").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <InvoiceTab tab={tab} detail={detail} invoice={record} items={items} session={session} onItemAction={openItemModal} />
             </section>
@@ -446,7 +452,7 @@ function InvoiceShell({ title, purpose, children }: { title: string; purpose: st
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Invoices</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -456,7 +462,7 @@ function InvoiceShell({ title, purpose, children }: { title: string; purpose: st
 
 function InvoiceTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{["Invoice", "Customer", "Settlement / Source", "Invoice Amount", "Sent Status", "Due Date / Age", "Dispute Status", "Cash Status", "Next Action", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
@@ -488,7 +494,7 @@ function InvoiceTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -499,21 +505,21 @@ function InvoiceTab({ tab, detail, invoice, items, session, onItemAction }: { ta
   if (tab === "settlement") return <Panel title="Settlement"><dl className="detail-list"><dt>Settlement number</dt><dd>{settlementLink(invoice.settlement_id, invoice.settlement_number ?? detail.settlement_context?.settlement_number)}</dd><dt>Settlement type</dt><dd>{formatAction(detail.settlement_context?.settlement_type)}</dd><dt>Settlement status</dt><dd>{formatAction(detail.settlement_context?.status)}</dd><dt>Invoice ready</dt><dd>{boolText(detail.settlement_context?.invoice_ready)}</dd><dt>Payable ready</dt><dd>{boolText(detail.settlement_context?.payable_ready)}</dd><dt>Gross billable amount</dt><dd>{money(detail.settlement_context?.gross_billable_amount)}</dd><dt>Net settlement amount</dt><dd>{money(detail.settlement_context?.net_settlement_amount)}</dd><dt>Margin amount</dt><dd>{money(detail.settlement_context?.estimated_margin_amount)}</dd><dt>Settlement item count</dt><dd>{formatCell(detail.settlement_context?.item_count)}</dd></dl></Panel>;
   if (tab === "project") return <Panel title="Project"><dl className="detail-list"><dt>Project</dt><dd>{projectLink(invoice.project_id, invoice.project_name ?? detail.project_context?.name)}</dd><dt>Project status</dt><dd>{formatAction(detail.project_context?.status)}</dd><dt>Customer</dt><dd>{organizationLink(invoice.customer_organization_id, invoice.customer_organization_name ?? detail.customer_context?.name)}</dd><dt>Territory</dt><dd>{textValue(detail.project_context?.territory)}</dd><dt>Work type</dt><dd>{textValue(detail.project_context?.work_type)}</dd><dt>Project manager</dt><dd>{textValue(detail.project_context?.project_manager_name ?? detail.project_context?.project_manager_id)}</dd><dt>Field supervisor</dt><dd>{textValue(detail.project_context?.field_supervisor_name ?? detail.project_context?.field_supervisor_id)}</dd></dl></Panel>;
   if (tab === "financial_summary") return <Panel title="Financial Summary"><dl className="detail-list"><dt>Subtotal amount</dt><dd>{money(invoice.subtotal_amount)}</dd><dt>Retainage amount</dt><dd>{money(invoice.retainage_amount)}</dd><dt>Adjustment amount</dt><dd>{money(invoice.adjustment_amount)}</dd><dt>Tax amount</dt><dd>{money(invoice.tax_amount)}</dd><dt>Fee amount</dt><dd>{money(invoice.fee_amount)}</dd><dt>Total amount</dt><dd>{money(invoice.total_amount)}</dd><dt>Original amount</dt><dd>{money(invoice.original_amount)}</dd><dt>Paid amount</dt><dd>{money(invoice.paid_amount)}</dd><dt>Balance amount</dt><dd>{money(invoice.balance_amount)}</dd><dt>Currency</dt><dd>{textValue(invoice.currency)}</dd><dt>Financial summary</dt><dd><JsonBlock value={detail.financial_summary} /></dd></dl><div className="warning-box">Original amount locks when invoice is approved or sent. Paid amount and balance amount will be updated later by Cash Application.</div></Panel>;
-  if (tab === "receivable_state") return <Panel title="Receivable State"><dl className="detail-list"><dt>Original amount</dt><dd>{money(invoice.original_amount)}</dd><dt>Paid amount</dt><dd>{money(invoice.paid_amount)}</dd><dt>Balance amount</dt><dd>{money(invoice.balance_amount)}</dd><dt>Aging days</dt><dd>{formatCell(invoice.aging_days)}</dd><dt>Payment status</dt><dd>{formatAction(invoice.payment_status)}</dd><dt>Collection status</dt><dd>{formatAction(invoice.collection_status)}</dd><dt>Cash application status</dt><dd>{formatAction(invoice.cash_application_status)}</dd><dt>Last payment at</dt><dd>{dateValue(invoice.last_payment_at)}</dd><dt>Last payment amount</dt><dd>{money(invoice.last_payment_amount)}</dd><dt>Writeoff amount</dt><dd>{money(invoice.writeoff_amount)}</dd><dt>Writeoff reason</dt><dd>{textValue(invoice.writeoff_reason)}</dd><dt>Receivable summary</dt><dd><JsonBlock value={detail.receivable_summary} /></dd></dl><div className="warning-box">Cash Application is not available in this sprint. Future payment application will update paid amount, balance amount, payment status, and collection status.</div></Panel>;
+  if (tab === "receivable_state") return <Panel title="Receivable State"><dl className="detail-list"><dt>Original amount</dt><dd>{money(invoice.original_amount)}</dd><dt>Paid amount</dt><dd>{money(invoice.paid_amount)}</dd><dt>Balance amount</dt><dd>{money(invoice.balance_amount)}</dd><dt>Aging days</dt><dd>{formatCell(invoice.aging_days)}</dd><dt>Payment status</dt><dd>{formatAction(invoice.payment_status)}</dd><dt>Collection status</dt><dd>{formatAction(invoice.collection_status)}</dd><dt>Cash application status</dt><dd>{formatAction(invoice.cash_application_status)}</dd><dt>Last payment at</dt><dd>{dateValue(invoice.last_payment_at)}</dd><dt>Last payment amount</dt><dd>{money(invoice.last_payment_amount)}</dd><dt>Writeoff amount</dt><dd>{money(invoice.writeoff_amount)}</dd><dt>Writeoff reason</dt><dd>{textValue(invoice.writeoff_reason)}</dd><dt>Receivable summary</dt><dd><JsonBlock value={detail.receivable_summary} /></dd></dl><div className="warning-box">Use Cash Application to allocate recorded customer receipts. Review the application history and remaining balance; a receipt alone does not settle an invoice.</div></Panel>;
   if (tab === "approval") return <Panel title="Approval"><dl className="detail-list"><dt>Approval status</dt><dd>{formatAction(invoice.approval_status)}</dd><dt>Submitted by</dt><dd>{textValue(invoice.submitted_by)}</dd><dt>Submitted at</dt><dd>{dateValue(invoice.submitted_at)}</dd><dt>Approved by</dt><dd>{textValue(invoice.approved_by)}</dd><dt>Approved at</dt><dd>{dateValue(invoice.approved_at)}</dd><dt>Rejected by</dt><dd>{textValue(invoice.rejected_by)}</dd><dt>Rejected at</dt><dd>{dateValue(invoice.rejected_at)}</dd><dt>Rejection reason</dt><dd>{textValue(invoice.rejection_reason)}</dd><dt>Rejection note</dt><dd>{textValue(invoice.rejection_note)}</dd><dt>Approval summary</dt><dd><JsonBlock value={detail.approval_summary} /></dd></dl></Panel>;
-  if (tab === "delivery") return <Panel title="Delivery"><dl className="detail-list"><dt>Delivery status</dt><dd>{formatAction(invoice.delivery_status)}</dd><dt>Sent by</dt><dd>{textValue(invoice.sent_by)}</dd><dt>Sent at</dt><dd>{dateValue(invoice.sent_at)}</dd><dt>Customer acceptance</dt><dd>{formatAction(invoice.customer_acceptance_status)}</dd><dt>Prime acceptance</dt><dd>{formatAction(invoice.prime_acceptance_status)}</dd><dt>Delivery summary</dt><dd><JsonBlock value={detail.delivery_summary} /></dd></dl><div className="warning-box">Email delivery, PDF generation, and customer portal submission are not available in this sprint.</div></Panel>;
-  if (tab === "package_documentation") return <Panel title="Package / Documentation"><dl className="detail-list"><dt>Invoice package status</dt><dd>{formatAction(invoice.invoice_package_status)}</dd><dt>Documentation status</dt><dd>{formatAction(invoice.documentation_status)}</dd><dt>Customer acceptance</dt><dd>{formatAction(invoice.customer_acceptance_status)}</dd><dt>Prime acceptance</dt><dd>{formatAction(invoice.prime_acceptance_status)}</dd><dt>Package summary</dt><dd><JsonBlock value={detail.package_summary} /></dd></dl><WarningList title="Package / Documentation Warnings" rows={detail.warnings ?? []} empty="No package or documentation warnings returned." /><div className="warning-box">PDF invoice package generation is deferred.</div></Panel>;
+  if (tab === "delivery") return <Panel title="Delivery"><dl className="detail-list"><dt>Delivery status</dt><dd>{formatAction(invoice.delivery_status)}</dd><dt>Sent by</dt><dd>{textValue(invoice.sent_by)}</dd><dt>Sent at</dt><dd>{dateValue(invoice.sent_at)}</dd><dt>Customer acceptance</dt><dd>{formatAction(invoice.customer_acceptance_status)}</dd><dt>Prime acceptance</dt><dd>{formatAction(invoice.prime_acceptance_status)}</dd><dt>Delivery summary</dt><dd><JsonBlock value={detail.delivery_summary} /></dd></dl><div className="warning-box">Use Invoice packages in Accepted Work to Finance for package preparation, delivery records and acceptance proof. Automatic delivery requires an approved, verified destination.</div></Panel>;
+  if (tab === "package_documentation") return <Panel title="Package / Documentation"><dl className="detail-list"><dt>Invoice package status</dt><dd>{formatAction(invoice.invoice_package_status)}</dd><dt>Documentation status</dt><dd>{formatAction(invoice.documentation_status)}</dd><dt>Customer acceptance</dt><dd>{formatAction(invoice.customer_acceptance_status)}</dd><dt>Prime acceptance</dt><dd>{formatAction(invoice.prime_acceptance_status)}</dd><dt>Package summary</dt><dd><JsonBlock value={detail.package_summary} /></dd></dl><WarningList title="Package / Documentation Warnings" rows={detail.warnings ?? []} empty="No package or documentation warnings returned." /><div className="warning-box">Prepare and validate the customer package in Accepted Work to Finance. Package completeness, delivery and customer acceptance are recorded separately.</div></Panel>;
   if (tab === "disputes") return <Panel title="Disputes"><dl className="detail-list"><dt>Dispute reason</dt><dd>{textValue(invoice.dispute_reason)}</dd><dt>Dispute note</dt><dd>{textValue(invoice.dispute_note)}</dd><dt>Disputed by</dt><dd>{textValue(invoice.disputed_by)}</dd><dt>Disputed at</dt><dd>{dateValue(invoice.disputed_at)}</dd><dt>Current status</dt><dd>{formatAction(invoice.status)}</dd><dt>Collection status</dt><dd>{formatAction(invoice.collection_status)}</dd></dl></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor", "action", "object", "before", "after", "reason", "timestamp", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view invoice audit details.</div>}</Panel>;
-  if (tab === "future_cash_application") return <PlaceholderPanel title="Future Cash Application" message="Cash Application is not available in this sprint. Future Cash Application will record payment events and apply payments against invoice balance." columns={["Payment event", "Cash receipt", "Bank transaction"]} />;
-  return <PlaceholderPanel title="Future Collections" message="Collections automation is not available in this sprint. Collection status is tracked on the invoice and may be used by a future Collections workflow." columns={["Collection workflow", "Collection notice", "Writeoff workflow"]} />;
+  if (tab === "future_cash_application") return <PlaceholderPanel title="Future Cash Application" message="Cash Application records customer receipts and approved allocations against invoices. External payment events still require matching and duplicate checks." columns={["Payment event", "Cash receipt", "Bank transaction"]} />;
+  return <PlaceholderPanel title="Future Collections" message="Collections tracks cases, ownership and follow-up actions. Automatic outbound delivery requires verified configuration." columns={["Collection workflow", "Collection notice", "Writeoff workflow"]} />;
 }
 
 function InvoiceItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]; session: Session; onItemAction: (type: string, item: SyncRecord) => void }) {
   if (!rows.length) return <div className="empty-state">No invoice items returned. Add items from invoice-ready settlement items.</div>;
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead><tr>{["Item Type", "Status", "Description", "Settlement", "Settlement Item", "Project", "Work Order", "Production Record", "QC Review", "Quantity", "Unit", "Unit Rate", "Gross Amount", "Retainage Amount", "Deduction Amount", "Adjustment Amount", "Tax Amount", "Fee Amount", "Net Amount", "Actions"].map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>
@@ -541,7 +547,7 @@ function InvoiceItemsTable({ rows, session, onItemAction }: { rows: SyncRecord[]
           </tr>)}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -570,8 +576,10 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
     }
   }
 
+  if(type==='mark_sent')return <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Mark Sent"><div className="modal-card"><div className="section-toolbar"><h2>Mark Sent</h2><button type="button" onClick={()=>{void onSaved();onClose();}}>Close</button></div><p>Prepare the complete package, then record its actual delivery receipt. A note alone does not establish delivery.</p><InvoicePackages initialInvoiceId={invoiceId}/></div></ModalBoundary>;
+
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
+    <ModalBoundary onClose={onClose} className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar">
           <h2>{modalTitle(type)}</h2>
@@ -582,7 +590,7 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
         {type === "add_item" ? <AddInvoiceItemFields form={form} setForm={setForm} settlementItems={related.settlementItems} /> : null}
         {type === "approve" ? <><label>Approval Note<textarea value={form.approval_note ?? ""} onChange={(event) => setForm({ ...form, approval_note: event.target.value })} required /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label><WarningList title="Backend Warnings" rows={arrayValue(invoice.warnings)} empty="No warnings returned." /><WarningList title="Backend Blockers" rows={blockers} empty="No blockers returned." /></> : null}
         {type === "reject" ? <><label>Rejection Reason<textarea value={form.rejection_reason ?? ""} onChange={(event) => setForm({ ...form, rejection_reason: event.target.value })} required /></label><label>Rejection Note<textarea value={form.rejection_note ?? ""} onChange={(event) => setForm({ ...form, rejection_note: event.target.value })} /></label></> : null}
-        {type === "mark_sent" ? <><label>Sent Note<textarea value={form.sent_note ?? ""} onChange={(event) => setForm({ ...form, sent_note: event.target.value })} required /></label><Select label="Delivery Status" value={form.delivery_status ?? ""} options={["", ...deliveryStatuses]} onChange={(delivery_status) => setForm({ ...form, delivery_status })} /><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label><div className="warning-box">Mark Sent does not create cash, payment, bank, payroll, tax, ACH, card payout, or accounting export records.</div></> : null}
+
         {type === "cash_ready" ? <><label>Ready Note<textarea value={form.ready_note ?? ""} onChange={(event) => setForm({ ...form, ready_note: event.target.value })} required /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label><div className="warning-box">Mark Ready For Cash Application does not create cash receipt, payment, bank transaction, ACH, card payout, payroll, tax, or accounting export records.</div></> : null}
         {type === "dispute" ? <><label>Dispute Reason<textarea value={form.dispute_reason ?? ""} onChange={(event) => setForm({ ...form, dispute_reason: event.target.value })} required /></label><label>Dispute Note<textarea value={form.dispute_note ?? ""} onChange={(event) => setForm({ ...form, dispute_note: event.target.value })} /></label></> : null}
         {type === "resolve" ? <><label>Resolution Note<textarea value={form.resolution_note ?? ""} onChange={(event) => setForm({ ...form, resolution_note: event.target.value })} required /></label><label>Override Reasons JSON<textarea value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label></> : null}
@@ -596,7 +604,7 @@ function InvoiceLifecycleModal({ type, invoiceId, invoice, related, blockers, se
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -608,17 +616,14 @@ function InvoiceFormFields({ form, setForm, related, includeCreate = false, disa
   return <div className="form-grid">{includeCreate ? <><Select label="Customer Organization" value={form.customer_organization_id ?? ""} options={["", ...related.customers.map((row) => String(row.id))]} labels={labelsFor(related.customers)} onChange={(customer_organization_id) => setForm({ ...form, customer_organization_id })} disabled={disabled} /><Select label="Invoice Type" value={form.invoice_type ?? "standard"} options={invoiceTypes} onChange={(invoice_type) => setForm({ ...form, invoice_type })} disabled={disabled} /><Select label="Settlement" value={form.settlement_id ?? ""} options={["", ...related.settlements.map((row) => String(row.id))]} labels={labelsFor(related.settlements, "settlement_number")} onChange={(settlement_id) => setForm({ ...form, settlement_id })} disabled={disabled} /><Select label="Project" value={form.project_id ?? ""} options={["", ...related.projects.map((row) => String(row.id))]} labels={labelsFor(related.projects)} onChange={(project_id) => setForm({ ...form, project_id })} disabled={disabled} /></> : null}<label>Invoice Date<input disabled={disabled} type="date" value={form.invoice_date ?? ""} onChange={(event) => setForm({ ...form, invoice_date: event.target.value })} /></label><label>Due Date<input disabled={disabled} type="date" value={form.due_date ?? ""} onChange={(event) => setForm({ ...form, due_date: event.target.value })} /></label><Select label="Payment Terms" value={form.payment_terms ?? ""} options={["", ...paymentTerms]} onChange={(payment_terms) => setForm({ ...form, payment_terms })} disabled={disabled} /><label>Billing Period Start<input disabled={disabled} type="date" value={form.billing_period_start ?? ""} onChange={(event) => setForm({ ...form, billing_period_start: event.target.value })} /></label><label>Billing Period End<input disabled={disabled} type="date" value={form.billing_period_end ?? ""} onChange={(event) => setForm({ ...form, billing_period_end: event.target.value })} /></label>{includeCreate ? <label>Currency<input disabled={disabled} value={form.currency ?? "USD"} onChange={(event) => setForm({ ...form, currency: event.target.value })} /></label> : null}{!includeCreate ? <><Select label="Invoice Package Status" value={form.invoice_package_status ?? ""} options={["", ...packageStatuses]} onChange={(invoice_package_status) => setForm({ ...form, invoice_package_status })} disabled={disabled} /><Select label="Documentation Status" value={form.documentation_status ?? ""} options={["", ...packageStatuses]} onChange={(documentation_status) => setForm({ ...form, documentation_status })} disabled={disabled} /><Select label="Customer Acceptance Status" value={form.customer_acceptance_status ?? ""} options={["", ...acceptanceStatuses]} onChange={(customer_acceptance_status) => setForm({ ...form, customer_acceptance_status })} disabled={disabled} /><Select label="Prime Acceptance Status" value={form.prime_acceptance_status ?? ""} options={["", ...acceptanceStatuses]} onChange={(prime_acceptance_status) => setForm({ ...form, prime_acceptance_status })} disabled={disabled} /></> : null}<label>Override Reasons JSON<textarea disabled={disabled} value={form.override_reasons ?? ""} onChange={(event) => setForm({ ...form, override_reasons: event.target.value })} /></label>{!includeCreate ? <label>Dispute Note<textarea disabled={disabled} value={form.dispute_note ?? ""} onChange={(event) => setForm({ ...form, dispute_note: event.target.value })} /></label> : null}</div>;
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test invoice actions.</p></div><button type="button" onClick={session.applyDefaults}>Use invoice defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setTokenState] = useState("");
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : invoiceDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -712,7 +717,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {
@@ -721,7 +726,7 @@ function Select({ label, value, options, labels = {}, onChange, disabled = false
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function WarningList({ title, rows, empty }: { title: string; rows: SyncRecord[]; empty: string }) {
@@ -738,7 +743,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 const invoiceQueues = [

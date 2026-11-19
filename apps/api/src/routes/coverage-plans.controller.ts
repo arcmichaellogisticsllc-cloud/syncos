@@ -1,3 +1,4 @@
+import {activityPage} from './activity-pagination';
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { findTenantRecordById, insertTenantRecord, updateTenantRecord } from "@syncos/database";
@@ -96,8 +97,7 @@ export class CoveragePlansController {
   async timeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requirePlan(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
+      const result = await activityPage(client, `
         WITH requirement_ids AS (
           SELECT id FROM coverage_requirements WHERE tenant_id = $1 AND coverage_plan_id = $2
         ),
@@ -107,7 +107,7 @@ export class CoveragePlansController {
         gap_ids AS (
           SELECT id FROM coverage_gaps WHERE tenant_id = $1 AND coverage_plan_id = $2
         )
-        SELECT
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time,
           e.id AS event_id,
           e.event_type,
           e.actor_user_id AS actor_id,
@@ -129,9 +129,7 @@ export class CoveragePlansController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -141,8 +139,7 @@ export class CoveragePlansController {
   async auditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requirePlan(client, request.auth.tenantId, id);
-      const result = await client.query(
-        `
+      const result = await activityPage(client, `
         WITH requirement_ids AS (
           SELECT id FROM coverage_requirements WHERE tenant_id = $1 AND coverage_plan_id = $2
         ),
@@ -152,7 +149,7 @@ export class CoveragePlansController {
         gap_ids AS (
           SELECT id FROM coverage_gaps WHERE tenant_id = $1 AND coverage_plan_id = $2
         )
-        SELECT
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time,
           al.id AS audit_id,
           al.actor_user_id AS actor_id,
           u.display_name AS actor_name,
@@ -175,9 +172,7 @@ export class CoveragePlansController {
           )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }

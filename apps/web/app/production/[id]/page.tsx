@@ -1,5 +1,5 @@
 import { ProductionDetail } from "../production-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <ProductionDetail productionId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <ProductionDetail productionId={(await params).id} />;
 }

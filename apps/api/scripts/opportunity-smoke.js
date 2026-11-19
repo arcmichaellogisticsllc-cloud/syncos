@@ -17,11 +17,11 @@ async function main() {
     FROM users u
     JOIN tenant_users tu ON tu.user_id = u.id
     JOIN tenants t ON t.id = tu.tenant_id
-    WHERE u.email = 'admin@jackson-telcom.local'
-      AND t.slug = 'jackson-telcom'
+    WHERE u.email = 'admin@synccommsystems.local'
+      AND t.slug = 'sync-comm-systems'
     LIMIT 1
   `);
-  if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+  if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
 
   const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
   const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
@@ -92,7 +92,8 @@ async function main() {
 
   const tier2GrowthBlocked = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 50000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
   const tier2GrowthError = await expectStatus("Tier 2 opportunity cannot be approved by Growth Director", "POST", `/opportunities/${tier2GrowthBlocked}/pursuit-approve`, `Bearer ${growthToken}`, 403, {});
-  if (tier2GrowthError.approval_tier !== "tier_2_50k_to_250k" || !tier2GrowthError.required_roles?.includes("Regional Director")) throw new Error("tier 2 authority response missing required roles");
+  if (tier2GrowthError.statusCode !== 403 || !String(tier2GrowthError.message).includes("authority")) throw new Error("tier 2 authority denial missing");
+  if ((await client.query("SELECT status FROM opportunities WHERE tenant_id=$1 AND id=$2", [tenantId, tier2GrowthBlocked])).rows[0].status === "pursuit_approved") throw new Error("denied tier 2 approval changed state");
 
   const tier2Regional = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 125000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
   await expectStatus("Tier 2 can be approved by Regional Director", "POST", `/opportunities/${tier2Regional}/pursuit-approve`, `Bearer ${regionalToken}`, 201, {});
@@ -126,7 +127,8 @@ async function main() {
   const hardStop = await createApprovalOpportunity(client, tenantId, base, ownerUserId, { estimated_value: 10000, margin_potential_score: 60, capacity_readiness_score: 60, pursuit_score: 70, relationship_map_id: base.relationshipMapId, relationship_access_score: 80 });
   await client.query("INSERT INTO constraints (tenant_id, constraint_type, affected_object_type, affected_object_id, title, severity, hard_stop, override_allowed, approval_behavior) VALUES ($1, 'safety', 'opportunity', $2, 'Safety hard stop', 'critical', true, false, 'hard_block')", [tenantId, hardStop]);
   const hardStopError = await expectStatus("Constraint with hard_stop true blocks approval", "POST", `/opportunities/${hardStop}/pursuit-approve`, `Bearer ${growthToken}`, 400, { constraints_override_reason: "Cannot override." });
-  if (!hardStopError.blockers?.some((blocker) => blocker.blocker_type === "hard_stop_constraint")) throw new Error("hard-stop blocker response missing");
+  if (hardStopError.statusCode !== 400 || hardStopError.message !== "Pursuit approval is blocked.") throw new Error("hard-stop denial missing");
+  if ((await client.query("SELECT status FROM opportunities WHERE tenant_id=$1 AND id=$2", [tenantId, hardStop])).rows[0].status === "pursuit_approved") throw new Error("hard-stop denial changed state");
 
   const missingCore = await client.query("INSERT INTO opportunities (tenant_id, title, status, stage, estimated_value) VALUES ($1, 'Missing Core Opportunity', 'draft', 'draft', 1) RETURNING id", [tenantId]);
   await expectStatus("pursuit approval still blocks missing core required fields", "POST", `/opportunities/${missingCore.rows[0].id}/pursuit-approve`, `Bearer ${token}`, 400, {

@@ -4,6 +4,7 @@ import { installStoredSession } from "../helpers/auth";
 import { openAction, expectModal, submitModal } from "../helpers/modal";
 import { expectRouteHealthy } from "../helpers/page-assertions";
 import { withDb } from "../helpers/db";
+import { prepareActionCustomerAcceptance } from "../helpers/action-state-customer-acceptance";
 import { captureBoundaryCounts, expectBoundaryUnchanged } from "../helpers/boundary-assertions";
 import { readE2EManifest } from "../helpers/manifest";
 
@@ -22,8 +23,8 @@ import { readE2EManifest } from "../helpers/manifest";
  *    (cashReceiptUnapplied:Apply uses invoiceApproved while it is still "approved")
  *  - Item-level recalculate tests (settlementItemDraft, cpayItemDraft,
  *    payrollItemDraft) run before their parent submit-review tests
- *  - Item-level archive tests (paymentItemDraft, aexItemDraft) run after their
- *    parent submit-review tests (submit-review requires active items)
+ *  - Payment item archive uses its own draft batch because reviewed payment
+ *    instructions are immutable; accounting item archive follows its submit test.
  */
 
 const manifest = readE2EManifest();
@@ -53,8 +54,46 @@ async function fillArchiveReason(page: Page): Promise<void> {
   }
 }
 
+async function verifyEmptyAndUnreconciledBatch(modal: ReturnType<Page["locator"]>, batchId: string) {
+  await expect(modal).toContainText("payment batch requires at least one active item");
+  // Assemble this synthetic legacy fixture before locking it. Use a distinct
+  // payable so another test's reservation cannot determine this result.
+  const inserted = await withDb(async c => {
+    await c.query('BEGIN');
+    try {
+      const state = (await c.query('SELECT status FROM payment_batches WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [TENANT_ID,batchId])).rows[0].status;
+      const payable = (await c.query(`INSERT INTO contractor_payables
+        (tenant_id,payable_number,payable_type,payable_party_type,partner_organization_id,capacity_provider_id,net_payable_amount)
+        SELECT cp.tenant_id,gen_random_uuid()::text,cp.payable_type,cp.payable_party_type,cp.partner_organization_id,cp.capacity_provider_id,pi.payment_amount
+        FROM payment_items pi JOIN contractor_payables cp ON cp.tenant_id=pi.tenant_id AND cp.id=pi.contractor_payable_id
+        WHERE pi.tenant_id=$1 AND pi.payment_batch_id=$2 AND pi.deleted_at IS NULL LIMIT 1 RETURNING id`, [TENANT_ID,s.paymentBatchUnderReview])).rows[0].id;
+      await c.query("UPDATE payment_batches SET status='draft' WHERE tenant_id=$1 AND id=$2",[TENANT_ID,batchId]);
+      const result = await c.query(`INSERT INTO payment_items
+        (tenant_id,payment_batch_id,source_type,contractor_payable_id,payee_type,capacity_provider_id,payee_name,payment_method,payment_amount,currency)
+        SELECT tenant_id,$2,source_type,$4,payee_type,capacity_provider_id,payee_name,payment_method,payment_amount,currency
+        FROM payment_items WHERE tenant_id=$1 AND payment_batch_id=$3 AND deleted_at IS NULL RETURNING id`,
+        [TENANT_ID,batchId,s.paymentBatchUnderReview,payable]);
+      await c.query('UPDATE payment_batches SET status=$3 WHERE tenant_id=$1 AND id=$2',[TENANT_ID,batchId,state]);
+      await c.query('COMMIT');
+      return result;
+    } catch (error) { await c.query('ROLLBACK'); throw error; }
+  });
+  expect(inserted.rows).toHaveLength(1);
+  try {
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText("Partner payable requires an approved settlement with accepted-work lineage");
+  } finally {
+    await withDb(c => c.query("DELETE FROM payment_items WHERE tenant_id=$1 AND id=$2",[TENANT_ID,inserted.rows[0].id]));
+  }
+}
+
 test.describe("Action-state full submit certification", () => {
   test.use({ storageState: personas.systemAdmin.storageState });
+
+  test.beforeAll(async () => {
+    await withDb(client => prepareActionCustomerAcceptance(client, TENANT_ID, p["system-admin"].userId,
+      [s.settlementDraft, s.settlementUnderReview, s.settlementApproved], [s.invoiceDraft, s.invoiceUnderReview]));
+  });
 
   // ── Recalculate / item-level tests (must run before parent submit mutates state) ──
 
@@ -104,16 +143,18 @@ test.describe("Action-state full submit certification", () => {
 
   // ── Production ────────────────────────────────────────────────────────────────
 
-  test("[Production] prodDraft: Submit → status=submitted", async ({ page }) => {
+  test("[Production] legacy draft without reviewed safety cannot submit", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/production/${s.prodDraft}`, "production");
     const before = await captureBoundaryCounts(TENANT_ID, ["settlements", "invoices", "payment_batches", "payroll_runs", "bank_transactions", "accounting_export_batches"]);
     await openAction(page, /^Submit$/i);
     await expectModal(page, /Submit/i);
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('work_safety_scope_not_reviewed');
     const row = await withDb((c) => c.query(`SELECT status FROM production_records WHERE id = $1 AND tenant_id = $2`, [s.prodDraft, TENANT_ID]));
-    expect(row.rows[0].status, "production_records.status must be submitted").toBe("submitted");
+    expect(row.rows[0].status, "unreviewed legacy production stays draft").toBe("draft");
     await expectBoundaryUnchanged(TENANT_ID, before, "prodDraft-submit");
   });
 
@@ -147,7 +188,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "prodUnderReview-approve");
   });
 
-  test("[Production] prodCorrectionRequested: Mark Corrected → status=corrected", async ({ page }) => {
+  test("[Production] legacy correction without reviewed safety cannot advance", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.qcManager.storageState);
     await expectRouteHealthy(page, `/production/${s.prodCorrectionRequested}`, "production");
@@ -155,9 +196,11 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /Mark Corrected/i);
     await expectModal(page, /Corrected/i);
     await page.getByLabel(/Correction note/i).first().fill("E2E certification correction");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('work_safety_scope_not_reviewed');
     const row = await withDb((c) => c.query(`SELECT status FROM production_records WHERE id = $1 AND tenant_id = $2`, [s.prodCorrectionRequested, TENANT_ID]));
-    expect(row.rows[0].status, "production_records.status must be corrected").toBe("corrected");
+    expect(row.rows[0].status, "unreviewed correction remains pending").toBe("correction_required");
     await expectBoundaryUnchanged(TENANT_ID, before, "prodCorrectionRequested-mark-corrected");
   });
 
@@ -528,17 +571,18 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "invoiceUnderReview-reject");
   });
 
-  test("[Invoice] invoiceApproved: Mark Sent → status=sent", async ({ page }) => {
+  test("[Invoice] legacy Mark Sent opens package review and blocks missing approved terms", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/invoices/${s.invoiceApproved}`, "invoice");
     const before = await captureBoundaryCounts(TENANT_ID, ["cash_receipts", "payment_batches", "bank_transactions", "payroll_runs", "accounting_export_batches"]);
     await openAction(page, /Mark Sent/i);
     await expectModal(page, /Mark Sent/i);
-    await page.getByLabel(/Sent Note/i).first().fill("E2E certification invoice sent");
-    await submitModal(page);
+    await expect(page.getByLabel('Invoice package selection')).toHaveValue(s.invoiceApproved);
+    await expect(page.getByText('Reconcile this invoice with approved agreement pricing before preparing its package.')).toBeVisible();
+    await expect(page.getByText('Record customer delivery',{exact:true})).toHaveCount(0);
     const row = await withDb((c) => c.query(`SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2`, [s.invoiceApproved, TENANT_ID]));
-    expect(row.rows[0].status, "invoices.status must be sent").toBe("sent");
+    expect(row.rows[0].status, "legacy invoice remains approved without fabricated delivery").toBe("approved");
     await expectBoundaryUnchanged(TENANT_ID, before, "invoiceApproved-mark-sent");
   });
 
@@ -717,7 +761,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "cpayDraft-submit-review");
   });
 
-  test("[Contractor Payable] cpayUnderReview: Approve → status=approved", async ({ page }) => {
+  test("[Contractor Payable] cpayUnderReview: missing accepted-work lineage blocks Approve", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/contractor-payables/${s.cpayUnderReview}`, "contractor");
@@ -725,13 +769,15 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /^Approve$/i);
     await expectModal(page, /Approve.*Payable/i);
     await page.getByLabel(/Approval Note/i).first().fill("E2E certification approval");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM contractor_payables WHERE id = $1 AND tenant_id = $2`, [s.cpayUnderReview, TENANT_ID]));
-    expect(row.rows[0].status, "contractor_payables.status must be approved").toBe("approved");
+    expect(row.rows[0].status, "unreconciled payable stays blocked").toBe("under_review");
     await expectBoundaryUnchanged(TENANT_ID, before, "cpayUnderReview-approve");
   });
 
-  test("[Contractor Payable] cpayApproved: Mark Payment Ready → payment_readiness_status=ready_for_payment", async ({ page }) => {
+  test("[Contractor Payable] cpayApproved: missing accepted-work lineage blocks Mark Payment Ready", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/contractor-payables/${s.cpayApproved}`, "contractor");
@@ -739,9 +785,11 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /Mark Payment Ready/i);
     await expectModal(page, /Mark Payment Ready/i);
     await page.getByLabel(/Ready Note/i).first().fill("E2E certification payment ready");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT payment_readiness_status FROM contractor_payables WHERE id = $1 AND tenant_id = $2`, [s.cpayApproved, TENANT_ID]));
-    expect(row.rows[0].payment_readiness_status, "contractor_payables.payment_readiness_status must be ready_for_payment").toBe("ready_for_payment");
+    expect(row.rows[0].payment_readiness_status, "unreconciled payable stays blocked").toBe("not_ready");
     await expectBoundaryUnchanged(TENANT_ID, before, "cpayApproved-mark-payment-ready");
   });
 
@@ -864,19 +912,27 @@ test.describe("Action-state full submit certification", () => {
 
   test("[Payment Execution] paymentItemDraft: Archive Item → status=archived", async ({ page }) => {
     test.slow();
+    // The shared draft batch has already entered review. Archive a separate
+    // editable instruction without reopening that reviewed batch.
+    const itemId = await withDb(async c => {
+      const marker = `ARCHIVE-${Date.now()}`;
+      const payable = (await c.query("INSERT INTO contractor_payables(tenant_id,payable_number,payable_type,payable_party_type,net_payable_amount) VALUES($1,$2,'subcontractor','internal_self_perform',10) RETURNING id", [TENANT_ID, marker])).rows[0].id;
+      const batch = (await c.query("INSERT INTO payment_batches(tenant_id,payment_batch_number,batch_type,payment_method) VALUES($1,$2,'contractor_payable','manual') RETURNING id", [TENANT_ID, marker])).rows[0].id;
+      return (await c.query("INSERT INTO payment_items(tenant_id,payment_batch_id,source_type,contractor_payable_id,payee_type,payee_name,payment_method,payment_amount) VALUES($1,$2,'contractor_payable',$3,'internal_self_perform','Synthetic archive','manual',10) RETURNING id", [TENANT_ID, batch, payable])).rows[0].id;
+    });
     await installStoredSession(page, personas.systemAdmin.storageState);
-    await expectRouteHealthy(page, `/payment-items/${s.paymentItemDraft}`, "payment");
+    await expectRouteHealthy(page, `/payment-items/${itemId}`, "payment");
     const before = await captureBoundaryCounts(TENANT_ID, ["bank_transactions", "reconciliation_matches", "accounting_export_batches"]);
     await openAction(page, /Archive Item/i);
     await expectModal(page, /Archive Payment Item/i);
     await fillArchiveReason(page);
     await submitModal(page);
-    const row = await withDb((c) => c.query(`SELECT status FROM payment_items WHERE id = $1 AND tenant_id = $2`, [s.paymentItemDraft, TENANT_ID]));
+    const row = await withDb((c) => c.query(`SELECT status FROM payment_items WHERE id = $1 AND tenant_id = $2`, [itemId, TENANT_ID]));
     expect(row.rows[0].status, "payment_items.status must be archived").toBe("archived");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentItemDraft-archive");
   });
 
-  test("[Payment Execution] paymentBatchUnderReview: Approve → status=approved", async ({ page }) => {
+  test("[Payment Execution] paymentBatchUnderReview: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchUnderReview}`, "payment");
@@ -884,13 +940,15 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /^Approve$/i);
     await expectModal(page, /Approve.*Batch/i);
     await page.getByLabel(/Approval Note/i).first().fill("E2E certification approval");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await expect(modal).toContainText('Partner payable requires an approved settlement with accepted-work lineage');
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchUnderReview, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be approved").toBe("approved");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("under_review");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchUnderReview-approve");
   });
 
-  test("[Payment Execution] paymentBatchApproved: Schedule → status=scheduled [deferred-fix]", async ({ page }) => {
+  test("[Payment Execution] paymentBatchApproved: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchApproved}`, "payment");
@@ -898,9 +956,11 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /^Schedule$/i);
     await expectModal(page, /Schedule/i);
     await page.getByLabel(/Scheduled Payment Date/i).first().fill("2026-12-15");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await verifyEmptyAndUnreconciledBatch(modal, s.paymentBatchApproved);
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchApproved, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be scheduled").toBe("scheduled");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("approved");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchApproved-schedule");
   });
 
@@ -918,7 +978,7 @@ test.describe("Action-state full submit certification", () => {
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchVoidTarget-void");
   });
 
-  test("[Payment Execution] paymentBatchScheduled: Submit Execution → status=submitted", async ({ page }) => {
+  test("[Payment Execution] paymentBatchScheduled: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${PAYMENT_BATCH_SCHEDULED_ID}`, "payment");
@@ -926,13 +986,15 @@ test.describe("Action-state full submit certification", () => {
     await openAction(page, /Submit Execution/i);
     await expectModal(page, /Submit Execution/i);
     await page.getByLabel(/Submit Note/i).first().fill("E2E certification execution submission");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await verifyEmptyAndUnreconciledBatch(modal, PAYMENT_BATCH_SCHEDULED_ID);
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [PAYMENT_BATCH_SCHEDULED_ID, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be submitted").toBe("submitted");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("scheduled");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchScheduled-submit-execution");
   });
 
-  test("[Payment Execution] paymentBatchExecutionSubmitted: Mark Executed → status=executed_later", async ({ page }) => {
+  test("[Payment Execution] paymentBatchExecutionSubmitted: missing accepted-work lineage blocks advancement", async ({ page }) => {
     test.slow();
     await installStoredSession(page, personas.systemAdmin.storageState);
     await expectRouteHealthy(page, `/payments/${s.paymentBatchExecutionSubmitted}`, "payment");
@@ -941,9 +1003,11 @@ test.describe("Action-state full submit certification", () => {
     await expectModal(page, /Mark Executed/i);
     await page.getByLabel(/Execution Reference/i).first().fill("E2E-EXEC-REF-001");
     await page.getByLabel(/Execution Note/i).first().fill("E2E certification executed");
-    await submitModal(page);
+    const modal=page.locator("[role='dialog'], .modal-backdrop, .modal-panel, .modal-card").last();
+    await modal.locator("button[type='submit']").click();
+    await verifyEmptyAndUnreconciledBatch(modal, s.paymentBatchExecutionSubmitted);
     const row = await withDb((c) => c.query(`SELECT status FROM payment_batches WHERE id = $1 AND tenant_id = $2`, [s.paymentBatchExecutionSubmitted, TENANT_ID]));
-    expect(row.rows[0].status, "payment_batches.status must be executed_later").toBe("executed_later");
+    expect(row.rows[0].status, "unreconciled batch remains unchanged").toBe("submitted");
     await expectBoundaryUnchanged(TENANT_ID, before, "paymentBatchExecutionSubmitted-mark-executed");
   });
 

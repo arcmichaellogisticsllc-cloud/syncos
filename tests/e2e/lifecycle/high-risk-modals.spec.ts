@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { personas } from "../fixtures/personas";
 import { modalMatrix } from "../fixtures/modal-matrix";
 import { installStoredSession } from "../helpers/auth";
@@ -17,6 +17,7 @@ test.describe("High-risk lifecycle modal certification", () => {
       await openAction(page, entry.action);
       await expectModal(page, entry.title);
       await expectRequiredFields(page, entry.requiredFields);
+      for (const label of entry.optionalFields ?? []) await expect(page.getByLabel(label).first()).toBeVisible();
       await expectBoundaryCopy(page, entry.boundaryCopy);
       await cancelModal(page);
     });

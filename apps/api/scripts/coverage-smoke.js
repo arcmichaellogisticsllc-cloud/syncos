@@ -17,11 +17,11 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
-    if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+    if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
 
     const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
     const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
@@ -107,7 +107,8 @@ async function main() {
     await expectListHas("coverage list sorts readiness", "/coverage-plans?sort=readiness_asc", token, planId);
     await expectListHas("coverage list sorts open gaps", "/coverage-plans?sort=open_gaps_desc", token, planId);
 
-    const missingOverride = await expectStatus("non-hard-stop gap requires override reason", "POST", `/coverage-plans/${planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Ready with open gap." });
+    await expectStatus("non-hard-stop gap requires override reason", "POST", `/coverage-plans/${planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Ready with open gap." });
+    const missingOverride = await expectStatus("read required override context", "GET", `/coverage-plans/${planId}/detail`, `Bearer ${token}`, 200);
     if (!missingOverride.required_override_fields?.includes("capacity_override_reason")) throw new Error("capacity override field missing for non-hard-stop gap");
     await expectStatus("gap override works", "POST", `/coverage-gaps/${gap.id}/override`, `Bearer ${token}`, 201, { override_reason: "Backup source action plan accepted." });
     const approvedWithGapOverride = await expectStatus("approve for handoff succeeds with override reasons", "POST", `/coverage-plans/${planId}/approve-for-handoff`, `Bearer ${token}`, 201, {
@@ -123,7 +124,8 @@ async function main() {
     const unknownPlan = await createPlanWithRequirementAndSource(client, token, base, {
       source: { expected_margin_percent: undefined, margin_confidence: undefined },
     });
-    const unknownApproval = await expectStatus("margin unknown creates warning, not hard block", "POST", `/coverage-plans/${unknownPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Unknown margin." });
+    await expectStatus("margin unknown creates warning, not hard block", "POST", `/coverage-plans/${unknownPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Unknown margin." });
+    const unknownApproval = await expectStatus("read approval context after denial", "GET", `/coverage-plans/${unknownPlan.planId}/detail`, `Bearer ${token}`, 200);
     if (!hasWarning(unknownApproval, "margin_unknown") || unknownApproval.blockers?.length || !unknownApproval.required_override_fields?.includes("economic_override_reason")) throw new Error("margin unknown was not warning-only");
     await expectStatus("margin unknown approval succeeds with override", "POST", `/coverage-plans/${unknownPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 201, {
       approval_note: "Unknown margin accepted for planning.",
@@ -131,11 +133,13 @@ async function main() {
     });
 
     const lowPlan = await createPlanWithRequirementAndSource(client, token, base, { source: { expected_margin_percent: 0, margin_confidence: "low" } });
-    const lowApproval = await expectStatus("low margin creates warning, not hard block", "POST", `/coverage-plans/${lowPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Low margin." });
+    await expectStatus("low margin creates warning, not hard block", "POST", `/coverage-plans/${lowPlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Low margin." });
+    const lowApproval = await expectStatus("read approval context after denial", "GET", `/coverage-plans/${lowPlan.planId}/detail`, `Bearer ${token}`, 200);
     if (!hasWarning(lowApproval, "low_margin") || lowApproval.blockers?.length) throw new Error("low margin was not warning-only");
 
     const negativePlan = await createPlanWithRequirementAndSource(client, token, base, { source: { expected_margin_percent: -5, margin_confidence: "low" } });
-    const negativeApproval = await expectStatus("negative margin creates high warning, not automatic hard block", "POST", `/coverage-plans/${negativePlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Negative margin." });
+    await expectStatus("negative margin creates high warning, not automatic hard block", "POST", `/coverage-plans/${negativePlan.planId}/approve-for-handoff`, `Bearer ${token}`, 400, { approval_note: "Negative margin." });
+    const negativeApproval = await expectStatus("read approval context after denial", "GET", `/coverage-plans/${negativePlan.planId}/detail`, `Bearer ${token}`, 200);
     if (!hasWarning(negativeApproval, "negative_margin") || negativeApproval.blockers?.length) throw new Error("negative margin was not warning-only");
 
     const hardStopPlan = await createPlanWithRequirementAndSource(client, token, base, { source: { expected_margin_percent: 20, margin_confidence: "medium" } });
@@ -151,7 +155,9 @@ async function main() {
       approval_note: "Cannot override hard stop.",
       override_reasons: { safety_gap: "not allowed" },
     });
-    if (!hardStopApproval.blockers?.some((blocker) => blocker.related_object_id === hardStopGap.id)) throw new Error("hard stop blocker missing");
+    if (hardStopApproval.statusCode !== 400 || hardStopApproval.message !== "Coverage approval is blocked by hard stops.") throw new Error("hard stop denial missing");
+    const hardStopDetail = await expectStatus("read hard-stop context", "GET", `/coverage-plans/${hardStopPlan.planId}/detail`, `Bearer ${token}`, 200);
+    if (!hardStopDetail.blockers?.some((blocker) => blocker.related_object_id === hardStopGap.id)) throw new Error("hard stop blocker missing from authorized detail");
     await expectStatus("gap resolve works", "POST", `/coverage-gaps/${hardStopGap.id}/resolve`, `Bearer ${token}`, 201, { resolution_note: "Safety issue resolved." });
 
     await expectStatus("coverage requirement archive requires reason", "POST", `/coverage-requirements/${requirement.id}/archive`, `Bearer ${token}`, 400, {});

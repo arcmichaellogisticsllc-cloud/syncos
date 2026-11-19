@@ -1,3 +1,4 @@
+const {attachSyntheticPayableLineage}=require('./synthetic-payable-lineage');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -17,8 +18,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -94,6 +95,7 @@ async function main() {
     if (submitted.status !== "ready_for_review" || submitted.approval_status !== "pending") throw new Error("Submit review did not set statuses");
     const reviewing = await expectStatus("start review works", "POST", `/contractor-payables/${payable.id}/start-review`, `Bearer ${token}`, 201);
     if (reviewing.status !== "under_review") throw new Error("Start review did not set under_review");
+    await attachSyntheticPayableLineage(client,tenantId,userId,payable.id);
     const approved = await expectStatus("approve requires valid payable and creates no payment", "POST", `/contractor-payables/${payable.id}/approve`, `Bearer ${token}`, 201, {
       approval_note: "Smoke approval.",
     });

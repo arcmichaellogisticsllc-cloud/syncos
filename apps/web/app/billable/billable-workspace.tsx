@@ -1,6 +1,14 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +20,7 @@ const rateSources = ["contract_rate", "project_rate", "customer_rate", "manual_r
 const rateConfidences = ["unknown", "low", "medium", "high", "confirmed"];
 const acceptanceStatuses = ["not_required", "pending", "accepted", "rejected", "correction_required", "disputed"];
 const packageStatuses = ["not_started", "incomplete", "ready", "submitted_later", "accepted_later", "rejected_later"];
-const tabs = ["overview", "qc", "production", "work_order", "project", "quantity_amount", "rate", "documentation", "acceptance", "retainage", "holds_disputes", "timeline", "audit", "future_settlement", "future_invoice"];
+const tabs = ["overview", "qc", "production", "work_order", "project", "quantity_amount", "rate", "documentation", "acceptance", "retainage", "holds_disputes", "timeline", "audit"];
 
 type BillableDetailShape = {
   billable_item?: SyncRecord;
@@ -89,7 +97,7 @@ export function BillableQueue() {
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Login required. Sign in to review billable readiness and settlement blockers.</div> : null}
       {loading ? <div className="empty-state">Loading billable items...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel operator-queue-hero">
             <div className="section-toolbar">
@@ -101,7 +109,7 @@ export function BillableQueue() {
                 <Link className="primary-button" href={firstHref(visible, "/billable")} aria-disabled={!visible.length}>Review Next Billable Item</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "held"), "/billable")} aria-disabled={!rows.some((row) => row.status === "held")}>Open Holds</Link>
                 <Link className="link-button" href={firstHref(rows.filter((row) => row.status === "disputed"), "/billable")} aria-disabled={!rows.some((row) => row.status === "disputed")}>Open Disputes</Link>
-                <Link className="link-button" href="/billable/new" aria-disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</Link>
+                <Link className="link-button" href="/billable/new" allowed={hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</Link>
               </div>
             </div>
             <div className="summary-grid">
@@ -113,7 +121,7 @@ export function BillableQueue() {
             <div className="section-toolbar">
               <div>
                 <h2>{activeQueueLabel}</h2>
-                <p className="muted">{emptyBillableQueue(activeQueue)}</p>
+                <p className="muted">{visible.length ? `${visible.length} record${visible.length === 1 ? "" : "s"} in this view.` : emptyBillableQueue(activeQueue)}</p>
               </div>
               <button type="button" onClick={() => { setActiveQueue("ready_for_review"); setFilters({ archived: "false", sort: "updated_desc" }); }}>Reset</button>
             </div>
@@ -181,10 +189,11 @@ export function BillableCreate() {
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Create Billable" purpose="Select the approved source and verify customer acceptance, quantities and applicable commercial terms." afterSave="Review readiness, holds and supporting evidence before advancing toward settlement or invoicing." />
         <div className="warning-box">Backend validation requires approved QC and approved production, blocks duplicates unless overridden, and writes event/audit/system_action records.</div>
         <BillableFormFields form={form} setForm={setForm} related={related} includeCreate />
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</button>
+          {hasPermission(session.permissions, "billable_item.create") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "billable_item.create")}>Create Billable Candidate</button> : null}
           <Link className="link-button" href="/billable">Cancel</Link>
         </div>
       </form>
@@ -251,10 +260,11 @@ export function BillableEdit({ billableId }: { billableId: string }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {!item ? <div className="empty-state">Billable item not found or you do not have access.</div> : (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Billable" purpose="Select the approved source and verify customer acceptance, quantities and applicable commercial terms." afterSave="Review readiness, holds and supporting evidence before advancing toward settlement or invoicing." />
           <div className="warning-box">Status changes use lifecycle routes. Voided, archived, and settlement-created items are backend read-only.</div>
           <BillableFormFields form={form} setForm={setForm} related={emptyRelated} disabled={readOnly} />
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "billable_item.update")}>Save Billable Item</button>
+            {hasPermission(session.permissions, "billable_item.update") ? <button className="primary-button" type="submit" disabled={readOnly || !hasPermission(session.permissions, "billable_item.update")}>Save Billable Item</button> : null}
             <Link className="link-button" href={`/billable/${billableId}`}>Cancel</Link>
           </div>
         </form>
@@ -297,6 +307,7 @@ export function BillableDetail({ billableId }: { billableId: string }) {
   return (
     <BillableShell title="Billable Detail" purpose="Show financial eligibility truth, readiness, source context, timeline, and audit without creating finance records.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["billable_item"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <div className="success-banner">{notice}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Billable Detail.</div> : null}
@@ -315,17 +326,19 @@ export function BillableDetail({ billableId }: { billableId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/billable/${billableId}/edit`} aria-disabled={!hasPermission(session.permissions, "billable_item.update")}>Edit Billable Item</Link>
+                <Link className="link-button" href={`/billable/${billableId}/edit`} allowed={hasPermission(session.permissions, "billable_item.update")}>Edit Billable Item</Link>
                 <ActionButton permission="billable_item.recalculate_readiness" session={session} disabled={viewOnly(item)} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="billable_item.mark_ready" session={session} disabled={viewOnly(item) || ["held", "disputed"].includes(String(item.status)) || blockers.length > 0} onClick={() => setModal("ready")}>Mark Ready For Settlement</ActionButton>
                 <ActionButton permission="billable_item.place_hold" session={session} disabled={viewOnly(item) || String(item.status) === "held"} onClick={() => setModal("hold")}>Place Hold</ActionButton>
                 <ActionButton permission="billable_item.release_hold" session={session} disabled={String(item.status) !== "held"} onClick={() => setModal("release")}>Release Hold</ActionButton>
-                <ActionButton permission="billable_item.dispute" session={session} disabled={viewOnly(item) || String(item.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
                 <ActionButton permission="billable_item.resolve_dispute" session={session} disabled={String(item.status) !== "disputed"} onClick={() => setModal("resolve")}>Resolve Dispute</ActionButton>
-                <ActionButton permission="billable_item.void" session={session} disabled={viewOnly(item) || Boolean(item.settlement_item_id)} onClick={() => setModal("void")}>Void</ActionButton>
-                <ActionButton permission="billable_item.archive" session={session} disabled={String(item.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["billable_item.dispute", "billable_item.void", "billable_item.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="billable_item.dispute" session={session} disabled={viewOnly(item) || String(item.status) === "disputed"} onClick={() => setModal("dispute")}>Dispute</ActionButton>
+              <ActionButton permission="billable_item.void" session={session} disabled={viewOnly(item) || Boolean(item.settlement_item_id)} onClick={() => setModal("void")}>Void</ActionButton>
+              <ActionButton permission="billable_item.archive" session={session} disabled={String(item.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Readiness Score" value={formatCell(item.readiness_score)} />
               <Metric label="Readiness Status" value={formatAction(item.readiness_status)} />
@@ -367,11 +380,11 @@ export function BillableDetail({ billableId }: { billableId: string }) {
               <Checklist items={billableChecklist(item)} />
               <WarningList title="Key Blockers" rows={blockers.slice(0, 4)} empty="No blockers returned." />
               <WarningList title="Key Warnings" rows={warnings.slice(0, 4)} empty="No warnings returned." />
-              <div className="warning-box">Settlement is not available in this sprint.</div>
+              <div className="warning-box">Use the authorized settlement workflow after accepted-work and agreement checks pass.</div>
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
+                {permittedRecordTabs(tabs, "billable_item").map((itemTab) => <button key={itemTab} type="button" className={tab === itemTab ? "active" : ""} onClick={() => setTab(itemTab)}>{formatAction(itemTab)}</button>)}
               </div>
               <BillableTab tab={tab} detail={detail} item={item} />
             </section>
@@ -408,7 +421,7 @@ function BillableShell({ title, purpose, children }: { title: string; purpose: s
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Billable</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -418,7 +431,7 @@ function BillableShell({ title, purpose, children }: { title: string; purpose: s
 
 function BillableTable({ rows }: { rows: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -458,7 +471,7 @@ function BillableTable({ rows }: { rows: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -470,14 +483,14 @@ function BillableTab({ tab, detail, item }: { tab: string; detail: BillableDetai
   if (tab === "project") return <ContextPanel title="Project Context" record={detail.project_context} href={item.project_id ? `/projects/${item.project_id}` : undefined} fields={["name", "project_name", "status", "customer_organization_id", "territory_id", "work_type", "project_manager_user_id", "field_supervisor_user_id"]} />;
   if (tab === "quantity_amount") return <Panel title="Quantity & Amount"><dl className="detail-list"><dt>Approved quantity</dt><dd>{quantity(item.approved_quantity, item.unit)}</dd><dt>Billable quantity</dt><dd>{quantity(item.billable_quantity, item.unit)}</dd><dt>Held quantity</dt><dd>{quantity(item.held_quantity, item.unit)}</dd><dt>Rejected quantity</dt><dd>{quantity(item.rejected_quantity, item.unit)}</dd><dt>Correction quantity</dt><dd>{quantity(item.correction_quantity, item.unit)}</dd><dt>Unit</dt><dd>{formatAction(item.unit)}</dd><dt>Unit rate</dt><dd>{money(item.unit_rate)}</dd><dt>Estimated billable amount</dt><dd>{money(item.estimated_billable_amount)}</dd><dt>Retainage amount</dt><dd>{money(item.retainage_amount)}</dd><dt>Net billable amount</dt><dd>{money(item.net_billable_amount)}</dd></dl><div className="warning-box">Approved quantity comes from QC. Billable quantity is financial eligibility. Held quantity is not immediately billable. Net amount is estimate only until Settlement/Invoice layers.</div></Panel>;
   if (tab === "rate") return <Panel title="Rate Readiness"><dl className="detail-list"><dt>Rate code</dt><dd>{textValue(item.rate_code_id)}</dd><dt>Rate description</dt><dd>{textValue(item.rate_description)}</dd><dt>Unit rate</dt><dd>{money(item.unit_rate)}</dd><dt>Rate source</dt><dd>{formatAction(item.rate_source)}</dd><dt>Rate confidence</dt><dd>{formatAction(item.rate_confidence)}</dd><dt>Rate warnings</dt><dd><JsonBlock value={(detail.warnings ?? []).filter((row) => String(row.warning_type ?? row.blocker_type ?? "").includes("rate"))} /></dd><dt>Manual rate warning</dt><dd>{item.rate_source === "manual_rate" ? "Manual rate requires review." : "Not applicable"}</dd><dt>Unknown rate warning</dt><dd>{item.rate_source === "unknown" ? "Unknown rate blocks readiness unless overridden." : "Not applicable"}</dd></dl><div className="warning-box">No pricing engine is available in this sprint. Rates are readiness context only.</div></Panel>;
-  if (tab === "documentation") return <Panel title="Documentation Readiness"><dl className="detail-list"><dt>Billing package status</dt><dd>{formatAction(item.billing_package_status)}</dd><dt>Documentation status</dt><dd>{formatAction(item.documentation_status)}</dd><dt>Missing documentation warnings</dt><dd><JsonBlock value={(detail.warnings ?? []).filter((row) => String(row.warning_type ?? row.blocker_type ?? "").includes("documentation") || String(row.warning_type ?? row.blocker_type ?? "").includes("billing_package"))} /></dd><dt>Billing package readiness note</dt><dd>{formatAction(item.billing_package_status)}</dd></dl><div className="warning-box">PDF billing package generation is not available in this sprint.</div></Panel>;
+  if (tab === "documentation") return <Panel title="Documentation Readiness"><dl className="detail-list"><dt>Billing package status</dt><dd>{formatAction(item.billing_package_status)}</dd><dt>Documentation status</dt><dd>{formatAction(item.documentation_status)}</dd><dt>Missing documentation warnings</dt><dd><JsonBlock value={(detail.warnings ?? []).filter((row) => String(row.warning_type ?? row.blocker_type ?? "").includes("documentation") || String(row.warning_type ?? row.blocker_type ?? "").includes("billing_package"))} /></dd><dt>Billing package readiness note</dt><dd>{formatAction(item.billing_package_status)}</dd></dl><div className="warning-box">Prepare and validate customer billing packages in the invoice package workflow.</div></Panel>;
   if (tab === "acceptance") return <Panel title="Customer / Prime Acceptance"><dl className="detail-list"><dt>Customer acceptance status</dt><dd>{formatAction(item.customer_acceptance_status)}</dd><dt>Prime acceptance status</dt><dd>{formatAction(item.prime_acceptance_status)}</dd><dt>Acceptance warnings/blockers</dt><dd><JsonBlock value={[...(detail.warnings ?? []), ...(detail.blockers ?? [])].filter((row) => String(row.warning_type ?? row.blocker_type ?? "").includes("acceptance") || String(row.warning_type ?? row.blocker_type ?? "").includes("customer") || String(row.warning_type ?? row.blocker_type ?? "").includes("prime"))} /></dd></dl><div className="warning-box">No customer or prime portal is available in this sprint.</div></Panel>;
   if (tab === "retainage") return <Panel title="Retainage"><dl className="detail-list"><dt>Retainage required</dt><dd>{item.retainage_required ? "Yes" : "No"}</dd><dt>Retainage percent</dt><dd>{formatCell(item.retainage_percent)}</dd><dt>Retainage amount</dt><dd>{money(item.retainage_amount)}</dd><dt>Retainage release condition</dt><dd>{textValue(item.retainage_release_condition)}</dd><dt>Net billable amount</dt><dd>{money(item.net_billable_amount)}</dd></dl><div className="warning-box">Retainage is estimated here. Formal retainage ledgering belongs to a future Settlement/Finance sprint.</div></Panel>;
   if (tab === "holds_disputes") return <Panel title="Holds & Disputes"><dl className="detail-list"><dt>Hold reason</dt><dd>{textValue(item.hold_reason)}</dd><dt>Hold note</dt><dd>{textValue(item.hold_note)}</dd><dt>Dispute reason</dt><dd>{textValue(item.dispute_reason)}</dd><dt>Dispute note</dt><dd>{textValue(item.dispute_note)}</dd><dt>Current status</dt><dd>{formatAction(item.status)}</dd><dt>Resolution state</dt><dd>{item.status === "held" || item.status === "disputed" ? "Open" : "No open hold or dispute"}</dd></dl></Panel>;
   if (tab === "timeline") return <Panel title="Timeline"><ObjectTable rows={detail._timeline ?? []} columns={["event_type", "actor_name", "timestamp", "summary", "object_type", "object_id"]} /></Panel>;
   if (tab === "audit") return <Panel title="Audit">{detail._audit?.length ? <ObjectTable rows={detail._audit} columns={["actor_name", "action", "object_type", "object_id", "before_json", "after_json", "reason", "created_at", "correlation_id"]} /> : <div className="empty-state">You do not have permission to view billable audit details.</div>}</Panel>;
-  if (tab === "future_settlement") return <PlaceholderPanel title="Future Settlement" message="Settlement is not available in this sprint. A future Settlement layer will convert ready billable items into settlement items after rules are approved." columns={["settlement_item", "status", "quantity", "amount", "approval"]} />;
-  return <PlaceholderPanel title="Future Invoice" message="Invoice creation is not available in this sprint. Invoice, AR, Payment, Cash, Payroll, and Tax workflows are future finance layers." columns={["invoice_item", "invoice", "AR", "payment", "cash", "status"]} />;
+  if (tab === "future_settlement") return <PlaceholderPanel title="Future Settlement" message="Use the authorized settlement workflow after accepted-work and agreement checks pass. A future Settlement layer will convert ready billable items into settlement items after rules are approved." columns={["settlement_item", "status", "quantity", "amount", "approval"]} />;
+  return <PlaceholderPanel title="Future Invoice" message="Invoice preparation, cash application, payroll and partner payments have separate controlled workflows. Marking work billable does not create those records." columns={["invoice_item", "invoice", "AR", "payment", "cash", "status"]} />;
 }
 
 function BillableLifecycleModal({ type, billableId, item, blockers, session, onClose, onSaved }: { type: string; billableId: string; item: SyncRecord; blockers: SyncRecord[]; session: Session; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -500,7 +513,7 @@ function BillableLifecycleModal({ type, billableId, item, blockers, session, onC
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-card" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -516,7 +529,7 @@ function BillableLifecycleModal({ type, billableId, item, blockers, session, onC
         <div className="warning-box">This action uses the backend route and creates no settlement, settlement item, invoice, AR, payment, cash, payroll, or tax record.</div>
         <div className="form-actions"><button className="primary-button" type="submit" disabled={blockedReady}>{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -544,17 +557,14 @@ function BillableFormFields({ form, setForm, related, includeCreate = false, dis
   );
 }
 
-function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test billable actions.</p></div><button type="button" onClick={session.applyDefaults}>Use billable defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
-}
+function SessionPanel({ session }: { session: Session }) { return null; }
 
 function useSession() {
   const [token, setTokenState] = useState("");
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : billableDefaultPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -644,7 +654,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange, disabled = false }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void; disabled?: boolean }) {
@@ -657,7 +667,7 @@ function SelectInline({ value, options, labels = {}, onChange, disabled = false 
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -678,7 +688,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 const billableQueues = [

@@ -1,5 +1,5 @@
 import { ContractorPayableDetail } from "../contractor-payable-workspace";
 
-export default function ContractorPayableDetailPage({ params }: { params: { id: string } }) {
-  return <ContractorPayableDetail payableId={params.id} />;
+export default async function ContractorPayableDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return <ContractorPayableDetail payableId={(await params).id} />;
 }

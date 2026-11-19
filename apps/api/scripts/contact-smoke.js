@@ -17,11 +17,11 @@ async function main() {
     FROM users u
     JOIN tenant_users tu ON tu.user_id = u.id
     JOIN tenants t ON t.id = tu.tenant_id
-    WHERE u.email = 'admin@jackson-telcom.local'
-      AND t.slug = 'jackson-telcom'
+    WHERE u.email = 'admin@synccommsystems.local'
+      AND t.slug = 'sync-comm-systems'
     LIMIT 1
   `);
-  if (!seeded.rows[0]) throw new Error("Seeded Jackson Telcom admin user was not found");
+  if (!seeded.rows[0]) throw new Error("Seeded Sync Comm Systems admin user was not found");
 
   const { user_id: userId, tenant_id: tenantId } = seeded.rows[0];
   const token = createToken({ sub: userId, tenant_id: tenantId, exp: Math.floor(Date.now() / 1000) + 300 }, secret);
@@ -56,7 +56,7 @@ async function main() {
     relationship_strength_score: 41,
     source: "relationship_source",
     source_confidence: 80,
-    notes: "Jackson Telcom smoke contact for relationship pathing.",
+    notes: "Sync Comm Systems smoke contact for relationship pathing.",
   });
   await expectWriteDelta(client, createBefore, 1, 1, 1, 1, "contact create");
   if (contact.contact_role !== "vendor_manager") throw new Error("contact_role did not persist");
@@ -67,7 +67,7 @@ async function main() {
   const verifyBefore = await counts(client);
   const verified = await expectStatus("verification metadata persists", "POST", `/contacts/${contact.id}/verify`, `Bearer ${token}`, 201, {
     verification_method: "email_validated",
-    verification_source: "Jackson Telcom vendor file",
+    verification_source: "Sync Comm Systems vendor file",
     verification_note: "Confirmed by email bounce-free validation.",
   });
   await expectWriteDelta(client, verifyBefore, 1, 1, 1, 1, "contact verify");

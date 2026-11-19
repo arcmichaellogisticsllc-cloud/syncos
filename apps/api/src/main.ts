@@ -1,4 +1,8 @@
+import {SafeExceptionFilter} from './security/safe-exception.filter';
+import {assertNoPublicDemoCredentials} from './security/demo-credential-gate';
+import {DATABASE_POOL} from './modules/database.module';
 import "reflect-metadata";
+import { json } from "express";
 import { NestFactory } from "@nestjs/core";
 import { assertValidEnvironment } from "./config/environment";
 import { AppModule } from "./modules/app.module";
@@ -6,8 +10,39 @@ import { AppModule } from "./modules/app.module";
 async function bootstrap() {
   assertValidEnvironment();
   const app = await NestFactory.create(AppModule);
+  app.useGlobalFilters(new SafeExceptionFilter());
+  await assertNoPublicDemoCredentials(app.get(DATABASE_POOL));
+  if(process.env.SYNCOS_TRUST_LOOPBACK_PROXY==='true')app.getHttpAdapter().getInstance().set('trust proxy','loopback');
+  // Scope the larger base64 body allowance to the bounded field-evidence upload.
+  app.use("/syncfield/foreman/evidence", json({ limit: "28mb" }));
+  // One bounded 1 MiB chunk expands to about 1.4 MiB in JSON.
+  app.use(/^\/syncfield\/foreman\/evidence-uploads\/[^/]+\/chunks\/?$/, json({ limit: "2mb" }));
+  // Private onboarding JSON carries base64 evidence; binary limits remain enforced per file.
+  // Two-document policy/payment submissions need room for two 5 MB files after base64 expansion.
+  app.use(/^\/partner-compliance\/me\/(payment-profile|insurance-policies)\/?$/, json({ limit: "14mb" }));
+  app.use(/^\/partner-compliance\/me\/w9\/?$/, json({ limit: "7mb" }));
+  app.use(/^\/partner-workforce\/me\/workers\/[^/]+\/credentials\/?$/, json({ limit: "7mb" }));
+  app.use(/^\/partner-workforce\/me\/workers\/[^/]+\/headshots\/?$/, json({ limit: "3mb" }));
+  app.use(/^\/invoice-packages\/invoices\/[^/]+\/documents\/?$/, json({ limit: "28mb" }));
+  app.use(/^\/customer-inquiries\/[^/]+\/files\/?$/, json({ limit: "7mb" }));
+  app.use(/^\/account-programs\/[^/]+\/originals\/?$/, json({ limit: "14mb" }));
+  // Nest detects a registered jsonParser by name, even when scoped. Keep the
+  // ordinary JSON parser explicit after the bounded upload exceptions.
+  app.use(json({ limit: "100kb" }));
+  const allowedOrigins = (process.env.SYNCOS_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (allowedOrigins.length > 0) {
+    app.enableCors({
+      origin: allowedOrigins,
+      credentials: true,
+      methods: ["GET", "POST", "PATCH", "OPTIONS"],
+      allowedHeaders: ["authorization", "content-type", "x-request-id"],
+    });
+  }
   const port = Number(process.env.PORT ?? 3000);
-  await app.listen(port);
+  await app.listen(port, process.env.HOST ?? "127.0.0.1");
 }
 
 void bootstrap();

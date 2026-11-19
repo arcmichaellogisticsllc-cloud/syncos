@@ -1,9 +1,34 @@
 "use client";
+import { actionRoleAuthority } from "../action-role-authority";
 
 export type SyncRecord = Record<string, unknown>;
 
 const tokenKey = "syncos.apiToken";
 const permissionKey = "syncos.permissions";
+let verifiedPermissions: string[] = [];
+let verifiedToken = "";
+
+
+export type AuthContext = {
+  browser_session?: string;
+  user_id: string;
+  tenant_id: string;
+  roles: string[];
+  role_names?: string[];
+  permissions: string[];
+  tenant_permissions?: string[];
+  partner_context?: {
+    persona?: "partner_admin" | "partner_foreman";
+    organization_id?: string;
+    organization_name?: string;
+    worker_id?: string;
+    crew_id?: string;
+  } | null;
+  routing?: {
+    workspace?: string;
+    policy?: string;
+  };
+};
 
 export const defaultSignalPermissions = [
   "signal.read",
@@ -257,6 +282,10 @@ export const defaultOpportunityPermissions = [
   "project_handoff_risk.override",
   "project_handoff_risk.archive",
   "project_handoff_approval.read",
+  "executive_command.read",
+  "executive_command.actions_read",
+  "executive_command.snapshot_recalculate",
+  "executive_command.action_acknowledge",
 ];
 
 export function readToken() {
@@ -268,28 +297,116 @@ export function saveToken(token: string) {
   window.localStorage.setItem(tokenKey, token.trim());
 }
 
-export function readPermissions() {
-  if (typeof window === "undefined") return [];
-  const stored = window.localStorage.getItem(permissionKey);
-  if (!stored) return defaultSignalPermissions;
-  return stored
-    .split(",")
-    .map((permission) => permission.trim())
-    .filter(Boolean);
+export function readPermissions(): string[] {
+  // Stored UI hints are not authority. Only the current server-verified identity grants access.
+  return verifiedToken === readToken() ? [...verifiedPermissions] : [];
 }
 
 export function savePermissions(permissions: string[]) {
   window.localStorage.setItem(permissionKey, permissions.join(","));
 }
 
+export function clearAuthContext() {
+  if (typeof window === "undefined") return;
+  verifiedPermissions = [];
+  verifiedToken = "";
+  window.localStorage.removeItem(tokenKey);
+  window.localStorage.removeItem(permissionKey);
+  // Queues are identity-scoped. Signing out hides them but must not destroy
+  // unsent evidence; replay still requires the matching authenticated account.
+  window.localStorage.removeItem('syncos.offlineContext');
+  window.localStorage.removeItem('syncos.syncfieldAssignmentId');
+}
+
+export async function endBrowserSession(){
+  try {
+    await syncosFetch('auth/browser-logout',{method:'POST'});
+    localStorage.removeItem('syncos.pendingSignOut');
+  } catch { localStorage.setItem('syncos.pendingSignOut','true'); }
+  finally { clearAuthContext(); }
+}
+
+export function sessionEmailFromToken(token = readToken()) {
+  const payload = token.split(".")[1];
+  if (!payload) return "";
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(atob(normalized)) as { email?: unknown };
+    return typeof decoded.email === "string" ? decoded.email : "";
+  } catch {
+    return "";
+  }
+}
+
 export function hasPermission(permissions: string[], permission: string) {
   return permissions.includes(permission);
 }
 
-export async function syncosFetch<T>(path: string, options: { method?: string; body?: unknown; token?: string } = {}): Promise<T> {
+export async function loadAuthContext(token = readToken()) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  let context: AuthContext;
+  try {
+    context = await syncosFetch<AuthContext>("auth/me", { token, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) { const timeoutError = new Error("Access verification timed out. Check your connection and retry."); timeoutError.name = "AccessVerificationTimeout"; throw timeoutError; }
+    throw error;
+  } finally { clearTimeout(timeout); }
+  context.permissions = context.permissions.filter(permission => {
+    const roles = actionRoleAuthority[permission];
+    return !roles || (context.role_names ?? []).some(role => roles.includes(role));
+  });
+  if (token === readToken()) {
+    if(!context.permissions.includes("partner_daily_production.read"))window.localStorage.removeItem("syncos.offlineContext");
+    if(context.browser_session?.startsWith('browser-session.')) saveToken(context.browser_session);
+    verifiedToken = readToken();
+    verifiedPermissions = context.permissions ?? [];
+    savePermissions(verifiedPermissions);
+  }
+  return context;
+}
+
+export function workspaceRouteFor(context: AuthContext) {
+  const permissions = context.permissions ?? [];
+  const roles = context.roles ?? [];
+  const has = (permission: string) => permissions.includes(permission);
+  if (roles.includes("sync_foreman")) return "/syncfield/today";
+  const internal = roles.some(role => !["partner_admin", "partner_foreman"].includes(role));
+  if (!internal && has("partner_context.read")) return roles.includes("partner_admin") ? "/partner" : "/syncfield/today";
+  const destinations = [
+    ["executive_command.read", "/command-center"], ["dashboard.executive.read", "/executive"],
+    ["dashboard.operations.read", "/operations"], ["dashboard.finance.read", "/finance"], ["dashboard.growth.read", "/growth"],
+    ["project.read", "/projects"], ["work_order.read", "/work-orders"], ["production_record.read", "/production"], ["qc_review.read", "/qc"],
+    ["billable_item.read", "/billable"], ["invoice.read", "/invoices"], ["cash_receipt.read", "/cash"], ["settlement.read", "/settlements"],
+    ["contractor_payable.read", "/contractor-payables"], ["payroll_run.read", "/payroll"], ["collection_case.read", "/collections"],
+    ["payment_batch.read", "/payments"], ["bank_transaction.read", "/bank-reconciliation"], ["accounting_export_batch.read", "/accounting-exports"],
+    ["signal.read", "/intelligence/signals"], ["organization.read", "/intelligence/organizations"], ["contact.read", "/intelligence/contacts"],
+  ];
+  // A server-suggested dashboard still needs that dashboard's own read permission.
+  const suggested = destinations.find(([permission, route]) => route === context.routing?.workspace && has(permission));
+  if (suggested) return suggested[1];
+  const destination = destinations.find(([permission]) => has(permission));
+  if (destination) return destination[1];
+  if (has("partner_context.read")) return roles.includes("partner_foreman") ? "/syncfield/today" : "/partner";
+  return "/";
+}
+
+export class SyncosApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "SyncosApiError";
+  }
+}
+
+export async function syncosFetch<T>(path: string, options: { method?: string; body?: unknown; token?: string; signal?: AbortSignal } = {}): Promise<T> {
+  if(path.replace(/^\//,'')!=='auth/browser-logout'&&typeof window!=='undefined'&&localStorage.getItem('syncos.pendingSignOut')){
+    await syncosFetch('auth/browser-logout',{method:'POST',token:''});
+    localStorage.removeItem('syncos.pendingSignOut');
+  }
   const token = options.token ?? readToken();
   const response = await fetch(`/api/syncos/${path.replace(/^\//, "")}`, {
     method: options.method ?? "GET",
+    signal: options.signal,
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -300,16 +417,15 @@ export async function syncosFetch<T>(path: string, options: { method?: string; b
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new Error(readableError(response.status, data));
+    throw new SyncosApiError(response.status, readableError(response.status, data));
   }
   return data as T;
 }
 
 function readableError(status: number, data: unknown) {
   const message = typeof data === "object" && data && "message" in data ? String((data as { message?: unknown }).message) : "";
-  if (status === 401) return "Sign in with a valid SyncOS token to continue.";
+  if (status === 401) return "Sign in with a valid SyncOS account to continue.";
   if (status === 403) return "You do not have permission to perform this action.";
-  if (message.includes("evidence")) return "This signal cannot be verified until evidence is attached.";
   if (message.includes("tenant")) return "This related record does not belong to your organization.";
   if (message) return message;
   return `Request failed with status ${status}.`;
@@ -329,4 +445,14 @@ export function dateValue(value: unknown) {
   if (!value) return "Not captured";
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+}
+
+export function permittedRecordTabs<T extends string | { id: string }>(tabs: T[], resource: string): T[] {
+  const permissions = readPermissions();
+  return tabs.filter(tab => {
+    const id = typeof tab === "string" ? tab : tab.id;
+    if (id === "audit") return hasPermission(permissions, `${resource}.audit.read`);
+    if (id === "timeline" || id === "events") return hasPermission(permissions, `${resource}.timeline.read`);
+    return !id.startsWith("future_");
+  });
 }

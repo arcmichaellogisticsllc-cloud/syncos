@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
@@ -22,9 +23,9 @@ export class AuthenticatedGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { auth?: unknown }>();
     const claims = this.getClaims(request);
 
-    const membership = await this.pool.query<{ user_id: string; tenant_id: string; email: string }>(
+    const membership = await this.pool.query<{ user_id: string; tenant_id: string; email: string; auth_version:number }>(
       `
-      SELECT u.id AS user_id, tu.tenant_id, u.email
+      SELECT u.id AS user_id, tu.tenant_id, u.email, u.auth_version
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
@@ -36,8 +37,9 @@ export class AuthenticatedGuard implements CanActivate {
         AND u.deleted_at IS NULL
         AND tu.deleted_at IS NULL
         AND t.deleted_at IS NULL
+        AND NOT EXISTS(SELECT 1 FROM revoked_auth_sessions s WHERE s.token_hash=$3 AND s.expires_at>now())
       `,
-      [claims.sub, claims.tenant_id],
+      [claims.sub, claims.tenant_id,createHash('sha256').update(request.header('authorization')??'').digest('hex')],
     );
 
     if (!membership.rows[0]) {
@@ -45,6 +47,13 @@ export class AuthenticatedGuard implements CanActivate {
       throw new UnauthorizedException("Authenticated user is not active in tenant");
     }
 
+    if((claims.auth_version??0)!==membership.rows[0].auth_version)throw new UnauthorizedException('Session expired. Sign in again.');
+    if ('sso_link_id' in claims && claims.sso_link_id) {
+      const link=await this.pool.query(`SELECT 1 FROM oidc_identity_links l JOIN oidc_connections c ON c.id=l.connection_id
+        WHERE l.id=$1 AND l.user_id=$2 AND l.tenant_id=$3 AND l.active AND c.enabled AND c.version=$4`,
+        [claims.sso_link_id,claims.sub,claims.tenant_id,claims.sso_connection_version]);
+      if(process.env.SSO_ENABLED!=='true'||!link.rows.length)throw new UnauthorizedException('SSO access has changed. Sign in again.');
+    }
     request.auth = {
       tenantId: membership.rows[0].tenant_id,
       userId: membership.rows[0].user_id,
@@ -76,7 +85,7 @@ export class AuthenticatedGuard implements CanActivate {
       const tenantId = request.header("x-tenant-id");
       const userId = request.header("x-user-id");
       if (tenantId && userId) {
-        return { sub: userId, tenant_id: tenantId };
+        return { sub: userId, tenant_id: tenantId, auth_version:0 };
       }
     }
 

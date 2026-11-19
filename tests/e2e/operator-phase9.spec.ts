@@ -38,21 +38,25 @@ test.describe("Operator UI Phase 9 detail and form standards", () => {
     await expect(page.getByLabel("Next Action")).toBeVisible();
     await expect(page.getByText(/SyncOS does not email the customer, collect payment, apply cash, move money, or post accounting entries/i)).toBeVisible();
     await expect(page.getByLabel("Danger zone")).toBeVisible();
-    await expect(page.getByText(/Reject, dispute, void, and archive actions change lifecycle state/i)).toBeVisible();
+    await expect(page.getByLabel("Danger zone").getByText(/These actions change the invoice lifecycle/i)).toBeVisible();
+    await expect(page.getByLabel("Danger zone").getByRole("button", { name: "Void", exact: true })).toBeVisible();
     await expectNoDevSessionUi(page);
 
     await context.close();
   });
 
-  test("read-only auditor sees banner and disabled reason on detail page", async ({ browser }) => {
+  test("read-only auditor sees record context without lifecycle guidance or mutation controls", async ({ browser }) => {
     const context = await browser.newContext({ storageState: personas.readOnlyAuditor.storageState });
     const page = await context.newPage();
     await installStoredSession(page, personas.readOnlyAuditor.storageState);
     await page.goto(productionRoute);
 
     await expect(page.getByText(/You are viewing this record in read-only mode/i)).toBeVisible();
-    await expect(page.getByText(/Read-only users cannot perform lifecycle actions/i)).toBeVisible();
-    await expect(page.getByLabel("Next Action")).toBeVisible();
+    await expect(page.getByLabel("Next Action")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Edit Production", exact: true })).toHaveCount(0);
+    for (const name of ["Approve", "Reject", "Request Correction", "Mark Billable", "Archive"]) {
+      await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+    }
     await expectNoDevSessionUi(page);
 
     await context.close();

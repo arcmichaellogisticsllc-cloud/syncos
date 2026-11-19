@@ -17,8 +17,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -65,8 +65,9 @@ async function main() {
     });
 
     const warningOnlyProject = await createProject(client, tenantId, userId, await createBase(client, tenantId, userId), { suffix: "warning", projectManager: null });
-    const missingOverride = await expectStatus("warnings require override", "POST", `/projects/${warningOnlyProject}/mark-ready-for-work`, `Bearer ${token}`, 400, {});
-    if (!missingOverride.required_override_fields?.includes("readiness_override_reason")) throw new Error("project readiness override field missing");
+    await expectStatus("warnings require override", "POST", `/projects/${warningOnlyProject}/mark-ready-for-work`, `Bearer ${token}`, 400, {});
+    const missingOverride = await expectStatus("read project readiness context", "GET", `/projects/${warningOnlyProject}/detail`, `Bearer ${token}`, 200);
+    if (!missingOverride.readiness?.required_override_fields?.includes("readiness_override_reason")) throw new Error("project readiness override field missing");
     await expectStatus("mark ready for work works", "POST", `/projects/${warningOnlyProject}/mark-ready-for-work`, `Bearer ${token}`, 201, {
       override_reasons: { readiness_override_reason: "Planning warnings assigned to operations." },
     });

@@ -1,0 +1,17 @@
+.page { max-width: 1000px; margin-inline: auto; overflow-wrap: anywhere; }
+.notice { padding: 20px; background: #fff5dc; color: #513500; border: 1px solid #9a650b; border-radius: 12px; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px; margin-block: 24px; }
+.controls label { display: grid; gap: 8px; flex: 1 1 280px; font-weight: 600; }
+.controls input, .controls select { min-width: 0; width: 100%; min-height: 44px; padding: 8px; border: 1px solid #8e9baa; border-radius: 8px; font: inherit; background: white; color: #172435; }
+.section { background: white; color: #172435; border: 1px solid #ccd5e0; border-radius: 12px; margin-block: 20px; padding: 24px; line-height: 1.65; }
+.section h2 { font-size: 1.5rem; }
+.section h3 { margin-top: 24px; font-size: 1.15rem; }
+.section code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9em; }
+.step { padding-left: 12px; border-left: 3px solid #ccd5e0; }
+.page :is(a,button,input,select):focus-visible { outline: 3px solid #1263b3; outline-offset: 3px; }
+.page button, .page a { min-height: 44px; display: inline-flex; align-items: center; cursor: pointer; }
+
+.table { max-width: 100%; overflow-x: auto; }
+.table table { width: 100%; border-collapse: collapse; }
+.table :is(th,td) { padding: 10px; border: 1px solid #ccd5e0; text-align: left; vertical-align: top; }
+.section li { margin-bottom: 12px; }

@@ -33,8 +33,7 @@ export async function expectRouteHealthy(page: Page, route: string, expectedText
 export async function expectAnyText(page: Page, values: string[]) {
   const body = page.locator("body");
   await expect(body).toBeVisible();
-  const text = await body.innerText();
-  expect(values.some((value) => text.toLowerCase().includes(value.toLowerCase())), `Expected body to include one of: ${values.join(", ")}`).toBe(true);
+  await expect(body, `Expected body to include one of: ${values.join(", ")}`).toContainText(new RegExp(values.map(escapeRegExp).join("|"), "i"));
 }
 
 function escapeRegExp(value: string): string {

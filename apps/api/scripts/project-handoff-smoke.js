@@ -17,8 +17,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -90,7 +90,8 @@ async function main() {
       status: "open",
     });
     const blockedApproval = await expectStatus("hard stop risk blocks approval", "POST", `/project-handoffs/${handoffId}/approve`, `Bearer ${token}`, 400, { approval_note: "Attempt approval." });
-    if (!blockedApproval.blockers?.some((blocker) => blocker.related_object_id === hardStopRisk.id)) throw new Error("hard stop risk blocker missing");
+    if (blockedApproval.statusCode !== 400 || blockedApproval.message !== "Project handoff approval blocked.") throw new Error("hard stop risk denial missing");
+    if ((await client.query("SELECT status FROM project_handoffs WHERE tenant_id=$1 AND id=$2", [tenantId, handoffId])).rows[0].status === "approved") throw new Error("hard stop risk denial changed state");
     await expectStatus("risk resolve works", "POST", `/project-handoff-risks/${hardStopRisk.id}/resolve`, `Bearer ${token}`, 201, { resolution_note: "Safety risk resolved." });
 
     const openRisk = await expectStatus("non-hard-stop risk create works", "POST", `/project-handoffs/${handoffId}/risks`, `Bearer ${token}`, 201, {
@@ -101,7 +102,8 @@ async function main() {
       override_allowed: true,
     });
     await expectStatus("risk override requires reason", "POST", `/project-handoff-risks/${openRisk.id}/override`, `Bearer ${token}`, 400, {});
-    const missingOverride = await expectStatus("warnings require override reason", "POST", `/project-handoffs/${handoffId}/approve`, `Bearer ${token}`, 400, { approval_note: "Approve with warning." });
+    await expectStatus("warnings require override reason", "POST", `/project-handoffs/${handoffId}/approve`, `Bearer ${token}`, 400, { approval_note: "Approve with warning." });
+    const missingOverride = await expectStatus("read handoff warning context", "GET", `/project-handoffs/${handoffId}/detail`, `Bearer ${token}`, 200);
     if (!missingOverride.required_override_fields?.includes("risk_override_reason")) throw new Error("risk override field missing");
     await expectStatus("risk override works", "POST", `/project-handoff-risks/${openRisk.id}/override`, `Bearer ${token}`, 201, { override_reason: "Documentation action accepted." });
 

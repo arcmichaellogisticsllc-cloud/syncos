@@ -1,5 +1,5 @@
 import { ProductionEdit } from "../../production-workspace";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <ProductionEdit productionId={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <ProductionEdit productionId={(await params).id} />;
 }

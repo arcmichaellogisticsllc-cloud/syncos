@@ -1,6 +1,14 @@
 "use client";
+import {ContextualRecordAction} from "../operator-actions";
+import {ScrollableRegion} from "../scrollable-region";
 
-import Link from "next/link";
+import {FormPurposeHeader} from "../operator-page-templates";
+import {ReadOnlyBanner} from "../operator-page-templates";
+import { ModalBoundary } from "../modal-boundary";
+import {DangerZone} from "../operator-page-templates";
+import { permittedRecordTabs } from "../intelligence/api";
+
+import { PermissionLink as Link } from "../access-control";
 import { useRouter } from "next/navigation";
 import { Fragment, type FormEvent, type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -67,11 +75,10 @@ export function ProjectDirectory() {
   return (
     <ProjectShell title="Project Directory" purpose="Manage execution-side project readiness without creating work orders, production, or finance records.">
       <SessionPanel session={session} />
-      <div className="warning-box">Project Workspace is an operator surface only. Work Orders and Production are placeholders in this sprint.</div>
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Projects.</div> : null}
       {loading ? <div className="empty-state">Loading projects...</div> : null}
-      {session.token && !loading ? (
+      {session.token && !loading && !error ? (
         <>
           <section className="workspace-panel">
             <div className="section-toolbar">
@@ -173,6 +180,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   return (
     <ProjectShell title="Project Detail" purpose="Review readiness, ownership, source context, risk, lifecycle status, timeline, and audit.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["project"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {!session.token ? <div className="empty-state">Sign in with a SyncOS token to view Project Detail.</div> : null}
       {!project && session.token && !error ? <div className="empty-state">Project not found or you do not have access.</div> : null}
@@ -190,7 +198,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <div className="form-actions">
-                <Link className="link-button" href={`/projects/${projectId}/edit`} aria-disabled={!hasPermission(session.permissions, "project.update")}>Edit Project</Link>
+                <Link className="link-button" href={`/projects/${projectId}/edit`} allowed={hasPermission(session.permissions, "project.update")}>Edit Project</Link>
                 <ActionButton permission="project.recalculate_readiness" session={session} onClick={() => setModal("recalculate")}>Recalculate Readiness</ActionButton>
                 <ActionButton permission="project.mark_ready" session={session} disabled={String(project.status) !== "planning"} onClick={() => setModal("mark_ready")}>Mark Ready For Work</ActionButton>
                 <ActionButton permission="project.start" session={session} disabled={String(project.status) !== "ready_for_work"} onClick={() => setModal("start")}>Start Project</ActionButton>
@@ -198,9 +206,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 <ActionButton permission="project.release_hold" session={session} disabled={String(project.status) !== "on_hold"} onClick={() => setModal("release")}>Release Hold</ActionButton>
                 <ActionButton permission="project.complete" session={session} disabled={!["active", "ready_for_work"].includes(String(project.status))} onClick={() => setModal("complete")}>Complete</ActionButton>
                 <ActionButton permission="project.close" session={session} disabled={String(project.status) === "archived"} onClick={() => setModal("close")}>Close</ActionButton>
-                <ActionButton permission="project.archive" session={session} disabled={String(project.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
               </div>
             </div>
+            {["project.archive"].some(permission => hasPermission(session.permissions, permission)) && <DangerZone description="These actions change lifecycle state. Review the reason and consequences in the confirmation dialog before submitting.">
+              <ActionButton permission="project.archive" session={session} disabled={String(project.status) === "archived"} onClick={() => setModal("archive")}>Archive</ActionButton>
+            </DangerZone>}
             <div className="summary-grid">
               <Metric label="Project Readiness" value={scoreValue(project.project_readiness_score)} />
               <Metric label="Coverage Readiness" value={scoreValue(project.coverage_readiness_score)} />
@@ -234,7 +244,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "project").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <ProjectTab tab={tab} detail={detail} project={project} session={session} />
             </section>
@@ -316,6 +326,7 @@ export function ProjectEdit({ projectId }: { projectId: string }) {
       {loading ? <div className="empty-state">Loading project...</div> : null}
       {!loading ? (
         <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+          <FormPurposeHeader title="Edit Project" purpose="Keep the scope, dates, responsible people and customer requirements aligned with the approved project." afterSave="Review project readiness on the detail page; work orders and field authorization have their own approval steps." />
           <div className="warning-box">Status changes use lifecycle actions from Project Detail. This edit form does not create work orders or production records.</div>
           <div className="form-grid">
             <label>Project name<input value={form.project_name ?? ""} onChange={(event) => setForm({ ...form, project_name: event.target.value })} /></label>
@@ -333,7 +344,7 @@ export function ProjectEdit({ projectId }: { projectId: string }) {
             <label>Customer validation requirements JSON<textarea value={form.customer_validation_requirements ?? ""} onChange={(event) => setForm({ ...form, customer_validation_requirements: event.target.value })} /></label>
           </div>
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "project.update")}>Save Project</button>
+            {hasPermission(session.permissions, "project.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, "project.update")}>Save Project</button> : null}
             <Link className="link-button" href={`/projects/${projectId}`}>Cancel</Link>
           </div>
         </form>
@@ -357,15 +368,15 @@ function ProjectShell({ title, purpose, children }: { title: string; purpose: st
     ["#risks", "Constraints / Risks", "placeholder"],
     ["#timeline", "Timeline", "placeholder"],
     ["#audit", "Audit", "placeholder"],
-    ["#work-orders", "Future Work Orders", "placeholder"],
-    ["#production", "Future Production", "placeholder"],
+    ["/work-orders", "Work Orders", "active"],
+    ["/production", "Production", "active"],
   ];
   return (
     <CommandShell title={title} purpose={purpose}>
       <div className="workspace-layout">
         <aside className="workspace-nav">
           <div className="workspace-nav-title">Projects</div>
-          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : <div className="nav-placeholder" key={label}><span>{label}</span><small>Section</small></div>)}
+          {nav.map(([href, label, state]) => state === "active" ? <Link href={href} key={label}>{label}</Link> : null)}
         </aside>
         <div className="workspace-main">{children}</div>
       </div>
@@ -375,7 +386,7 @@ function ProjectShell({ title, purpose, children }: { title: string; purpose: st
 
 function ProjectTable({ projects }: { projects: SyncRecord[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -408,7 +419,7 @@ function ProjectTable({ projects }: { projects: SyncRecord[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -439,7 +450,7 @@ function ProjectTab({ tab, detail, project, session }: { tab: string; detail: Pr
   if (tab === "operations") return <Panel title="Operations Ownership"><dl className="detail-list"><dt>Operations owner</dt><dd>{textValue(project.operations_owner_name ?? project.operations_owner_user_id)}</dd><dt>Project manager</dt><dd>{textValue(project.project_manager_name ?? project.project_manager_user_id)}</dd><dt>Field supervisor</dt><dd>{textValue(project.field_supervisor_name ?? project.field_supervisor_user_id)}</dd></dl><WarningList title="Ownership Warnings" rows={arrayValue(detail.warnings).filter((row) => String(row.warning_type ?? "").includes("owner") || String(row.warning_type ?? "").includes("manager") || String(row.warning_type ?? "").includes("supervisor"))} empty="No ownership warnings returned." /></Panel>;
   if (tab === "scope") return <Panel title="Scope & Location"><dl className="detail-list"><dt>Work type</dt><dd>{formatAction(project.work_type)}</dd><dt>Scope</dt><dd>{textValue(project.scope_summary)}</dd><dt>Location</dt><dd>{textValue(project.location_summary)}</dd><dt>Territory</dt><dd>{textValue(project.territory_name ?? project.territory_id)}</dd><dt>Planned dates</dt><dd>{dateValue(project.planned_start_date)} - {dateValue(project.planned_end_date)}</dd><dt>Actual dates</dt><dd>{dateValue(project.actual_start_date)} - {dateValue(project.actual_end_date)}</dd><dt>Customer validation</dt><dd><JsonBlock value={project.customer_validation_requirements ?? detail.customer_validation_requirements} /></dd><dt>Documentation</dt><dd><JsonBlock value={project.documentation_requirements ?? detail.documentation_requirements} /></dd></dl></Panel>;
   if (tab === "readiness") return <Panel title="Readiness"><div className="summary-grid"><Metric label="Readiness score" value={scoreValue(project.project_readiness_score)} /><Metric label="Readiness band" value={formatAction(project.project_readiness_band)} /><Metric label="Next action" value={formatAction(project.recommended_next_action)} /><Metric label="Ready for work" value={project.ready_for_work ? "Yes" : "No"} /></div><WarningList title="Warnings" rows={detail.warnings ?? []} empty="No warnings returned." /><WarningList title="Blockers" rows={detail.blockers ?? []} empty="No blockers returned." /><Checklist items={readinessChecklist(project, detail)} /></Panel>;
-  if (tab === "compliance") return <Panel title="Compliance / Safety"><Metric label="Compliance readiness" value={scoreValue(project.compliance_readiness_score)} /><WarningList title="Compliance / Safety Warnings" rows={arrayValue(detail.warnings).filter((row) => /compliance|safety|permit/i.test(JSON.stringify(row)))} empty="No compliance warnings returned." /><WarningList title="Compliance / Safety Blockers" rows={arrayValue(detail.blockers).filter((row) => /compliance|safety|permit/i.test(JSON.stringify(row)))} empty="No compliance blockers returned." /><div className="warning-box">Compliance readiness is available only from currently modeled project and source records. Richer compliance workflow will be handled in a future sprint.</div></Panel>;
+  if (tab === "compliance") return <Panel title="Compliance / Safety"><Metric label="Compliance readiness" value={scoreValue(project.compliance_readiness_score)} /><WarningList title="Compliance / Safety Warnings" rows={arrayValue(detail.warnings).filter((row) => /compliance|safety|permit/i.test(JSON.stringify(row)))} empty="No compliance warnings returned." /><WarningList title="Compliance / Safety Blockers" rows={arrayValue(detail.blockers).filter((row) => /compliance|safety|permit/i.test(JSON.stringify(row)))} empty="No compliance blockers returned." /><div className="warning-box">Review the applicable compliance evidence, current JSA acknowledgments, pre-bore approval and shutdown status before authorizing work. This summary alone is not field authorization.</div></Panel>;
   if (tab === "financial") return <Panel title="Financial / Billing Readiness"><dl className="detail-list"><dt>Financial readiness</dt><dd>{scoreValue(project.financial_readiness_score)}</dd><dt>Billing package</dt><dd><JsonBlock value={project.billing_package_requirements ?? detail.billing_package_requirements} /></dd><dt>Documentation package</dt><dd><JsonBlock value={project.documentation_requirements ?? detail.documentation_requirements} /></dd><dt>Customer validation</dt><dd><JsonBlock value={project.customer_validation_requirements ?? detail.customer_validation_requirements} /></dd><dt>Coverage economic readiness</dt><dd>{scoreValue(detail.source_coverage_plan?.economic_readiness_score)}</dd></dl><div className="warning-box">Finance execution begins later. This section only tracks readiness and requirements.</div></Panel>;
   if (tab === "documentation") return <Panel title="Documentation"><dl className="detail-list"><dt>Billing package</dt><dd><JsonBlock value={project.billing_package_requirements ?? detail.billing_package_requirements} /></dd><dt>Production documentation</dt><dd><JsonBlock value={project.documentation_requirements ?? detail.documentation_requirements} /></dd><dt>Customer validation</dt><dd><JsonBlock value={project.customer_validation_requirements ?? detail.customer_validation_requirements} /></dd><dt>Closeout</dt><dd>{textValue(project.closeout_notes)}</dd></dl></Panel>;
   if (tab === "constraints") return <Panel title="Constraints / Risks"><ObjectTable rows={constraintRows(detail.constraints_summary)} columns={["type", "severity", "status", "owner", "due_date", "hard_stop", "recommended_action"]} /><div className="form-actions"><Link className="link-button" href="/constraints-center">Open Constraints</Link></div></Panel>;
@@ -448,8 +459,8 @@ function ProjectTab({ tab, detail, project, session }: { tab: string; detail: Pr
     if (!hasPermission(session.permissions, "project.audit.read")) return <Panel title="Audit"><div className="empty-state">You do not have permission to view project audit details.</div></Panel>;
     return <Panel title="Audit"><ObjectTable rows={detail._audit ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} /></Panel>;
   }
-  if (tab === "work_orders") return <PlaceholderPanel title="Future Work Orders" message="Work Orders are not available in this sprint. A Work Order will represent a specific package of assigned work under this project." columns={["Work package", "Assigned crew/provider", "Start date", "Due date", "Status", "Quantity", "Unit"]} />;
-  if (tab === "production") return <PlaceholderPanel title="Future Production" message="Production entry is not available in this sprint. Production records will capture field-completed work against work orders." columns={["Date", "Crew/provider", "Quantity completed", "Unit", "Evidence/photos", "QC status", "Billable status"]} />;
+  if (tab === "work_orders") return <Panel title="Work Orders"><p>Manage assigned work and crew readiness for this project.</p><Link className="link-button" href={`/work-orders?project_id=${encodeURIComponent(String(project.id))}`}>Open project work orders</Link></Panel>;
+  if (tab === "production") return <Panel title="Production"><p>Review reported work, evidence, and acceptance for this project.</p><Link className="link-button" href={`/production?project_id=${encodeURIComponent(String(project.id))}`}>Open project production</Link></Panel>;
   return null;
 }
 
@@ -481,7 +492,7 @@ function LifecycleModal({ type, projectId, project, detail, session, onClose, on
   }
 
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <form className="modal-panel compact-modal" onSubmit={(event) => void submit(event)}>
         <div className="section-toolbar"><h2>{title}</h2><button type="button" onClick={onClose}>Close</button></div>
         {error ? <div className="error-banner">{error}</div> : null}
@@ -494,12 +505,12 @@ function LifecycleModal({ type, projectId, project, detail, session, onClose, on
         {["recalculate", "start"].includes(type) ? <div className="warning-box">This action does not create work orders or production records.</div> : null}
         <div className="form-actions"><button className="primary-button" type="submit" disabled={blocked}>{title}</button></div>
       </form>
-    </div>
+    </ModalBoundary>
   );
 }
 
 function SessionPanel({ session }: { session: Session }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return <section className="workspace-panel"><div className="section-toolbar"><div><h2>Session</h2><p className="muted">Paste a JWT and comma-separated permissions to test project actions.</p></div><button type="button" onClick={session.applyDefaults}>Use project defaults</button></div><div className="session-grid"><input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Bearer token" /><input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((permission) => permission.trim()).filter(Boolean))} placeholder="Permissions" /></div></section>;
 }
 
@@ -508,7 +519,7 @@ function useSession() {
   const [permissions, setPermissionsState] = useState<string[]>([]);
   useEffect(() => {
     setTokenState(readToken());
-    setPermissionsState(readPermissions().length ? readPermissions() : defaultOpportunityPermissions);
+    setPermissionsState(readPermissions());
   }, []);
   function setToken(next: string) {
     setTokenState(next);
@@ -534,7 +545,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({ permission, session, disabled, onClick, children }: { permission: string; session: Session; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" disabled={disabled || !hasPermission(session.permissions, permission)} onClick={onClick}>{children}</button>;
+  return (hasPermission(session.permissions, permission) ? <ContextualRecordAction destructive={/\.(archive|void|cancel|override)$/.test(permission)} disabled={disabled} onClick={onClick}>{children}</ContextualRecordAction> : null);
 }
 
 function Select({ label, value, options, labels = {}, onChange }: { label: string; value: string; options: string[]; labels?: Record<string, string>; onChange: (value: string) => void }) {
@@ -547,7 +558,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function ObjectTable({ rows, columns }: { rows: SyncRecord[]; columns: string[] }) {
   if (!rows.length) return <div className="empty-state">No records returned.</div>;
-  return <div className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></div>;
+  return <ScrollableRegion className="wide-table"><table><thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={String(row.id ?? row.event_id ?? row.audit_id ?? index)}>{columns.map((column) => <td key={column}>{formatCell(row[column])}</td>)}</tr>)}</tbody></table></ScrollableRegion>;
 }
 
 function ContextPanel({ title, record, fields, href }: { title: string; record?: SyncRecord | null; fields: string[]; href?: string }) {
@@ -568,7 +579,7 @@ function PlaceholderPanel({ title, message, columns }: { title: string; message:
 
 function JsonBlock({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "") return <>Not captured yet.</>;
-  return <pre className="json-block">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
+  return <pre className="json-block" tabIndex={0} role="group" aria-label="Record details">{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
 function buildSummary(projects: SyncRecord[]) {

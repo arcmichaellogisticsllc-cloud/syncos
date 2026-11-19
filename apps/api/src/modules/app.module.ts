@@ -1,25 +1,62 @@
+import {RecordHistoryController} from '../routes/record-history.controller';
+import {WorkflowNotificationsController} from '../routes/workflow-notifications.controller';
+import {InquiryNotificationsController} from '../routes/inquiry-notifications.controller';
+import {PublicCustomerIntakeController,CustomerIntakeChannelsController} from '../routes/public-customer-intake.controller';
+import { CustomerInquiriesController } from '../routes/customer-inquiries.controller';
+import { MaterialInventoryController } from '../routes/material-inventory.controller';
+import { SupplementalFormsController } from '../routes/supplemental-forms.controller';
+import { PassportIntakeController } from '../routes/passport-intake.controller';
+import { InvoicePackagesController } from '../routes/invoice-packages.controller';
+import { CommercialTermsController } from '../routes/commercial-terms.controller';
+import { PrimeCorrectionPolicyController } from "../routes/prime-correction-policy.controller";
+import { ProductionQuantityReviewController } from "../routes/production-quantity-review.controller";
+import { FieldEvidenceReviewController } from "../routes/field-evidence-review.controller";
+import { StaffingController } from "../routes/staffing.controller";
+import { WorkSafetyController } from "../routes/work-safety.controller";
+import { InternalWorkforceController } from "../routes/internal-workforce.controller";
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { CorrelationMiddleware } from "../instrumentation/correlation.middleware";
+import { AccessAdministrationController } from "../routes/access-administration.controller";
+import { PrimeDeliveryController } from "../routes/prime-delivery.controller";
+import { SsoController } from "../routes/sso.controller";
+import { MagicLinkController } from "../routes/magic-link.controller";
+import { PasswordRecoveryController } from "../routes/password-recovery.controller";
 import { AuthController } from "../routes/auth.controller";
 import { AccountingExportController } from "../routes/accounting-export.controller";
+import { AccountProgramsController } from "../routes/account-programs.controller";
 import { AccountOnboardingController } from "../routes/account-onboarding.controller";
+import { AcceptedProductionFinancialsController } from "../routes/accepted-production-financials.controller";
 import { BankReconciliationController } from "../routes/bank-reconciliation.controller";
 import { CapacityController } from "../routes/capacity.controller";
 import { CashController } from "../routes/cash.controller";
 import { ContractorPayablesController } from "../routes/contractor-payables.controller";
 import { ConstraintsController } from "../routes/constraints.controller";
 import { DashboardsController } from "../routes/dashboards.controller";
+import { ExecutiveCommandController } from "../routes/executive-command.controller";
 import { HealthController } from "../routes/health.controller";
 import { ContactsController } from "../routes/contacts.controller";
 import { CoveragePlansController } from "../routes/coverage-plans.controller";
 import { KpisController } from "../routes/kpis.controller";
 import { LearningController } from "../routes/learning.controller";
 import { OpportunityCandidatesController } from "../routes/opportunity-candidates.controller";
+import { OpportunityCapacityMatchingController } from "../routes/opportunity-capacity-matching.controller";
 import { OpportunitiesController } from "../routes/opportunities.controller";
 import { OrganizationsController } from "../routes/organizations.controller";
 import { PayrollController } from "../routes/payroll.controller";
 import { PaymentExecutionController } from "../routes/payment-execution.controller";
+import { PaymentRetainageAdjustmentsController } from "../routes/payment-retainage-adjustments.controller";
+import { PartnerDomainController } from "../routes/partner-domain.controller";
+import { PartnerComplianceController } from "../routes/partner-compliance.controller";
+import { PartnerDashboardController } from "../routes/partner-dashboard.controller";
+import { PartnerInvitationsController } from "../routes/partner-invitations.controller";
+import { PartnerPersonasController } from "../routes/partner-personas.controller";
+import { PartnerWorkforceController } from "../routes/partner-workforce.controller";
+import { RestrictedFileService } from "../restricted-files/restricted-file.service";
+import { PartnerAgreementsController } from "../routes/partner-agreements.controller";
+import { PartnerMobilizationController } from "../routes/partner-mobilization.controller";
+import { PartnerPerformanceCapacityController } from "../routes/partner-performance-capacity.controller";
+import { SyncfieldController } from "../routes/syncfield.controller";
 import { ProductionController } from "../routes/production.controller";
 import { ProjectHandoffsController } from "../routes/project-handoffs.controller";
 import { RelationshipMapsController } from "../routes/relationship-maps.controller";
@@ -32,17 +69,28 @@ import { TestObjectsController } from "../routes/test-objects.controller";
 import { TerritoriesController } from "../routes/territories.controller";
 import { WorkflowsController } from "../routes/workflows.controller";
 import { AuthenticatedGuard } from "../security/authenticated.guard";
+import { OrganizationScopeService } from "../security/organization-scope";
 import { PermissionGuard } from "../security/permission.guard";
 import { TenantIsolationGuard } from "../security/tenant-isolation.guard";
 import { DatabaseModule } from "./database.module";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [
+  controllers: [RecordHistoryController,WorkflowNotificationsController,InquiryNotificationsController,PublicCustomerIntakeController,CustomerIntakeChannelsController,CustomerInquiriesController,MaterialInventoryController,SupplementalFormsController,PassportIntakeController,InvoicePackagesController,CommercialTermsController,PrimeCorrectionPolicyController, ProductionQuantityReviewController, FieldEvidenceReviewController,
     HealthController,
+    WorkSafetyController,
+    StaffingController,
+    InternalWorkforceController,
+    AcceptedProductionFinancialsController,
     AccountingExportController,
     AccountOnboardingController,
+    AccountProgramsController,
     AuthController,
+    PasswordRecoveryController,
+    MagicLinkController,
+    SsoController,
+    PrimeDeliveryController,
+    AccessAdministrationController,
     BankReconciliationController,
     SecurityTestController,
     TestObjectsController,
@@ -52,17 +100,30 @@ import { DatabaseModule } from "./database.module";
     SignalsController,
     RelationshipMapsController,
     OpportunityCandidatesController,
+    OpportunityCapacityMatchingController,
     OpportunitiesController,
     CoveragePlansController,
     ProjectHandoffsController,
     CapacityController,
     PayrollController,
     PaymentExecutionController,
+    PaymentRetainageAdjustmentsController,
+    PartnerComplianceController,
+    PartnerDashboardController,
+    PartnerInvitationsController,
+    PartnerDomainController,
+    PartnerPersonasController,
+    PartnerWorkforceController,
+    PartnerAgreementsController,
+    PartnerMobilizationController,
+    PartnerPerformanceCapacityController,
+    SyncfieldController,
     ProductionController,
     SettlementsController,
     CashController,
     ContractorPayablesController,
     ConstraintsController,
+    ExecutiveCommandController,
     DashboardsController,
     WorkflowsController,
     KpisController,
@@ -74,10 +135,12 @@ import { DatabaseModule } from "./database.module";
     { provide: APP_GUARD, useClass: AuthenticatedGuard },
     { provide: APP_GUARD, useClass: TenantIsolationGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
+    OrganizationScopeService,
+    RestrictedFileService,
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationMiddleware).forRoutes({ path: "*", method: RequestMethod.ALL });
+    consumer.apply(CorrelationMiddleware).forRoutes({ path: "{*path}", method: RequestMethod.ALL });
   }
 }

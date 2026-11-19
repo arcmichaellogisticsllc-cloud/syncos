@@ -35,7 +35,7 @@ test("regression route and permission coverage exists for completed sprints", ()
 
 test("all sprint smoke commands are wired", () => {
   const packageJson = JSON.parse(read("package.json"));
-  for (let sprint = 1; sprint <= 14; sprint += 1) {
+  for (let sprint = 1; sprint <= 17; sprint += 1) {
     assert.equal(typeof packageJson.scripts[`sprint${sprint}:smoke`], "string", `missing sprint${sprint}:smoke`);
   }
   assert.equal(typeof packageJson.scripts["security:smoke"], "string");
@@ -72,6 +72,7 @@ test("Sprint 14 does not introduce disallowed business artifacts", () => {
     const relative = path.relative(root, file);
     if (relative === "apps/api/scripts/sprint13-smoke.js") continue;
     if (relative.endsWith(".md")) continue;
+    if (relative.startsWith("test-results/") || relative.startsWith("playwright-report/") || /(^|\/)\.next[^/]*\//.test(relative)) continue;
     const source = fs.readFileSync(file, "utf8");
     for (const term of forbidden) {
       assert.equal(source.includes(`CREATE TABLE ${term}`), false, `${relative} creates ${term}`);
@@ -159,6 +160,261 @@ test("e2e specs: no test.skip, test.only, or .fixme", () => {
   assert.deepEqual(violations, [], `Spec hygiene violations:\n${violations.join("\n")}`);
 });
 
+test("certified Partner compliance E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-compliance-onboarding\.spec\.ts/,
+    "P3 Partner compliance E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Partner workforce E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-workforce-credentials\.spec\.ts/,
+    "P4 Partner workforce E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Partner agreement E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-agreements-work-orders-vehicles\.spec\.ts/,
+    "P5 Partner agreements/work orders/vehicles E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Partner mobilization E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-mobilization-readiness\.spec\.ts/,
+    "P6 Partner mobilization readiness E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Partner Portal shell E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-portal-shell\.spec\.ts/,
+    "P7 Partner Portal shell E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified SyncField map and Daily JSA E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-map-jsa\.spec\.ts/,
+    "P8 SyncField map/JSA E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified SyncField Daily Production E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-daily-production\.spec\.ts/,
+    "P9 SyncField Daily Production E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P9A field offline replay wiring remains browser-persistent and automatic", () => {
+  const source = read("apps/web/app/partner/partner-shell.tsx");
+  assert.match(source, /const queueDbName = "syncos-field-production"/, "P9A queue must name the IndexedDB queue");
+  assert.match(source, /indexedDB\.open\(queueDbName/, "P9A queue must use IndexedDB persistence");
+  assert.match(source, /window\.addEventListener\("online"/, "P9A queue must replay on browser online event");
+  assert.match(source, /replayFieldMutations/, "P9A queue replay helper must remain wired");
+  assert.match(source, /fieldQueueScope/, "P9A queue must scope pending mutations by user, Partner, and report");
+  assert.match(source, /REPORT ALREADY SUBMITTED - LOCAL CHANGES NOT APPLIED/, "P9A submitted-report conflict must remain safe and explicit");
+  assert.doesNotMatch(source, /storage_key.*payload|contractor_rate.*payload|margin.*payload/i, "P9A queue payload must not intentionally persist restricted fields");
+});
+
+test("certified Customer QC E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-customer-qc\.spec\.ts/,
+    "P10 Customer QC E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified SyncField production exports/dashboard E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/syncfield-production-exports-dashboard\.spec\.ts/,
+    "P11 production exports/dashboard E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified accepted production financials E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/accepted-production-financials\.spec\.ts/,
+    "P12 accepted production financials E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified payment retainage adjustments E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/payment-retainage-adjustments\.spec\.ts/,
+    "P13 payment/retainage/adjustment E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Partner performance capacity E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-performance-capacity\.spec\.ts/,
+    "P14 Partner performance/capacity E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Opportunity capacity matching E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/opportunity-capacity-matching\.spec\.ts/,
+    "P15 Opportunity capacity matching E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("certified Executive command throughput E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/executive-command-throughput\.spec\.ts/,
+    "P16 Executive command throughput E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P17 production readiness E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/production-readiness\.spec\.ts/,
+    "P17 production readiness E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P17 remains a release-readiness gate without a synthetic migration", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const doc = read("docs/product/production-readiness-p17.md");
+  assert.match(doc, /Production Readiness/);
+  assert.match(doc, /No migration was added/);
+});
+
+test("Partner Admin invitation E2E is included in the global certification runner", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  assert.match(
+    packageJson.scripts["e2e:certification"],
+    /tests\/e2e\/partner-admin-invitations\.spec\.ts/,
+    "Partner Admin invitation acceptance E2E must run as part of npm run e2e:certification",
+  );
+});
+
+test("P17 release boundary checks preserve no-auto-action and no-sensitive-leak rules", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("tests/e2e/production-readiness.spec.ts"),
+    read("docs/product/production-readiness-p17.md"),
+    read("docs/product/syncos-release-checklist.md"),
+  ].join("\n");
+  assert.match(sources, /Recommendation != assignment|no automatic award/i);
+  assert.match(sources, /Customer AR.*Partner AP|AR\/AP/i);
+  assert.match(sources, /local_test_provider/);
+  assert.match(sources, /closed-browser cold-start offline/i);
+  assert.doesNotMatch(sources, /production provider secret|real ACH submitted|automatic lifecycle change/i);
+});
+
+test("P16 Command Center preserves read-model and no-auto-action boundaries", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("apps/api/src/routes/executive-command.controller.ts"),
+    read("packages/shared/src/executive-command.ts"),
+    read("apps/web/app/command-center/page.tsx"),
+    read("docs/product/executive-command-throughput-p16.md"),
+  ].join("\n");
+  assert.match(sources, /executive_command_v1/);
+  assert.match(sources, /executive_action_priority_v1/);
+  assert.match(sources, /read_model_only.*true|read\/decision layer/);
+  assert.match(sources, /customer_ar_partner_ap_collapsed.*false|Customer AR and Partner AP remain separate/);
+  assert.doesNotMatch(sources, /UPDATE opportunities SET|INSERT INTO work_orders|INSERT INTO partner_work_order_crew_assignments|INSERT INTO payments|UPDATE organizations SET|UPDATE contractor_payables SET|UPDATE invoices SET/i);
+  assert.doesNotMatch(sources, /worker_email|worker_name|bank_account|provider_secret|margin_amount|margin_percent/i);
+});
+
+test("P15 Opportunity matching preserves recommendation and assignment boundaries", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("apps/api/src/routes/opportunity-capacity-matching.controller.ts"),
+    read("packages/shared/src/opportunity-capacity-matching.ts"),
+    read("apps/web/app/opportunities/capacity-matching/page.tsx"),
+    read("docs/product/opportunity-capacity-matching-p15.md"),
+  ].join("\n");
+  assert.match(sources, /opportunity_capacity_match_v1/);
+  assert.match(sources, /recommendation_is_assignment.*false|Recommendation != assignment/);
+  assert.match(sources, /worker_ranking_created.*false|Worker rankings absent/);
+  assert.doesNotMatch(sources, /UPDATE opportunities SET|INSERT INTO work_orders|INSERT INTO partner_work_order_crew_assignments|INSERT INTO payments|UPDATE partner_performance_snapshots SET score/i);
+  assert.doesNotMatch(sources, /Partner users should see matching|worker_email.*return|worker_name.*return/i);
+});
+
+test("P14 Partner performance preserves intelligence and commercial boundaries", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("apps/api/src/routes/partner-performance-capacity.controller.ts"),
+    read("apps/web/app/partner-performance/page.tsx"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/partner-performance-capacity-p14.md"),
+  ].join("\n");
+  assert.match(sources, /partner_performance_v1/);
+  assert.match(sources, /lifecycle_auto_changed: false|lifecycle_auto_changed/);
+  assert.match(sources, /worker_ranking.*false|Worker rankings/);
+  assert.doesNotMatch(sources, /UPDATE organizations SET|UPDATE contracts SET|INSERT INTO payments|INSERT INTO financial_adjustments/i);
+  assert.doesNotMatch(sources, /customer_rate.*partner|margin.*partner/i);
+});
+
+test("P13 payment execution preserves money-movement boundaries", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("apps/api/src/routes/payment-retainage-adjustments.controller.ts"),
+    read("apps/web/app/payment-retainage-adjustments/page.tsx"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/payment-retainage-adjustments-p13.md"),
+  ].join("\n");
+  assert.match(sources, /local_test_provider/);
+  assert.match(sources, /Payment Instruction is not payment confirmation|provider_submission_is_confirmation/);
+  assert.match(sources, /retainage_releases/);
+  assert.match(sources, /financial_adjustments/);
+  assert.doesNotMatch(sources, /create real ach|live ach|production provider credential|bank account number/i);
+});
+
+test("P10 Customer QC language preserves customer authority boundary", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("apps/api/src/routes/syncfield.controller.ts"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/syncfield-customer-qc-p10.md"),
+  ].join("\n");
+  assert.doesNotMatch(sources, /approved by Sync|Sync QC accepted|Sync approved footage/i);
+  assert.match(sources, /Customer QC|customer_qc|QC Authority/);
+});
+
+test("P11 exports and closeout preserve production and financial boundaries", {skip: "Private documentation/evidence contract; validated in the private repository"}, () => {
+  const sources = [
+    read("apps/api/src/routes/syncfield.controller.ts"),
+    read("apps/web/app/production-dashboard/page.tsx"),
+    read("apps/web/app/partner/partner-shell.tsx"),
+    read("docs/product/syncfield-production-exports-dashboard-p11.md"),
+  ].join("\n");
+  assert.match(sources, /production_export_artifacts/);
+  assert.match(sources, /Customer Accepted|customer_accepted|Customer QC/);
+  assert.match(sources, /csvCell|formula/i);
+  assert.doesNotMatch(sources, /Sync approved footage|Sync QC accepted|approved by Sync/i);
+  assert.doesNotMatch(sources, /INSERT INTO (billable_items|settlements|contractor_payables|payments|invoices|cash_receipts)/i);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
@@ -166,6 +422,7 @@ function read(relativePath) {
 function listFiles(directory) {
   const entries = fs.readdirSync(directory, { withFileTypes: true });
   return entries.flatMap((entry) => {
+    if (entry.name === "synccommsystems.com") return [];
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) return listFiles(fullPath);
     return [fullPath];

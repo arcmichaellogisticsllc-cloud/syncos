@@ -1,0 +1,9 @@
+.workspace { min-width: 0; overflow-wrap: anywhere; }
+.workspace form, .workspace fieldset { min-width: 0; }
+.workspace fieldset { display: grid; gap: 0.75rem; margin: 0.75rem 0; }
+.workspace label { display: grid; gap: 0.35rem; min-width: 0; }
+.workspace select, .workspace input:not([type="checkbox"]), .workspace textarea { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+.workspace button { min-height: 44px; white-space: normal; max-width: 100%; }
+.workspace textarea { min-height: 5rem; }
+.workspace select { min-height: 44px; }
+.workspace summary { padding: 0.75rem 0; cursor: pointer; }

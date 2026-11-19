@@ -1,8 +1,12 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { CommandShell, CountList, ObjectTable, Panel } from "../dashboard-components";
-import { getDashboardData, valueAt } from "../dashboard-data";
+import { valueAt } from "../dashboard-data";
 
-export default async function ConstraintsCenterPage() {
-  const data = await getDashboardData("constraints");
+export default function ConstraintsCenterPage() {
+  const dashboard = useDashboardData("constraints");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Constraint Command Center" state={dashboard} />;
   return (
     <CommandShell title="Constraint Command Center" purpose="Active constraints by type, severity, owner, due date, and impact.">
       <div className="grid">

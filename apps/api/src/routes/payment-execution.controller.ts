@@ -1,8 +1,12 @@
+import {directoryPage} from './directory-pagination';
+import {activityPage} from './activity-pagination';
+import { requireFreshSchedule } from './payable-schedule-freshness';
+import { requirePartnerPayableLineage } from "./partner-financial-lineage";
 import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import type { Pool, PoolClient } from "pg";
 import { DATABASE_POOL } from "../modules/database.module";
-import { RequirePermission } from "../security/require-permission.decorator";
+import { RequirePermission, TenantPermissionOnly } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick } from "./intelligence.types";
 
@@ -19,57 +23,124 @@ type Row = Record<string, unknown>;
 export class PaymentExecutionController {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
 
+  @Get("payment-batches/:id/exceptions")
+  @RequirePermission("payment_batch.read")
+  @TenantPermissionOnly()
+  async listExceptions(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return this.withClient(async client => {
+      await this.requireBatch(client,request.auth.tenantId,id);
+      const canApprove=await this.hasPermission(client,request.auth.tenantId,request.auth.userId,"payment_exception.approve");
+      return (await client.query("SELECT id,source_type,source_id,reason,status,requested_by,approved_by,approval_note,expires_at,created_at FROM payment_security_exceptions WHERE tenant_id=$1 AND payment_batch_id=$2 ORDER BY created_at DESC",[request.auth.tenantId,id])).rows.map(row=>({...row,can_review:canApprove&&row.requested_by!==request.auth.userId&&row.status==='pending'&&new Date(row.expires_at).getTime()>Date.now()}));
+    });
+  }
+
+  @Post("payment-batches/:id/exceptions")
+  @RequirePermission("payment_batch.add_item")
+  @TenantPermissionOnly()
+  async requestException(@Req() request: AuthenticatedRequest,@Param("id") id:string,@Body() body:Row) {
+    return this.write(request,"payment_exception.requested","payment_exception.requested","payment_security_exception",async client=>{
+      const batch=await this.requireBatch(client,request.auth.tenantId,id);this.ensureBatchCanAddItems(batch);
+      const type=this.allowed(body.source_type,"source_type",new Set(["payroll","contractor_payable"]));
+      const sourceId=this.requireText(body.source_id,"Choose a source");
+      const source=type==='payroll'?await this.requirePayrollRun(client,request.auth.tenantId,sourceId):await this.requireContractorPayable(client,request.auth.tenantId,sourceId);
+      const reason=this.requireText(body.reason,"Record the exception reason");
+      if(reason.length<5||reason.length>2000)throw new BadRequestException("Reason must contain 5 to 2000 characters");
+      const row=(await client.query("INSERT INTO payment_security_exceptions(tenant_id,payment_batch_id,source_type,source_id,source_snapshot,reason,requested_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",[request.auth.tenantId,id,type,sourceId,JSON.stringify(source),reason,request.auth.userId])).rows[0];
+      return {entityType:'payment_security_exception',entityId:row.id,afterState:row};
+    });
+  }
+
+  @Post("payment-batches/:id/exceptions/:exceptionId/review")
+  @RequirePermission("payment_exception.approve")
+  @TenantPermissionOnly()
+  async reviewException(@Req() request:AuthenticatedRequest,@Param("id") id:string,@Param("exceptionId") exceptionId:string,@Body() body:Row){
+    return this.write(request,"payment_exception.reviewed","payment_exception.reviewed","payment_security_exception",async client=>{
+      const before=(await client.query("SELECT * FROM payment_security_exceptions WHERE tenant_id=$1 AND payment_batch_id=$2 AND id=$3 FOR UPDATE",[request.auth.tenantId,id,exceptionId])).rows[0];
+      if(!before)throw new NotFoundException("Exception request not found");
+      if(before.requested_by===request.auth.userId)throw new BadRequestException("A different finance approver must review this request");
+      if(before.status!=='pending'||new Date(before.expires_at).getTime()<=Date.now())throw new BadRequestException("Request is no longer pending or has expired");
+      const status=this.allowed(body.decision,"decision",new Set(['approved','rejected']));const note=this.requireText(body.approval_note,"Record the review decision");
+      if(note.length<5||note.length>2000)throw new BadRequestException("Review note must contain 5 to 2000 characters");
+      const row=(await client.query("UPDATE payment_security_exceptions SET status=$4,approved_by=$5,approval_note=$6 WHERE tenant_id=$1 AND payment_batch_id=$2 AND id=$3 RETURNING *",[request.auth.tenantId,id,exceptionId,status,request.auth.userId,note])).rows[0];
+      return {entityType:'payment_security_exception',entityId:row.id,beforeState:before,afterState:row};
+    });
+  }
+
+  @Post("payment-batches/:id/withdraw-approval")
+  @RequirePermission("payment_batch.approve")
+  @TenantPermissionOnly()
+  async withdrawApproval(@Req() request:AuthenticatedRequest,@Param("id") id:string,@Body() body:Row){
+    const reason=this.requireText(body.reason,"Record why approval is being withdrawn");
+    if(reason.length<5)throw new BadRequestException("Provide a meaningful reason");
+    return this.batchStateAction(request,id,"payment_batch.approval_withdrawn","payment_batch.approval_withdrawn",batch=>{
+      if(!['approved','scheduled','ready_for_review','under_review','draft','assembling','rejected'].includes(String(batch.status)))throw new BadRequestException("Submitted or executed payments require reconciliation");
+      return {status:'draft',approval_status:'withdrawn',execution_status:'not_submitted',approved_by:null,approved_at:null,security_review_required:false};
+    },reason);
+  }
+
+  private async approvedException(client:PoolClient,tenant:string,batchId:string,type:string,source:Row,id:unknown){
+    if(!id)return false;
+    const result=await client.query(`SELECT e.id FROM payment_security_exceptions e
+      WHERE e.tenant_id=$1 AND e.payment_batch_id=$2 AND e.id=$3 AND e.source_type=$4 AND e.source_id=$5
+        AND e.status='approved' AND e.expires_at>now() AND e.source_snapshot=$6::jsonb
+        AND EXISTS(SELECT 1 FROM tenant_users tu JOIN users u ON u.id=tu.user_id
+          JOIN user_roles ur ON ur.tenant_id=tu.tenant_id AND ur.tenant_user_id=tu.id AND ur.scope_type='tenant'
+          JOIN roles r ON r.id=ur.role_id AND r.tenant_id=tu.tenant_id AND r.deleted_at IS NULL
+          JOIN role_permissions rp ON rp.tenant_id=tu.tenant_id AND rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id
+          WHERE tu.tenant_id=e.tenant_id AND tu.user_id=e.approved_by AND tu.status='active' AND tu.deleted_at IS NULL
+            AND u.status='active' AND u.deleted_at IS NULL AND p.key='payment_exception.approve')`,[tenant,batchId,id,type,source.id,JSON.stringify(source)]);
+    if(!result.rows.length)throw new BadRequestException("Payment exception is unavailable, expired, changed or no longer authorized");
+    return true;
+  }
+
   @Get("payment-batches")
   @RequirePermission("payment_batch.read")
   async listBatches(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
-      const values: unknown[] = [request.auth.tenantId];
-      const where = ["pb.tenant_id = $1"];
-      if (query.archived !== "true") where.push("pb.deleted_at IS NULL", "pb.status <> 'archived'");
-      this.addFilter(where, values, "pb.batch_type", query.batch_type);
-      this.addFilter(where, values, "pb.payment_method", query.payment_method);
-      this.addFilter(where, values, "pb.status", query.status);
-      this.addFilter(where, values, "pb.approval_status", query.approval_status);
-      this.addFilter(where, values, "pb.execution_status", query.execution_status);
-      if (query.scheduled_payment_date_from) {
-        values.push(query.scheduled_payment_date_from);
-        where.push(`pb.scheduled_payment_date >= $${values.length}`);
-      }
-      if (query.scheduled_payment_date_to) {
-        values.push(query.scheduled_payment_date_to);
-        where.push(`pb.scheduled_payment_date <= $${values.length}`);
-      }
-      if (query.submitted_from) {
-        values.push(query.submitted_from);
-        where.push(`pb.submitted_at >= $${values.length}`);
-      }
-      if (query.submitted_to) {
-        values.push(query.submitted_to);
-        where.push(`pb.submitted_at <= $${values.length}`);
-      }
-      if (query.executed_from) {
-        values.push(query.executed_from);
-        where.push(`pb.executed_at >= $${values.length}`);
-      }
-      if (query.executed_to) {
-        values.push(query.executed_to);
-        where.push(`pb.executed_at <= $${values.length}`);
-      }
-      if (query.q) {
-        values.push(`%${query.q}%`);
-        where.push(`(pb.payment_batch_number ILIKE $${values.length} OR pb.execution_reference ILIKE $${values.length} OR pb.failure_reason ILIKE $${values.length} OR pb.notes ILIKE $${values.length})`);
-      }
+      const {values, where} = this.batchFilters(request.auth.tenantId, query);
       const result = await client.query(
         `
         SELECT pb.*
         FROM payment_batches pb
         WHERE ${where.join(" AND ")}
-        ORDER BY ${this.batchOrder(query.sort)}
-        LIMIT 250
+        ORDER BY ${this.batchOrder(query.sort)}, pb.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );
       return result.rows.map((row) => this.withBatchGuidance(row));
+    });
+  }
+
+
+  @Get("payment-batches/queue-summary")
+  @RequirePermission("payment_batch.read")
+  @TenantPermissionOnly()
+  async queueSummary(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    return this.withClient(async (client) => {
+      const {values, where} = this.batchFilters(request.auth.tenantId, query);
+      const allowed = await client.query(`SELECT 1 FROM tenant_users tu
+        JOIN user_roles ur ON ur.tenant_user_id = tu.id AND ur.tenant_id = tu.tenant_id
+        JOIN roles active_role ON active_role.id = ur.role_id AND active_role.tenant_id = tu.tenant_id AND active_role.deleted_at IS NULL
+        JOIN role_permissions rp ON rp.role_id = ur.role_id AND rp.tenant_id = tu.tenant_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE tu.tenant_id = $1 AND tu.user_id = $2 AND tu.status = 'active' AND tu.deleted_at IS NULL
+          AND ur.scope_type = 'tenant' AND p.key = $3 LIMIT 1`, [request.auth.tenantId, request.auth.userId, "payment_item.read"]);
+      const attentionExpression = allowed.rowCount ? `(SELECT count(*)::int FROM payment_items i JOIN chosen b ON b.tenant_id = i.tenant_id AND b.id = i.payment_batch_id WHERE i.deleted_at IS NULL AND (i.status IN ('failed','cancelled','voided','archived') OR i.execution_status IN ('failed','cancelled')))` : 'NULL::int';
+      const result = await client.query(`WITH chosen AS (SELECT pb.* FROM payment_batches pb WHERE ${where.join(" AND ")}), classified AS (SELECT chosen.*, CASE WHEN status = 'archived' THEN 'archived' WHEN status = 'voided' THEN 'voided' WHEN status IN ('failed','cancelled') OR execution_status IN ('failed','cancelled') THEN 'failed' WHEN status IN ('draft','assembling') THEN 'draft' WHEN status IN ('ready_for_review','under_review') OR approval_status = 'pending' THEN 'submitted' WHEN status = 'approved' THEN 'approved' WHEN status = 'scheduled' THEN 'scheduled' WHEN status = 'submitted' OR execution_status = 'submitted_later' THEN 'submittedExecution' WHEN status IN ('executed_later','partially_executed_later') OR execution_status = 'executed_later' THEN 'executed' ELSE 'other' END AS queue FROM chosen)
+        SELECT count(*) FILTER (WHERE queue = 'archived')::int AS "archived",
+          count(*) FILTER (WHERE queue = 'voided')::int AS "voided",
+          count(*) FILTER (WHERE queue = 'failed')::int AS "failed",
+          count(*) FILTER (WHERE queue = 'draft')::int AS "draft",
+          count(*) FILTER (WHERE queue = 'submitted')::int AS "submitted",
+          count(*) FILTER (WHERE queue = 'approved')::int AS "approved",
+          count(*) FILTER (WHERE queue = 'scheduled')::int AS "scheduled",
+          count(*) FILTER (WHERE queue = 'submittedExecution')::int AS "submittedExecution",
+          count(*) FILTER (WHERE queue = 'executed')::int AS "executed",
+          ${attentionExpression} AS "itemsAttention", (SELECT COALESCE(jsonb_agg(t), '[]'::jsonb) FROM (SELECT currency, COALESCE(sum(total_payment_amount) FILTER (WHERE queue = 'scheduled'),0)::text AS scheduled_amount, COALESCE(sum(total_payment_amount) FILTER (WHERE queue = 'executed' AND (status = 'executed_later' OR execution_status = 'executed_later')),0)::text AS executed_amount, COALESCE(sum(total_payment_amount) FILTER (WHERE queue = 'executed' AND status = 'partially_executed_later' AND execution_status <> 'executed_later'),0)::text AS partially_executed_batch_amount FROM classified GROUP BY currency ORDER BY currency) t) AS currency_totals
+        FROM classified`, values);
+      return result.rows[0];
     });
   }
 
@@ -91,7 +162,7 @@ export class PaymentExecutionController {
     return this.write(request, "payment_batch.create", "payment_batch.created", "payment_batch", async (client) => {
       const batchType = this.allowed(body.batch_type, "batch_type", batchTypes);
       const hasOverride = this.hasOverride(body);
-      if (batchType === "mixed_later" && !hasOverride) throw new BadRequestException("mixed_later payment batches are blocked unless override is supplied");
+      // Mixed batches may be drafted; each source needs independent finance approval.
       const batch = await this.insert(client, "payment_batches", {
         tenant_id: request.auth.tenantId,
         payment_batch_number: await this.nextBatchNumber(client, request.auth.tenantId),
@@ -130,12 +201,12 @@ export class PaymentExecutionController {
     return this.write(request, "payment_batch.add_item", "payment_item.created", "payment_item", async (client) => {
       const batch = await this.requireBatch(client, request.auth.tenantId, id);
       this.ensureBatchCanAddItems(batch);
-      const hasOverride = this.hasOverride(body);
-      if (batch.batch_type !== "contractor_payable" && !(batch.batch_type === "mixed_later" && hasOverride)) throw new BadRequestException("payment batch type does not accept contractor payable items");
-      const payable = await this.requireContractorPayable(client, request.auth.tenantId, this.requireText(body.contractor_payable_id, "contractor_payable_id is required"));
+      const payable = await this.requireContractorPayable(client,request.auth.tenantId,this.requireText(body.contractor_payable_id,"Choose a payment source"));
+      const hasOverride = await this.approvedException(client,request.auth.tenantId,id,"contractor_payable",payable,body.approved_exception_id);
+      if(batch.batch_type!=="contractor_payable" && !(batch.batch_type==="mixed_later" && hasOverride))throw new BadRequestException("Batch type requires an approved finance exception for this source");
       if (payable.status !== "payment_ready" || payable.payment_readiness_status !== "ready_for_payment") throw new BadRequestException("contractor payable must be payment ready");
-      if (!["not_paid"].includes(String(payable.payment_status)) && !hasOverride) throw new BadRequestException("contractor payable payment status must be not_paid unless override supplied");
-      if ((payable.hold_status === "hold" || payable.dispute_status === "open") && !hasOverride) throw new BadRequestException("held or disputed contractor payable cannot be added without override");
+      if (!["not_paid"].includes(String(payable.payment_status)) ) throw new BadRequestException("contractor payable payment status must be not_paid under the current approval state");
+      if ((payable.hold_status === "hold" || payable.dispute_status === "open") && !hasOverride) throw new BadRequestException("held or disputed contractor payable cannot be added under the current approval rules");
       let payableItem: Row | null = null;
       if (body.contractor_payable_item_id) {
         payableItem = await this.requireContractorPayableItem(client, request.auth.tenantId, String(body.contractor_payable_item_id));
@@ -144,7 +215,7 @@ export class PaymentExecutionController {
       await this.requireNoDuplicateSource(client, request.auth.tenantId, "contractor_payable", String(payable.id), body.contractor_payable_item_id, hasOverride);
       const amountLimit = Number(payableItem?.net_payable_amount ?? payable.net_payable_amount ?? 0);
       const amount = body.payment_amount === undefined ? amountLimit : this.requirePositive(body.payment_amount, "payment_amount");
-      if (amount > amountLimit && !hasOverride) throw new BadRequestException("payment_amount cannot exceed payable amount without override");
+      if (amount > amountLimit) throw new BadRequestException("payment_amount cannot exceed payable amount under the current approval rules");
       const item = await this.insert(client, "payment_items", {
         tenant_id: request.auth.tenantId,
         payment_batch_id: id,
@@ -157,6 +228,7 @@ export class PaymentExecutionController {
         payment_amount: amount,
         currency: batch.currency ?? "USD",
         override_reasons: this.objectValue(body.override_reasons),
+        approved_exception_id: body.approved_exception_id ?? null,
         created_by: request.auth.userId,
         updated_by: request.auth.userId,
       });
@@ -176,18 +248,18 @@ export class PaymentExecutionController {
     return this.write(request, "payment_batch.add_item", "payment_item.created", "payment_item", async (client) => {
       const batch = await this.requireBatch(client, request.auth.tenantId, id);
       this.ensureBatchCanAddItems(batch);
-      const hasOverride = this.hasOverride(body);
-      if (batch.batch_type !== "payroll" && !(batch.batch_type === "mixed_later" && hasOverride)) throw new BadRequestException("payment batch type does not accept payroll items");
-      const run = await this.requirePayrollRun(client, request.auth.tenantId, this.requireText(body.payroll_run_id, "payroll_run_id is required"));
+      const run = await this.requirePayrollRun(client,request.auth.tenantId,this.requireText(body.payroll_run_id,"Choose a payment source"));
+      const hasOverride = await this.approvedException(client,request.auth.tenantId,id,"payroll",run,body.approved_exception_id);
+      if(batch.batch_type!=="payroll" && !(batch.batch_type==="mixed_later" && hasOverride))throw new BadRequestException("Batch type requires an approved finance exception for this source");
       if (run.status !== "payroll_ready" || run.payroll_readiness_status !== "ready_for_payroll") throw new BadRequestException("payroll run must be payroll ready");
-      if ((run.hold_status === "hold" || run.dispute_status === "open") && !hasOverride) throw new BadRequestException("held or disputed payroll run cannot be added without override");
+      if ((run.hold_status === "hold" || run.dispute_status === "open") && !hasOverride) throw new BadRequestException("held or disputed payroll run cannot be added under the current approval rules");
       const payrollItemId = this.requireText(body.payroll_item_id, "payroll_item_id is required for payroll payment items");
       const payrollItem = await this.requirePayrollItem(client, request.auth.tenantId, payrollItemId);
       if (payrollItem.payroll_run_id !== run.id) throw new BadRequestException("payroll item does not belong to payroll run");
       await this.requireNoDuplicateSource(client, request.auth.tenantId, "payroll", String(run.id), payrollItemId, hasOverride);
       const amountLimit = Number(payrollItem.net_pay_amount ?? 0);
       const amount = body.payment_amount === undefined ? amountLimit : this.requirePositive(body.payment_amount, "payment_amount");
-      if (amount > amountLimit && !hasOverride) throw new BadRequestException("payment_amount cannot exceed payroll item amount without override");
+      if (amount > amountLimit) throw new BadRequestException("payment_amount cannot exceed payroll item amount under the current approval rules");
       const item = await this.insert(client, "payment_items", {
         tenant_id: request.auth.tenantId,
         payment_batch_id: id,
@@ -201,6 +273,7 @@ export class PaymentExecutionController {
         payment_amount: amount,
         currency: batch.currency ?? "USD",
         override_reasons: this.objectValue(body.override_reasons),
+        approved_exception_id: body.approved_exception_id ?? null,
         created_by: request.auth.userId,
         updated_by: request.auth.userId,
       });
@@ -220,9 +293,12 @@ export class PaymentExecutionController {
     return this.write(request, "payment_item.update", "payment_item.updated", "payment_item", async (client) => {
       const before = await this.requireItem(client, request.auth.tenantId, id);
       const batch = await this.requireBatch(client, request.auth.tenantId, String(before.payment_batch_id));
-      if (["approved", "scheduled", "submitted", "executed_later", "voided", "archived"].includes(String(batch.status))) throw new BadRequestException("payment item cannot be updated after batch approval or execution");
+      this.ensureBatchEditable(batch);
       const values = pick(body, ["payment_date", "payee_name", "notes", "override_reasons"]);
-      if (body.payment_amount !== undefined) values.payment_amount = this.requirePositive(body.payment_amount, "payment_amount");
+      if (body.payment_amount !== undefined) {
+        values.payment_amount = this.requirePositive(body.payment_amount, "payment_amount");
+        await this.validateItemAmount(client, request.auth.tenantId, { ...before, ...values }, this.hasOverride(body));
+      }
       if (body.override_reasons !== undefined) values.override_reasons = this.objectValue(body.override_reasons);
       values.updated_by = request.auth.userId;
       values.updated_at = new Date();
@@ -290,21 +366,25 @@ export class PaymentExecutionController {
   @Post("payment-batches/:id/reject")
   @RequirePermission("payment_batch.reject")
   async rejectBatch(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
-    return this.batchStateAction(request, id, "payment_batch.reject", "payment_batch.rejected", () => ({
+    return this.batchStateAction(request, id, "payment_batch.reject", "payment_batch.rejected", (batch) => {
+      if (!["ready_for_review", "under_review"].includes(String(batch.status))) throw new BadRequestException("Only a batch awaiting review can be rejected; withdraw approval to revise approved instructions");
+      return ({
       status: "rejected",
       approval_status: "rejected",
       rejected_by: request.auth.userId,
       rejected_at: new Date(),
       rejection_reason: this.requireText(body.rejection_reason, "rejection_reason is required"),
       rejection_note: this.optionalString(body.rejection_note),
-    }), body.rejection_reason);
+    }); }, body.rejection_reason);
   }
 
   @Post("payment-batches/:id/schedule")
   @RequirePermission("payment_batch.schedule")
   async scheduleBatch(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
-    return this.batchStateAction(request, id, "payment_batch.schedule", "payment_batch.scheduled", (batch) => {
+    return this.batchStateAction(request, id, "payment_batch.schedule", "payment_batch.scheduled", async (batch, client) => {
       if (batch.approval_status !== "approved") throw new BadRequestException("payment batch must be approved");
+      await this.requireActiveItemCount(client,request.auth.tenantId,id);
+      await this.validateAllItemsReady(client,request.auth.tenantId,id,false);
       return { status: "scheduled", scheduled_payment_date: this.requireText(body.scheduled_payment_date, "scheduled_payment_date is required"), notes: this.optionalString(body.schedule_note) ?? batch.notes };
     }, body.schedule_note);
   }
@@ -316,6 +396,8 @@ export class PaymentExecutionController {
       this.requireText(body.submit_note, "submit_note is required");
       if (!["approved", "scheduled"].includes(String(batch.status))) throw new BadRequestException("payment batch must be approved or scheduled");
       if (batch.execution_status !== "ready_for_execution") throw new BadRequestException("payment batch is not ready for execution");
+      await this.requireActiveItemCount(client,request.auth.tenantId,id);
+      await this.validateAllItemsReady(client,request.auth.tenantId,id,false);
       await client.query(
         "UPDATE payment_items SET status = 'submitted_later', execution_status = 'submitted_later', execution_reference = coalesce($3, execution_reference), updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')",
         [request.auth.tenantId, id, this.optionalString(body.external_reference), request.auth.userId],
@@ -338,7 +420,9 @@ export class PaymentExecutionController {
       const reference = this.requireText(body.execution_reference, "execution_reference is required");
       this.requireText(body.execution_note, "execution_note is required");
       const hasOverride = this.hasOverride(body);
-      if (!["submitted", "approved", "scheduled"].includes(String(batch.status)) || (batch.status !== "submitted" && !hasOverride)) throw new BadRequestException("payment batch must be submitted unless override supplied");
+      if (!["submitted", "approved", "scheduled"].includes(String(batch.status)) || (batch.status !== "submitted" && !hasOverride)) throw new BadRequestException("payment batch must be submitted under the current approval state");
+      await this.requireActiveItemCount(client,request.auth.tenantId,id);
+      await this.validateAllItemsReady(client,request.auth.tenantId,id,false);
       await client.query(
         "UPDATE payment_items SET status = 'executed_later', execution_status = 'executed_later', execution_reference = $3, updated_by = $4, updated_at = now() WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')",
         [request.auth.tenantId, id, reference, request.auth.userId],
@@ -350,7 +434,8 @@ export class PaymentExecutionController {
   @Post("payment-batches/:id/mark-failed")
   @RequirePermission("payment_batch.mark_failed")
   async markFailed(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
-    return this.batchStateAction(request, id, "payment_batch.mark_failed", "payment_batch.failed", async (_batch, client) => {
+    return this.batchStateAction(request, id, "payment_batch.mark_failed", "payment_batch.failed", async (batch, client) => {
+      if (batch.status !== "submitted") throw new BadRequestException("Only a submitted batch can be marked failed");
       const reason = this.requireText(body.failure_reason, "failure_reason is required");
       await client.query(
         "UPDATE payment_items SET status = 'failed', execution_status = 'failed', failure_reason = $3, failure_note = $4, updated_by = $5, updated_at = now() WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')",
@@ -364,7 +449,7 @@ export class PaymentExecutionController {
   @RequirePermission("payment_batch.cancel")
   async cancelBatch(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
     return this.batchStateAction(request, id, "payment_batch.cancel", "payment_batch.cancelled", (batch) => {
-      if (batch.status === "executed_later") throw new BadRequestException("executed payment batch cannot be cancelled");
+      if (!["draft","assembling","rejected","ready_for_review","under_review","approved","scheduled"].includes(String(batch.status))) throw new BadRequestException("Submitted or executed payments require reconciliation before cancellation");
       return { status: "cancelled", execution_status: "cancelled", cancelled_by: request.auth.userId, cancelled_at: new Date(), cancel_reason: this.requireText(body.cancel_reason, "cancel_reason is required"), cancel_note: this.optionalString(body.cancel_note) };
     }, body.cancel_reason);
   }
@@ -373,7 +458,7 @@ export class PaymentExecutionController {
   @RequirePermission("payment_batch.void")
   async voidBatch(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Row) {
     return this.batchStateAction(request, id, "payment_batch.void", "payment_batch.voided", (batch) => {
-      if (batch.status === "executed_later") throw new BadRequestException("executed payment batch cannot be voided");
+      if (!["draft","assembling","rejected","ready_for_review","under_review","approved","scheduled","cancelled"].includes(String(batch.status))) throw new BadRequestException("Submitted or executed payments require reconciliation before voiding");
       return { status: "voided", voided_by: request.auth.userId, voided_at: new Date(), void_reason: this.requireText(body.void_reason, "void_reason is required"), void_note: this.optionalString(body.void_note) };
     }, body.void_reason);
   }
@@ -429,16 +514,14 @@ export class PaymentExecutionController {
       await this.requireBatch(client, request.auth.tenantId, id);
       const itemIds = await client.query("SELECT id FROM payment_items WHERE tenant_id = $1 AND payment_batch_id = $2", [request.auth.tenantId, id]);
       const ids = [id, ...itemIds.rows.map((row) => row.id)];
-      const result = await client.query(
-        `
-        SELECT e.id, e.event_type, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.actor_user_id AS actor, e.created_at AS timestamp, e.audit_context AS summary
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id, e.event_type, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.actor_user_id AS actor, e.created_at AS timestamp, e.audit_context AS summary
         FROM events e
         WHERE e.tenant_id = $1 AND e.aggregate_id = ANY($2::uuid[])
           AND e.event_type = ANY($3::text[])
         ORDER BY e.created_at DESC
         LIMIT 250
-        `,
-        [request.auth.tenantId, ids, [
+        `, [request.auth.tenantId, ids, [
           "payment_batch.created",
           "payment_batch.updated",
           "payment_batch.item_added",
@@ -461,8 +544,7 @@ export class PaymentExecutionController {
           "payment_item.failed",
           "payment_item.voided",
           "payment_item.archived",
-        ]],
-      );
+        ]], request.query);
       return result.rows;
     });
   }
@@ -474,16 +556,13 @@ export class PaymentExecutionController {
       await this.requireBatch(client, request.auth.tenantId, id);
       const itemIds = await client.query("SELECT id FROM payment_items WHERE tenant_id = $1 AND payment_batch_id = $2", [request.auth.tenantId, id]);
       const ids = [id, ...itemIds.rows.map((row) => row.id)];
-      const result = await client.query(
-        `
-        SELECT id, actor_user_id AS actor, action, entity_type AS object, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, id, actor_user_id AS actor, action, entity_type AS object, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1 AND entity_id = ANY($2::uuid[])
         ORDER BY created_at DESC
         LIMIT 250
-        `,
-        [request.auth.tenantId, ids],
-      );
+        `, [request.auth.tenantId, ids], request.query);
       return result.rows;
     });
   }
@@ -504,7 +583,7 @@ export class PaymentExecutionController {
     return this.write(request, action, eventType, "payment_item", async (client) => {
       const before = await this.requireItem(client, request.auth.tenantId, id);
       const batch = await this.requireBatch(client, request.auth.tenantId, String(before.payment_batch_id));
-      if (["submitted", "executed_later"].includes(String(batch.status))) throw new BadRequestException("payment item cannot be changed after submission or execution");
+      if (!["draft", "assembling", "rejected"].includes(String(batch.status))) throw new BadRequestException("Withdraw approval before changing payment items");
       const prefix = status === "voided" ? "voided" : "archived";
       const values: Row = {
         status,
@@ -558,6 +637,8 @@ export class PaymentExecutionController {
   private async requireContractorPayable(client: PoolClient, tenantId: string, id: string) {
     const result = await client.query("SELECT * FROM contractor_payables WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL", [tenantId, id]);
     if (!result.rows[0]) throw new NotFoundException("contractor payable not found");
+    const payable = result.rows[0];
+    if (payable.partner_organization_id || ["subcontractor", "crew"].includes(String(payable.payable_type))) await requirePartnerPayableLineage(client, tenantId, payable);
     return result.rows[0] as Row;
   }
 
@@ -580,7 +661,6 @@ export class PaymentExecutionController {
   }
 
   private async requireNoDuplicateSource(client: PoolClient, tenantId: string, sourceType: string, sourceId: string, itemId: unknown, hasOverride: boolean) {
-    if (hasOverride) return;
     const column = sourceType === "contractor_payable" ? "contractor_payable_id" : "payroll_run_id";
     const itemColumn = sourceType === "contractor_payable" ? "contractor_payable_item_id" : "payroll_item_id";
     const result = await client.query(
@@ -594,7 +674,7 @@ export class PaymentExecutionController {
       `,
       [tenantId, sourceType, sourceId, itemId ?? null],
     );
-    if (result.rows[0]) throw new BadRequestException("duplicate active payment item for source is not allowed without override");
+    if (result.rows[0]) throw new BadRequestException("duplicate active payment item for source is not allowed under the current approval rules");
   }
 
   private async requireActiveItemCount(client: PoolClient, tenantId: string, batchId: string) {
@@ -602,19 +682,43 @@ export class PaymentExecutionController {
     if (Number(result.rows[0]?.count ?? 0) <= 0) throw new BadRequestException("payment batch requires at least one active item");
   }
 
+  private async validateItemAmount(client: PoolClient, tenantId: string, item: Row, hasOverride: boolean) {
+    let amountLimit: number;
+    if (item.source_type === "contractor_payable") {
+      const payable = await this.requireContractorPayable(client, tenantId, String(item.contractor_payable_id));
+      const sourceItem = item.contractor_payable_item_id
+        ? await this.requireContractorPayableItem(client, tenantId, String(item.contractor_payable_item_id)) : null;
+      if (sourceItem && sourceItem.contractor_payable_id !== payable.id) throw new BadRequestException("contractor payable item does not belong to contractor payable");
+      amountLimit = Number(sourceItem?.net_payable_amount ?? payable.net_payable_amount ?? 0);
+    } else if (item.source_type === "payroll") {
+      const sourceItem = await this.requirePayrollItem(client, tenantId, String(item.payroll_item_id));
+      if (sourceItem.payroll_run_id !== item.payroll_run_id) throw new BadRequestException("payroll item does not belong to payroll run");
+      amountLimit = Number(sourceItem.net_pay_amount ?? 0);
+    } else {
+      throw new BadRequestException("unsupported payment source");
+    }
+    if (Number(item.payment_amount) > amountLimit) throw new BadRequestException("payment_amount cannot exceed source amount under the current approval rules");
+  }
+
   private async validateAllItemsReady(client: PoolClient, tenantId: string, batchId: string, hasOverride: boolean) {
+    const securityBatch=await this.requireBatch(client,tenantId,batchId);
+    if(securityBatch.security_review_required)throw new BadRequestException("Historical payment batch requires explicit security review and renewed approval");
     const items = await client.query("SELECT * FROM payment_items WHERE tenant_id = $1 AND payment_batch_id = $2 AND deleted_at IS NULL AND status NOT IN ('voided', 'archived')", [tenantId, batchId]);
     for (const item of items.rows) {
       if (Number(item.payment_amount ?? 0) <= 0) throw new BadRequestException("payment item amount must be > 0");
+      await this.validateItemAmount(client, tenantId, item, false);
+      const duplicate=await client.query("SELECT 1 FROM payment_items WHERE tenant_id=$1 AND id<>$2 AND deleted_at IS NULL AND status NOT IN ('voided','archived','cancelled') AND ((source_type='payroll' AND payroll_item_id=$3) OR (source_type='contractor_payable' AND contractor_payable_id=$4 AND (contractor_payable_item_id IS NULL OR $5::uuid IS NULL OR contractor_payable_item_id=$5))) LIMIT 1",[tenantId,item.id,item.payroll_item_id??null,item.contractor_payable_id??null,item.contractor_payable_item_id??null]);
+      if(duplicate.rows.length)throw new BadRequestException("Duplicate payment source requires reconciliation before approval");
       if (item.source_type === "contractor_payable") {
         const payable = await this.requireContractorPayable(client, tenantId, String(item.contractor_payable_id));
+        await requireFreshSchedule(client,tenantId,String(payable.id));
         if (payable.status !== "payment_ready" || payable.payment_readiness_status !== "ready_for_payment") throw new BadRequestException("all contractor payable sources must remain payment ready");
-        if ((payable.hold_status === "hold" || payable.dispute_status === "open") && !hasOverride) throw new BadRequestException("source hold/dispute blocks payment approval without override");
+        if ((securityBatch.batch_type === "mixed_later" || item.approved_exception_id || payable.hold_status === "hold" || payable.dispute_status === "open") && !(await this.approvedException(client,tenantId,batchId,"contractor_payable",payable,item.approved_exception_id))) throw new BadRequestException("Source hold/dispute requires an approved finance exception");
       }
       if (item.source_type === "payroll") {
         const run = await this.requirePayrollRun(client, tenantId, String(item.payroll_run_id));
         if (run.status !== "payroll_ready" || run.payroll_readiness_status !== "ready_for_payroll") throw new BadRequestException("all payroll sources must remain payroll ready");
-        if ((run.hold_status === "hold" || run.dispute_status === "open") && !hasOverride) throw new BadRequestException("source hold/dispute blocks payment approval without override");
+        if ((securityBatch.batch_type === "mixed_later" || item.approved_exception_id || run.hold_status === "hold" || run.dispute_status === "open") && !(await this.approvedException(client,tenantId,batchId,"payroll",run,item.approved_exception_id))) throw new BadRequestException("Source hold/dispute requires an approved finance exception");
       }
     }
   }
@@ -706,7 +810,7 @@ export class PaymentExecutionController {
   }
 
   private ensureBatchEditable(batch: Row) {
-    if (["submitted", "executed_later", "partially_executed_later", "voided", "archived"].includes(String(batch.status))) throw new BadRequestException("payment batch cannot be updated in its current status");
+    if (!["draft", "assembling", "rejected"].includes(String(batch.status))) throw new BadRequestException("Withdraw approval before changing payment instructions");
   }
 
   private ensureBatchCanAddItems(batch: Row) {
@@ -834,7 +938,9 @@ export class PaymentExecutionController {
 
   private hasOverride(body: Row) {
     const override = this.objectValue(body.override_reasons);
-    return Object.keys(override).length > 0;
+    // Notes never grant financial authority. Approved exceptions use a separate
+    // server-held request and cannot override source amounts or duplicate rules.
+    return false;
   }
 
   private requirePositive(value: unknown, field: string) {
@@ -854,7 +960,10 @@ export class PaymentExecutionController {
         eventType,
         audit: { metadata: typeof reason === "string" && reason.trim() ? { reason: reason.trim() } : {} },
         systemActions: [{ actionType: `${eventType}.processed`, payload: { action } }],
-        write,
+        write: async (lockedClient) => {
+          await lockedClient.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [request.auth.tenantId + ':payment-preparation']);
+          return write(lockedClient);
+        },
       });
     } finally {
       client.release();
@@ -869,4 +978,44 @@ export class PaymentExecutionController {
       client.release();
     }
   }
+  private batchFilters(tenantId: string, query: Record<string, string | undefined>) {
+      const values: unknown[] = [tenantId];
+      const where = ["pb.tenant_id = $1"];
+      if (query.archived !== "true") where.push("pb.deleted_at IS NULL", "pb.status <> 'archived'");
+      this.addFilter(where, values, "pb.batch_type", query.batch_type);
+      this.addFilter(where, values, "pb.payment_method", query.payment_method);
+      this.addFilter(where, values, "pb.status", query.status);
+      this.addFilter(where, values, "pb.approval_status", query.approval_status);
+      this.addFilter(where, values, "pb.execution_status", query.execution_status);
+      if (query.scheduled_payment_date_from) {
+        values.push(query.scheduled_payment_date_from);
+        where.push(`pb.scheduled_payment_date >= $${values.length}`);
+      }
+      if (query.scheduled_payment_date_to) {
+        values.push(query.scheduled_payment_date_to);
+        where.push(`pb.scheduled_payment_date <= $${values.length}`);
+      }
+      if (query.submitted_from) {
+        values.push(query.submitted_from);
+        where.push(`pb.submitted_at >= $${values.length}`);
+      }
+      if (query.submitted_to) {
+        values.push(query.submitted_to);
+        where.push(`pb.submitted_at <= $${values.length}`);
+      }
+      if (query.executed_from) {
+        values.push(query.executed_from);
+        where.push(`pb.executed_at >= $${values.length}`);
+      }
+      if (query.executed_to) {
+        values.push(query.executed_to);
+        where.push(`pb.executed_at <= $${values.length}`);
+      }
+      if (query.q) {
+        values.push(`%${query.q}%`);
+        where.push(`(pb.payment_batch_number ILIKE $${values.length} OR pb.execution_reference ILIKE $${values.length} OR pb.failure_reason ILIKE $${values.length} OR pb.notes ILIKE $${values.length})`);
+      }
+      return {values, where};
+  }
+
 }

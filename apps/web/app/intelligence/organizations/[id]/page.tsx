@@ -1,5 +1,5 @@
 import { OrganizationProfile } from "../organization-workspace";
 
-export default function OrganizationProfilePage({ params }: { params: { id: string } }) {
-  return <OrganizationProfile organizationId={params.id} />;
+export default async function OrganizationProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  return <OrganizationProfile organizationId={(await params).id} />;
 }

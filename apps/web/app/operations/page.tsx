@@ -1,11 +1,17 @@
+"use client";
+import { useDashboardData, DashboardStatus } from "../dashboard-loader";
 import { BoardColumn, CommandHero, CommandShell, InsightStrip, OperatorLink, PriorityDecisionCard, WorkQueue } from "../dashboard-components";
-import { formatValue, getDashboardData, valueAt } from "../dashboard-data";
+import { formatValue, valueAt } from "../dashboard-data";
 
-export default async function OperationsPage() {
-  const data = await getDashboardData("operations");
+export default function OperationsPage() {
+  const dashboard = useDashboardData("operations");
+  const data = dashboard.data;
+  if (!data) return <DashboardStatus title="Operations Board" state={dashboard} />;
   const coverage = valueAt(data, "capacityCoverageRatio.currentValue");
   const activatedProviders = valueAt(data, "activatedProviders");
-  const productionVolume = valueAt(data, "productionVolume");
+  const productionGroups = valueAt(data, "productionQuantities.by_unit", []) as {unit:string;quantity:number}[];
+  const productionVolume = productionGroups.map(group=>`${formatValue(group.quantity)} ${group.unit}`).join(" · ") || "No reviewed quantities";
+  const pendingQuantityReviews = valueAt(data, "productionQuantities.pending_review_count");
   const stopWorkCount = valueAt(data, "stopWorkCount");
   const correctionRate = valueAt(data, "correctionRate.currentValue");
   const approvalRate = valueAt(data, "qcScore.approvalRate.currentValue");
@@ -21,6 +27,8 @@ export default async function OperationsPage() {
         description="The Operations Board connects capacity, work orders, field production, stop-work signals, and QC outcomes so managers can decide what to unblock first."
         actions={
           <>
+            <OperatorLink href="/internal-workforce">Manage Sync Crews</OperatorLink>
+            <OperatorLink href="/field-setup">Assign Field Maps</OperatorLink>
             <OperatorLink href="/work-orders" variant="primary">Open Work Orders</OperatorLink>
             <OperatorLink href="/production">Review Production</OperatorLink>
             <OperatorLink href="/qc">Open QC Queue</OperatorLink>
@@ -31,7 +39,7 @@ export default async function OperationsPage() {
           items={[
             { label: "Capacity coverage", value: formatValue(coverage), helper: "Latest capacity coverage KPI." },
             { label: "Activated providers", value: formatValue(activatedProviders), helper: "Providers available for execution." },
-            { label: "Production volume", value: formatValue(productionVolume), helper: "Submitted production quantity." },
+            { label: "Reviewed production", value: productionVolume, helper: "By unit; summaries, subsets and unreviewed work are excluded." },
             { label: "Stop-work items", value: formatValue(stopWorkCount), helper: "Active stop-work risk." },
           ]}
         />
@@ -51,6 +59,7 @@ export default async function OperationsPage() {
           rows={[
             { label: "Projects", value: "Open", href: "/projects", helper: "Project context and handoff readiness." },
             { label: "Work orders", value: "Open", href: "/work-orders", helper: "Executable work packages." },
+            { label: "SyncField design prep", value: "Open", href: "/syncfield/design-prep", helper: "Trace planned spans on immutable customer prints." },
             { label: "Activated providers", value: formatValue(activatedProviders), href: "/work-orders", helper: "Available capacity supply." },
           ]}
         />
@@ -58,7 +67,7 @@ export default async function OperationsPage() {
           title="Execute work"
           purpose="Watch field production and stop-work signals."
           rows={[
-            { label: "Production board", value: formatValue(productionVolume), href: "/production", helper: "Submitted production volume." },
+            { label: "Production board", value: productionVolume, href: "/production", helper: "Reviewed quantities by unit." },
             { label: "Stop-work active", value: formatValue(stopWorkCount), href: "/production", helper: "Records needing field/ops decision." },
             { label: "Capacity coverage", value: formatValue(coverage), href: "/operations", helper: "KPI signal for execution readiness." },
           ]}
@@ -89,7 +98,7 @@ export default async function OperationsPage() {
           description="Open these queues when execution, production, or quality signals need a decision."
           rows={[
             { label: "Work orders ready for coordination", value: "Open", href: "/work-orders", helper: "Assign work, monitor status, and inspect blockers." },
-            { label: "Production needing review", value: formatValue(productionVolume), href: "/production", helper: "Move submitted field work through review." },
+            { label: "Quantity reviews needed", value: formatValue(pendingQuantityReviews), href: "/production", helper: "Move submitted field work through review." },
             { label: "QC review and corrections", value: formatValue(correctionRate), href: "/qc", helper: "Resolve correction and approval pressure." },
           ]}
         />

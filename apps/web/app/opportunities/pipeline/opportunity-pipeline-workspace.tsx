@@ -1,6 +1,14 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
+import {ScrollableRegion} from "../../scrollable-region";
 
-import Link from "next/link";
+import {ReadOnlyBanner} from "../../operator-page-templates";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
+import {CreateRecordConstraint,AddContactToRelationship} from "../../intelligence/record-workflow-actions";
+import { permittedRecordTabs } from "../../intelligence/api";
+
+import { PermissionLink as Link } from "../../access-control";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -128,7 +136,7 @@ export function OpportunityPipeline() {
   const summary = useMemo(() => buildSummary(data.opportunities.map((opportunity) => enrichOpportunity(opportunity, data))), [data]);
 
   return (
-    <OpportunityShell title="Opportunity Pipeline" purpose="Manage work Jackson has decided is worth pursuing without creating execution or finance records.">
+    <OpportunityShell title="Opportunity Pipeline" purpose="Manage work Sync Comm Systems has decided is worth pursuing without creating execution or finance records.">
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <UnsupportedNotice unavailable={data.unavailable} />
@@ -161,7 +169,7 @@ export function OpportunityPipeline() {
           </div>
           <div className="form-actions">
             <button type="button" onClick={() => setView(view === "board" ? "table" : "board")}>{view === "board" ? "Table View" : "Board View"}</button>
-            <Link className="primary-button link-button" href="/opportunities/new" aria-disabled={!hasPermission(session.permissions, "opportunity.create")}>Create Opportunity</Link>
+            <Link className="primary-button link-button" href="/opportunities/new" allowed={hasPermission(session.permissions, "opportunity.create")}>Create Opportunity</Link>
           </div>
         </div>
         <div className="filter-grid">
@@ -205,7 +213,7 @@ export function OpportunityPipeline() {
         {loading ? <div className="empty-state">Loading opportunities...</div> : null}
         {!loading && opportunities.length === 0 ? (
           <div className="empty-state">
-            <p>No opportunities yet. Create an opportunity only when Jackson has decided the work is worth pursuing.</p>
+            <p>No opportunities yet. Create an opportunity only when Sync Comm Systems has decided the work is worth pursuing.</p>
             <Link className="primary-button link-button" href="/opportunities/new">Create Opportunity</Link>
           </div>
         ) : null}
@@ -337,6 +345,7 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
       <SessionPanel session={session} />
       {error ? <div className="error-banner">{error}</div> : null}
       <form className="workspace-panel" onSubmit={(event) => void submit(event)}>
+        <FormPurposeHeader title="Opportunity information" purpose="Confirm the source candidate, customer, territory, estimated value and expected work before saving." afterSave="Review the opportunity and approval requirements. Saving does not award work, create a project or authorize a crew." />
         <div className="form-grid">
           <label>Source candidate<SelectInline value={form.candidate_id} options={["", ...qualifiedCandidates.map((candidate) => String(candidate.id))]} labels={labelMap(qualifiedCandidates, "name")} onChange={applyCandidate} /></label>
           <label>Opportunity name<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></label>
@@ -357,7 +366,7 @@ export function OpportunityForm({ mode, opportunityId }: { mode: "create" | "edi
         </div>
         <div className="warning-box">Candidate-backed creation uses the explicit conversion endpoint. No project, capacity deployment, or finance record is created.</div>
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update")}>{mode === "create" ? "Create Opportunity" : "Save Opportunity"}</button>
+          {hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update") ? <button className="primary-button" type="submit" disabled={!hasPermission(session.permissions, mode === "create" ? "opportunity.create" : "opportunity.update")}>{mode === "create" ? "Create Opportunity" : "Save Opportunity"}</button> : null}
           <Link href={opportunityId ? `/opportunities/${opportunityId}` : "/opportunities/pipeline"}>Cancel</Link>
         </div>
       </form>
@@ -420,6 +429,7 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
   return (
     <OpportunityShell title="Opportunity Detail" purpose="Decide what must happen next to pursue, approve, award, lose, defer, or archive this opportunity.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["opportunity","capacity_requirement","constraint"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {!opportunity ? (
         <section className="workspace-panel"><div className="empty-state">Opportunity not found or you do not have access.</div></section>
@@ -438,19 +448,21 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
               </div>
               <div className="form-actions">
                 <Link href={`/opportunities/${opportunity.id}/edit`}>Edit Opportunity</Link>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.submit_review") || opportunity.productStatus !== "draft"} onClick={() => setModal("review")}>Submit for Pursuit Review</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursuit_approve") || !["draft", "pursuit_review"].includes(opportunity.productStatus)} onClick={() => setModal("approve")}>Approve Pursuit</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursue") || opportunity.backendStatus !== "pursuit_approved"} onClick={() => setModal("pursue")}>Begin Pursuit</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.proposal") || opportunity.backendStatus !== "pursuing"} onClick={() => setModal("proposal")}>Move to Proposal</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.productStatus !== "proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.award") || opportunity.backendStatus !== "negotiation"} onClick={() => setModal("award")}>Mark Awarded</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.defer") || opportunity.backendStatus === "archived"} onClick={() => setModal("defer")}>Defer</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.archive") || opportunity.backendStatus === "archived"} onClick={() => setModal("archive")}>Archive</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "opportunity.score") || opportunity.backendStatus === "archived"} onClick={() => void scoreOpportunity(opportunity, load, setError)}>Score Opportunity</button>
-                <button type="button" disabled={!hasPermission(session.permissions, "capacity_requirement.create") || opportunity.backendStatus === "archived"} onClick={() => setModal("capacity")}>Add Capacity Requirement</button>
+                {hasPermission(session.permissions, "opportunity.submit_review") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.submit_review") || opportunity.productStatus !== "draft"} onClick={() => setModal("review")}>Submit for Pursuit Review</button> : null}
+                {hasPermission(session.permissions, "opportunity.pursuit_approve") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursuit_approve") || !["draft", "pursuit_review"].includes(opportunity.productStatus)} onClick={() => setModal("approve")}>Approve Pursuit</button> : null}
+                {hasPermission(session.permissions, "opportunity.pursue") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.pursue") || opportunity.backendStatus !== "pursuit_approved"} onClick={() => setModal("pursue")}>Begin Pursuit</button> : null}
+                {hasPermission(session.permissions, "opportunity.proposal") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.proposal") || opportunity.backendStatus !== "pursuing"} onClick={() => setModal("proposal")}>Move to Proposal</button> : null}
+                {hasPermission(session.permissions, "opportunity.negotiation") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.negotiation") || opportunity.productStatus !== "proposal"} onClick={() => void lifecycle(opportunity, "negotiation", {}, load, setError)}>Move to Negotiation</button> : null}
+                {hasPermission(session.permissions, "opportunity.award") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.award") || opportunity.backendStatus !== "negotiation"} onClick={() => setModal("award")}>Mark Awarded</button> : null}
+                {hasPermission(session.permissions, "opportunity.defer") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.defer") || opportunity.backendStatus === "archived"} onClick={() => setModal("defer")}>Defer</button> : null}
+                {hasPermission(session.permissions, "opportunity.score") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.score") || opportunity.backendStatus === "archived"} onClick={() => void scoreOpportunity(opportunity, load, setError)}>Score Opportunity</button> : null}
+                {hasPermission(session.permissions, "capacity_requirement.create") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_requirement.create") || opportunity.backendStatus === "archived"} onClick={() => setModal("capacity")}>Add Capacity Requirement</button> : null}
                 <button type="button" onClick={() => setModal("research")}>Analyze Pursuit</button>
               </div>
+              {(hasPermission(session.permissions, "opportunity.lost") || hasPermission(session.permissions, "opportunity.archive")) ? <DangerZone>
+                {hasPermission(session.permissions, "opportunity.lost") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.lost") || opportunity.backendStatus === "archived"} onClick={() => setModal("lost")}>Mark Lost</button> : null}
+                {hasPermission(session.permissions, "opportunity.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity.archive") || opportunity.backendStatus === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+              </DangerZone> : null}
             </div>
             <div className="summary-grid">
               <SummaryMetric label="Estimated Value" value={moneyValue(opportunity.estimatedValue)} />
@@ -490,7 +502,7 @@ export function OpportunityDetail({ opportunityId }: { opportunityId: string }) 
             </aside>
             <section className="workspace-panel">
               <div className="tabs">
-                {tabs.map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
+                {permittedRecordTabs(tabs, "opportunity").map((item) => <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{formatAction(item)}</button>)}
               </div>
               <OpportunityTab tab={tab} opportunity={opportunity} scoreSummary={scoreSummary} permissions={session.permissions} onCapacity={() => setModal("capacity")} />
             </section>
@@ -548,7 +560,7 @@ function OpportunityCard({ opportunity }: { opportunity: OpportunityView }) {
 
 function OpportunityTable({ opportunities }: { opportunities: OpportunityView[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -577,7 +589,7 @@ function OpportunityTable({ opportunities }: { opportunities: OpportunityView[] 
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -585,7 +597,7 @@ function OpportunityTab({ tab, opportunity, scoreSummary, permissions, onCapacit
   if (tab === "overview") {
     return (
       <div className="workspace-panel">
-        <SummaryMetric label="Opportunity definition" value="An Opportunity is work Jackson has decided is worth pursuing. It is not casual lead storage and it does not create execution or finance records." />
+        <SummaryMetric label="Opportunity definition" value="An Opportunity is work Sync Comm Systems has decided is worth pursuing. It is not casual lead storage and it does not create execution or finance records." />
         <SummaryMetric label="Summary" value={textValue(opportunity.evidence_summary ?? opportunity.summary, "No summary captured yet.")} />
         <SummaryMetric label="Scope" value={textValue(opportunity.scope_summary, "No scope captured yet.")} />
         <SummaryMetric label="Current status" value={`${formatAction(opportunity.productStatus)} (backend ${formatAction(opportunity.backendStatus)})`} />
@@ -605,7 +617,7 @@ function OpportunityTab({ tab, opportunity, scoreSummary, permissions, onCapacit
     );
   }
   if (tab === "capacity") return <ObjectSlice title="Capacity Requirements" rows={opportunity.capacityRequirements} columns={["capacity_type", "quantity", "unit", "territory_id", "start_date", "end_date", "status"]} empty="No capacity requirements are connected yet. Capacity is planning only in this sprint." action={hasPermission(permissions, "capacity_requirement.create") ? <button type="button" onClick={onCapacity}>Add Capacity Requirement</button> : undefined} />;
-  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={opportunity.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this opportunity." action={hasPermission(permissions, "constraint.create") ? <button type="button" disabled>Create Constraint</button> : undefined} />;
+  if (tab === "constraints") return <ObjectSlice title="Constraints" rows={opportunity.constraints} columns={["constraint_type", "severity", "owner_id", "due_date", "status", "resolution_summary"]} empty="No active constraints are tied to this opportunity." action={hasPermission(permissions, "constraint.create") ? <CreateRecordConstraint objectType="opportunity" objectId={opportunity.id}/> : undefined} />;
   if (tab === "recommendations") return <ObjectSlice title="Recommendations" rows={opportunity.recommendations} columns={["recommendation_type", "confidence_score", "risk_level", "expected_impact", "status", "owner_id"]} empty="No recommendations are tied to this opportunity." />;
   if (tab === "timeline") return <ObjectSlice title="Timeline" rows={arrayRecords(opportunity._timeline) ?? []} columns={["event_type", "actor_name", "timestamp", "object_type", "object_id", "summary"]} empty="Opportunity timeline endpoint is not available yet." />;
   if (tab === "audit") return <ObjectSlice title="Audit" rows={arrayRecords(opportunity._audit) ?? []} columns={["actor_name", "action", "object_type", "object_id", "reason", "created_at", "correlation_id"]} empty="Opportunity audit summary is not available yet or you do not have permission." />;
@@ -1059,7 +1071,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {!rows.length ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead><tr>{columns.map((column) => <th key={column}>{formatAction(column)}</th>)}</tr></thead>
             <tbody>
@@ -1070,14 +1082,14 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );
 }
 
 function SessionPanel({ session }: { session: ReturnType<typeof useSession> }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
+  return null; // Identity and permissions are managed by sign-in, never editable in a workspace.
   return (
     <section className="workspace-panel">
       <div className="section-toolbar">
@@ -1119,7 +1131,7 @@ function Checklist({ title, items }: { title: string; items: [string, boolean][]
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -1127,7 +1139,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -1145,7 +1157,7 @@ function SelectInline({ value, options, labels = {}, onChange }: { value: string
 
 function useSession() {
   const [token, setTokenState] = useState(readToken());
-  const [permissions, setPermissionsState] = useState<string[]>(unique([...defaultOpportunityPermissions, ...readPermissions()]));
+  const [permissions, setPermissionsState] = useState<string[]>(readPermissions());
   function setToken(next: string) {
     setTokenState(next);
     saveToken(next);

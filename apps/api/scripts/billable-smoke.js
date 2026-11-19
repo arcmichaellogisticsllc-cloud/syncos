@@ -1,3 +1,4 @@
+const {createCustomerAcceptanceFixture}=require('./customer-acceptance-fixture');
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
@@ -17,8 +18,8 @@ async function main() {
       FROM users u
       JOIN tenant_users tu ON tu.user_id = u.id
       JOIN tenants t ON t.id = tu.tenant_id
-      WHERE u.email = 'admin@jackson-telcom.local'
-        AND t.slug = 'jackson-telcom'
+      WHERE u.email = 'admin@synccommsystems.local'
+        AND t.slug = 'sync-comm-systems'
       LIMIT 1
     `);
     if (!seeded.rows[0]) throw new Error("Seeded admin user was not found");
@@ -67,17 +68,16 @@ async function main() {
     });
     if (docsItem.billable_item.status !== "needs_documentation") throw new Error("Incomplete package did not create needs_documentation");
 
-    const acceptanceBase = await createBase(client, tenantId, userId, { approvedQuantity: 90, billableCandidateQuantity: 90 });
+    const acceptanceBase = await createBase(client, tenantId, userId, { approvedQuantity: 90, billableCandidateQuantity: 90, customerAccepted: false });
     const acceptanceRate = await createRate(client, tenantId, acceptanceBase.customerOrganizationId);
-    const acceptanceItem = await expectStatus("pending customer acceptance creates needs_customer_acceptance", "POST", "/billable-items", `Bearer ${token}`, 201, {
+    await expectStatus("internal QC without customer acceptance cannot create a billable", "POST", "/billable-items", `Bearer ${token}`, 400, {
       qc_review_id: acceptanceBase.qcReviewId,
       billable_quantity: 90,
       rate_code_id: acceptanceRate.rateCodeId,
       billing_package_status: "ready",
       documentation_status: "ready",
-      customer_acceptance_status: "pending",
+      customer_acceptance_status: "accepted",
     });
-    if (acceptanceItem.billable_item.status !== "needs_customer_acceptance") throw new Error("Pending acceptance did not create needs_customer_acceptance");
 
     const readyBase = await createBase(client, tenantId, userId, { approvedQuantity: 100, billableCandidateQuantity: 100 });
     const readyRate = await createRate(client, tenantId, readyBase.customerOrganizationId, { amount: 12 });
@@ -179,14 +179,14 @@ async function createBase(client, tenantId, userId, options = {}) {
     "INSERT INTO projects (tenant_id, customer_organization_id, territory_id, name, status, work_type, scope_summary, location_summary, created_by, updated_by) VALUES ($1, $2, $3, $4, 'ready_for_work', 'fiber', 'Billable project scope', 'Billable project location', $5, $5) RETURNING id",
     [tenantId, organization.rows[0].id, territory.rows[0].id, `Billable Project ${suffix}`, userId],
   );
-  const provider = await client.query("INSERT INTO capacity_providers (tenant_id, organization_id, name, provider_type, verification_status, contract_status, status) VALUES ($1, $2, $3, 'subcontractor', 'verified', 'contracted', 'activated') RETURNING id", [tenantId, organization.rows[0].id, `Billable Provider ${suffix}`]);
+  const provider = await client.query("INSERT INTO capacity_providers (tenant_id, organization_id, name, provider_type, verification_status, contract_status, status) VALUES ($1, $2, $3, 'internal_workforce', 'verified', 'contracted', 'activated') RETURNING id", [tenantId, organization.rows[0].id, `Billable Provider ${suffix}`]);
   const crew = await client.query("INSERT INTO crews (tenant_id, capacity_provider_id, name, crew_type, status) VALUES ($1, $2, $3, 'splicing', 'active') RETURNING id", [tenantId, provider.rows[0].id, `Billable Crew ${suffix}`]);
   const workOrder = await client.query(
     `INSERT INTO work_orders (
       tenant_id, project_id, assigned_capacity_provider_id, assigned_crew_id, title, work_order_name,
       work_type, territory_id, scope_summary, location_summary, expected_units, planned_quantity, unit_type, unit,
       status, qc_status, billable_status, assignment_type, completed_quantity, approved_quantity, billable_quantity
-    ) VALUES ($1, $2, $3, $4, $5, $5, 'fiber', $6, 'Billable scope', 'Billable location', 100, 100, 'feet', 'feet', 'approved', 'approved', 'not_billable', 'subcontractor', 100, $7, 0) RETURNING id`,
+    ) VALUES ($1, $2, $3, $4, $5, $5, 'fiber', $6, 'Billable scope', 'Billable location', 100, 100, 'feet', 'feet', 'approved', 'approved', 'not_billable', 'internal_crew', 100, $7, 0) RETURNING id`,
     [tenantId, project.rows[0].id, provider.rows[0].id, crew.rows[0].id, `Billable Work Order ${suffix}`, territory.rows[0].id, approvedQuantity],
   );
   const production = await client.query(
@@ -208,6 +208,9 @@ async function createBase(client, tenantId, userId, options = {}) {
       'sufficient', 'valid', 'sufficient', 'valid', 'not_required', 'not_required', 'Approved for billable smoke.', $5, $5) RETURNING id`,
     [tenantId, production.rows[0].id, workOrder.rows[0].id, project.rows[0].id, userId, approvedQuantity, Math.max(0, 100 - approvedQuantity), billableCandidateQuantity],
   );
+  if (userId && options.customerAccepted !== false) {
+    await createCustomerAcceptanceFixture(client,{tenantId,userId,organizationId:organization.rows[0].id,providerId:provider.rows[0].id,crewId:crew.rows[0].id,projectId:project.rows[0].id,workOrderId:workOrder.rows[0].id,productionId:production.rows[0].id,quantity:approvedQuantity,unit:'feet'});
+  }
   return {
     projectId: project.rows[0].id,
     workOrderId: workOrder.rows[0].id,

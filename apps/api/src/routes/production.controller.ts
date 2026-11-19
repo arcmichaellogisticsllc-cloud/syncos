@@ -1,8 +1,19 @@
+import { requireWorkOrderCloseout } from './work-order-closeout';
+import {verifyProjectWrite} from "../security/project-write-policy";
+import {activityPage} from './activity-pagination';
+import { productionQuantitySource } from './production-quantity-integrity';
+import { reviewedProductionSummary } from './production-reporting';
+import { canonicalRateUnit } from './commercial-terms';
+import { requireRecordWorkAuthorization } from "./record-work-authorization";
+import { lockWorkSafety, safetyBlockers, requireHoldSupervisor } from "./work-safety";
+import { lockFieldWork, hasActiveFieldStop } from "./field-stop-scope";
+import { requireCustomerAcceptedBilling, validateAcceptedBillingQuantity } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
 import { executeWriteAction, type WriteActionResult } from "@syncos/shared";
 import { DATABASE_POOL } from "../modules/database.module";
+import { AuthenticatedOnly } from "../security/authenticated-only.decorator";
 import { RequirePermission } from "../security/require-permission.decorator";
 import type { AuthenticatedRequest } from "./intelligence.types";
 import { pick, requireAllowed, requireString } from "./intelligence.types";
@@ -29,12 +40,11 @@ const evidenceTypes = new Set(["photo", "video", "gps", "daily_report", "safety_
 const evidenceStatuses = new Set(["active", "archived"]);
 const productionArchiveReasons = new Set(["duplicate", "no_longer_relevant", "replaced", "created_in_error", "voided", "other"]);
 const correctionAuthorityRoles = new Set(["Project Manager", "Operations Manager"]);
+const qcCorrectionAuthorityRoles = new Set([...correctionAuthorityRoles, "QC Manager"]);
 const qcReviewAuthorityRoles = new Set(["QC Manager", "Project Manager"]);
 const qcManagerRoles = new Set(["QC Manager"]);
 const approveAuthorityRoles = new Set(["QC Manager", "Operations Manager"]);
 const billableAuthorityRoles = new Set(["Billing Manager", "QC Manager"]);
-const stopWorkIssueAuthorityRoles = new Set(["Safety Manager", "QC Manager", "Executive"]);
-const stopWorkReleaseAuthorityRoles = new Set(["Safety Manager", "Executive"]);
 const qcReviewTypes = new Set(["internal_qc", "safety_qc", "compliance_qc", "customer_qc", "prime_qc", "billing_qc", "final_acceptance"]);
 const qcReviewStatuses = new Set(["pending", "in_review", "approved", "rejected", "correction_required", "corrected", "voided", "archived"]);
 const qcFindingStatuses = new Set(["pending", "sufficient", "insufficient", "not_required"]);
@@ -56,7 +66,7 @@ export class ProductionController {
   @Get("projects")
   @RequirePermission("project.read")
   async listProjects(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.listProjectsEnriched(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.listProjectsEnriched(client, request.auth.tenantId, query, request.auth.userId));
   }
 
   @Get("projects/:id/detail")
@@ -73,9 +83,8 @@ export class ProductionController {
   async getProjectTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const project = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id,
           e.event_type AS summary,
           ep.payload
@@ -88,9 +97,7 @@ export class ProductionController {
         )
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, project.source_project_handoff_id],
-      );
+        `, [request.auth.tenantId, id, project.source_project_handoff_id], request.query);
       return result.rows;
     });
   }
@@ -100,9 +107,8 @@ export class ProductionController {
   async getProjectAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const project = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -113,9 +119,7 @@ export class ProductionController {
         )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, project.source_project_handoff_id],
-      );
+        `, [request.auth.tenantId, id, project.source_project_handoff_id], request.query);
       return result.rows;
     });
   }
@@ -168,7 +172,7 @@ export class ProductionController {
         return { entityType: "project", entityId: project.id, afterState: { id: project.id, ...detail }, eventType: "project.created" };
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -202,6 +206,20 @@ export class ProductionController {
       return await this.write(request, "project.update", "project.updated", "project", async (client) => {
         const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
         if (before.status === "archived") throw new BadRequestException("archived projects are view-only");
+        // Moving a project changes the authorization boundary and all descendants.
+        // Only a tenant-wide update grant may reparent it; scoped editors retain
+        // ordinary edit access without being able to move work into another scope.
+        const movingScope = ["customer_organization_id", "territory_id", "prime_organization_id", "contractor_organization_id", "opportunity_id", "source_opportunity_id"].some(key => body[key] !== undefined && body[key] !== before[key]);
+        if (movingScope) {
+          const allowed = await client.query(`SELECT 1 FROM tenant_users tu
+            JOIN user_roles ur ON ur.tenant_user_id=tu.id AND ur.tenant_id=tu.tenant_id
+            JOIN roles ro ON ro.id=ur.role_id AND ro.tenant_id=tu.tenant_id AND ro.deleted_at IS NULL
+            JOIN role_permissions rp ON rp.role_id=ro.id AND rp.tenant_id=tu.tenant_id
+            JOIN permissions perm ON perm.id=rp.permission_id
+            WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL
+              AND ur.scope_type='tenant' AND perm.key='project.update' LIMIT 1`, [request.auth.tenantId, request.auth.userId]);
+          if (!allowed.rowCount) throw new ForbiddenException("Moving project scope requires tenant-wide project update permission");
+        }
         if (body.opportunity_id) {
           await this.requireRecord(client, "opportunities", request.auth.tenantId, this.requiredId(body.opportunity_id, "opportunity_id"), "opportunity not found");
           values.opportunity_id = body.opportunity_id;
@@ -228,7 +246,7 @@ export class ProductionController {
         return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.updated" };
       }, body.reason);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -285,6 +303,7 @@ export class ProductionController {
   async placeProjectOnHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const holdReason = this.requiredText(body.hold_reason, "hold_reason is required");
     return this.write(request, "project.place_hold", "project.on_hold", "project", async (client) => {
+      await requireHoldSupervisor(client, request.auth.tenantId, request.auth.userId);
       const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
       if (before.status === "archived") throw new BadRequestException("archived projects are view-only");
       const after = await updateTenantRecord(client, "projects", request.auth.tenantId, id, {
@@ -304,6 +323,7 @@ export class ProductionController {
   async releaseProjectHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const releaseNote = this.requiredText(body.release_note, "release_note is required");
     return this.write(request, "project.release_hold", "project.hold_released", "project", async (client) => {
+      await requireHoldSupervisor(client, request.auth.tenantId, request.auth.userId);
       const before = await this.requireRecord(client, "projects", request.auth.tenantId, id, "project not found");
       if (before.status !== "on_hold") throw new BadRequestException("project must be on_hold");
       const restoredStatus = before.previous_status && projectStatuses.has(before.previous_status) && before.previous_status !== "archived" ? before.previous_status : "planning";
@@ -375,7 +395,7 @@ export class ProductionController {
         return { entityType: "project", entityId: id, beforeState: before, afterState: await this.projectDetail(client, request.auth.tenantId, id), eventType: "project.archived" };
       }, archiveReason);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -383,7 +403,7 @@ export class ProductionController {
   @Get("work-orders")
   @RequirePermission("work_order.read")
   async listWorkOrders(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.listWorkOrdersEnriched(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.listWorkOrdersEnriched(client, request.auth.tenantId, query, request.auth.userId));
   }
 
   @Get("work-orders/:id/detail")
@@ -397,9 +417,8 @@ export class ProductionController {
   async getWorkOrderTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -407,9 +426,7 @@ export class ProductionController {
         WHERE e.tenant_id = $1 AND e.aggregate_type = 'work_order' AND e.aggregate_id = $2
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -419,9 +436,8 @@ export class ProductionController {
   async getWorkOrderAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -429,9 +445,7 @@ export class ProductionController {
         WHERE al.tenant_id = $1 AND al.entity_type = 'work_order' AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -515,7 +529,7 @@ export class ProductionController {
         return { entityType: "work_order", entityId: workOrder.id, afterState: await this.workOrderDetail(client, request.auth.tenantId, workOrder.id) };
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -561,7 +575,7 @@ export class ProductionController {
         return { entityType: "work_order", entityId: id, beforeState: before, afterState: await this.workOrderDetail(client, request.auth.tenantId, id) };
       }, body.reason);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -698,6 +712,7 @@ export class ProductionController {
   async placeWorkOrderOnHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const holdReason = this.requiredText(body.hold_reason, "hold_reason is required");
     return this.write(request, "work_order.place_hold", "work_order.on_hold", "work_order", async (client) => {
+      await requireHoldSupervisor(client, request.auth.tenantId, request.auth.userId);
       const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
       this.requireWorkOrderOpen(before);
       const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, { status: "on_hold", previous_status: before.status === "on_hold" ? before.previous_status : before.status, hold_reason: holdReason, hold_note: body.hold_note, updated_by: request.auth.userId });
@@ -711,6 +726,7 @@ export class ProductionController {
   async releaseWorkOrderHold(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     const releaseNote = this.requiredText(body.release_note, "release_note is required");
     return this.write(request, "work_order.release_hold", "work_order.hold_released", "work_order", async (client) => {
+      await requireHoldSupervisor(client, request.auth.tenantId, request.auth.userId);
       const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
       if (before.status !== "on_hold") throw new BadRequestException("work order must be on_hold");
       const restored = before.previous_status && workOrderStatuses.has(before.previous_status) && !["archived", "cancelled", "closed", "on_hold"].includes(before.previous_status) ? before.previous_status : before.assigned_capacity_provider_id || before.assigned_crew_id ? "assigned" : "ready_to_assign";
@@ -746,27 +762,22 @@ export class ProductionController {
         return { entityType: "work_order", entityId: id, beforeState: before, afterState: after };
       }, archiveReason);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
 
   @Get("qc/review-queue")
   @RequirePermission("qc.review")
-  async listQcReviewQueue(@Req() request: AuthenticatedRequest) {
-    return this.withClient(async (client) => {
-      const result = await client.query(
-        `
-        SELECT *
-        FROM production_records
-        WHERE tenant_id = $1
-          AND deleted_at IS NULL
-          AND status IN ('submitted', 'qc_review')
-        ORDER BY updated_at DESC
-        LIMIT 100
-        `,
-        [request.auth.tenantId],
-      );
+  async listQcReviewQueue(@Req() request: AuthenticatedRequest, @Query() query: Record<string,string|undefined>) {
+    return this.withClient(async client => {
+      const params:unknown[]=[request.auth.tenantId];
+      const conditions=["pr.tenant_id=$1", "pr.deleted_at IS NULL", "pr.status IN ('submitted','qc_review')"];
+      this.appendProjectReadScope(conditions,params,request.auth.userId,"qc.review");
+      const limit=Math.min(200,Math.max(1,Number.parseInt(query.limit??"100",10)||100));
+      const offset=Math.max(0,Number.parseInt(query.offset??"0",10)||0);
+      params.push(limit,offset);
+      const result=await client.query(`SELECT pr.* FROM production_records pr JOIN projects p ON p.tenant_id=pr.tenant_id AND p.id=pr.project_id WHERE ${conditions.join(' AND ')} ORDER BY pr.updated_at DESC,pr.id LIMIT $${params.length-1} OFFSET $${params.length}`,params);
       return result.rows;
     });
   }
@@ -780,7 +791,33 @@ export class ProductionController {
   @Get("qc-reviews")
   @RequirePermission("qc_review.read")
   async listQcReviews(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.listQcReviewsEnriched(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.listQcReviewsEnriched(client, request.auth.tenantId, query, request.auth.userId));
+  }
+
+  @Get("qc-review-create-options")
+  @RequirePermission("qc_review.create")
+  async qcCreateOptions(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const reviewers = await this.scopedQcUsers(client,request,"qc_review.create");
+      const params:unknown[]=[request.auth.tenantId];
+      const conditions=["q.tenant_id=$1", "q.deleted_at IS NULL"];
+      this.appendProjectReadScope(conditions,params,request.auth.userId,"qc_review.create");
+      const sources=await client.query(`SELECT q.id,q.review_type,q.review_status,q.created_at,pr.production_type,w.title AS work_order_title
+        FROM qc_reviews q JOIN projects p ON p.tenant_id=q.tenant_id AND p.id=q.project_id
+        LEFT JOIN production_records pr ON pr.id=q.production_record_id AND pr.tenant_id=q.tenant_id
+        LEFT JOIN work_orders w ON w.id=q.work_order_id AND w.tenant_id=q.tenant_id
+        WHERE ${conditions.join(' AND ')} ORDER BY q.created_at DESC,q.id`,params);
+      return { reviewers: reviewers.rows, sourceReviews: sources.rows };
+    });
+  }
+
+  @Get("qc-review-correction-owners")
+  @RequirePermission("qc_review.request_correction")
+  async qcCorrectionOwners(@Req() request: AuthenticatedRequest) {
+    return this.withClient(async (client) => {
+      const result = await this.scopedQcUsers(client,request,"qc_review.request_correction");
+      return result.rows;
+    });
   }
 
   @Get("qc-reviews/:id/detail")
@@ -794,9 +831,8 @@ export class ProductionController {
   async getQcReviewTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -806,9 +842,7 @@ export class ProductionController {
           AND e.aggregate_id = $2
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -818,9 +852,8 @@ export class ProductionController {
   async getQcReviewAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action,
           al.entity_type AS object_type, al.entity_id AS object_id, al.before_state AS before_json,
           al.after_state AS after_json, al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -830,9 +863,7 @@ export class ProductionController {
           AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -880,7 +911,7 @@ export class ProductionController {
         return { entityType: "qc_review", entityId: review.id, afterState: await this.qcReviewDetail(client, request.auth.tenantId, review.id) };
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -989,7 +1020,7 @@ export class ProductionController {
     try {
       const reason = requireString(body.correction_reason ?? body.reason, "correction_reason is required");
       return await this.write(request, "qc_review.request_correction", "qc_review.correction_requested", "qc_review", async (client) => {
-        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, correctionAuthorityRoles, "Project Manager or Operations Manager authority is required");
+        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcCorrectionAuthorityRoles, "QC Manager, Project Manager or Operations Manager authority is required");
         const before = await this.requireRecord(client, "qc_reviews", request.auth.tenantId, id, "qc review not found");
         if (body.correction_owner_user_id) await this.requireTenantUser(client, request.auth.tenantId, body.correction_owner_user_id);
         const rejectedQuantity = Number(before.rejected_quantity ?? before.claimed_quantity ?? 0);
@@ -1080,7 +1111,7 @@ export class ProductionController {
   @Get("billable-items")
   @RequirePermission("billable_item.read")
   async listBillableItems(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.listBillableItemsEnriched(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.listBillableItemsEnriched(client, request.auth.tenantId, query, request.auth.userId));
   }
 
   @Get("billable-items/:id/detail")
@@ -1094,9 +1125,8 @@ export class ProductionController {
   async getBillableItemTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -1106,9 +1136,7 @@ export class ProductionController {
           AND e.aggregate_id = $2
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1118,9 +1146,8 @@ export class ProductionController {
   async getBillableItemAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -1130,9 +1157,7 @@ export class ProductionController {
           AND al.entity_id = $2
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1151,21 +1176,20 @@ export class ProductionController {
         const context = await this.billableContextFromQcReview(client, request.auth.tenantId, this.requiredId(body.qc_review_id, "qc_review_id"));
         if (context.qcReview.review_status !== "approved") throw new BadRequestException("qc_review must be approved");
         if (context.productionRecord.status !== "approved") throw new BadRequestException("production_record must be approved");
+        const customerDecision = await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(context.productionRecord.id));
         const duplicate = await client.query(
-          "SELECT 1 FROM billable_items WHERE tenant_id = $1 AND qc_review_id = $2 AND status NOT IN ('voided', 'archived') AND deleted_at IS NULL LIMIT 1",
-          [request.auth.tenantId, context.qcReview.id],
+          "SELECT 1 FROM billable_items WHERE tenant_id = $1 AND production_record_id = $2 AND status NOT IN ('voided', 'archived') AND deleted_at IS NULL LIMIT 1",
+          [request.auth.tenantId, context.productionRecord.id],
         );
-        if (duplicate.rows[0] && !this.hasOverride(body.override_reasons, "duplicate_billable_override_reason")) {
-          throw new BadRequestException({ message: "Duplicate active billable item requires override.", required_override_fields: ["duplicate_billable_override_reason"] });
+        if (duplicate.rows[0]) {
+          throw new BadRequestException({ message: "Production already has an active billable item." });
         }
-        const approvedQuantity = Number(context.qcReview.approved_quantity ?? context.productionRecord.approved_quantity ?? 0);
+        const approvedQuantity = Number(customerDecision.customer_accepted_quantity);
         if (approvedQuantity <= 0) throw new BadRequestException("approved_quantity must be > 0");
-        const billableQuantity = body.billable_quantity === undefined ? Number(context.qcReview.billable_candidate_quantity ?? approvedQuantity) : this.requirePositive(body.billable_quantity, "billable_quantity");
-        if (billableQuantity > approvedQuantity && !this.hasOverride(body.override_reasons, "billable_quantity_override_reason")) {
-          throw new BadRequestException({ message: "billable_quantity cannot exceed approved_quantity", required_override_fields: ["billable_quantity_override_reason"] });
-        }
+        const billableQuantity = body.billable_quantity === undefined ? approvedQuantity : this.requirePositive(body.billable_quantity, "billable_quantity");
         const unit = this.optionalAllowed(body.unit, workOrderUnits, "unit") ?? context.qcReview.unit ?? context.productionRecord.unit ?? context.productionRecord.unit_type ?? context.workOrder.unit;
         if (!unit) throw new BadRequestException("unit is required");
+        validateAcceptedBillingQuantity(customerDecision, billableQuantity, unit);
         const rate = await this.billableRateContext(client, request.auth.tenantId, body, String(unit));
         const estimatedBillableAmount = this.billableEstimatedAmount(billableQuantity, rate.unitRate);
         const retainage = this.billableRetainage(body, billableQuantity, estimatedBillableAmount);
@@ -1174,6 +1198,7 @@ export class ProductionController {
           work_order_id: context.workOrder.id,
           production_record_id: context.productionRecord.id,
           qc_review_id: context.qcReview.id,
+          customer_qc_decision_id: customerDecision.id,
           customer_organization_id: context.project.customer_organization_id,
           capacity_provider_id: context.productionRecord.capacity_provider_id ?? context.workOrder.assigned_capacity_provider_id,
           crew_id: context.productionRecord.crew_id ?? context.workOrder.assigned_crew_id,
@@ -1194,7 +1219,7 @@ export class ProductionController {
           retainage_amount: retainage.retainageAmount,
           retainage_release_condition: body.retainage_release_condition,
           net_billable_amount: retainage.netBillableAmount,
-          customer_acceptance_status: this.optionalAllowed(body.customer_acceptance_status, billableAcceptanceStatuses, "customer_acceptance_status") ?? this.mapBillableAcceptance(context.qcReview.customer_acceptance_status),
+          customer_acceptance_status: "accepted",
           prime_acceptance_status: this.optionalAllowed(body.prime_acceptance_status, billableAcceptanceStatuses, "prime_acceptance_status") ?? this.mapBillableAcceptance(context.qcReview.prime_acceptance_status),
           billing_package_status: this.optionalAllowed(body.billing_package_status, billablePackageStatuses, "billing_package_status") ?? "not_started",
           documentation_status: this.optionalAllowed(body.documentation_status, billablePackageStatuses, "documentation_status") ?? this.mapBillablePackageStatus(context.qcReview.documentation_status),
@@ -1208,7 +1233,7 @@ export class ProductionController {
         return { entityType: "billable_item", entityId: billableItem.id, afterState: await this.billableItemDetail(client, request.auth.tenantId, billableItem.id) };
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1221,6 +1246,12 @@ export class ProductionController {
         const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
         if (["archived", "voided"].includes(String(before.status))) throw new BadRequestException("archived or voided billable items are view-only");
         if (before.status === "settlement_created") throw new BadRequestException("settlement_created billable items are view-only");
+        if (before.accepted_production_source_id && ["billable_quantity", "unit_rate", "rate_code_id", "customer_acceptance_status", "retainage_percent", "retainage_required"].some(key => body[key] !== undefined)) {
+          throw new BadRequestException("Use controlled financial adjustments for customer-accepted source amounts");
+        }
+        const commercialEdit = ["billable_quantity", "unit_rate", "rate_code_id", "rate_source", "rate_confidence", "customer_acceptance_status", "retainage_percent", "retainage_required"].some(key => body[key] !== undefined);
+        const customerDecision = commercialEdit ? await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(before.production_record_id), before.customer_qc_decision_id) : null;
+        if (customerDecision) validateAcceptedBillingQuantity(customerDecision, Number(body.billable_quantity ?? before.billable_quantity), before.unit);
         const values = pick(body, ["rate_description", "retainage_release_condition", "hold_note", "dispute_note"]);
         if (body.billable_quantity !== undefined) values.billable_quantity = this.requirePositive(body.billable_quantity, "billable_quantity");
         if (body.rate_code_id !== undefined || body.unit_rate !== undefined || body.rate_source !== undefined || body.rate_confidence !== undefined) {
@@ -1232,7 +1263,11 @@ export class ProductionController {
           values.rate_confidence = rate.rateConfidence;
           values.estimated_billable_amount = rate.estimatedBillableAmount;
         }
-        if (body.customer_acceptance_status !== undefined) values.customer_acceptance_status = requireAllowed(body.customer_acceptance_status, billableAcceptanceStatuses, "customer_acceptance_status");
+        if (customerDecision) {
+          values.customer_acceptance_status = "accepted";
+          values.customer_qc_decision_id = customerDecision.id;
+          values.approved_quantity = Number(customerDecision.customer_accepted_quantity);
+        }
         if (body.prime_acceptance_status !== undefined) values.prime_acceptance_status = requireAllowed(body.prime_acceptance_status, billableAcceptanceStatuses, "prime_acceptance_status");
         if (body.billing_package_status !== undefined) values.billing_package_status = requireAllowed(body.billing_package_status, billablePackageStatuses, "billing_package_status");
         if (body.documentation_status !== undefined) values.documentation_status = requireAllowed(body.documentation_status, billablePackageStatuses, "documentation_status");
@@ -1249,7 +1284,8 @@ export class ProductionController {
         }
         if (body.override_reasons !== undefined) values.override_reasons = this.jsonObject(body.override_reasons);
         values.updated_by = request.auth.userId;
-        const next = { ...before, ...values };
+        const enriched = before.accepted_production_source_id ? await this.billableItemRow(client, request.auth.tenantId, id) : before;
+        const next = { ...enriched, ...values };
         const derived = this.deriveBillableState(next);
         Object.assign(values, derived);
         const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, values);
@@ -1258,7 +1294,7 @@ export class ProductionController {
         return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
       }, body.reason);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1268,7 +1304,8 @@ export class ProductionController {
   async recalculateBillableReadiness(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.write(request, "billable_item.recalculate_readiness", "billable_item.readiness_recalculated", "billable_item", async (client) => {
       const before = await this.requireRecord(client, "billable_items", request.auth.tenantId, id, "billable item not found");
-      const derived = this.deriveBillableState(before, { preserveStatus: true });
+      const enriched = await this.billableItemRow(client, request.auth.tenantId, id);
+      const derived = this.deriveBillableState(enriched, { preserveStatus: true });
       const after = await updateTenantRecord(client, "billable_items", request.auth.tenantId, id, { ...derived, updated_by: request.auth.userId });
       if (!after) throw new NotFoundException("billable item not found");
       return { entityType: "billable_item", entityId: id, beforeState: before, afterState: await this.billableItemDetail(client, request.auth.tenantId, id) };
@@ -1283,6 +1320,8 @@ export class ProductionController {
       const before = await this.billableItemRow(client, request.auth.tenantId, id);
       if (["archived", "voided", "disputed", "held"].includes(String(before.status))) throw new BadRequestException("billable item is not eligible for ready_for_settlement");
       if (before.settlement_item_id) throw new BadRequestException("settlement already created");
+      const customerDecision = await requireCustomerAcceptedBilling(client, request.auth.tenantId, String(before.production_record_id), before.customer_qc_decision_id);
+      validateAcceptedBillingQuantity(customerDecision, Number(before.billable_quantity), before.unit);
       const blockers = this.billableBlockers(before);
       if (blockers.length) throw new BadRequestException({ message: "Billable blockers must be resolved.", blockers });
       this.assertBillableOverrides(before, body.override_reasons);
@@ -1374,7 +1413,7 @@ export class ProductionController {
   @Get("production-records")
   @RequirePermission("production_record.read")
   async listProductionRecords(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
-    return this.withClient((client) => this.listProductionRecordsEnriched(client, request.auth.tenantId, query));
+    return this.withClient((client) => this.listProductionRecordsEnriched(client, request.auth.tenantId, query, request.auth.userId));
   }
 
   @Get("production-records/:id/detail")
@@ -1388,9 +1427,8 @@ export class ProductionController {
   async getProductionRecordTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
-      const result = await client.query(
-        `
-        SELECT e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.created_at::text AS __history_time, e.id AS event_id, e.event_type, e.actor_user_id AS actor_id, u.display_name AS actor_name, e.created_at AS timestamp,
           e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN users u ON u.id = e.actor_user_id
@@ -1407,9 +1445,7 @@ export class ProductionController {
           )
         ORDER BY e.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1419,9 +1455,8 @@ export class ProductionController {
   async getProductionRecordAuditSummary(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
-      const result = await client.query(
-        `
-        SELECT al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
+      const result = await activityPage(client, `
+        SELECT al.id AS __history_id, al.created_at::text AS __history_time, al.id AS audit_id, al.actor_user_id AS actor_id, u.display_name AS actor_name, al.action, al.entity_type AS object_type,
           al.entity_id AS object_id, al.before_state AS before_json, al.after_state AS after_json,
           al.metadata->>'reason' AS reason, al.created_at, al.request_id AS correlation_id
         FROM audit_logs al
@@ -1438,9 +1473,7 @@ export class ProductionController {
           )
         ORDER BY al.created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1460,12 +1493,15 @@ export class ProductionController {
       const status = body.status === undefined ? "submitted" : requireAllowed(body.status, new Set(["draft", "submitted"]), "production status");
       return await this.write(request, "production_record.create", status === "submitted" ? "production.submitted" : "production.created", "production_record", async (client) => {
         const context = await this.validateProductionCreateContext(client, request.auth.tenantId, body, productionType);
+        await this.requireNoActiveStopWork(client,{tenant_id:request.auth.tenantId,work_order_id:context.workOrder.id,crew_id:body.crew_id??context.workOrder.assigned_crew_id});
+        const authorization=await requireRecordWorkAuthorization(client,{...body,tenant_id:request.auth.tenantId,work_order_id:context.workOrder.id,crew_id:body.crew_id??context.workOrder.assigned_crew_id,production_date:productionDate});
         const quantity = this.productionClaimedQuantity(body, productionType);
         const unit = this.productionUnit(body, quantity);
         this.validateProductionTypeNotes(body, productionType);
         await this.validateProductionQuantityRules(client, request.auth.tenantId, context.workOrder, body, quantity, unit);
         const record = await insertTenantRecord(client, "production_records", request.auth.tenantId, {
           project_id: context.project.id,
+          work_order_version_id: authorization.work_order_version_id,
           work_order_id: context.workOrder.id,
           capacity_provider_id: body.capacity_provider_id ?? context.workOrder.assigned_capacity_provider_id,
           crew_id: body.crew_id ?? context.workOrder.assigned_crew_id,
@@ -1520,7 +1556,7 @@ export class ProductionController {
         return { entityType: "production_record", entityId: record.id, afterState: await this.productionRecordDetail(client, request.auth.tenantId, record.id) };
       }, typeof body.reason === "string" ? body.reason : undefined);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1543,14 +1579,16 @@ export class ProductionController {
       }
       return await this.write(request, "production_record.update", "production_record.updated", "production_record", async (client) => {
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
+        await this.requireNoActiveStopWork(client,before);
         if (["approved", "billable", "rejected", "voided", "archived"].includes(before.status)) throw new BadRequestException("approved, rejected, voided, billable, and archived production records cannot be edited");
+        await requireRecordWorkAuthorization(client,{...before,...values});
         await this.validateProductionReferences(client, request.auth.tenantId, values, body, before);
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, values);
         if (!after) throw new NotFoundException("production record not found");
         return { entityType: "production_record", entityId: id, beforeState: before, afterState: await this.productionRecordDetail(client, request.auth.tenantId, id) };
       }, body.reason);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1561,6 +1599,7 @@ export class ProductionController {
     return this.write(request, "production_record.submit", "production.submitted", "production_record", async (client) => {
       const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
       if (!["draft", "corrected"].includes(before.status)) throw new BadRequestException("production record must be draft or corrected");
+      await requireRecordWorkAuthorization(client,before);
       const workOrder = await this.requireRecord(client, "work_orders", request.auth.tenantId, String(before.work_order_id), "work order not found");
       const project = await this.requireRecord(client, "projects", request.auth.tenantId, String(before.project_id), "project not found");
       this.assertProjectAllowsProduction(project, body.override_reasons);
@@ -1656,7 +1695,7 @@ export class ProductionController {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcManagerRoles, "QC Manager authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         if (!["qc_review", "under_review"].includes(before.status)) throw new BadRequestException("production record must be in review");
-        this.requireNoActiveStopWork(before);
+        await this.requireNoActiveStopWork(client,before);
         await this.requireQcValidation(client, request.auth.tenantId, before);
         this.requireQuantityAtMost(acceptedQuantity, before.quantity_submitted, "accepted_quantity", "quantity_submitted");
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
@@ -1714,7 +1753,7 @@ export class ProductionController {
         await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, approveAuthorityRoles, "QC Manager or Operations Manager authority is required");
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
         if (!["accepted", "submitted", "under_review", "corrected"].includes(before.status)) throw new BadRequestException("production record must be accepted, submitted, under_review, or corrected");
-        this.requireNoActiveStopWork(before);
+        await this.requireNoActiveStopWork(client,before);
         const maximum = before.accepted_quantity ?? before.claimed_quantity ?? before.quantity_submitted;
         this.requireQuantityAtMost(approvedQuantity, maximum, "approved_quantity", before.accepted_quantity ? "accepted_quantity" : "claimed_quantity");
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
@@ -1744,7 +1783,7 @@ export class ProductionController {
       await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, billableAuthorityRoles, "Billing Manager or QC Manager authority is required");
       const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
       if (before.status !== "approved") throw new BadRequestException("production record must be approved");
-      this.requireNoActiveStopWork(before);
+      await this.requireNoActiveStopWork(client,before);
       if (!before.approved_quantity || Number(before.approved_quantity) <= 0) throw new BadRequestException("approved_quantity must be > 0");
       const rateCodeId = body.rate_code_id ?? before.rate_code_id;
       if (rateCodeId) await this.requireActiveRateCode(client, request.auth.tenantId, rateCodeId, String(before.unit_type));
@@ -1789,6 +1828,11 @@ export class ProductionController {
       await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, qcReviewAuthorityRoles, "QC Manager or Project Manager authority is required");
       const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
       if (before.status !== "correction_required") throw new BadRequestException("production record must be correction_required");
+      if(before.daily_production_report_id)throw new BadRequestException('Use the field report correction workflow so its evidence and customer reinspection history are preserved');
+      await requireRecordWorkAuthorization(client,{...before,production_date:new Date().toISOString().slice(0,10)});
+      const corrected=body.corrected_quantity===undefined?Number(before.corrected_quantity??before.quantity_submitted??before.quantity):this.requireNonNegative(body.corrected_quantity,'corrected_quantity');
+      const note=requireString(body.correction_note,'Describe the correction and its evidence');
+      await client.query('INSERT INTO administrative_production_corrections(tenant_id,production_record_id,prior_quantity,corrected_quantity,correction_note,recorded_by) VALUES($1,$2,$3,$4,$5,$6)',[request.auth.tenantId,id,Number(before.corrected_quantity??before.quantity_submitted??before.quantity),corrected,note,request.auth.userId]);
       if (!before.correction_required_at) throw new BadRequestException("correction_required_at is required");
       if (!(await this.hasActiveEvidenceAfter(client, request.auth.tenantId, id, before.correction_required_at))) {
         throw new BadRequestException("updated active evidence is required");
@@ -1800,13 +1844,20 @@ export class ProductionController {
   }
 
   @Post("production-records/:id/stop-work")
-  @RequirePermission("stop_work.issue")
+  @AuthenticatedOnly()
   async issueStopWork(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       const reason = requireString(body.reason ?? body.stop_work_reason, "stop work reason is required");
+      if(typeof body.utility_strike!=="boolean")throw new BadRequestException("Explicitly confirm whether this is a utility strike");
       return await this.write(request, "stop_work.issue", "production_record.stop_work_issued", "production_record", async (client) => {
-        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, stopWorkIssueAuthorityRoles, "Safety Manager, QC Manager, or Executive authority is required");
+        await requireHoldSupervisor(client, request.auth.tenantId, request.auth.userId);
         const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
+        if (before.work_order_id && before.crew_id) await lockFieldWork(client, request.auth.tenantId, String(before.work_order_id), String(before.crew_id));
+        if (!before.work_order_id) throw new BadRequestException("Assign the record to a work order before issuing a scoped shutdown");
+        await lockWorkSafety(client,request.auth.tenantId,String(before.work_order_id));
+        const existing = await client.query("SELECT id FROM work_safety_controls WHERE tenant_id=$1 AND source_production_record_id=$2 AND status='active'",[request.auth.tenantId,id]);
+        if (!existing.rows.length) await client.query(`INSERT INTO work_safety_controls(tenant_id,work_order_id,crew_id,control_type,reason,utility_strike,status,required_approvals,created_by,source_production_record_id)
+          VALUES($1,$2,$3,'stop',$4,$5,'active',$6,$7,$8)`,[request.auth.tenantId,before.work_order_id,before.crew_id,reason,body.utility_strike===true,body.utility_strike===true?['utility_owner','safety','operations','supervisor_release']:['safety','operations','supervisor_release'],request.auth.userId,id]);
         const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
           stop_work_status: "active",
           stop_work_reason: reason,
@@ -1825,24 +1876,9 @@ export class ProductionController {
   @Post("production-records/:id/release-stop-work")
   @RequirePermission("stop_work.release")
   async releaseStopWork(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
-    try {
-      const releaseReason = requireString(body.release_reason, "release_reason is required");
-      return await this.write(request, "stop_work.release", "production_record.stop_work_released", "production_record", async (client) => {
-        await this.requireRoleAuthority(client, request.auth.tenantId, request.auth.userId, stopWorkReleaseAuthorityRoles, "Safety Manager or Executive authority is required");
-        const before = await this.requireRecord(client, "production_records", request.auth.tenantId, id, "production record not found");
-        const after = await updateTenantRecord(client, "production_records", request.auth.tenantId, id, {
-          stop_work_status: "released",
-          stop_work_release_reason: releaseReason,
-          stop_work_released_at: new Date(),
-          stop_work_released_by: request.auth.userId,
-        });
-        if (!after) throw new NotFoundException("production record not found");
-        return { entityType: "production_record", entityId: id, beforeState: before, afterState: after };
-      }, releaseReason);
-    } catch (error) {
-      if (error instanceof ForbiddenException || error instanceof NotFoundException || error instanceof BadRequestException) throw error;
-      throw new BadRequestException((error as Error).message);
-    }
+    // Preserve the original supervisor identity/time and the complete approval
+    // chain. Legacy one-click releases must neither bypass nor rewrite it.
+    throw new BadRequestException("Record restart approvals and the internal supervisor release in Safety reviews and work authorization; this legacy action cannot release or rewrite a shutdown");
   }
 
   @Post("production-records/:id/archive")
@@ -1922,7 +1958,7 @@ export class ProductionController {
         return { entityType: "production_evidence", entityId: evidence.id, afterState: evidence };
       });
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1943,7 +1979,7 @@ export class ProductionController {
         return { entityType: "production_evidence", entityId: id, beforeState: before, afterState: after };
       }, body.reason);
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1960,7 +1996,7 @@ export class ProductionController {
         return { entityType: "production_evidence", entityId: id, beforeState: before, afterState: after };
       }, archiveReason);
     } catch (error) {
-      if (error instanceof NotFoundException) throw error;
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
       throw new BadRequestException((error as Error).message);
     }
   }
@@ -1975,9 +2011,10 @@ export class ProductionController {
     });
   }
 
-  private async listQcReviewsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+  private async listQcReviewsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, actorId?: string) {
     const conditions = ["qr.tenant_id = $1", "qr.deleted_at IS NULL"];
     const params: unknown[] = [tenantId];
+    if (actorId) this.appendProjectReadScope(conditions, params, actorId, "qc_review.read");
     const add = (sql: string, value: unknown) => {
       params.push(value);
       conditions.push(sql.replace("?", `$${params.length}`));
@@ -2153,9 +2190,10 @@ export class ProductionController {
     if (!after) throw new NotFoundException("production record not found");
   }
 
-  private async listBillableItemsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+  private async listBillableItemsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, actorId?: string) {
     const conditions = ["bi.tenant_id = $1", "bi.deleted_at IS NULL"];
     const params: unknown[] = [tenantId];
+    if (actorId) this.appendProjectReadScope(conditions, params, actorId, "billable_item.read");
     const add = (sql: string, value: unknown) => {
       params.push(value);
       conditions.push(sql.replace("?", `$${params.length}`));
@@ -2188,12 +2226,19 @@ export class ProductionController {
       `
       SELECT bi.*, p.name AS project_name, wo.work_order_name, wo.work_order_number, pr.production_type,
         pr.status AS production_record_status, qr.review_status AS qc_review_status,
+        customer_decision.decision AS current_customer_qc_decision,
+        (customer_decision.current = true AND customer_cycle.cycle_number = (
+          SELECT max(latest.cycle_number) FROM customer_qc_cycles latest
+          WHERE latest.tenant_id=customer_cycle.tenant_id AND latest.daily_report_id=customer_cycle.daily_report_id AND latest.deleted_at IS NULL
+        )) AS customer_qc_is_current,
         co.name AS customer_organization_name, cp.name AS capacity_provider_name, c.name AS crew_name
       FROM billable_items bi
       JOIN projects p ON p.tenant_id = bi.tenant_id AND p.id = bi.project_id
       JOIN work_orders wo ON wo.tenant_id = bi.tenant_id AND wo.id = bi.work_order_id
       JOIN production_records pr ON pr.tenant_id = bi.tenant_id AND pr.id = bi.production_record_id
-      JOIN qc_reviews qr ON qr.tenant_id = bi.tenant_id AND qr.id = bi.qc_review_id
+      LEFT JOIN qc_reviews qr ON qr.tenant_id = bi.tenant_id AND qr.id = bi.qc_review_id
+      LEFT JOIN customer_qc_decisions customer_decision ON customer_decision.tenant_id=bi.tenant_id AND customer_decision.id=bi.customer_qc_decision_id AND customer_decision.deleted_at IS NULL
+      LEFT JOIN customer_qc_cycles customer_cycle ON customer_cycle.tenant_id=customer_decision.tenant_id AND customer_cycle.id=customer_decision.qc_cycle_id AND customer_cycle.deleted_at IS NULL
       LEFT JOIN organizations co ON co.tenant_id = bi.tenant_id AND co.id = bi.customer_organization_id
       LEFT JOIN capacity_providers cp ON cp.tenant_id = bi.tenant_id AND cp.id = bi.capacity_provider_id
       LEFT JOIN crews c ON c.tenant_id = bi.tenant_id AND c.id = bi.crew_id
@@ -2342,9 +2387,12 @@ export class ProductionController {
   }
 
   private deriveBillableState(row: Record<string, any>, options: { preserveStatus?: boolean } = {}) {
+    const currentCustomerAcceptance = row.customer_qc_is_current === true && ["accepted", "partially_accepted"].includes(String(row.current_customer_qc_decision));
+    const qcApproved = row.accepted_production_source_id ? currentCustomerAcceptance : row.qc_review_status === undefined || row.qc_review_status === "approved";
+    const productionApproved = row.accepted_production_source_id ? currentCustomerAcceptance : row.production_record_status === undefined || row.production_record_status === "approved";
     const checks = [
-      row.qc_review_status === undefined || row.qc_review_status === "approved",
-      row.production_record_status === undefined || row.production_record_status === "approved",
+      qcApproved,
+      productionApproved,
       Boolean(row.work_order_id),
       Boolean(row.project_id),
       Number(row.billable_quantity ?? 0) > 0,
@@ -2361,8 +2409,7 @@ export class ProductionController {
       !row.settlement_item_id,
     ];
     let score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
-    if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") score = Math.min(score, 39);
-    if (row.production_record_status !== undefined && row.production_record_status !== "approved") score = Math.min(score, 39);
+    if (!qcApproved || !productionApproved) score = Math.min(score, 39);
     if (Number(row.billable_quantity ?? 0) <= 0) score = Math.min(score, 39);
     if (Number(row.billable_quantity ?? 0) > Number(row.approved_quantity ?? 0) && !this.hasOverride(row.override_reasons, "billable_quantity_override_reason")) score = Math.min(score, 39);
     if (["rejected", "correction_required", "disputed"].includes(String(row.customer_acceptance_status)) || ["rejected", "correction_required", "disputed"].includes(String(row.prime_acceptance_status))) score = Math.min(score, 69);
@@ -2413,8 +2460,12 @@ export class ProductionController {
 
   private billableBlockers(row: Record<string, any>) {
     const blockers = [];
-    if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") blockers.push({ blocker_type: "no_approved_qc", severity: "critical", message: "Approved QC review is required." });
-    if (row.production_record_status !== undefined && row.production_record_status !== "approved") blockers.push({ blocker_type: "no_approved_production", severity: "critical", message: "Approved production is required." });
+    if (row.accepted_production_source_id) {
+      if (row.customer_qc_is_current !== true || !["accepted", "partially_accepted"].includes(String(row.current_customer_qc_decision))) blockers.push({ blocker_type: "no_current_customer_acceptance", severity: "critical", message: "Current customer acceptance is required." });
+    } else {
+      if (row.qc_review_status !== undefined && row.qc_review_status !== "approved") blockers.push({ blocker_type: "no_approved_qc", severity: "critical", message: "Approved QC review is required." });
+      if (row.production_record_status !== undefined && row.production_record_status !== "approved") blockers.push({ blocker_type: "no_approved_production", severity: "critical", message: "Approved production is required." });
+    }
     if (Number(row.billable_quantity ?? 0) <= 0) blockers.push({ blocker_type: "no_billable_quantity", severity: "critical", message: "Billable quantity is required." });
     if (Number(row.billable_quantity ?? 0) > Number(row.approved_quantity ?? 0) && !this.hasOverride(row.override_reasons, "billable_quantity_override_reason")) blockers.push({ blocker_type: "billable_exceeds_approved_without_override", severity: "critical", message: "Billable quantity exceeds approved quantity." });
     if (["rejected", "correction_required", "disputed"].includes(String(row.customer_acceptance_status))) blockers.push({ blocker_type: row.customer_acceptance_status === "rejected" ? "customer_rejected" : row.customer_acceptance_status === "correction_required" ? "correction_required" : "hard_stop_dispute", severity: "high", message: "Customer acceptance blocks settlement readiness." });
@@ -2500,9 +2551,10 @@ export class ProductionController {
     }, reason);
   }
 
-  private async listProductionRecordsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+  private async listProductionRecordsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, actorId?: string) {
     const conditions = ["pr.tenant_id = $1", "pr.deleted_at IS NULL"];
     const params: unknown[] = [tenantId];
+    if (actorId) this.appendProjectReadScope(conditions, params, actorId, "production_record.read");
     const add = (sql: string, value: unknown) => {
       params.push(value);
       conditions.push(sql.replace("?", `$${params.length}`));
@@ -2651,9 +2703,10 @@ export class ProductionController {
     return "review_production";
   }
 
-  private async listWorkOrdersEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>): Promise<Array<Record<string, any>>> {
+  private async listWorkOrdersEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, actorId?: string): Promise<Array<Record<string, any>>> {
     const conditions = ["wo.tenant_id = $1", "wo.deleted_at IS NULL"];
     const params: unknown[] = [tenantId];
+    if (actorId) this.appendProjectReadScope(conditions, params, actorId, "work_order.read");
     const add = (sql: string, value: unknown) => {
       params.push(value);
       conditions.push(sql.replace("?", `$${params.length}`));
@@ -2940,6 +2993,7 @@ export class ProductionController {
     return this.write(request, action, eventType, "work_order", async (client) => {
       const before = await this.requireRecord(client, "work_orders", request.auth.tenantId, id, "work order not found");
       if (!allowedStatuses.includes(before.status)) throw new BadRequestException(`work order must be ${allowedStatuses.join(" or ")}`);
+      if (action === 'work_order.close') await requireWorkOrderCloseout(client, request.auth.tenantId, id);
       const cleanValues = Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
       const after = await updateTenantRecord(client, "work_orders", request.auth.tenantId, id, cleanValues);
       if (!after) throw new NotFoundException("work order not found");
@@ -3067,16 +3121,16 @@ export class ProductionController {
   }
 
   private async validateProductionQuantityRules(client: PoolClient, tenantId: string, workOrder: Record<string, unknown>, body: Record<string, unknown>, quantity: number | null, unit: string | null) {
-    if (unit && workOrder.unit && unit !== workOrder.unit && !this.hasOverride(body.override_reasons, "unit_override_reason")) {
+    if (unit && workOrder.unit && canonicalRateUnit(unit) !== canonicalRateUnit(workOrder.unit) && !this.hasOverride(body.override_reasons, "unit_override_reason")) {
       throw new BadRequestException({ message: "Production unit mismatch requires override.", required_override_fields: ["unit_override_reason"] });
     }
     if (quantity === null) return;
-    const current = await client.query(
-      "SELECT COALESCE(sum(COALESCE(claimed_quantity, quantity_submitted, quantity)), 0)::numeric AS claimed FROM production_records WHERE tenant_id = $1 AND work_order_id = $2 AND status NOT IN ('voided', 'archived', 'rejected') AND deleted_at IS NULL",
-      [tenantId, workOrder.id],
-    );
+    const records=(await client.query(`SELECT p.id FROM production_records p LEFT JOIN production_quantity_reviews q ON q.tenant_id=p.tenant_id AND q.id=p.quantity_review_id
+      WHERE p.tenant_id=$1 AND p.work_order_id=$2 AND p.status NOT IN ('voided','archived','rejected') AND p.deleted_at IS NULL AND COALESCE(q.disposition,'primary_work') NOT IN ('summary','included_subset') ORDER BY p.id`,[tenantId,workOrder.id])).rows;
+    let claimed=0;
+    for(const {id} of records){const source=await productionQuantitySource(client,tenantId,id);if(canonicalRateUnit(source.unit??source.unit_type)===canonicalRateUnit(unit))claimed+=Number(source.quantity_submitted??source.quantity);}
     const planned = Number(workOrder.planned_quantity ?? workOrder.expected_units ?? 0);
-    const cumulative = Number(current.rows[0]?.claimed ?? 0) + quantity;
+    const cumulative=claimed+quantity;
     if (planned >= 0 && cumulative > planned && !this.hasOverride(body.override_reasons, "quantity_overage_override_reason")) {
       throw new BadRequestException({ message: "Production quantity overage requires override.", required_override_fields: ["quantity_overage_override_reason"] });
     }
@@ -3090,23 +3144,22 @@ export class ProductionController {
   }
 
   private async recalculateWorkOrderProductionRollups(client: PoolClient, tenantId: string, workOrderId: string, actorUserId: string) {
-    const result = await client.query(
-      `
-      SELECT
-        COALESCE(sum(COALESCE(claimed_quantity, quantity_submitted, quantity)) FILTER (WHERE status IN ('submitted', 'under_review', 'qc_review', 'correction_required', 'corrected', 'accepted', 'approved', 'billable')), 0)::numeric AS completed_quantity,
-        COALESCE(sum(approved_quantity) FILTER (WHERE status IN ('approved', 'billable')), 0)::numeric AS approved_quantity,
-        COALESCE(sum(COALESCE(billable_quantity, approved_quantity)) FILTER (WHERE status = 'billable' OR billable_status = 'billable'), 0)::numeric AS billable_quantity
-      FROM production_records
-      WHERE tenant_id = $1 AND work_order_id = $2 AND status NOT IN ('voided', 'archived', 'rejected') AND deleted_at IS NULL
-      `,
-      [tenantId, workOrderId],
-    );
-    await updateTenantRecord(client, "work_orders", tenantId, workOrderId, {
-      completed_quantity: Number(result.rows[0]?.completed_quantity ?? 0),
-      approved_quantity: Number(result.rows[0]?.approved_quantity ?? 0),
-      billable_quantity: Number(result.rows[0]?.billable_quantity ?? 0),
-      updated_by: actorUserId,
-    });
+    const workOrder=(await client.query('SELECT unit,unit_type FROM work_orders WHERE tenant_id=$1 AND id=$2',[tenantId,workOrderId])).rows[0];
+    const summary=await reviewedProductionSummary(client,tenantId,workOrderId);
+    const unit=canonicalRateUnit(workOrder?.unit??workOrder?.unit_type);
+    const completed=summary.by_unit.find(group=>group.unit===unit)?.quantity??0;
+    const records=(await client.query('SELECT id FROM production_records WHERE tenant_id=$1 AND work_order_id=$2 AND deleted_at IS NULL ORDER BY id',[tenantId,workOrderId])).rows;
+    const accepted=new Map<string,number>();
+    for(const record of records){try{const decision=await requireCustomerAcceptedBilling(client,tenantId,record.id);if(canonicalRateUnit(decision.unit_of_measure)===unit)accepted.set(record.id,Number(decision.customer_accepted_quantity));}catch(error){if(!(error instanceof BadRequestException))throw error;}}
+    const approved=[...accepted.values()].reduce((sum,value)=>sum+value,0);
+    const billables=(await client.query(`SELECT b.production_record_id,b.billable_quantity,b.unit FROM billable_items b
+      LEFT JOIN accepted_production_financial_sources s ON s.tenant_id=b.tenant_id AND s.id=b.accepted_production_source_id
+      WHERE b.tenant_id=$1 AND b.work_order_id=$2 AND b.deleted_at IS NULL AND b.status NOT IN ('voided','archived','held','disputed')
+        AND COALESCE(b.hold_reason,'')='' AND COALESCE(b.dispute_reason,'')='' AND (s.id IS NULL OR (s.source_kind='accepted_production' AND s.deleted_at IS NULL AND s.financial_status<>'void'))`,[tenantId,workOrderId])).rows;
+    const billed=new Map<string,number>();
+    for(const item of billables){if(canonicalRateUnit(item.unit)===unit&&accepted.has(item.production_record_id))billed.set(item.production_record_id,Math.min(accepted.get(item.production_record_id)!,Math.max(billed.get(item.production_record_id)??0,Number(item.billable_quantity))));}
+    const billable=[...billed.values()].reduce((sum,value)=>sum+value,0);
+    await updateTenantRecord(client,'work_orders',tenantId,workOrderId,{completed_quantity:completed,approved_quantity:approved,billable_quantity:billable,updated_by:actorUserId});
   }
 
   private async archiveRecord(request: AuthenticatedRequest, table: string, id: string, entityType: string, action: string, eventType: string) {
@@ -3118,9 +3171,51 @@ export class ProductionController {
     });
   }
 
-  private async listProjectsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>) {
+  private async scopedQcUsers(client:PoolClient,request:AuthenticatedRequest,permission:string) {
+    const params:unknown[]=[request.auth.tenantId];
+    const conditions=["p.tenant_id=$1", "p.deleted_at IS NULL"];
+    this.appendProjectReadScope(conditions,params,request.auth.userId,permission);
+    return client.query(`SELECT DISTINCT u.id,u.display_name FROM users u
+      JOIN tenant_users candidate ON candidate.user_id=u.id AND candidate.tenant_id=$1
+      JOIN user_roles assignment ON assignment.tenant_user_id=candidate.id AND assignment.tenant_id=candidate.tenant_id
+      JOIN roles role ON role.id=assignment.role_id AND role.tenant_id=candidate.tenant_id AND role.deleted_at IS NULL
+      WHERE candidate.status='active' AND candidate.deleted_at IS NULL AND u.status='active' AND u.deleted_at IS NULL
+      AND EXISTS(SELECT 1 FROM projects p WHERE ${conditions.join(' AND ')} AND
+        (assignment.scope_type='tenant' OR (assignment.scope_type='project' AND assignment.scope_id=p.id)
+        OR (assignment.scope_type='customer' AND assignment.scope_id=p.customer_organization_id)
+        OR (assignment.scope_type='territory' AND assignment.scope_id=p.territory_id)))
+      ORDER BY u.display_name,u.id`,params);
+  }
+
+  private appendProjectReadScope(conditions: string[], params: unknown[], actorId: string, permission: string) {
+    params.push(actorId, permission);
+    const actor = params.length - 1, key = params.length;
+    conditions.push(`EXISTS (SELECT 1 FROM tenant_users tu
+      JOIN user_roles ur ON ur.tenant_user_id=tu.id AND ur.tenant_id=tu.tenant_id
+      JOIN roles ro ON ro.id=ur.role_id AND ro.tenant_id=tu.tenant_id AND ro.deleted_at IS NULL
+      JOIN role_permissions rp ON rp.role_id=ro.id AND rp.tenant_id=tu.tenant_id
+      JOIN permissions perm ON perm.id=rp.permission_id
+      WHERE tu.tenant_id=p.tenant_id AND tu.user_id=$${actor} AND tu.status='active' AND tu.deleted_at IS NULL
+      AND perm.key=$${key} AND (ur.scope_type='tenant' OR (p.deleted_at IS NULL AND (
+        (ur.scope_type='project' AND ur.scope_id=p.id)
+        OR (ur.scope_type='customer' AND ur.scope_id=p.customer_organization_id)
+        OR (ur.scope_type='territory' AND ur.scope_id=p.territory_id)))))`);
+  }
+
+  private async listProjectsEnriched(client: PoolClient, tenantId: string, query: Record<string, string | undefined>, actorId: string) {
     const conditions = ["p.tenant_id = $1", "p.deleted_at IS NULL"];
     const params: unknown[] = [tenantId];
+    params.push(actorId);
+    conditions.push(`EXISTS (SELECT 1 FROM tenant_users tu
+      JOIN user_roles ur ON ur.tenant_user_id=tu.id AND ur.tenant_id=tu.tenant_id
+      JOIN roles ro ON ro.id=ur.role_id AND ro.tenant_id=tu.tenant_id AND ro.deleted_at IS NULL
+      JOIN role_permissions rp ON rp.role_id=ro.id AND rp.tenant_id=tu.tenant_id
+      JOIN permissions perm ON perm.id=rp.permission_id
+      WHERE tu.tenant_id=p.tenant_id AND tu.user_id=$2 AND tu.status='active' AND tu.deleted_at IS NULL
+        AND perm.key='project.read' AND (ur.scope_type='tenant'
+          OR (ur.scope_type='project' AND ur.scope_id=p.id)
+          OR (ur.scope_type='customer' AND ur.scope_id=p.customer_organization_id)
+          OR (ur.scope_type='territory' AND ur.scope_id=p.territory_id)))`);
     if (query.archived !== "true") conditions.push("p.status <> 'archived'");
     const add = (sql: string, value: unknown) => {
       params.push(value);
@@ -3423,8 +3518,13 @@ export class ProductionController {
     if (!(await this.hasActiveEvidence(client, tenantId, String(record.id)))) throw new BadRequestException("active evidence is required");
   }
 
-  private requireNoActiveStopWork(record: Record<string, unknown>) {
+  private async requireNoActiveStopWork(client: PoolClient, record: Record<string, any>) {
     if (record.stop_work_status === "active") throw new BadRequestException("active stop work blocks this action");
+    if(record.work_order_id){
+      if(record.crew_id && await hasActiveFieldStop(client,record.tenant_id,record.work_order_id,record.crew_id))throw new BadRequestException('crew_work_order_stopped');
+      const blocked=await safetyBlockers(client,record.tenant_id,record.work_order_id,record.crew_id??null,null,false);
+      if(blocked.length)throw new BadRequestException(blocked.join(','));
+    }
   }
 
   private async requireActiveRateCode(client: PoolClient, tenantId: string, rateCodeId: unknown, unitType: string) {
@@ -3580,7 +3680,22 @@ export class ProductionController {
         eventType,
         audit: { metadata: typeof reason === "string" && reason.trim() ? { reason: reason.trim() } : {} },
         systemActions: [{ actionType: `${eventType}.processed`, payload: { action } }],
-        write,
+        write: async (transactionClient) => {
+          await verifyProjectWrite(transactionClient, request);
+          const result = await write(transactionClient);
+          // Lifecycle actions (assignment/readiness/cancellation) must not silently
+          // clear a formal project/work-order hold. Throw inside the transaction
+          // so any attempted update is rolled back without an event or audit write.
+          if (aggregateType === 'project' || aggregateType === 'work_order') {
+            const before = result.beforeState as Record<string, unknown> | undefined;
+            const after = result.afterState as Record<string, unknown> | undefined;
+            if (before?.status === 'on_hold' && after?.status !== undefined && after.status !== 'on_hold'
+              && action !== `${aggregateType}.release_hold`) {
+              throw new BadRequestException('Use the supervisor hold-release action before changing held work status');
+            }
+          }
+          return result;
+        },
       });
     } finally {
       client.release();

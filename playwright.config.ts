@@ -17,7 +17,7 @@ export default defineConfig({
   use: {
     baseURL: webBaseUrl,
     trace: "on-first-retry",
-    video: "retain-on-failure",
+    video: process.env.SYNCOS_E2E_VIDEO === "off" ? "off" : "retain-on-failure",
     screenshot: "only-on-failure",
     ...devices["Desktop Chrome"],
   },

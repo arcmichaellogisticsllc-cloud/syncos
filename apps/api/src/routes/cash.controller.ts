@@ -1,3 +1,8 @@
+import {directoryPage} from './directory-pagination';
+import {activityPage} from './activity-pagination';
+import { InvoicePackagesController } from './invoice-packages.controller';
+import { requireInvoiceCommercialIntegrity } from './commercial-terms';
+import { requireLinkedBillableAcceptance, requireFinancialItemAcceptance } from "./customer-accepted-billing";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, NotFoundException, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import { findTenantRecordById, insertTenantRecord, listTenantRecords, updateTenantRecord } from "@syncos/database";
@@ -167,9 +172,9 @@ export class CashController {
         const projectId = this.optionalString(body.project_id) ?? settlement?.project_id ?? null;
         if (projectId) await this.requireRecord(client, "projects", request.auth.tenantId, String(projectId), "project not found");
         const invoiceType = this.allowed(body.invoice_type ?? "standard", "invoice_type", invoiceTypes);
-        const paymentTerms = this.allowed(body.payment_terms ?? "net_30", "payment_terms", paymentTermsValues);
+        const paymentTerms = "custom";
         const invoiceDate = this.optionalString(body.invoice_date) ?? new Date().toISOString().slice(0, 10);
-        const dueDate = this.optionalString(body.due_date) ?? this.calculateDueDate(invoiceDate, paymentTerms);
+        const dueDate = null; // Draft terms are bound from approved accepted-work pricing before approval.
         const invoiceNumber = this.optionalString(body.invoice_number) ?? (await this.nextInvoiceNumber(client, request.auth.tenantId));
         await this.ensureInvoiceNumberAvailable(client, request.auth.tenantId, invoiceNumber);
         const startingAmount = body.invoice_amount !== undefined ? this.requireNonNegative(body.invoice_amount, "invoice_amount") : 0;
@@ -205,7 +210,7 @@ export class CashController {
           cash_application_status: "not_ready",
           invoice_package_status: this.allowed(body.invoice_package_status ?? "not_started", "invoice_package_status", invoicePackageStatuses),
           documentation_status: this.allowed(body.documentation_status ?? "not_started", "documentation_status", invoicePackageStatuses),
-          customer_acceptance_status: this.allowed(body.customer_acceptance_status ?? "not_required", "customer_acceptance_status", acceptanceStatuses),
+          customer_acceptance_status: "pending",
           prime_acceptance_status: this.allowed(body.prime_acceptance_status ?? "not_required", "prime_acceptance_status", acceptanceStatuses),
           override_reasons: this.objectValue(body.override_reasons),
           created_by: request.auth.userId,
@@ -224,6 +229,7 @@ export class CashController {
   async updateInvoice(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       if (body.status !== undefined) throw new BadRequestException("status changes must use lifecycle action routes");
+      if(['due_date','payment_terms','customer_acceptance_status','prime_acceptance_status'].some(key=>body[key]!==undefined))throw new BadRequestException('Use approved contract terms and recorded customer delivery/acceptance events to change payment timing or acceptance');
       const values = pick(body, [
         "invoice_date",
         "due_date",
@@ -245,7 +251,7 @@ export class CashController {
         if (values.documentation_status !== undefined) values.documentation_status = this.allowed(values.documentation_status, "documentation_status", invoicePackageStatuses);
         if (values.customer_acceptance_status !== undefined) values.customer_acceptance_status = this.allowed(values.customer_acceptance_status, "customer_acceptance_status", acceptanceStatuses);
         if (values.prime_acceptance_status !== undefined) values.prime_acceptance_status = this.allowed(values.prime_acceptance_status, "prime_acceptance_status", acceptanceStatuses);
-        const dueDate = values.due_date ?? before.due_date ?? this.calculateDueDate(values.invoice_date ?? before.invoice_date ?? new Date().toISOString().slice(0, 10), values.payment_terms ?? before.payment_terms ?? "net_30");
+        const dueDate = before.due_date;
         const receivable = this.calculateReceivableState(dueDate, Number(before.original_amount || before.total_amount || 0), Number(before.paid_amount || 0), String(before.status));
         Object.assign(values, receivable, { updated_by: request.auth.userId });
         const after = await updateTenantRecord(client, "invoices", request.auth.tenantId, id, values);
@@ -288,6 +294,8 @@ export class CashController {
       const before = await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
       requireString(body.approval_note, "approval_note is required");
       await this.requireActiveInvoiceItems(client, request.auth.tenantId, id);
+      await this.requireInvoiceItemsAcceptance(client, request.auth.tenantId, id);
+      await requireInvoiceCommercialIntegrity(client,request.auth.tenantId,before);
       if (!["pending", "not_submitted"].includes(String(before.approval_status)) && before.status !== "ready_for_review" && before.status !== "under_review") {
         throw new BadRequestException("invoice is not ready for approval");
       }
@@ -335,27 +343,7 @@ export class CashController {
   @Post("invoices/:id/mark-sent")
   @RequirePermission("invoice.mark_sent")
   async markSent(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
-    return this.write(request, "invoice.mark_sent", "invoice.sent", "invoice", async (client) => {
-      requireString(body.sent_note, "sent_note is required");
-      const before = await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
-      if (before.status !== "approved" || before.approval_status !== "approved") throw new BadRequestException("invoice must be approved");
-      const originalAmount = Number(before.original_amount || before.total_amount || 0);
-      const receivable = this.calculateReceivableState(before.due_date, originalAmount, Number(before.paid_amount ?? 0), "sent");
-      const after = await updateTenantRecord(client, "invoices", request.auth.tenantId, id, {
-        status: "sent",
-        delivery_status: this.allowed(body.delivery_status ?? "sent", "delivery_status", deliveryStatuses),
-        sent_by: request.auth.userId,
-        sent_at: new Date(),
-        original_amount: originalAmount,
-        balance_amount: receivable.balance_amount,
-        payment_status: receivable.payment_status,
-        collection_status: receivable.collection_status,
-        aging_days: receivable.aging_days,
-        updated_by: request.auth.userId,
-      });
-      if (!after) throw new NotFoundException("invoice not found");
-      return { entityType: "invoice", entityId: id, beforeState: before, afterState: after };
-    });
+    return new InvoicePackagesController(this.pool).delivery(request,id,{...body,event_type:'delivered'});
   }
 
   @Post("invoices/:id/mark-ready-for-cash-application")
@@ -501,6 +489,14 @@ export class CashController {
       }
       await this.ensureNoDuplicateInvoiceItem(client, request.auth.tenantId, source.id, override);
       const quantity = body.quantity === undefined ? Number(source.quantity ?? 0) : this.requirePositive(body.quantity, "quantity");
+      if (source.billable_item_id) {
+        const billable = await this.requireRecord(client, "billable_items", request.auth.tenantId, String(source.billable_item_id), "billable item not found");
+        await requireLinkedBillableAcceptance(client, request.auth.tenantId, { ...billable, billable_quantity: quantity });
+      } else if (source.production_record_id) {
+        const production = await this.requireRecord(client, "production_records", request.auth.tenantId, String(source.production_record_id), "production record not found");
+        await requireLinkedBillableAcceptance(client, request.auth.tenantId, { production_record_id: production.id, billable_quantity: quantity, unit: source.unit ?? production.unit ?? production.unit_type });
+      }
+
       if (quantity > Number(source.quantity ?? 0) && !override) throw new BadRequestException("quantity cannot exceed settlement item quantity without override");
       const unitRate = body.unit_rate === undefined ? Number(source.unit_rate ?? 0) : this.requireNonNegative(body.unit_rate, "unit_rate");
       const grossAmount = this.roundMoney(quantity * unitRate);
@@ -654,9 +650,8 @@ export class CashController {
   async invoiceTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
-      const result = await client.query(
-        `
-        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time, e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN event_payloads ep ON ep.event_id = e.id
         WHERE e.tenant_id = $1
@@ -666,9 +661,7 @@ export class CashController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -678,9 +671,8 @@ export class CashController {
   async invoiceAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "invoices", request.auth.tenantId, id, "invoice not found");
-      const result = await client.query(
-        `
-        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1
           AND (
@@ -689,9 +681,7 @@ export class CashController {
           )
         ORDER BY created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1175,9 +1165,8 @@ export class CashController {
   async collectionCaseTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const collectionCase = await this.requireRecordIncludingArchived(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
-      const result = await client.query(
-        `
-        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time, e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN event_payloads ep ON ep.event_id = e.id
         WHERE e.tenant_id = $1
@@ -1188,9 +1177,7 @@ export class CashController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, collectionCase.invoice_id],
-      );
+        `, [request.auth.tenantId, id, collectionCase.invoice_id], request.query);
       return result.rows;
     });
   }
@@ -1200,9 +1187,8 @@ export class CashController {
   async collectionActionTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const action = await this.requireRecordIncludingArchived(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
-      const result = await client.query(
-        `
-        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time, e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN event_payloads ep ON ep.event_id = e.id
         WHERE e.tenant_id = $1
@@ -1213,9 +1199,7 @@ export class CashController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, action.collection_case_id, action.invoice_id],
-      );
+        `, [request.auth.tenantId, id, action.collection_case_id, action.invoice_id], request.query);
       return result.rows;
     });
   }
@@ -1225,9 +1209,8 @@ export class CashController {
   async collectionCaseAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const collectionCase = await this.requireRecordIncludingArchived(client, "collection_cases", request.auth.tenantId, id, "collection case not found");
-      const result = await client.query(
-        `
-        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1
           AND (
@@ -1237,9 +1220,7 @@ export class CashController {
           )
         ORDER BY created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, collectionCase.invoice_id],
-      );
+        `, [request.auth.tenantId, id, collectionCase.invoice_id], request.query);
       return result.rows;
     });
   }
@@ -1249,9 +1230,8 @@ export class CashController {
   async collectionActionAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const action = await this.requireRecordIncludingArchived(client, "collection_actions", request.auth.tenantId, id, "collection action not found");
-      const result = await client.query(
-        `
-        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1
           AND (
@@ -1261,9 +1241,7 @@ export class CashController {
           )
         ORDER BY created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, action.collection_case_id, action.invoice_id],
-      );
+        `, [request.auth.tenantId, id, action.collection_case_id, action.invoice_id], request.query);
       return result.rows;
     });
   }
@@ -1271,6 +1249,7 @@ export class CashController {
   @Get("cash-receipts")
   @RequirePermission("cash_receipt.read")
   async listCashReceipts(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["cr.tenant_id = $1", "cr.deleted_at IS NULL"];
@@ -1304,8 +1283,8 @@ export class CashController {
           GROUP BY tenant_id, cash_receipt_id
         ) apps ON apps.tenant_id = cr.tenant_id AND apps.cash_receipt_id = cr.id
         WHERE ${where.join(" AND ")}
-        ORDER BY ${this.cashReceiptSort(query.sort)}
-        LIMIT 100
+        ORDER BY ${this.cashReceiptSort(query.sort)}, cr.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );
@@ -1347,6 +1326,15 @@ export class CashController {
   async createCashReceipt(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
     try {
       return await this.write(request, "cash_receipt.create", "cash_receipt.created", "cash_receipt", async (client) => {
+        return this.createCashReceiptInTransaction(client, request, body);
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  async createCashReceiptInTransaction(client: PoolClient, request: AuthenticatedRequest, body: Record<string, unknown>) {
         const gross = this.requirePositive(body.gross_received_amount, "gross_received_amount");
         const paymentDate = this.requireDate(body.payment_date, "payment_date");
         const customerId = this.optionalString(body.customer_organization_id);
@@ -1375,11 +1363,6 @@ export class CashController {
           updated_by: request.auth.userId,
         });
         return { entityType: "cash_receipt", entityId: receipt.id, afterState: receipt };
-      });
-    } catch (error) {
-      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
-      throw new BadRequestException((error as Error).message);
-    }
   }
 
   @Patch("cash-receipts/:id")
@@ -1423,12 +1406,23 @@ export class CashController {
   async applyCashReceipt(@Req() request: AuthenticatedRequest, @Param("id") id: string, @Body() body: Record<string, unknown>) {
     try {
       return await this.write(request, "payment_application.create", "payment_application.created", "payment_application", async (client) => {
+        return this.applyCashReceiptInTransaction(client, request, id, body);
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
+  async applyCashReceiptInTransaction(client: PoolClient, request: AuthenticatedRequest, id: string, body: Record<string, unknown>) {
+        await client.query("SELECT id FROM cash_receipts WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[request.auth.tenantId,id]);
+        await client.query("SELECT id FROM invoices WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[request.auth.tenantId,this.requiredId(body.invoice_id,"invoice_id")]);
         const receipt = await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
         if (["voided", "archived"].includes(String(receipt.receipt_status))) throw new BadRequestException("cash receipt cannot be applied in its current status");
         const invoice = await this.requireRecord(client, "invoices", request.auth.tenantId, this.requiredId(body.invoice_id, "invoice_id"), "invoice not found");
         if (["voided", "archived"].includes(String(invoice.status))) throw new BadRequestException("invoice cannot receive payment in its current status");
         const override = !!body.override_reasons;
-        if (invoice.cash_application_status !== "ready_for_cash_application" && !override) throw new BadRequestException("invoice must be ready for cash application");
+        if (!["ready_for_cash_application", "partially_applied_later"].includes(String(invoice.cash_application_status)) && !override) throw new BadRequestException("invoice must be ready for cash application");
         if (invoice.status === "disputed" && !override) throw new BadRequestException("disputed invoice requires override");
         if (receipt.customer_organization_id && (invoice.customer_organization_id ?? invoice.organization_id) !== receipt.customer_organization_id && !override) throw new BadRequestException("receipt customer must match invoice customer");
         const original = Number(invoice.original_amount || invoice.total_amount || 0);
@@ -1471,11 +1465,6 @@ export class CashController {
             this.additionalEvent("invoice.cash_application.update", "invoice", invoice.id, "invoice.balance_updated", afterInvoice, beforeInvoice),
           ],
         };
-      });
-    } catch (error) {
-      if (error instanceof BadRequestException || error instanceof NotFoundException) throw error;
-      throw new BadRequestException((error as Error).message);
-    }
   }
 
   @Post("cash-receipts/:id/void")
@@ -1521,6 +1510,7 @@ export class CashController {
   @Get("payment-applications")
   @RequirePermission("payment_application.read")
   async listPaymentApplications(@Req() request: AuthenticatedRequest, @Query() query: Record<string, string | undefined>) {
+    const page = directoryPage(query);
     return this.withClient(async (client) => {
       const values: unknown[] = [request.auth.tenantId];
       const where = ["pa.tenant_id = $1", "pa.deleted_at IS NULL"];
@@ -1545,8 +1535,8 @@ export class CashController {
         JOIN invoices i ON i.tenant_id = pa.tenant_id AND i.id = pa.invoice_id
         LEFT JOIN organizations co ON co.tenant_id = pa.tenant_id AND co.id = pa.customer_organization_id
         WHERE ${where.join(" AND ")}
-        ORDER BY pa.application_date DESC, pa.updated_at DESC
-        LIMIT 100
+        ORDER BY pa.application_date DESC, pa.updated_at DESC, pa.id DESC
+        LIMIT ${page.limit} OFFSET ${page.offset}
         `,
         values,
       );
@@ -1640,9 +1630,8 @@ export class CashController {
   async cashReceiptTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
-      const result = await client.query(
-        `
-        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time, e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN event_payloads ep ON ep.event_id = e.id
         WHERE e.tenant_id = $1
@@ -1653,9 +1642,7 @@ export class CashController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1665,9 +1652,8 @@ export class CashController {
   async paymentApplicationTimeline(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const application = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
-      const result = await client.query(
-        `
-        SELECT e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
+      const result = await activityPage(client, `
+        SELECT e.id AS __history_id, e.occurred_at::text AS __history_time, e.event_type, e.actor_user_id AS actor, e.occurred_at AS timestamp, e.aggregate_type AS object_type, e.aggregate_id AS object_id, e.event_type AS summary, ep.payload
         FROM events e
         LEFT JOIN event_payloads ep ON ep.event_id = e.id
         WHERE e.tenant_id = $1
@@ -1678,9 +1664,7 @@ export class CashController {
           )
         ORDER BY e.occurred_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, application.cash_receipt_id, application.invoice_id],
-      );
+        `, [request.auth.tenantId, id, application.cash_receipt_id, application.invoice_id], request.query);
       return result.rows;
     });
   }
@@ -1690,9 +1674,8 @@ export class CashController {
   async cashReceiptAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       await this.requireRecord(client, "cash_receipts", request.auth.tenantId, id, "cash receipt not found");
-      const result = await client.query(
-        `
-        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1
           AND (
@@ -1702,9 +1685,7 @@ export class CashController {
           )
         ORDER BY created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id],
-      );
+        `, [request.auth.tenantId, id], request.query);
       return result.rows;
     });
   }
@@ -1714,9 +1695,8 @@ export class CashController {
   async paymentApplicationAudit(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return this.withClient(async (client) => {
       const application = await this.requireRecord(client, "payment_applications", request.auth.tenantId, id, "payment application not found");
-      const result = await client.query(
-        `
-        SELECT actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
+      const result = await activityPage(client, `
+        SELECT id AS __history_id, created_at::text AS __history_time, actor_user_id AS actor, action, entity_type AS object, entity_id AS object_id, before_state AS before, after_state AS after, metadata->>'reason' AS reason, created_at AS timestamp, request_id AS correlation_id
         FROM audit_logs
         WHERE tenant_id = $1
           AND (
@@ -1726,9 +1706,7 @@ export class CashController {
           )
         ORDER BY created_at DESC
         LIMIT 100
-        `,
-        [request.auth.tenantId, id, application.cash_receipt_id, application.invoice_id],
-      );
+        `, [request.auth.tenantId, id, application.cash_receipt_id, application.invoice_id], request.query);
       return result.rows;
     });
   }
@@ -1926,7 +1904,8 @@ export class CashController {
       if (!["draft", "assembling"].includes(String(before.status))) throw new BadRequestException("invoice must be draft or assembling");
       requireString(before.invoice_number, "invoice_number is required");
       if (!before.invoice_date) throw new BadRequestException("invoice_date is required");
-      if (!before.due_date) throw new BadRequestException("due_date is required");
+      // Contractual due dates can begin at later delivery or acceptance.
+      // Review is preparatory; approval still validates accepted work and approved terms.
       const itemCount = await this.activeInvoiceItemCount(client, request.auth.tenantId, id);
       if (requireItems && itemCount === 0) throw new BadRequestException("invoice requires at least one item");
       if (itemCount === 0 && Number(before.total_amount ?? before.invoice_amount ?? 0) <= 0) throw new BadRequestException("invoice requires at least one item");
@@ -2536,6 +2515,11 @@ export class CashController {
     return result.rows[0] ?? { last_payment_at: null, last_payment_amount: null };
   }
 
+  private async requireInvoiceItemsAcceptance(client: PoolClient, tenantId: string, invoiceId: string) {
+    const items = await client.query("SELECT * FROM invoice_items WHERE tenant_id=$1 AND invoice_id=$2 AND deleted_at IS NULL AND status NOT IN ('voided','archived') ORDER BY production_record_id, id", [tenantId, invoiceId]);
+    for (const item of items.rows) await requireFinancialItemAcceptance(client, tenantId, item);
+  }
+
   private async requireSettlementItemForInvoice(client: PoolClient, tenantId: string, id: unknown) {
     const settlementItemId = this.requiredId(id, "settlement_item_id");
     const result = await client.query(
@@ -2636,7 +2620,7 @@ export class CashController {
 
   private calculateReceivableState(dueDate: unknown, originalAmount: number, paidAmount: number, status: string) {
     const balanceAmount = Math.max(0, this.roundMoney(originalAmount - paidAmount));
-    const agingDays = balanceAmount > 0 ? Math.max(0, this.daysPastDue(dueDate)) : 0;
+    const agingDays = balanceAmount > 0 && dueDate != null ? Math.max(0, this.daysPastDue(dueDate)) : 0;
     let paymentStatus = "unpaid";
     if (paidAmount > 0 && balanceAmount > 0) paymentStatus = "partially_paid";
     else if (paidAmount > 0 && balanceAmount === 0) paymentStatus = "paid";
@@ -2645,7 +2629,7 @@ export class CashController {
     if (status === "disputed") collectionStatus = "disputed";
     else if (balanceAmount <= 0) collectionStatus = "resolved";
     else if (agingDays > 0) collectionStatus = "overdue";
-    else if (this.daysPastDue(dueDate) === 0) collectionStatus = "due";
+    else if (dueDate && this.daysPastDue(dueDate) === 0) collectionStatus = "due";
     return { original_amount: originalAmount, paid_amount: paidAmount, balance_amount: balanceAmount, aging_days: agingDays, payment_status: paymentStatus, collection_status: collectionStatus };
   }
 

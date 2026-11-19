@@ -1,6 +1,13 @@
 "use client";
+import {FormPurposeHeader} from "../../operator-page-templates";
+import {ScrollableRegion} from "../../scrollable-region";
 
-import Link from "next/link";
+import {ReadOnlyBanner} from "../../operator-page-templates";
+import { ModalBoundary } from "../../modal-boundary";
+import { DangerZone } from "../../operator-page-templates";
+import { permittedRecordTabs } from "../api";
+
+import { PermissionLink as Link } from "../../access-control";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   dateValue,
@@ -147,7 +154,7 @@ export function OrganizationList() {
             <h2>Filters</h2>
             <p className="muted">Organization relationship counts use tenant-scoped APIs. Some filters are client-side over currently loaded rows because the backend does not expose every organization filter yet.</p>
           </div>
-          <Link className="primary-button link-button" href="/intelligence/organizations/new" aria-disabled={!hasPermission(session.permissions, "organization.create")}>
+          <Link className="primary-button link-button" href="/intelligence/organizations/new" allowed={hasPermission(session.permissions, "organization.create")}>
             Create Organization
           </Link>
         </div>
@@ -320,11 +327,12 @@ export function OrganizationForm({ organizationId, mode }: { organizationId?: st
         <div className="section-toolbar">
           <div>
             <h2>{mode === "create" ? "New Telecom Actor" : textValue(organization?.name, "Organization")}</h2>
-            <p className="muted">Organization type, actor roles, owner, trust, strategic status, and scores are persisted through the hardened Organization API.</p>
+            <p className="muted">Keep the organization’s identity, responsible owner, qualification and relationship information current.</p>
           </div>
           {organizationId ? <Link className="table-link" href={`/intelligence/organizations/${organizationId}`}>Back to profile</Link> : <Link className="table-link" href="/intelligence/organizations">Back to organizations</Link>}
         </div>
         <form className="workspace-panel" onSubmit={submit}>
+        <FormPurposeHeader title="Organization profile" purpose="Confirm the organization name, type and territory, then record the legal and contact details supported by your source." afterSave="Review qualification and account onboarding separately. Saving a profile does not approve an agreement or authorize field work." />
           <div className="form-grid">
             <label>
               Organization name
@@ -496,6 +504,7 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
   return (
     <IntelligenceShell title="Organization Profile" purpose="Understand this telecom actor, its role, related work, constraints, recommendations, and next action.">
       <SessionPanel session={session} />
+      {session.token && !session.permissions.some(permission => ["organization","contact","signal","opportunity_candidate","capacity_provider"].some(domain => permission.startsWith(domain + ".") && !permission.endsWith(".read"))) ? <ReadOnlyBanner>Your access allows you to review this record. Editing and lifecycle actions are unavailable.</ReadOnlyBanner> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       <section className="panel workspace-panel">
         <div className="organization-header">
@@ -516,15 +525,17 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
             </div>
           </div>
           <div className="action-bar">
-            <Link className="primary-button link-button" href={`/intelligence/organizations/${organizationId}/edit`} aria-disabled={!hasPermission(session.permissions, "organization.update")}>Edit Organization</Link>
-            <button type="button" disabled={!hasPermission(session.permissions, "organization.qualify")} onClick={() => void qualifyOrganization(organizationId, load, setError)}>Qualify</button>
-            <button type="button" disabled={!hasPermission(session.permissions, "contact.create")} onClick={() => setModal("contact")}>Add Contact</button>
-            <button type="button" disabled={!hasPermission(session.permissions, "signal.create")} onClick={() => setModal("signal")}>Create Signal</button>
-            <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.create")} onClick={() => setModal("candidate")}>Create Candidate</button>
-            {hasActorRole(dossier, "capacity_provider") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Add Capacity Provider</button> : null}
+            <Link className="primary-button link-button" href={`/intelligence/organizations/${organizationId}/edit`} allowed={hasPermission(session.permissions, "organization.update")}>Edit Organization</Link>
+            {hasPermission(session.permissions, "organization.qualify") ? <button type="button" disabled={!hasPermission(session.permissions, "organization.qualify")} onClick={() => void qualifyOrganization(organizationId, load, setError)}>Qualify</button> : null}
+            {hasPermission(session.permissions, "contact.create") ? <button type="button" disabled={!hasPermission(session.permissions, "contact.create")} onClick={() => setModal("contact")}>Add Contact</button> : null}
+            {hasPermission(session.permissions, "signal.create") ? <button type="button" disabled={!hasPermission(session.permissions, "signal.create")} onClick={() => setModal("signal")}>Create Signal</button> : null}
+            {hasPermission(session.permissions, "opportunity_candidate.create") ? <button type="button" disabled={!hasPermission(session.permissions, "opportunity_candidate.create")} onClick={() => setModal("candidate")}>Create Candidate</button> : null}
+            {hasActorRole(dossier, "capacity_provider") ? (hasPermission(session.permissions, "capacity_provider.create") ? <button type="button" disabled={!hasPermission(session.permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Add Capacity Provider</button> : null) : null}
             <button type="button" onClick={() => setModal("research")}>Research Organization</button>
-            <button type="button" disabled={!hasPermission(session.permissions, "organization.archive") || dossier.status === "archived"} onClick={() => setModal("archive")}>Archive</button>
           </div>
+          {(hasPermission(session.permissions, "organization.archive")) ? <DangerZone>
+            {hasPermission(session.permissions, "organization.archive") ? <button type="button" disabled={!hasPermission(session.permissions, "organization.archive") || dossier.status === "archived"} onClick={() => setModal("archive")}>Archive</button> : null}
+          </DangerZone> : null}
         </div>
       </section>
 
@@ -565,7 +576,7 @@ export function OrganizationProfile({ organizationId }: { organizationId: string
             <SummaryMetric label="Recommended Next Action" value={formatAction(recommendedNextAction(dossier))} />
           </div>
           <div className="tab-row">
-            {tabs.map((tab) => (
+            {permittedRecordTabs(tabs, "organization").map((tab) => (
               <button className={activeTab === tab.id ? "active-tab" : ""} key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}>
                 {tab.label}
               </button>
@@ -633,7 +644,7 @@ function TabPanel({
   if (tab === "contacts") return <ContactsTab rows={slices.contacts} canCreate={hasPermission(permissions, "contact.create")} setModal={setModal} />;
   if (tab === "relationships") return <UnsupportedState title="Relationships" message="Relationship Mapping workspace is intentionally deferred. This profile only exposes a placeholder in Product Sprint 2." />;
   if (tab === "signals") return <SignalsTab rows={slices.signals} canCreate={hasPermission(permissions, "signal.create")} setModal={setModal} />;
-  if (tab === "candidates") return <ObjectSlice title="Candidates" rows={slices.candidates} columns={["name", "status", "confidence_score", "estimated_value", "work_type", "owner_user_id", "evidence_summary"]} empty="No opportunity candidates are connected to this organization yet." action={<button type="button" disabled={!hasPermission(permissions, "opportunity_candidate.create")} onClick={() => setModal("candidate")}>Create Candidate</button>} />;
+  if (tab === "candidates") return <ObjectSlice title="Candidates" rows={slices.candidates} columns={["name", "status", "confidence_score", "estimated_value", "work_type", "owner_user_id", "evidence_summary"]} empty="No opportunity candidates are connected to this organization yet." action={(hasPermission(permissions, "opportunity_candidate.create") ? <button type="button" disabled={!hasPermission(permissions, "opportunity_candidate.create")} onClick={() => setModal("candidate")}>Create Candidate</button> : null)} />;
   if (tab === "opportunities") return <ObjectSlice title="Opportunities" rows={slices.opportunities} columns={["title", "status", "estimated_value", "pursuit_score", "capacity_fit_score", "relationship_access_score", "owner_user_id", "review_date"]} empty="No opportunities are connected to this organization yet." />;
   if (tab === "capacity") return <CapacityTab organization={organization} slices={slices} permissions={permissions} setModal={setModal} />;
   if (tab === "projects") return <ProjectsTab slices={slices} unavailable={data.unavailable.projects} />;
@@ -649,7 +660,7 @@ function TabPanel({
 
 function OrganizationTable({ rows, permissions }: { rows: EnrichedOrganization[]; permissions: string[] }) {
   return (
-    <div className="wide-table">
+    <ScrollableRegion className="wide-table">
       <table>
         <thead>
           <tr>
@@ -702,7 +713,7 @@ function OrganizationTable({ rows, permissions }: { rows: EnrichedOrganization[]
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableRegion>
   );
 }
 
@@ -713,7 +724,7 @@ function ContactsTab({ rows, canCreate, setModal }: { rows: SyncRecord[]; canCre
       rows={rows}
       columns={["full_name", "title", "department", "contact_role", "email", "phone", "verification_status", "influence_score", "decision_authority_score", "relationship_strength", "last_contacted_at", "owner_user_id"]}
       empty="No contacts are connected to this organization. Add contacts to build access and support relationship pathing."
-      action={<button type="button" disabled={!canCreate} onClick={() => setModal("contact")}>Add Contact</button>}
+      action={canCreate ? <button type="button" disabled={!canCreate} onClick={() => setModal("contact")}>Add Contact</button> : null}
     />
   );
 }
@@ -725,7 +736,7 @@ function SignalsTab({ rows, canCreate, setModal }: { rows: SyncRecord[]; canCrea
       rows={rows}
       columns={["title", "category", "type", "confidence_score", "trust_level", "status", "source_name", "date_discovered", "converted", "recommended_next_action"]}
       empty="No signals are connected to this organization yet."
-      action={<button type="button" disabled={!canCreate} onClick={() => setModal("signal")}>Create Signal</button>}
+      action={canCreate ? <button type="button" disabled={!canCreate} onClick={() => setModal("signal")}>Create Signal</button> : null}
     />
   );
 }
@@ -736,7 +747,7 @@ function CapacityTab({ organization, slices, permissions, setModal }: { organiza
   }
   return (
     <>
-      <ObjectSlice title="Capacity Providers" rows={slices.capacityProviders} columns={["provider_type", "status", "readiness_score", "verification_status", "primary_contact_id"]} empty="No capacity provider record is connected yet." action={<button type="button" disabled={!hasPermission(permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Create Capacity Provider</button>} />
+      <ObjectSlice title="Capacity Providers" rows={slices.capacityProviders} columns={["provider_type", "status", "readiness_score", "verification_status", "primary_contact_id"]} empty="No capacity provider record is connected yet." action={(hasPermission(permissions, "capacity_provider.create") ? <button type="button" disabled={!hasPermission(permissions, "capacity_provider.create")} onClick={() => setModal("capacity")}>Create Capacity Provider</button> : null)} />
       <UnsupportedState title="Crews, Workers, Equipment, Compliance, Capacity Records" message="Detailed capacity sub-slices require provider-scoped filtering. Open the Capacity workspace when that product surface is approved." />
     </>
   );
@@ -772,7 +783,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
         {action}
       </div>
       {rows.length === 0 ? <div className="empty-state">{empty}</div> : (
-        <div className="wide-table">
+        <ScrollableRegion className="wide-table">
           <table>
             <thead>
               <tr>{columns.map((column) => <th key={column}>{column.replace(/_/g, " ")}</th>)}</tr>
@@ -785,7 +796,7 @@ function ObjectSlice({ title, rows, columns, empty, action }: { title: string; r
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollableRegion>
       )}
     </div>
   );
@@ -891,7 +902,7 @@ function ResearchModal({ organization, onClose }: { organization: EnrichedOrgani
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="modal-backdrop">
+    <ModalBoundary onClose={onClose} className="modal-backdrop">
       <div className="modal-panel compact-modal">
         <div className="section-toolbar">
           <h2>{title}</h2>
@@ -899,7 +910,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </ModalBoundary>
   );
 }
 
@@ -919,31 +930,14 @@ async function qualifyOrganization(id: string, reload: () => Promise<void>, setE
   }
 }
 
-function SessionPanel({ session }: { session: ReturnType<typeof useWorkspaceSession> }) {
-  if (process.env.NEXT_PUBLIC_ALLOW_DEV_SESSION_PANEL !== "true") return null;
-  return (
-    <section className="panel workspace-panel">
-      <div className="section-toolbar">
-        <div>
-          <h2>Session</h2>
-          <p className="muted">The UI only calls protected backend APIs. Backend permissions remain the source of truth.</p>
-        </div>
-        <button type="button" onClick={session.save}>Save Session</button>
-      </div>
-      <div className="session-grid">
-        <label>API token<input value={session.token} onChange={(event) => session.setToken(event.target.value)} placeholder="Paste JWT token" /></label>
-        <label>Visible permissions<input value={session.permissions.join(",")} onChange={(event) => session.setPermissions(event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} /></label>
-      </div>
-    </section>
-  );
-}
+function SessionPanel({ session }: { session: ReturnType<typeof useWorkspaceSession> }) { return null; }
 
 function useWorkspaceSession() {
   const [token, setToken] = useState("");
-  const [permissions, setPermissions] = useState<string[]>(defaultOrganizationPermissions);
+  const [permissions, setPermissions] = useState<string[]>([]);
   useEffect(() => {
     setToken(readToken());
-    setPermissions(readPermissions().length ? readPermissions() : defaultOrganizationPermissions);
+    setPermissions(readPermissions());
   }, []);
   async function refreshPermissions() {
     const effective = await syncosFetch<{ permissions?: string[] }>("/auth/me/permissions").catch(() => null);
@@ -1218,7 +1212,7 @@ function warningsFor(organization: EnrichedOrganization, slices: OrganizationSli
 function actorRoleExplanation(organization: EnrichedOrganization) {
   if (hasActorRole(organization, "work_creator")) return "This organization may originate telecom work. Emphasize signals, territory, funding or project indicators, opportunities, and access paths.";
   if (hasActorRole(organization, "work_influencer")) return "This organization can influence work before construction starts. Emphasize contacts, relationship access, signals, and relationship gaps.";
-  if (hasActorRole(organization, "work_distributor")) return "This organization may route work to Jackson. Emphasize onboarding path, vendor contacts, opportunities, and capacity needs.";
+  if (hasActorRole(organization, "work_distributor")) return "This organization may route work to Sync Comm Systems. Emphasize onboarding path, vendor contacts, opportunities, and capacity needs.";
   if (hasActorRole(organization, "capacity_provider")) return "This organization may help cover work. Emphasize provider status, compliance, readiness, crews, workers, equipment, and production history.";
   if (hasActorRole(organization, "work_validator")) return "This organization can validate or block production. Emphasize field contacts, QC contacts, approvals, corrections, and project history.";
   if (hasActorRole(organization, "cash_controller")) return "This organization can approve and pay correctly. Emphasize contracts, settlements, invoices, AR, payments, and billing contacts.";
