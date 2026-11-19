@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,3 +18,43 @@ jobs:
       - run: npm run build --workspace=@syncos/api
       - run: npm run typecheck --workspace=@syncos/web
       - run: node --test --test-concurrency=2 tests/*.test.js
+
+  e2e:
+    name: E2E PR Gate
+    runs-on: ubuntu-latest
+    needs: validate
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: syncos_synthetic_public_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d syncos_synthetic_public_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/syncos_synthetic_public_ci
+      API_BASE_URL: http://127.0.0.1:3100
+      SYNCOS_RESTRICTED_FILE_STORAGE_DIR: /tmp/syncos-public-ci-files
+      EMAIL_PROVIDER: disabled
+      WORKFLOW_NOTIFICATION_DELIVERY_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Generate disposable test signing key
+        run: node -e "require('fs').appendFileSync(process.env.GITHUB_ENV, 'AUTH_JWT_SECRET=' + require('crypto').randomBytes(48).toString('hex') + '\n')"
+      - run: npm run build --workspace=@syncos/api
+      - run: npm run db:migrate
+      - name: Synthetic partner onboarding through customer closeout
+        run: node scripts/acceptance/run-partner-rehearsal.js
